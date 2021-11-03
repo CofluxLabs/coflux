@@ -1,0 +1,2 @@
+defmodule Coflux do
+end

@@ -1,0 +1,10 @@
+version: '3.7'
+
+services:
+  server:
+    build: "server"
+    ports:
+      - "7070:4000"
+    volumes:
+      - "./server:/app"
+    init: true
