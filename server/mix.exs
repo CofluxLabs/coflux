@@ -19,6 +19,9 @@ defmodule Coflux.MixProject do
   end
 
   defp deps do
-    []
+    [
+      {:cowboy, "~> 2.9"},
+      {:jason, "~> 1.2"},
+    ]
   end
 end
