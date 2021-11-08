@@ -4,7 +4,14 @@ services:
   server:
     build: "server"
     ports:
-      - "7070:4000"
+      - "7070:7070"
     volumes:
       - "./server:/app"
+    init: true
+
+  example_python_repo:
+    build: "examples/python_repo"
+    volumes:
+      - "./examples/python_repo:/app"
+      - "./clients/python:/packages"
     init: true
