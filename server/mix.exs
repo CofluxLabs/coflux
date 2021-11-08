@@ -22,6 +22,7 @@ defmodule Coflux.MixProject do
     [
       {:cowboy, "~> 2.9"},
       {:jason, "~> 1.2"},
+      {:elixir_uuid, "~> 1.2"}
     ]
   end
 end

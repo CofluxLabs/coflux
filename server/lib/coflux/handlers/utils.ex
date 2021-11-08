@@ -7,4 +7,27 @@ defmodule Coflux.Handlers.Utils do
       req
     )
   end
+
+  def read_json_body(req) do
+    case :cowboy_req.read_body(req) do
+      {:ok, data, req} ->
+        with {:ok, result} <- Jason.decode(data) do
+          {:ok, result, req}
+        end
+    end
+  end
+
+  def parse_result(result) do
+    case result do
+      ["raw", value] -> {:raw, value}
+      ["res", execution_id] -> {:res, execution_id}
+    end
+  end
+
+  def compose_result(result) do
+    case result do
+      {:raw, value} -> ["raw", value]
+      {:res, execution_id} -> ["res", execution_id]
+    end
+  end
 end
