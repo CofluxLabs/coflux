@@ -24,3 +24,6 @@ coflux-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Language server files.
+/.elixir_ls/
