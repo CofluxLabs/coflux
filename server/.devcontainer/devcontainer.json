@@ -1,0 +1,16 @@
+{
+	"name": "Server",
+
+	"build": {
+		"dockerfile": "Dockerfile",
+		"args": { "VARIANT": "1.13" }
+	},
+
+	"extensions": [
+		"jakebecker.elixir-ls",
+	],
+
+	"postCreateCommand": "mix do deps.get, deps.compile",
+
+	"remoteUser": "vscode"
+}

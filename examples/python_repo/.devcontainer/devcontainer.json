@@ -1,0 +1,22 @@
+{
+	"name": "Examples → Python repo",
+
+	"build": {
+		"dockerfile": "Dockerfile",
+		"context": "..",
+		"args": { "VARIANT": "3.9" }
+	},
+
+	"containerEnv": {
+		"PYTHONPATH": "/workspaces/Coflux/clients/python"
+	},
+
+	"extensions": [
+		"ms-python.python",
+		"ms-python.vscode-pylance"
+	],
+
+	"postCreateCommand": "pip3 install --user -r requirements.txt",
+
+	"remoteUser": "vscode"
+}
