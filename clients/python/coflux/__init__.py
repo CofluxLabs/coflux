@@ -68,7 +68,7 @@ class Client:
             result = {'status': 'failed', 'message': str(e)}
         else:
             result = {'status': 'completed', 'value': _serialise_argument(value)}
-        response = httpx.put(self._url(f'/executions/{execution_id}'), json=result, verify=False)
+        response = httpx.put(self._url(f'/executions/{execution_id}/result'), json=result, verify=False)
         response.raise_for_status()
 
     def _handle(self, command, arguments):
@@ -90,14 +90,14 @@ class Client:
 
     def schedule(self, target, arguments, execution_id=None):
         serialised_arguments = [_serialise_argument(a) for a in arguments]
-        execution = {'target': target, 'arguments': serialised_arguments, 'executionId': execution_id}
-        response = httpx.post(self._url('/executions'), json=execution, verify=False)
+        execution = {'target': target, 'arguments': serialised_arguments}
+        response = httpx.post(self._url(f'/executions/{execution_id}/children'), json=execution, verify=False)
         response.raise_for_status()
         return response.json()["executionId"]
 
     def get_result(self, execution_id):
         if execution_id not in self._results:
-            response = httpx.get(self._url(f'/executions/{execution_id}'), verify=False)
+            response = httpx.get(self._url(f'/executions/{execution_id}/result'), verify=False)
             response.raise_for_status()
             self._results[execution_id] = response.json()
         result = self._results[execution_id]

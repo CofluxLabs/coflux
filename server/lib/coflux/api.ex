@@ -17,8 +17,9 @@ defmodule Coflux.Api do
        [
          {"/", Handlers.Root, []},
          {"/projects/[:project]/agents", Handlers.Agents, []},
-         {"/projects/[:project]/executions", Handlers.Executions, []},
-         {"/projects/[:project]/executions/[:execution]", Handlers.Execution, []}
+         {"/projects/[:project]/executions/[:execution]", Handlers.Execution, []},
+         {"/projects/[:project]/executions/[:execution]/children", Handlers.ExecutionChildren, []},
+         {"/projects/[:project]/executions/[:execution]/result", Handlers.ExecutionResult, []}
        ]}
     ])
   end
