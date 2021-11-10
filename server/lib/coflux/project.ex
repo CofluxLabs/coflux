@@ -23,9 +23,9 @@ defmodule Coflux.Project do
     Store.put_result(project_id, execution_id, result)
   end
 
-  def get_result(project_id, execution_id) do
+  def get_result(project_id, execution_id, pid) do
     # TODO: try to get from database first?
-    call_server(project_id, {:get_result, execution_id})
+    call_server(project_id, {:get_result, execution_id, pid})
   end
 
   defp call_server(project_id, request) do

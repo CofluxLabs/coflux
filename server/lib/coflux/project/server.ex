@@ -4,7 +4,7 @@ defmodule Coflux.Project.Server do
   alias Coflux.Project.Store
 
   defmodule State do
-    defstruct project_id: nil, targets: %{}, executions: %{}
+    defstruct project_id: nil, targets: %{}, waiting: %{}
   end
 
   def start_link(opts) do
@@ -30,21 +30,22 @@ defmodule Coflux.Project.Server do
     {:reply, :ok, state}
   end
 
-  def handle_call({:get_result, execution_id}, from, state) do
+  def handle_call({:get_result, execution_id, pid}, _from, state) do
     # TODO: do this outside the server?
     case get_result(state.project_id, execution_id) do
       {:pending, execution_id} ->
+        ref = make_ref()
         state =
           update_in(
             state,
-            [Access.key(:executions), Access.key(execution_id, [])],
-            &[from | &1]
+            [Access.key(:waiting), Access.key(execution_id, [])],
+            &[{pid, ref} | &1]
           )
 
-        {:noreply, state}
+        {:reply, {:wait, ref}, state}
 
       {:resolved, result} ->
-        {:reply, result, state}
+        {:reply, {:ok, result}, state}
     end
   end
 
@@ -96,19 +97,21 @@ defmodule Coflux.Project.Server do
   end
 
   defp try_notify_results(state, execution_id) do
-    Map.update!(state, :executions, fn executions ->
-      case Map.pop(executions, execution_id) do
-        {nil, executions} ->
-          executions
+    Map.update!(state, :waiting, fn waiting ->
+      case Map.pop(waiting, execution_id) do
+        {nil, waiting} ->
+          waiting
 
-        {froms, executions} ->
+        {execution_waiting, waiting} ->
           case get_result(state.project_id, execution_id) do
             {:pending, execution_id} ->
-              Map.put(executions, execution_id, froms)
+              Map.put(waiting, execution_id, execution_waiting)
 
             {:resolved, result} ->
-              Enum.each(froms, &GenServer.reply(&1, result))
-              executions
+              Enum.each(execution_waiting, fn {pid, ref} ->
+                send(pid, {:result, ref, result})
+              end)
+              waiting
           end
       end
     end)

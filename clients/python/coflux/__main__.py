@@ -1,4 +1,5 @@
 import click
+import asyncio
 
 from . import Client
 
@@ -9,7 +10,8 @@ from . import Client
 @click.option('-v', '--version', required=True)
 @click.option('-h', '--host', required=True)
 def cli(project, module, version, host):
-    Client(project, module, version, host).run()
+    client = Client(project, module, version, host)
+    asyncio.run(client.run())
 
 
 cli()
