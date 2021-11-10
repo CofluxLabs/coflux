@@ -7,7 +7,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateResults do
       add :type, :integer, null: false
       add :value, :text
       add :extra, :map
-      add :created_at, :utc_datetime, null: false
+      add :created_at, :utc_datetime_usec, null: false
     end
 
     execute(

@@ -6,7 +6,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateExecutions do
       add :step_id, references("steps", on_delete: :delete_all), null: false
       add :version, :string
       add :execute_after, :utc_datetime
-      add :created_at, :utc_datetime, null: false
+      add :created_at, :utc_datetime_usec, null: false
     end
 
     alter table("steps") do

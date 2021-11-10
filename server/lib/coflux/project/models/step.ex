@@ -8,7 +8,7 @@ defmodule Coflux.Project.Models.Step do
     field :target, :string
     field :tags, {:array, :string}
     field :priority, :integer
-    field :created_at, :utc_datetime
+    field :created_at, :utc_datetime_usec
 
     has_many :arguments, Models.StepArgument
     has_many :executions, Models.Execution

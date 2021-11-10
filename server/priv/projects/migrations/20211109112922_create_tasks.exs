@@ -6,7 +6,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateTasks do
       add :repository, :string, null: false
       add :version, :string, null: false
       add :target, :string, null: false
-      add :created_at, :utc_datetime, null: false
+      add :created_at, :utc_datetime_usec, null: false
     end
 
     create unique_index("tasks", [:repository, :version, :target])

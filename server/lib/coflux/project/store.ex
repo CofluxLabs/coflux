@@ -17,7 +17,7 @@ defmodule Coflux.Project.Store do
           repository: repository,
           version: version,
           target: target,
-          created_at: DateTime.truncate(DateTime.utc_now(), :second)
+          created_at: DateTime.utc_now()
         }
       end)
 
@@ -62,7 +62,7 @@ defmodule Coflux.Project.Store do
   end
 
   def acknowledge_executions(project_id, execution_ids) do
-    now = utc_now()
+    now = DateTime.utc_now()
 
     Repo.insert_all(
       Models.Acknowledgment,
@@ -72,11 +72,13 @@ defmodule Coflux.Project.Store do
   end
 
   def list_pending_executions(project_id) do
+    now = DateTime.utc_now()
+
     query =
       from(e in Models.Execution,
         join: s in assoc(e, :step),
         left_join: a in assoc(e, :assignment),
-        where: e.execute_after <= ^utc_now() or is_nil(e.execute_after),
+        where: e.execute_after <= ^now or is_nil(e.execute_after),
         where: is_nil(a.execution_id),
         order_by: [desc: s.priority, asc: s.created_at],
         preload: [step: {s, [:arguments]}]
@@ -89,7 +91,7 @@ defmodule Coflux.Project.Store do
     case Repo.insert(
            %Models.Assignment{
              execution_id: execution_id,
-             created_at: utc_now()
+             created_at: DateTime.utc_now()
            },
            prefix: project_id
          ) do
@@ -107,7 +109,7 @@ defmodule Coflux.Project.Store do
         type: type,
         value: value,
         extra: extra,
-        created_at: utc_now()
+        created_at: DateTime.utc_now()
       },
       prefix: project_id
     )
@@ -151,7 +153,7 @@ defmodule Coflux.Project.Store do
     priority = Keyword.fetch!(opts, :priority)
     version = Keyword.fetch!(opts, :version)
     parent_id = Keyword.get(opts, :parent_id)
-    now = utc_now()
+    now = DateTime.utc_now()
 
     step =
       Repo.insert!(
@@ -188,9 +190,5 @@ defmodule Coflux.Project.Store do
       )
 
     execution.id
-  end
-
-  defp utc_now() do
-    DateTime.truncate(DateTime.utc_now(), :second)
   end
 end

@@ -3,6 +3,6 @@ defmodule Coflux.Project.Models.Acknowledgment do
 
   schema "acknowledgments" do
     belongs_to :execution, Models.Execution
-    field :created_at, :utc_datetime
+    field :created_at, :utc_datetime_usec
   end
 end

@@ -4,6 +4,6 @@ defmodule Coflux.Project.Models.Assignment do
   @primary_key false
   schema "assignments" do
     belongs_to :execution, Models.Execution, primary_key: true
-    field :created_at, :utc_datetime
+    field :created_at, :utc_datetime_usec
   end
 end

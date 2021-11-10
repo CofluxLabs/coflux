@@ -7,6 +7,6 @@ defmodule Coflux.Project.Models.Result do
     field :type, :integer
     field :value, :string
     field :extra, :map
-    field :created_at, :utc_datetime
+    field :created_at, :utc_datetime_usec
   end
 end

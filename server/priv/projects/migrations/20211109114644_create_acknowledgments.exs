@@ -4,7 +4,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateAcknowledgments do
   def change do
     create table("acknowledgments") do
       add :execution_id, references("executions", on_delete: :delete_all), null: false
-      add :created_at, :utc_datetime, null: false
+      add :created_at, :utc_datetime_usec, null: false
     end
 
     execute(

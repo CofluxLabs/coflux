@@ -5,7 +5,7 @@ defmodule Coflux.Project.Models.Execution do
     belongs_to :step, Models.Step
     field :version, :string
     field :execute_after, :utc_datetime
-    field :created_at, :utc_datetime
+    field :created_at, :utc_datetime_usec
 
     has_many :child_steps, Models.Step, foreign_key: :parent_id
     has_many :dependencies, Models.Dependency

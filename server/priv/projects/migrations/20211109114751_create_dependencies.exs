@@ -5,7 +5,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateDependencies do
     create table("dependencies", primary_key: false) do
       add :execution_id, references("executions", on_delete: :delete_all), primary_key: true, null: false
       add :dependency_id, references("executions", on_delete: :delete_all), primary_key: true, null: false
-      add :created_at, :utc_datetime, null: false
+      add :created_at, :utc_datetime_usec, null: false
     end
 
     execute(

@@ -8,7 +8,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateSteps do
       add :target, :string, null: false
       add :tags, {:array, :string}, null: false
       add :priority, :integer, null: false
-      add :created_at, :utc_datetime, null: false
+      add :created_at, :utc_datetime_usec, null: false
     end
 
     execute(
