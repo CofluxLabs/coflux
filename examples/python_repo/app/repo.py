@@ -1,4 +1,5 @@
 import time
+import random
 
 from coflux import step, task
 
@@ -63,6 +64,23 @@ def slow_task():
     sleep(0.5)
     sleep(1.5)
     sleep(2).result()
+
+
+@task()
+def random_task():
+    for i in range(random.randint(3, 5)):
+        fn, *args = random.choice(
+            [
+                (raise_error,),
+                (maximum, list(range(i))),
+                (fib, 3),
+                (inc, i),
+                (sleep, i),
+                (my_task,),
+                (random_task,),
+            ]
+        )
+        fn(*args)
 
 
 if __name__ == '__main__':
