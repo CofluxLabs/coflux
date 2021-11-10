@@ -6,6 +6,18 @@ defmodule Coflux.Project do
     Store.list_tasks(project_id)
   end
 
+  def list_task_runs(project_id, task_id) do
+    Store.list_task_runs(project_id, task_id)
+  end
+
+  def get_task(project_id, task_id) do
+    Store.get_task(project_id, task_id)
+  end
+
+  def get_run(project_id, run_id) do
+    Store.get_run(project_id, run_id)
+  end
+
   def register(project_id, repository, version, targets, pid) do
     Store.create_tasks(project_id, repository, version, targets)
     call_server(project_id, {:register_targets, repository, version, targets, pid})

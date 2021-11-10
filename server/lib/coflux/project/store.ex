@@ -8,6 +8,29 @@ defmodule Coflux.Project.Store do
     Repo.all(Models.Task, prefix: project_id)
   end
 
+  def list_task_runs(project_id, task_id) do
+    query =
+      from(
+        r in Models.Run,
+        where: r.task_id == ^task_id,
+        preload: [:initial_step]
+      )
+
+    Repo.all(query, prefix: project_id)
+  end
+
+  def get_task(project_id, task_id) do
+    Repo.get!(Models.Task, task_id, prefix: project_id)
+  end
+
+  def get_run(project_id, run_id) do
+    Models.Run
+    |> Repo.get!(run_id, prefix: project_id)
+    |> Repo.preload(
+      steps: [:arguments, executions: [:child_steps, :dependencies, :assignment, :result]]
+    )
+  end
+
   def create_tasks(project_id, repository, version, targets) do
     tasks =
       targets
