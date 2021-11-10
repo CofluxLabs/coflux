@@ -10,7 +10,7 @@ defmodule Coflux.Project.Models.Step do
     field :priority, :integer
     field :created_at, :utc_datetime_usec
 
-    has_many :arguments, Models.StepArgument
+    has_many :arguments, Models.StepArgument, preload_order: [:index]
     has_many :executions, Models.Execution
   end
 end

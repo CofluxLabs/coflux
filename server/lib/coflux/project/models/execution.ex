@@ -12,5 +12,6 @@ defmodule Coflux.Project.Models.Execution do
     has_many :dependents, Models.Dependency, foreign_key: :dependency_id
     has_many :acknowledgments, Models.Acknowledgment
     has_one :assignment, Models.Assignment
+    has_one :result, Models.Result
   end
 end
