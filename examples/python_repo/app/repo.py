@@ -41,5 +41,15 @@ def fib(n):
         return fib(n - 1).result() + fib(n - 2).result()
 
 
+@step()
+def do_raise():
+    raise Exception("some error")
+
+
+@task()
+def raise_error():
+    return do_raise()
+
+
 if __name__ == '__main__':
     print(my_task([1, 2, 3, 4]).result())
