@@ -1,3 +1,5 @@
+import time
+
 from coflux import step, task
 
 
@@ -49,6 +51,18 @@ def do_raise():
 @task()
 def raise_error():
     return do_raise()
+
+
+@step()
+def sleep(seconds):
+    time.sleep(seconds.result())
+
+
+@task()
+def slow_task():
+    sleep(0.5)
+    sleep(1.5)
+    sleep(2).result()
 
 
 if __name__ == '__main__':

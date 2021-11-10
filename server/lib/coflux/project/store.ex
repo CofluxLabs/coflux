@@ -61,6 +61,16 @@ defmodule Coflux.Project.Store do
     end)
   end
 
+  def acknowledge_executions(project_id, execution_ids) do
+    now = utc_now()
+
+    Repo.insert_all(
+      Models.Acknowledgment,
+      Enum.map(execution_ids, &%{execution_id: &1, created_at: now}),
+      prefix: project_id
+    )
+  end
+
   def list_pending_executions(project_id) do
     query =
       from(e in Models.Execution,

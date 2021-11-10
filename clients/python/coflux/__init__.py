@@ -4,6 +4,7 @@ import importlib
 import json
 import websockets
 import asyncio
+import time
 
 TARGET_KEY = '_coflux_target'
 
@@ -47,8 +48,7 @@ class Request:
 
 
 class Channel:
-    def __init__(self, uri, handlers):
-        self._uri = uri
+    def __init__(self, handlers):
         self._handlers = handlers
         self._last_id = 0
         self._requests = {}
@@ -62,11 +62,8 @@ class Channel:
         await self._send(method, params, id)
         return await self._requests[id].get()
 
-    async def connect(self):
-        self._websocket = await websockets.connect(self._uri)
-
-    async def run(self):
-        coros = [self._consume(), self._produce()]
+    async def run(self, websocket):
+        coros = [self._consume(websocket), self._produce(websocket)]
         done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
@@ -87,8 +84,8 @@ class Channel:
         self._last_id += 1
         return self._last_id
 
-    async def _consume(self):
-        async for message in self._websocket:
+    async def _consume(self, websocket):
+        async for message in websocket:
             message = json.loads(message)
             if 'method' in message:
                 handler = self._handlers[message['method']]
@@ -101,10 +98,10 @@ class Channel:
                 elif 'error' in message:
                     request.put_error(message['error'])
 
-    async def _produce(self):
+    async def _produce(self, websocket):
         while True:
             message = await (self._queue.get())
-            await self._websocket.send(json.dumps(message))
+            await websocket.send(json.dumps(message))
 
 
 def _load_module(name):
@@ -128,8 +125,7 @@ class Client:
         self._version = version
         self._server_host = server_host
         self._targets = _load_module(module_name)
-        uri = f'ws://{self._server_host}/projects/{self._project_id}/agent'
-        self._channel = Channel(uri, {'execute': self._handle_execute})
+        self._channel = Channel({'execute': self._handle_execute})
         self._results = {}
         self._executions = {}
 
@@ -165,19 +161,29 @@ class Client:
         execution_var.set((execution_id, self, loop))
         task = asyncio.to_thread(target, *future_arguments)
         # TODO: check execution isn't already running?
-        self._executions[execution_id] = task
+        self._executions[execution_id] = (task, time.time())
         asyncio.create_task(self._put_result(task, execution_id))
 
-    async def run(self):
-        print(f"Agent running ({self._module_name}@{self._version}, {self._server_host}, {self._project_id})...")
-        targets = {name: {'type': target['type']} for name, target in self._targets.items()}
+    async def _send_acknowledgments(self):
         while True:
-            await self._channel.connect()
-            await self._channel.notify('register', self._module_name, self._version, targets)
-            await self._channel.run()
-            # TODO: backoff
+            now = time.time()
+            execution_ids = [id for id, (_, t) in self._executions.items() if now - t > 1]
+            if execution_ids:
+                await self._channel.notify('acknowledge', execution_ids)
             await asyncio.sleep(1)
-            print(f"Disconnected. Reconnecting...")
+
+    async def run(self):
+        print(f"Agent starting ({self._module_name}@{self._version})...")
+        targets = {name: {'type': target['type']} for name, target in self._targets.items()}
+        uri = f'ws://{self._server_host}/projects/{self._project_id}/agent'
+        async for websocket in websockets.connect(uri):
+            print(f"Connected ({self._server_host}, {self._project_id}).")
+            # TODO: reset channel?
+            await self._channel.notify('register', self._module_name, self._version, targets)
+            coros = [self._channel.run(websocket), self._send_acknowledgments()]
+            done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
 
     async def schedule_child(self, execution_id, target, arguments, repository=None):
         repository = repository or self._module_name
@@ -200,7 +206,8 @@ class Client:
 def _decorate(name=None, type='step'):
     def decorate(fn):
         target = name or fn.__name__
-        setattr(fn, TARGET_KEY, (target, {'type': type, 'module': fn.__module__, 'function': fn}))
+        metadata = (target, {'type': type, 'module': fn.__module__, 'function': fn})
+        setattr(fn, TARGET_KEY, metadata)
 
         @functools.wraps(fn)
         def wrapper(*args):  # TODO: support kwargs?

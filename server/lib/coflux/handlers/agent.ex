@@ -34,6 +34,11 @@ defmodule Coflux.Handlers.Agent do
             {[result_message(message["id"], execution_id)], state}
         end
 
+      "acknowledge" ->
+        [execution_ids] = message["params"]
+        Project.acknowledge_exeutions(state.project_id, execution_ids)
+        {[], state}
+
       "put_result" ->
         [execution_id, type, value] = message["params"]
         result = parse_result(type, value)
