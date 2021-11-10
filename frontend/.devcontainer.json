@@ -1,0 +1,10 @@
+{
+	"name": "Frontend",
+  "image": "mcr.microsoft.com/vscode/devcontainers/javascript-node:0-16-bullseye",
+	"settings": {},
+	"extensions": [
+		"dbaeumer.vscode-eslint"
+	],
+	"postCreateCommand": "yarn install",
+	"remoteUser": "node"
+}

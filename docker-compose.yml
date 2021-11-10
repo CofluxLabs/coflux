@@ -18,6 +18,14 @@ services:
     depends_on:
       - postgres
 
+  frontend:
+    build: "frontend"
+    ports:
+      - "7777:3000"
+    volumes:
+      - "./frontend:/app"
+    command: "yarn dev"
+
   example_python_repo:
     build: "examples/python_repo"
     volumes:
