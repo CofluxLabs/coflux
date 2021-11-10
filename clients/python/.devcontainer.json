@@ -1,18 +1,10 @@
 {
 	"name": "Clients → Python",
-
-	"build": {
-		"dockerfile": "Dockerfile",
-		"context": "..",
-		"args": { "VARIANT": "3.9" }
-	},
-
+	"image": "mcr.microsoft.com/vscode/devcontainers/python:0-3.9",
 	"extensions": [
 		"ms-python.python",
 		"ms-python.vscode-pylance"
 	],
-
 	"postCreateCommand": "pip3 install --user -r requirements.txt",
-
 	"remoteUser": "vscode"
 }
