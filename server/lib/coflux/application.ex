@@ -4,11 +4,13 @@ defmodule Coflux.Application do
   @impl true
   def start(_type, _args) do
     port = String.to_integer(System.get_env("PORT", "7070"))
+    project_ids = String.split(System.get_env("PROJECT_IDS", ""), ",")
 
     Supervisor.start_link(
       [
-        {Registry, name: Coflux.ProjectsRegistry, keys: :unique},
-        {DynamicSupervisor, name: Coflux.ProjectsSupervisor, strategy: :one_for_one},
+        Coflux.Repo.Projects,
+        {Coflux.Project.Supervisor, project_ids: project_ids},
+        Coflux.Listener,
         {Coflux.Api, port: port}
       ],
       strategy: :one_for_one,

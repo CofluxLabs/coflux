@@ -16,18 +16,4 @@ defmodule Coflux.Handlers.Utils do
         end
     end
   end
-
-  def parse_result(result) do
-    case result do
-      ["raw", value] -> {:raw, value}
-      ["res", execution_id] -> {:res, execution_id}
-    end
-  end
-
-  def compose_result(result) do
-    case result do
-      {:raw, value} -> ["raw", value]
-      {:res, execution_id} -> ["res", execution_id]
-    end
-  end
 end

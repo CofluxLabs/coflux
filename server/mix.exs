@@ -21,8 +21,9 @@ defmodule Coflux.MixProject do
   defp deps do
     [
       {:cowboy, "~> 2.9"},
+      {:ecto_sql, "~> 3.7"},
       {:jason, "~> 1.2"},
-      {:elixir_uuid, "~> 1.2"}
+      {:postgrex, "~> 0.15"}
     ]
   end
 end

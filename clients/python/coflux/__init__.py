@@ -38,11 +38,13 @@ def _serialise_argument(argument):
 
 
 class Client:
-    def __init__(self, project_id, module_name, server_host):
+    def __init__(self, project_id, module_name, version, server_host):
         self._project_id = project_id
+        self._module_name = module_name
+        self._version = version
         self._targets = _load_module(module_name)
         self._server_host = server_host
-        self._executor = cf.ThreadPoolExecutor()
+        self._executor = cf.ThreadPoolExecutor(max_workers=32)
         self._results = {}
 
     def _url(self, path):
@@ -52,7 +54,7 @@ class Client:
         tag, value = argument
         if tag == 'raw':
             return Future(lambda: value, argument)
-        elif tag == 'res':
+        elif tag == 'result':
             return Future(lambda: self.get_result(value), argument)
         else:
             raise Exception(f"unrecognised tag ({tag})")
@@ -65,9 +67,12 @@ class Client:
             value = self._targets[target_name]['function'](*future_arguments)
         except BaseException as e:
             traceback.print_exc()
-            result = {'status': 'failed', 'message': str(e)}
+            result = ["failed", str(e), {}]  # TODO: include exception state
         else:
-            result = {'status': 'completed', 'value': _serialise_argument(value)}
+            if isinstance(value, Future):
+                result = value.serialise()
+            else:
+                result = ["raw", value]
         response = httpx.put(self._url(f'/executions/{execution_id}/result'), json=result, verify=False)
         response.raise_for_status()
 
@@ -80,17 +85,19 @@ class Client:
     def run(self):
         print(f"Agent running ({self._project_id}, {self._server_host})...")
         targets = {name: {'type': target['type']} for name, target in self._targets.items()}
+        data = {'repository': self._module_name, 'version': self._version, 'targets': targets}
         while True:
-            with httpx.stream('POST', self._url('/agents'), json={'targets': targets}, verify=False) as response:
+            with httpx.stream('POST', self._url('/agents'), json=data, verify=False) as response:
                 response.raise_for_status()
                 for line in response.iter_lines():
                     if line.strip():
                         command, arguments = json.loads(line)
                         self._executor.submit(self._handle, command, arguments)
 
-    def schedule(self, target, arguments, execution_id=None):
+    def schedule(self, target, arguments, execution_id=None, repository=None):
+        repository = repository or self._module_name
         serialised_arguments = [_serialise_argument(a) for a in arguments]
-        execution = {'target': target, 'arguments': serialised_arguments}
+        execution = {'repository': repository, 'target': target, 'arguments': serialised_arguments}
         response = httpx.post(self._url(f'/executions/{execution_id}/children'), json=execution, verify=False)
         response.raise_for_status()
         return response.json()["executionId"]
@@ -101,15 +108,13 @@ class Client:
             response.raise_for_status()
             self._results[execution_id] = response.json()
         result = self._results[execution_id]
-        if result["status"] == "completed":
-            tag, value = result["value"]
-            if tag == "raw":
-                return value
-            else:
-                raise Exception(f"unexpected tag ({tag})")
-        elif result["status"] == "failed":
-            # TODO: somehow reconstruct exception?
-            raise Exception(result["message"])
+        if result[0] == "raw":
+            return result[1]
+        elif result[0] == "failed":
+            # TODO: reconstruct exception state
+            raise Exception(result[1])
+        else:
+            raise Exception(f"unexeptected result tag ({result[0]})")
 
 
 def _decorate(name=None, type='step'):
@@ -123,7 +128,7 @@ def _decorate(name=None, type='step'):
             if execution is not None:
                 execution_id, client = execution
                 new_execution_id = client.schedule(target, args, execution_id)
-                return Future(lambda: client.get_result(new_execution_id), ['res', new_execution_id])
+                return Future(lambda: client.get_result(new_execution_id), ['result', new_execution_id])
             else:
                 # TODO: execute in threadpool
                 result = fn(*[(Future(lambda: a) if not isinstance(a, Future) else a) for a in args])

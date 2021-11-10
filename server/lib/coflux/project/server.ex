@@ -1,8 +1,10 @@
 defmodule Coflux.Project.Server do
   use GenServer, restart: :transient
 
+  alias Coflux.Project.Store
+
   defmodule State do
-    defstruct targets: %{}, executions: %{}
+    defstruct project_id: nil, targets: %{}, executions: %{}
   end
 
   def start_link(opts) do
@@ -12,99 +14,120 @@ defmodule Coflux.Project.Server do
 
   def init({project_id}) do
     IO.puts("Project server started (#{project_id}).")
-    {:ok, %State{}}
+    {:ok, %State{project_id: project_id}}
   end
 
-  def handle_call({:schedule, target, arguments, _from_execution_id}, _from, state) do
-    # TODO: record execution
-    case Map.fetch(state.targets, target) do
-      {:ok, pids} ->
-        pid = Enum.random(pids)
-        execution_id = UUID.uuid4()
-        send(pid, {:execute, execution_id, target, arguments})
-
-        state =
-          Map.update!(state, :executions, fn executions ->
-            Map.put(executions, execution_id, %{result: nil, waiting: []})
-          end)
-
-        {:reply, {:ok, execution_id}, state}
-
-      :error ->
-        # TODO: queue execution? (and return execution_id)
-        {:reply, {:error, :not_registered}, state}
-    end
-  end
-
-  def handle_call({:put_result, execution_id, result}, _from, state) do
-    # TODO: return error if result is already set?
-    # TODO: record in database
-    waiting = state.executions[execution_id].waiting
-    state = put_in(state.executions[execution_id].result, result)
-    state = put_in(state.executions[execution_id].waiting, [])
+  def handle_call({:register_targets, repository, version, new_targets, pid}, _from, state) do
+    _ref = Process.monitor(pid)
 
     state =
-      if waiting do
-        case get_result(state, execution_id) do
-          {:ok, result} ->
-            Enum.each(waiting, &GenServer.reply(&1, {:ok, result}))
-            state
+      Enum.reduce(new_targets, state, fn {target, _config}, state ->
+        put_in(state, [Access.key(:targets), Access.key({repository, target}, %{}), pid], version)
+      end)
 
-          {:pending, execution_id} ->
-            update_in(state.executions[execution_id].waiting, &Enum.concat(waiting, &1))
-        end
-      else
-        state
-      end
+    state = try_schedule_executions(state)
 
     {:reply, :ok, state}
   end
 
   def handle_call({:get_result, execution_id}, from, state) do
-    case get_result(state, execution_id) do
-      {:ok, result} ->
-        {:reply, {:ok, result}, state}
-
+    # TODO: do this outside the server?
+    case get_result(state.project_id, execution_id) do
       {:pending, execution_id} ->
-        state = update_in(state.executions[execution_id].waiting, &[from | &1])
+        state =
+          update_in(
+            state,
+            [Access.key(:executions), Access.key(execution_id, [])],
+            &[from | &1]
+          )
+
         {:noreply, state}
+
+      {:resolved, result} ->
+        {:reply, result, state}
     end
   end
 
-  def handle_call({:register, new_targets, pid}, _from, state) do
-    _ref = Process.monitor(pid)
-
+  def handle_cast({:insert, table, argument}, state) do
     state =
-      Map.update!(state, :targets, fn targets ->
-        Enum.reduce(new_targets, targets, fn {target, _}, targets ->
-          targets
-          |> Map.put_new(target, MapSet.new())
-          |> Map.update!(target, &MapSet.put(&1, pid))
-        end)
-      end)
+      case table do
+        "executions" -> try_schedule_executions(state)
+        "results" -> try_notify_results(state, argument)
+        _other -> state
+      end
 
-    {:reply, :ok, state}
+    {:noreply, state}
+  end
+
+  defp try_schedule_executions(state) do
+    state.project_id
+    |> Store.list_pending_executions()
+    |> Enum.each(fn execution ->
+      step = execution.step
+
+      with {:ok, pid_map} <- Map.fetch(state.targets, {step.repository, step.target}),
+           {:ok, pid} <- find_agent(pid_map),
+           :ok <- Store.assign_execution(state.project_id, execution.id) do
+        arguments = prepare_arguments(step.arguments)
+        send(pid, {:execute, execution.id, step.target, arguments})
+      end
+    end)
+
+    state
+  end
+
+  defp find_agent(pid_map) do
+    # TODO: filter against version (and tags)
+    if Enum.empty?(pid_map) do
+      :error
+    else
+      {:ok, Enum.random(Map.keys(pid_map))}
+    end
+  end
+
+  defp prepare_arguments(arguments) do
+    Enum.map(arguments, fn argument ->
+      case argument.type do
+        0 -> {:raw, Jason.decode!(argument.value)}
+        1 -> {:blob, argument.value}
+        2 -> {:result, argument.value}
+      end
+    end)
+  end
+
+  defp try_notify_results(state, execution_id) do
+    Map.update!(state, :executions, fn executions ->
+      case Map.pop(executions, execution_id) do
+        {nil, executions} ->
+          executions
+
+        {froms, executions} ->
+          case get_result(state.project_id, execution_id) do
+            {:pending, execution_id} ->
+              Map.put(executions, execution_id, froms)
+
+            {:resolved, result} ->
+              Enum.each(froms, &GenServer.reply(&1, result))
+              executions
+          end
+      end
+    end)
   end
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
     state =
       Map.update!(state, :targets, fn targets ->
-        Map.new(targets, fn {target, pids} -> {target, MapSet.delete(pids, pid)} end)
+        Map.new(targets, fn {target, pids} -> {target, Map.delete(pids, pid)} end)
       end)
 
     {:noreply, state}
   end
 
-  defp get_result(state, execution_id) do
-    case Map.fetch!(state.executions, execution_id).result do
-      nil ->
-        {:pending, execution_id}
-
-      {:completed, {:res, execution_id}} ->
-        get_result(state, execution_id)
-
-      result ->
-        {:ok, result}
+  defp get_result(project_id, execution_id) do
+    case Store.get_result(project_id, execution_id) do
+      nil -> {:pending, execution_id}
+      {:result, execution_id} -> get_result(project_id, execution_id)
+      result -> {:resolved, result}
     end
   end
 end

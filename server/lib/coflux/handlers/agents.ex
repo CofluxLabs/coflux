@@ -13,7 +13,13 @@ defmodule Coflux.Handlers.Agents do
   defp handle(req, "POST", project_id, opts) do
     case read_json_body(req) do
       {:ok, data, req} ->
-        case Project.register(project_id, data["targets"], self()) do
+        case Project.register(
+               project_id,
+               data["repository"],
+               data["version"],
+               parse_targets(data["targets"]),
+               self()
+             ) do
           :ok ->
             req = :cowboy_req.stream_reply(200, %{"content-type" => "application/x-ndjson"}, req)
             Process.send_after(self(), :tick, @tick_interval_ms)
@@ -37,7 +43,7 @@ defmodule Coflux.Handlers.Agents do
     send_command(req, "execute", %{
       "executionId" => execution_id,
       "target" => target,
-      "arguments" => Enum.map(arguments, &compose_result/1)
+      "arguments" => Enum.map(arguments, &compose_argument/1)
     })
 
     {:ok, req, state}
@@ -46,5 +52,23 @@ defmodule Coflux.Handlers.Agents do
   defp send_command(req, command, arguments) do
     data = Jason.encode!([command, arguments])
     :cowboy_req.stream_body("#{data}\n", :nofin, req)
+  end
+
+  defp parse_targets(targets) do
+    Map.new(targets, fn {key, value} -> {key, %{type: parse_type(Map.get(value, "type"))}} end)
+  end
+
+  defp parse_type(type) do
+    case type do
+      "task" -> :task
+      "step" -> :step
+    end
+  end
+
+  def compose_argument(result) do
+    case result do
+      {:raw, value} -> ["raw", value]
+      {:result, execution_id} -> ["result", execution_id]
+    end
   end
 end

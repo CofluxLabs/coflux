@@ -9,17 +9,12 @@ defmodule Coflux.Handlers.ExecutionResult do
 
   defp handle(req, "GET", project_id, execution_id, opts) do
     case Project.get_result(project_id, execution_id) do
-      {:ok, result} ->
-        response =
-          case result do
-            {:completed, value} ->
-              %{"status" => "completed", "value" => compose_result(value)}
+      nil ->
+        req = :cowboy_req.reply(202, req)
+        {:ok, req, opts}
 
-            {:failed, message, details} ->
-              %{"status" => "failed", "message" => message, "details" => details}
-          end
-
-        req = json_response(req, response)
+      result ->
+        req = json_response(req, compose_result(result))
         {:ok, req, opts}
     end
   end
@@ -27,20 +22,25 @@ defmodule Coflux.Handlers.ExecutionResult do
   defp handle(req, "PUT", project_id, execution_id, opts) do
     case read_json_body(req) do
       {:ok, data, req} ->
-        result =
-          case Map.fetch!(data, "status") do
-            "completed" ->
-              {:completed, parse_result(Map.fetch!(data, "value"))}
+        Project.put_result(project_id, execution_id, parse_result(data))
+        req = :cowboy_req.reply(204, req)
+        {:ok, req, opts}
+    end
+  end
 
-            "failed" ->
-              {:failed, Map.fetch!(data, "message"), Map.get(data, "details")}
-          end
+  def compose_result(result) do
+    case result do
+      {:raw, value} -> ["raw", value]
+      {:result, execution_id} -> ["result", execution_id]
+      {:failed, error, extra} -> ["failed", error, extra]
+    end
+  end
 
-        case Project.put_result(project_id, execution_id, result) do
-          :ok ->
-            req = :cowboy_req.reply(204, req)
-            {:ok, req, opts}
-        end
+  def parse_result(data) do
+    case data do
+      ["raw", value] -> {:raw, value}
+      ["result", execution_id] when is_binary(execution_id) -> {:result, execution_id}
+      ["failed", error, extra] when is_binary(error) and is_map(extra) -> {:failed, error, extra}
     end
   end
 end

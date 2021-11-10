@@ -32,7 +32,7 @@ def my_task(xs=None):
     return add(foo(xs), maximum(xs))
 
 
-@step()
+@task()
 def fib(n):
     n = n.result()
     if n == 0 or n == 1:
