@@ -5,7 +5,7 @@ defmodule Coflux.Project.Models.Run do
     belongs_to :task, Models.Task
     field :tags, {:array, :string}
 
-    has_many :steps, Models.Step
+    has_many :steps, Models.Step, preload_order: [:created_at]
     has_one :initial_step, Models.Step, where: [parent_id: nil]
   end
 end
