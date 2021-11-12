@@ -3,7 +3,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 
 import useAgents from '../../../../hooks/useAgents';
-import Project from '../../../../components/Project';
+import ProjectLayout from '../../../../components/ProjectLayout';
 import Heading from '../../../../components/Heading';
 
 export default function AgentPage() {
@@ -17,7 +17,7 @@ export default function AgentPage() {
       <Head>
         <title>Coflux</title>
       </Head>
-      <Project projectId="project_1">
+      <ProjectLayout projectId="project_1">
         {error ? (
           <p>Error</p>
         ) : !agents ? (
@@ -36,7 +36,7 @@ export default function AgentPage() {
             </ul>
           </Fragment>
         )}
-      </Project>
+      </ProjectLayout>
     </Fragment>
   );
 }

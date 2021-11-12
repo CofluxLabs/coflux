@@ -3,7 +3,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 
 import useTask from '../../../../../hooks/useTask';
-import Project from '../../../../../components/Project';
+import ProjectLayout from '../../../../../components/ProjectLayout';
 import Heading from '../../../../../components/Heading';
 import TaskRunsList from '../../../../../components/TaskRunsList';
 
@@ -17,7 +17,7 @@ export default function TaskPage() {
       <Head>
         <title>Coflux</title>
       </Head>
-      <Project projectId="project_1">
+      <ProjectLayout projectId="project_1">
         {error ? (
           <p>Error</p>
         ) : !task ? (
@@ -28,7 +28,7 @@ export default function TaskPage() {
             <TaskRunsList projectId={projectId} taskId={taskId} />
           </Fragment>
         )}
-      </Project>
+      </ProjectLayout>
     </Fragment>
   );
 }

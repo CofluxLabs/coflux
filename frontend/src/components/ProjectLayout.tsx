@@ -8,7 +8,7 @@ type Props = {
   children: ReactNode;
 }
 
-export default function Project({ projectId, children }: Props) {
+export default function ProjectLayout({ projectId, children }: Props) {
   return (
     <div className="flex h-screen overflow-auto">
       <div className="w-64 bg-gray-200">

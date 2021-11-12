@@ -2,7 +2,7 @@ import React, { Fragment } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 
-import Project from '../../../components/Project';
+import ProjectLayout from '../../../components/ProjectLayout';
 
 export default function ProjectPage() {
   const router = useRouter();
@@ -12,9 +12,9 @@ export default function ProjectPage() {
       <Head>
         <title>Coflux</title>
       </Head>
-      <Project projectId={projectId}>
+      <ProjectLayout projectId={projectId}>
         project page
-      </Project>
+      </ProjectLayout>
     </Fragment>
   );
 }

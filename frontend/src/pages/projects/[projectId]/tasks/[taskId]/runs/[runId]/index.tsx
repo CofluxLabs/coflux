@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 
 import useTask from '../../../../../../../hooks/useTask';
-import Project from '../../../../../../../components/Project';
+import ProjectLayout from '../../../../../../../components/ProjectLayout';
 import Heading from '../../../../../../../components/Heading';
 import RunDetail from '../../../../../../../components/RunDetail';
 
@@ -19,7 +19,7 @@ export default function RunPage() {
       <Head>
         <title>Coflux</title>
       </Head>
-      <Project projectId="project_1">
+      <ProjectLayout projectId="project_1">
         {error ? (
           <p>Error</p>
         ) : !task ? (
@@ -34,7 +34,7 @@ export default function RunPage() {
             <RunDetail projectId={projectId} runId={runId} />
           </Fragment>
         )}
-      </Project>
+      </ProjectLayout>
     </Fragment>
   );
 }
