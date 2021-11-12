@@ -1,9 +1,9 @@
+import aiohttp
+import asyncio
 import contextvars
 import functools
 import importlib
 import json
-import websockets
-import asyncio
 import time
 
 TARGET_KEY = '_coflux_target'
@@ -86,22 +86,22 @@ class Channel:
 
     async def _consume(self, websocket):
         async for message in websocket:
-            message = json.loads(message)
-            if 'method' in message:
-                handler = self._handlers[message['method']]
-                params = message.get('params', [])
+            data = json.loads(message.data)
+            if 'method' in data:
+                handler = self._handlers[data['method']]
+                params = data.get('params', [])
                 await handler(*params)
             else:
-                request = self._requests[message['id']]
-                if 'result' in message:
-                    request.put_result(message['result'])
-                elif 'error' in message:
-                    request.put_error(message['error'])
+                request = self._requests[data['id']]
+                if 'result' in data:
+                    request.put_result(data['result'])
+                elif 'error' in data:
+                    request.put_error(data['error'])
 
     async def _produce(self, websocket):
         while True:
-            message = await (self._queue.get())
-            await websocket.send(json.dumps(message))
+            data = await (self._queue.get())
+            await websocket.send_str(json.dumps(data))
 
 
 def _load_module(name):
@@ -129,8 +129,8 @@ class Client:
         self._results = {}
         self._executions = {}
 
-    def _url(self, path):
-        return f'http://{self._server_host}/projects/{self._project_id}{path}'
+    def _url(self, scheme, path):
+        return f'{scheme}://{self._server_host}/projects/{self._project_id}{path}'
 
     def _future_argument(self, argument):
         tag, value = argument
@@ -175,15 +175,15 @@ class Client:
     async def run(self):
         print(f"Agent starting ({self._module_name}@{self._version})...")
         targets = {name: {'type': target['type']} for name, target in self._targets.items()}
-        uri = f'ws://{self._server_host}/projects/{self._project_id}/agent'
-        async for websocket in websockets.connect(uri):
-            print(f"Connected ({self._server_host}, {self._project_id}).")
-            # TODO: reset channel?
-            await self._channel.notify('register', self._module_name, self._version, targets)
-            coros = [self._channel.run(websocket), self._send_acknowledgments()]
-            done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(self._url('ws', '/agent')) as websocket:
+                print(f"Connected ({self._server_host}, {self._project_id}).")
+                # TODO: reset channel?
+                await self._channel.notify('register', self._module_name, self._version, targets)
+                coros = [self._channel.run(websocket), self._send_acknowledgments()]
+                done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
+                for task in pending:
+                    task.cancel()
 
     async def schedule_child(self, execution_id, target, arguments, repository=None):
         repository = repository or self._module_name
