@@ -2,11 +2,13 @@ import aiohttp
 import asyncio
 import contextvars
 import functools
+import hashlib
 import importlib
 import json
 import time
 
 TARGET_KEY = '_coflux_target'
+BLOB_THRESHOLD = 100
 
 execution_var = contextvars.ContextVar('execution')
 
@@ -114,8 +116,7 @@ def _serialise_argument(argument):
     if isinstance(argument, Future):
         return argument.serialise()
     else:
-        # TODO: check json-serialisable?
-        return ['raw', argument]
+        return ['json', json.dumps(argument)]
 
 
 class Client:
@@ -132,15 +133,30 @@ class Client:
     def _url(self, scheme, path):
         return f'{scheme}://{self._server_host}/projects/{self._project_id}{path}'
 
-    def _future_argument(self, argument):
+    def _future_argument(self, argument, loop):
         tag, value = argument
-        if tag == 'raw':
-            return Future(lambda: value, argument)
+        if tag == 'json':
+            return Future(lambda: json.loads(value), argument)
+        elif tag == 'blob':
+            return Future(lambda: self._get_blob(value), argument, loop)
         elif tag == 'result':
-            loop = asyncio.get_running_loop()
             return Future(lambda: self.get_result(value), argument, loop)
         else:
             raise Exception(f"unrecognised tag ({tag})")
+
+    async def _get_blob(self, key):
+        # TODO: make blob url configurable
+        async with self._session.get(self._url('http', f'/blobs/{key}')) as resp:
+            resp.raise_for_status()
+            return await resp.json()
+
+    async def _put_blob(self, content):
+        key = hashlib.sha256(content.encode()).hexdigest()
+        # TODO: make blob url configurable
+        # TODO: check whether already uploaded (using head request)?
+        async with self._session.put(self._url('http', f'/blobs/{key}'), data=content) as resp:
+            resp.raise_for_status()
+        return key
 
     async def _put_result(self, task, execution_id):
         try:
@@ -149,15 +165,23 @@ class Client:
             # TODO: include exception state
             await self._channel.notify('put_error', execution_id, str(e), {})
         else:
-            type, value = value.serialise() if isinstance(value, Future) else ["raw", value]
+            if isinstance(value, Future):
+                type, value = value.serialise()
+            else:
+                json_value = json.dumps(value)
+                if len(json_value) >= BLOB_THRESHOLD:
+                    key = await self._put_blob(json_value)
+                    type, value = "blob", key
+                else:
+                    type, value = "json", json_value
             await self._channel.notify('put_result', execution_id, type, value)
         del self._executions[execution_id]
 
     async def _handle_execute(self, execution_id, target_name, arguments):
         print(f"Executing '{target_name}' ({execution_id})...")
         target = self._targets[target_name]['function']
-        future_arguments = [self._future_argument(argument) for argument in arguments]
         loop = asyncio.get_running_loop()
+        future_arguments = [self._future_argument(argument, loop) for argument in arguments]
         execution_var.set((execution_id, self, loop))
         task = asyncio.to_thread(target, *future_arguments)
         # TODO: check execution isn't already running?
@@ -175,15 +199,17 @@ class Client:
     async def run(self):
         print(f"Agent starting ({self._module_name}@{self._version})...")
         targets = {name: {'type': target['type']} for name, target in self._targets.items()}
-        async with aiohttp.ClientSession() as session:
-            async with session.ws_connect(self._url('ws', '/agent')) as websocket:
-                print(f"Connected ({self._server_host}, {self._project_id}).")
-                # TODO: reset channel?
-                await self._channel.notify('register', self._module_name, self._version, targets)
-                coros = [self._channel.run(websocket), self._send_acknowledgments()]
-                done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
-                for task in pending:
-                    task.cancel()
+        async with aiohttp.ClientSession() as self._session:
+            while True:
+                # TODO: heartbeat (and timeout) value?
+                async with self._session.ws_connect(self._url('ws', '/agent'), heartbeat=5) as websocket:
+                    print(f"Connected ({self._server_host}, {self._project_id}).")
+                    # TODO: reset channel?
+                    await self._channel.notify('register', self._module_name, self._version, targets)
+                    coros = [self._channel.run(websocket), self._send_acknowledgments()]
+                    done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
+                    for task in pending:
+                        task.cancel()
 
     async def schedule_child(self, execution_id, target, arguments, repository=None):
         repository = repository or self._module_name
@@ -194,8 +220,10 @@ class Client:
         if execution_id not in self._results:
             self._results[execution_id] = await self._channel.request('get_result', execution_id)
         result = self._results[execution_id]
-        if result[0] == "raw":
-            return result[1]
+        if result[0] == "json":
+            return json.loads(result[1])
+        elif result[0] == "blob":
+            return await self._get_blob(result[1])
         elif result[0] == "failed":
             # TODO: reconstruct exception state
             raise Exception(result[1])

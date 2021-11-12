@@ -22,6 +22,21 @@ defmodule Coflux.Project do
     Store.get_run(project_id, run_id)
   end
 
+
+  defp blob_path(project_id, key) do
+    "blobs/#{project_id}/#{key}"
+  end
+
+  def get_blob(project_id, key) do
+    {:ok, File.read!(blob_path(project_id, key))}
+  end
+
+  def put_blob(project_id, key, content) do
+    path = blob_path(project_id, key)
+    path |> Path.dirname() |> File.mkdir_p!()
+    File.write!(path, content)
+  end
+
   def register(project_id, repository, version, targets, pid) do
     Store.create_tasks(project_id, repository, version, targets)
     call_server(project_id, {:register_targets, repository, version, targets, pid})

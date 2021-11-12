@@ -14,12 +14,12 @@ defmodule Coflux do
           {:ok, execution_id} ->
             case Project.get_result(project_id, execution_id, self()) do
               {:ok, result} ->
-                handle_result(result)
+                handle_result(result, project_id)
 
               {:wait, ref} ->
                 receive do
                   {:result, ^ref, result} ->
-                    handle_result(result)
+                    handle_result(result, project_id)
                 after
                   timeout ->
                     {:error, :timeout}
@@ -29,9 +29,10 @@ defmodule Coflux do
     end
   end
 
-  defp handle_result(result) do
+  defp handle_result(result, project_id) do
     case result do
-      {:raw, value} -> {:ok, value}
+      {:json, value} -> {:ok, value}
+      {:blob, key} -> Project.get_blob(project_id, key)
       {:failed, message, _details} -> {:error, message}
     end
   end

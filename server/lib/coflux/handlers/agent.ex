@@ -82,13 +82,6 @@ defmodule Coflux.Handlers.Agent do
     {[], state}
   end
 
-  def parse_argument(argument) do
-    case argument do
-      ["raw", value] -> {:raw, value}
-      ["result", execution_id] -> {:result, execution_id}
-    end
-  end
-
   defp notify_message(method, params) do
     {:text, Jason.encode!(%{"method" => method, "params" => params})}
   end
@@ -108,23 +101,34 @@ defmodule Coflux.Handlers.Agent do
     end
   end
 
+  defp parse_argument(argument) do
+    case argument do
+      ["json", value] -> {:json, value}
+      ["blob", key] -> {:blob, key}
+      ["result", execution_id] -> {:result, execution_id}
+    end
+  end
+
   def compose_argument(result) do
     case result do
-      {:raw, value} -> ["raw", value]
+      {:json, value} -> ["json", value]
+      {:blob, key} -> ["blob", key]
       {:result, execution_id} -> ["result", execution_id]
     end
   end
 
   def parse_result(type, value) do
     case type do
-      "raw" -> {:raw, value}
+      "json" -> {:json, value}
+      "blob" -> {:blob, value}
       "result" when is_binary(value) -> {:result, value}
     end
   end
 
   def compose_result(result) do
     case result do
-      {:raw, value} -> ["raw", value]
+      {:json, value} -> ["json", value]
+      {:blob, key} -> ["blob", key]
       {:result, execution_id} -> ["result", execution_id]
       {:failed, error, extra} -> ["failed", error, extra]
     end

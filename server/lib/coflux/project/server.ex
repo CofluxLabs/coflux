@@ -99,7 +99,7 @@ defmodule Coflux.Project.Server do
   defp prepare_arguments(arguments) do
     Enum.map(arguments, fn argument ->
       case argument.type do
-        0 -> {:raw, Jason.decode!(argument.value)}
+        0 -> {:json, argument.value}
         1 -> {:blob, argument.value}
         2 -> {:result, argument.value}
       end

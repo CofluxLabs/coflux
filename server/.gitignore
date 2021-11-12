@@ -27,3 +27,6 @@ coflux-*.tar
 
 # Language server files.
 /.elixir_ls/
+
+# Blobs
+/blobs

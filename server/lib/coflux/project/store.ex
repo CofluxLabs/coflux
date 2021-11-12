@@ -147,8 +147,8 @@ defmodule Coflux.Project.Store do
 
   defp parse_result(result) do
     case result do
-      {:raw, value} -> {0, Jason.encode!(value), nil}
-      {:blob, hash} when is_binary(hash) -> {1, hash, nil}
+      {:json, value} when is_binary(value) -> {0, value, nil}
+      {:blob, key} when is_binary(key) -> {1, key, nil}
       {:result, execution_id} when is_binary(execution_id) -> {2, execution_id, nil}
       {:failed, error, stacktrace} -> {3, error, stacktrace}
     end
@@ -156,7 +156,7 @@ defmodule Coflux.Project.Store do
 
   defp compose_result(result) do
     case result.type do
-      0 -> {:raw, Jason.decode!(result.value)}
+      0 -> {:json, result.value}
       1 -> {:blob, result.value}
       2 -> {:result, result.value}
       3 -> {:failed, result.value, result.extra}
@@ -165,7 +165,7 @@ defmodule Coflux.Project.Store do
 
   defp parse_argument({type, value}) do
     case type do
-      :raw -> {0, Jason.encode!(value)}
+      :json when is_binary(value) -> {0, value}
       :blob when is_binary(value) -> {1, value}
       :result when is_binary(value) -> {2, value}
     end
