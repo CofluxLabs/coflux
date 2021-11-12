@@ -1,5 +1,6 @@
 import time
 import random
+import requests
 
 from coflux import step, task
 
@@ -86,10 +87,34 @@ def random_task():
                 (inc, i),
                 (sleep, i),
                 (my_task,),
+                (blob_task,),
+                (github_task,),
                 (random_task,),
             ]
         )
         fn(*args)
+
+
+@step()
+def build_content():
+    return '1234567890' * 10
+
+
+@task()
+def blob_task():
+    return len(build_content().result())
+
+
+@step()
+def github_events():
+    r = requests.get('https://api.github.com/events')
+    return r.json()
+
+
+@task()
+def github_task():
+    events = github_events().result()
+    return len(events)
 
 
 if __name__ == '__main__':
