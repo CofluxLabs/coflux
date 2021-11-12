@@ -1,8 +1,16 @@
-export type Task = {
-  id: string;
+type Target = {
   repository: string;
   target: string;
   version: string;
+}
+
+export type Agent = {
+  id: string;
+  targets: Target[];
+}
+
+export type Task = Target & {
+  id: string;
 }
 
 export type Run = {
