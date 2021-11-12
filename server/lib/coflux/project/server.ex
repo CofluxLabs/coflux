@@ -4,7 +4,7 @@ defmodule Coflux.Project.Server do
   alias Coflux.Project.Store
 
   defmodule State do
-    defstruct project_id: nil, targets: %{}, waiting: %{}
+    defstruct project_id: nil, targets: %{}, agents: %{}, waiting: %{}
   end
 
   def start_link(opts) do
@@ -17,12 +17,21 @@ defmodule Coflux.Project.Server do
     {:ok, %State{project_id: project_id}}
   end
 
+  def handle_call(:get_agents, _from, state) do
+    {:reply, {:ok, state.agents}, state}
+  end
+
   def handle_call({:register_targets, repository, version, new_targets, pid}, _from, state) do
     _ref = Process.monitor(pid)
 
     state =
       Enum.reduce(new_targets, state, fn {target, _config}, state ->
-        put_in(state, [Access.key(:targets), Access.key({repository, target}, %{}), pid], version)
+        state
+        |> put_in([Access.key(:targets), Access.key({repository, target}, %{}), pid], version)
+        |> put_in(
+          [Access.key(:agents), Access.key(pid, %{}), Access.key({repository, target})],
+          version
+        )
       end)
 
     state = try_schedule_executions(state)
@@ -35,6 +44,7 @@ defmodule Coflux.Project.Server do
     case get_result(state.project_id, execution_id) do
       {:pending, execution_id} ->
         ref = make_ref()
+
         state =
           update_in(
             state,
@@ -111,6 +121,7 @@ defmodule Coflux.Project.Server do
               Enum.each(execution_waiting, fn {pid, ref} ->
                 send(pid, {:result, ref, result})
               end)
+
               waiting
           end
       end
@@ -119,9 +130,11 @@ defmodule Coflux.Project.Server do
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
     state =
-      Map.update!(state, :targets, fn targets ->
+      state
+      |> Map.update!(:targets, fn targets ->
         Map.new(targets, fn {target, pids} -> {target, Map.delete(pids, pid)} end)
       end)
+      |> Map.update!(:agents, &Map.delete(&1, pid))
 
     {:noreply, state}
   end

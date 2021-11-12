@@ -2,6 +2,10 @@ defmodule Coflux.Project do
   alias Coflux.Project.Store
   alias Coflux.Project.Supervisor, as: ProjectSupervisor
 
+  def get_agents(project_id) do
+    call_server(project_id, :get_agents)
+  end
+
   def list_tasks(project_id) do
     Store.list_tasks(project_id)
   end
