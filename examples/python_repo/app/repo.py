@@ -49,9 +49,18 @@ def do_raise():
     raise Exception("some error")
 
 
+@step()
+def maybe_raise():
+    if random.random() > 0.5:
+        raise Exception("some error")
+    else:
+        return 123
+
+
 @task()
 def raise_error():
-    return do_raise()
+    do_raise()
+    return maybe_raise().result()
 
 
 @step()
