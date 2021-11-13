@@ -1,5 +1,6 @@
 import React, { ReactNode } from 'react';
 import Link from 'next/link';
+import classNames from 'classnames';
 
 import * as models from '../models';
 import useRun from '../hooks/useRun';
@@ -15,7 +16,7 @@ type TabProps = {
 function Tab({ title, href, isActive }: TabProps) {
   return (
     <Link href={href}>
-      <a className={`mr-2 px-3 py-2 rounded-md ${isActive ? 'bg-gray-200' : 'bg-gray-100'}`}>{title}</a>
+      <a className={classNames('mr-2 px-3 py-2 rounded-md', isActive ? 'bg-gray-200' : 'bg-gray-100')}>{title}</a>
     </Link>
   );
 }

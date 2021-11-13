@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon';
 import React, { Fragment } from 'react';
+import classNames from 'classnames';
 
 import * as models from '../models';
 
@@ -38,7 +39,7 @@ function Bar({ x1, x2, x0, d, color }: BarProps) {
   const width = x2.diff(x1).toMillis() / d;
   const style = { left: percentage(left), width: percentage(width) };
   return (
-    <div className={`absolute h-6 rounded ${color}`} style={style}></div>
+    <div className={classNames('absolute h-6 rounded', color)} style={style}></div>
   );
 }
 

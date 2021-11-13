@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import dagre from 'dagre';
+import classNames from 'classnames';
 
 import * as models from '../models';
 
@@ -41,13 +42,12 @@ type NodeProps = {
 
 function Node({ node, step }: NodeProps) {
   const execution = step.executions.length ? step.executions[step.executions.length - 1] : null;
-  const color = classNameForResult(execution?.result || null);
   return (
     <div
-      className={`absolute flex items-center justify-center shadow border ${color} rounded p-2`}
+      className={classNames('absolute flex items-center justify-center shadow border rounded p-2', classNameForResult(execution?.result || null))}
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height}}
     >
-      <p className={`truncate ${!step.parentId ? 'font-bold' : ''}`}>
+      <p className={classNames('truncate', {'font-bold': !step.parentId})}>
         {step.target}
       </p>
     </div>
