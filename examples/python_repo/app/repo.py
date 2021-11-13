@@ -72,13 +72,15 @@ def sleep(seconds):
 @task()
 def slow_task():
     sleep(0.5)
-    sleep(1.5)
+    sleep(1)
+    sleep(5)
     sleep(2).result()
+    sleep(10)
 
 
 @task()
-def random_task():
-    for i in range(random.randint(3, 5)):
+def random_task(n):
+    for i in range(random.randint(3, n.result())):
         fn, *args = random.choice(
             [
                 (raise_error,),
@@ -89,7 +91,8 @@ def random_task():
                 (my_task,),
                 (blob_task,),
                 (github_task,),
-                (random_task,),
+                (random_task, i),
+                (blob_task,)
             ]
         )
         fn(*args)
@@ -102,7 +105,7 @@ def build_content():
 
 @task()
 def blob_task():
-    return len(build_content().result())
+    return count(build_content())
 
 
 @step()
