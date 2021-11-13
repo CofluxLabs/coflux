@@ -17,7 +17,7 @@ export default function AgentPage() {
       <Head>
         <title>Coflux</title>
       </Head>
-      <ProjectLayout projectId="project_1">
+      <ProjectLayout projectId={projectId} agentId={agentId}>
         {error ? (
           <p>Error</p>
         ) : !agents ? (

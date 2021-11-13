@@ -25,7 +25,7 @@ export default function TaskPage() {
       <Head>
         <title>Coflux</title>
       </Head>
-      <ProjectLayout projectId="project_1">
+      <ProjectLayout projectId={projectId} taskId={taskId}>
         {error ? (
           <p>Error</p>
         ) : !task ? (

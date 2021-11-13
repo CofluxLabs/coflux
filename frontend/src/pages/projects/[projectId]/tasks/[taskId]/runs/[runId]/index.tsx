@@ -16,7 +16,7 @@ export default function RunPage() {
       <Head>
         <title>Coflux</title>
       </Head>
-      <ProjectLayout projectId="project_1">
+      <ProjectLayout projectId={projectId} taskId={taskId}>
         <RunDetail projectId={projectId} taskId={taskId} runId={runId} activeTab="overview">
           {(run) => (
             <RunGraph run={run} />

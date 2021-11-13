@@ -12,7 +12,7 @@ export default function ProjectPage() {
       <Head>
         <title>Coflux</title>
       </Head>
-      <ProjectLayout projectId={projectId}>
+      <ProjectLayout projectId={projectId} taskId={null}>
         project page
       </ProjectLayout>
     </Fragment>

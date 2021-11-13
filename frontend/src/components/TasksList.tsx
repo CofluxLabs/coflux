@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import classNames from 'classnames';
 
 import * as models from '../models';
 import useTasks from '../hooks/useTasks';
@@ -8,15 +9,16 @@ import useAgents from '../hooks/useAgents';
 type TaskItemProps = {
   task: models.Task;
   agents: models.Agent[] | undefined;
+  isActive: boolean;
 }
 
-export function TaskItem({ task, agents }: TaskItemProps) {
+export function TaskItem({ task, agents, isActive }: TaskItemProps) {
   const taskAgents = agents?.filter((a) => a.targets.some((t) => t.repository == task.repository && t.target == task.target));
   const agentsCount = taskAgents?.length;
   return (
     <div className="flex items-center">
       <div className="flex-1">
-        <div className="font-mono">{task.target}</div>
+        <div className={classNames('font-mono', {'font-bold': isActive})}>{task.target}</div>
         <div className="text-sm text-gray-500">{task.repository}</div>
       </div>
       {agentsCount ? (
@@ -30,9 +32,10 @@ export function TaskItem({ task, agents }: TaskItemProps) {
 
 type Props = {
   projectId: string | null;
+  taskId?: string | null;
 }
 
-export default function TasksList({ projectId }: Props) {
+export default function TasksList({ projectId, taskId }: Props) {
   const { tasks, error: tasksError } = useTasks(projectId);
   const { agents, error: agentsError } = useAgents(projectId);
   if (tasksError || agentsError) {
@@ -47,8 +50,8 @@ export default function TasksList({ projectId }: Props) {
             {tasks.map((task) => (
               <li key={task.id} className="">
                 <Link href={`/projects/${projectId}/tasks/${task.id}`}>
-                  <a className="block hover:bg-gray-300 px-4 py-2">
-                    <TaskItem task={task} agents={agents} />
+                  <a className={classNames('block hover:bg-gray-300 px-4 py-2', {'bg-gray-300': task.id == taskId})}>
+                    <TaskItem task={task} agents={agents} isActive={task.id == taskId} />
                   </a>
                 </Link>
               </li>

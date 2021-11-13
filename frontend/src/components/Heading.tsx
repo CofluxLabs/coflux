@@ -2,7 +2,7 @@ import React, { ReactNode } from 'react'
 import classNames from 'classnames';
 
 type Props = {
-  className: string;
+  className?: string;
   children: ReactNode;
 }
 
