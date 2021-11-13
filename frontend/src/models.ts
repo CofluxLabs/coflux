@@ -37,7 +37,7 @@ export type Execution = {
   id: string;
   createdAt: string;
   dependencyIds: string[];
-  assignedAt: string;
+  assignedAt: string | null;
   result: Result | null;
 }
 

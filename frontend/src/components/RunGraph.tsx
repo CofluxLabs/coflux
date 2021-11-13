@@ -1,22 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { Fragment, useEffect, useState } from 'react';
 import dagre from 'dagre';
 import classNames from 'classnames';
+import { Popover, Transition } from '@headlessui/react';
 
 import * as models from '../models';
+import StepInfo from './StepInfo';
 
 function buildGraph(run: models.Run) {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: 'LR', ranksep: 40, nodesep: 40 });
-  g.setDefaultEdgeLabel(function() { return {}; });
+  g.setDefaultEdgeLabel(function () { return {}; });
 
   const executionIdToStepId = run.steps.reduce<Record<string, string>>((ess, step) => {
     return step.executions.reduce((ess, e) => ({ ...ess, [e.id]: step.id }), ess);
   }, {});
 
   run.steps.forEach((step) => {
-    g.setNode(step.id, { width: 140, height: 50 });
+    g.setNode(step.id, { width: 160, height: 50 });
     if (step.parentId) {
-      g.setEdge(executionIdToStepId[step.parentId], step.id, {  });
+      g.setEdge(executionIdToStepId[step.parentId], step.id, {});
     }
   });
 
@@ -25,13 +27,13 @@ function buildGraph(run: models.Run) {
 
 function classNameForResult(result: models.Result | null) {
   if (!result) {
-    return 'bg-blue-100 border-blue-400 ';
+    return 'border-blue-400 bg-blue-100 hover:bg-blue-200';
   } else if (result.type <= 2) {
-    return 'bg-gray-100 border-gray-400';
+    return 'border-gray-400 bg-gray-100 hover:bg-gray-200';
   } else if (result.type == 3) {
-    return 'bg-red-100 border-red-400';
+    return 'border-red-400 bg-red-100 hover:bg-red-200';
   } else {
-    return 'bg-yellow-100 border-yellow-400';
+    return 'border-yellow-400 bg-yellow-100 hover:bg-yellow-200';
   }
 }
 
@@ -41,16 +43,35 @@ type NodeProps = {
 }
 
 function Node({ node, step }: NodeProps) {
-  const execution = step.executions.length ? step.executions[step.executions.length - 1] : null;
+  const latestExecution = step.executions.length ? step.executions[step.executions.length - 1] : null;
   return (
-    <div
-      className={classNames('absolute flex items-center justify-center shadow border rounded p-2', classNameForResult(execution?.result || null))}
-      style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height}}
+    <Popover
+      className={classNames('absolute flex')}
+      style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
-      <p className={classNames('truncate', {'font-bold': !step.parentId})}>
-        {step.target}
-      </p>
-    </div>
+      {({ open }) => (
+        <>
+          <Popover.Button className={classNames('flex-1 flex items-center shadow border rounded p-2', classNameForResult(latestExecution?.result || null))}>
+            <div className={classNames('flex-1 truncate', { 'font-bold': !step.parentId })}>
+              <span className="font-mono">{step.target}</span>
+            </div>
+          </Popover.Button>
+          <Transition
+            as={Fragment}
+            enter="transition ease-out duration-200"
+            enterFrom="opacity-0 translate-y-1"
+            enterTo="opacity-100 translate-y-0"
+            leave="transition ease-in duration-150"
+            leaveFrom="opacity-100 translate-y-0"
+            leaveTo="opacity-0 translate-y-1"
+          >
+            <Popover.Panel className="absolute z-10 mt-2 ml-2 w-screen transform max-w-md rounded shadow-2xl border border-gray-400 bg-white overflow-hidden">
+              <StepInfo step={step} />
+            </Popover.Panel>
+          </Transition>
+        </>
+      )}
+    </Popover>
   );
 }
 
