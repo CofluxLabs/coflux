@@ -15,6 +15,8 @@ export default function StepInfo({ step }: Props) {
         <h2 className="flex-1"><span className="font-mono text-xl">{step.target}</span> <span className="text-gray-500">({step.repository})</span></h2>
         {!latestExecution ? (
           <Badge intent="info" label="Scheduling" />
+        ) : !latestExecution.assignedAt ? (
+          <Badge intent="info" label="Assigning" />
         ) : !latestExecution.result ? (
           <Badge intent="info" label="Running" />
         ) : latestExecution.result.type <= 2 ? (
