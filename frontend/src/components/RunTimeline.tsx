@@ -31,27 +31,27 @@ type BarProps = {
   x1: DateTime;
   x2: DateTime;
   d: number;
-  color: string;
+  className: string;
 }
 
-function Bar({ x1, x2, x0, d, color }: BarProps) {
+function Bar({ x1, x2, x0, d, className }: BarProps) {
   const left = x1.diff(x0).toMillis() / d;
   const width = x2.diff(x1).toMillis() / d;
   const style = { left: percentage(left), width: percentage(width) };
   return (
-    <div className={classNames('absolute h-6 rounded', color)} style={style}></div>
+    <div className={classNames('absolute h-6 rounded', className)} style={style}></div>
   );
 }
 
-function colorForResult(result: models.Result | null) {
+function classNameForResult(result: models.Result | null) {
   if (!result) {
-    return 'bg-blue-400';
+    return 'bg-blue-300';
   } else if (result.type <= 2) {
-    return 'bg-green-400';
+    return 'bg-green-300';
   } else if (result.type == 3) {
-    return 'bg-red-400';
+    return 'bg-red-300';
   } else {
-    return 'bg-yellow-400';
+    return 'bg-yellow-300';
   }
 }
 
@@ -77,13 +77,13 @@ export default function RunTimeline({ run }: Props) {
               {step.target} <span className="text-gray-500 text-sm">({step.repository})</span>
             </div>
             <div className="flex-1 my-2 relative h-6">
-              <Bar x1={stepTimes[step.id]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} color="bg-gray-100" />
+              <Bar x1={stepTimes[step.id]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-100" />
               {step.executions.map((execution) => {
                 const [createdAt, assignedAt, resultAt] = executionTimes[execution.id];
                 return (
                   <Fragment key={execution.id}>
-                    <Bar x1={createdAt} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} color="bg-gray-200" />
-                    {assignedAt && <Bar x1={assignedAt} x2={resultAt || latestTime} x0={earliestTime} d={totalMillis} color={colorForResult(execution.result)} />}
+                    <Bar x1={createdAt} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-200" />
+                    {assignedAt && <Bar x1={assignedAt} x2={resultAt || latestTime} x0={earliestTime} d={totalMillis} className={classNameForResult(execution.result)} />}
                   </Fragment>
                 );
               })}
