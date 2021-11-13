@@ -11,6 +11,14 @@ defmodule Coflux.Handlers.TaskRuns do
     |> handle(:cowboy_req.method(req), bindings[:project], bindings[:task], opts)
   end
 
+  defp handle(req, "POST", project_id, task_id, opts) do
+    case Project.schedule_task(project_id, task_id) do
+      {:ok, run_id, _execution_id} ->
+        req = json_response(req, %{"id" => run_id})
+        {:ok, req, opts}
+    end
+  end
+
   defp handle(req, "GET", project_id, task_id, opts) do
     result =
       project_id

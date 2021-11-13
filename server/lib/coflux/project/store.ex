@@ -57,12 +57,18 @@ defmodule Coflux.Project.Store do
       task = Repo.get!(Models.Task, task_id, prefix: project_id)
       run = Repo.insert!(%Models.Run{task_id: task_id, tags: run_tags}, prefix: project_id)
 
-      schedule_step(project_id, run, task.repository, task.target, arguments,
+      execution_id = schedule_step(project_id, run, task.repository, task.target, arguments,
         tags: task_tags,
         priority: priority,
         version: version
       )
+
+      {run.id, execution_id}
     end)
+    |> case do
+      {:ok, {run_id, execution_id}} ->
+        {:ok, run_id, execution_id}
+    end
   end
 
   def schedule_child(project_id, parent_execution_id, repository, target, arguments, opts \\ []) do

@@ -11,7 +11,7 @@ defmodule Coflux do
 
       task ->
         case Project.schedule_task(project_id, task.id, arguments) do
-          {:ok, execution_id} ->
+          {:ok, _run_id, execution_id} ->
             case Project.get_result(project_id, execution_id, self()) do
               {:ok, result} ->
                 handle_result(result, project_id)
