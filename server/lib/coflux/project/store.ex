@@ -27,7 +27,7 @@ defmodule Coflux.Project.Store do
     Models.Run
     |> Repo.get!(run_id, prefix: project_id)
     |> Repo.preload(
-      steps: [:arguments, executions: [:child_steps, :dependencies, :assignment, :result]]
+      steps: [:arguments, executions: [:dependencies, :assignment, :result]]
     )
   end
 

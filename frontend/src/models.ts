@@ -20,6 +20,7 @@ export type Run = {
 
 export type Step = {
   id: string;
+  parentId: string;
   repository: string;
   target: string;
   createdAt: string;
@@ -35,7 +36,6 @@ export type Argument = {
 export type Execution = {
   id: string;
   createdAt: string;
-  childSteps: Pick<Step, 'id'>[];
   dependencyIds: string[];
   assignedAt: string;
   result: Result | null;

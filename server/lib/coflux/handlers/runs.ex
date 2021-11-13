@@ -20,6 +20,7 @@ defmodule Coflux.Handlers.Runs do
         Enum.map(run.steps, fn step ->
           %{
             "id" => step.id,
+            "parentId" => step.parent_id,
             "repository" => step.repository,
             "target" => step.target,
             "createdAt" => step.created_at,
@@ -36,7 +37,6 @@ defmodule Coflux.Handlers.Runs do
                 %{
                   "id" => execution.id,
                   "createdAt" => execution.created_at,
-                  "childStepIds" => Enum.map(execution.child_steps, & &1.id),
                   "dependencyIds" => Enum.map(execution.dependencies, & &1.dependency_id),
                   "assignedAt" => execution.assignment && execution.assignment.created_at,
                   "result" =>
