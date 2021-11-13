@@ -9,7 +9,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateDependencies do
     end
 
     execute(
-      "CREATE TRIGGER dependencies_insert AFTER INSERT ON #{prefix()}.dependencies EXECUTE FUNCTION notify_insert('execution_id')",
+      "CREATE TRIGGER dependencies_insert AFTER INSERT ON #{prefix()}.dependencies FOR EACH ROW EXECUTE FUNCTION notify_insert('execution_id')",
       "DROP TRIGGER dependencies_insert ON #{prefix()}.dependencies"
     )
   end
