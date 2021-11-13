@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 
 import ProjectLayout from '../../../../../../../components/ProjectLayout';
 import RunDetail from '../../../../../../../components/RunDetail';
+import RunGraph from '../../../../../../../components/RunGraph';
 
 export default function RunPage() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function RunPage() {
       <ProjectLayout projectId="project_1">
         <RunDetail projectId={projectId} taskId={taskId} runId={runId} activeTab="overview">
           {(run) => (
-            <div></div>
+            <RunGraph run={run} />
           )}
         </RunDetail>
       </ProjectLayout>

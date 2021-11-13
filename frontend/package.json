@@ -8,6 +8,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "dagre": "^0.8.5",
     "luxon": "^2.1.1",
     "next": "12.0.3",
     "react": "17.0.2",
@@ -15,6 +16,7 @@
     "swr": "^1.0.1"
   },
   "devDependencies": {
+    "@types/dagre": "^0.7.46",
     "@types/luxon": "^2.0.7",
     "@types/node": "16.11.7",
     "@types/react": "17.0.34",
