@@ -145,6 +145,18 @@ defmodule Coflux.Project.Store do
     end
   end
 
+  def record_dependency(project_id, execution_id, dependency_id) do
+    Repo.insert!(
+      %Models.Dependency{
+        execution_id: execution_id,
+        dependency_id: dependency_id,
+        created_at: DateTime.utc_now()
+      },
+      on_conflict: :nothing,
+      prefix: project_id
+    )
+  end
+
   defp parse_result(result) do
     case result do
       {:json, value} when is_binary(value) -> {0, value, nil}

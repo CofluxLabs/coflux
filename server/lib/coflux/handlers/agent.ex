@@ -51,9 +51,9 @@ defmodule Coflux.Handlers.Agent do
         {[], state}
 
       "get_result" ->
-        [execution_id] = message["params"]
+        [execution_id, from_execution_id] = message["params"]
 
-        case Project.get_result(state.project_id, execution_id, self()) do
+        case Project.get_result(state.project_id, execution_id, from_execution_id, self()) do
           {:ok, result} ->
             {[result_message(message["id"], compose_result(result))], state}
 

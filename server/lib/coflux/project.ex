@@ -22,7 +22,6 @@ defmodule Coflux.Project do
     Store.get_run(project_id, run_id)
   end
 
-
   defp blob_path(project_id, key) do
     "blobs/#{project_id}/#{key}"
   end
@@ -58,7 +57,11 @@ defmodule Coflux.Project do
     Store.put_result(project_id, execution_id, result)
   end
 
-  def get_result(project_id, execution_id, pid) do
+  def get_result(project_id, execution_id, from_execution_id \\ nil, pid) do
+    if from_execution_id do
+      Store.record_dependency(project_id, from_execution_id, execution_id)
+    end
+
     # TODO: try to get from database first?
     call_server(project_id, {:get_result, execution_id, pid})
   end

@@ -133,14 +133,14 @@ class Client:
     def _url(self, scheme, path):
         return f'{scheme}://{self._server_host}/projects/{self._project_id}{path}'
 
-    def _future_argument(self, argument, loop):
+    def _future_argument(self, argument, loop, execution_id):
         tag, value = argument
         if tag == 'json':
             return Future(lambda: json.loads(value), argument)
         elif tag == 'blob':
             return Future(lambda: self._get_blob(value), argument, loop)
         elif tag == 'result':
-            return Future(lambda: self.get_result(value), argument, loop)
+            return Future(lambda: self.get_result(value, execution_id), argument, loop)
         else:
             raise Exception(f"unrecognised tag ({tag})")
 
@@ -181,7 +181,7 @@ class Client:
         print(f"Executing '{target_name}' ({execution_id})...")
         target = self._targets[target_name]['function']
         loop = asyncio.get_running_loop()
-        future_arguments = [self._future_argument(argument, loop) for argument in arguments]
+        future_arguments = [self._future_argument(argument, loop, execution_id) for argument in arguments]
         execution_var.set((execution_id, self, loop))
         task = asyncio.to_thread(target, *future_arguments)
         # TODO: check execution isn't already running?
@@ -216,9 +216,9 @@ class Client:
         serialised_arguments = [_serialise_argument(a) for a in arguments]
         return await self._channel.request('schedule_child', execution_id, repository, target, serialised_arguments)
 
-    async def get_result(self, execution_id):
+    async def get_result(self, execution_id, from_execution_id):
         if execution_id not in self._results:
-            self._results[execution_id] = await self._channel.request('get_result', execution_id)
+            self._results[execution_id] = await self._channel.request('get_result', execution_id, from_execution_id)
         result = self._results[execution_id]
         if result[0] == "json":
             return json.loads(result[1])
@@ -244,7 +244,9 @@ def _decorate(name=None, type='step'):
                 execution_id, client, loop = execution
                 schedule = client.schedule_child(execution_id, target, args)
                 new_execution_id = asyncio.run_coroutine_threadsafe(schedule, loop).result()
-                return Future(lambda: client.get_result(new_execution_id), ['result', new_execution_id], loop)
+                return Future(
+                    lambda: client.get_result(new_execution_id, execution_id), ['result', new_execution_id], loop
+                )
             else:
                 # TODO: execute in threadpool
                 result = fn(*[(Future(lambda: a) if not isinstance(a, Future) else a) for a in args])
