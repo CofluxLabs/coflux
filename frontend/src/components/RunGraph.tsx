@@ -96,13 +96,14 @@ type EdgeProps = {
 }
 
 function Edge({ edge }: EdgeProps) {
+  const { points: [a, b, c] } = edge;
   return (
-    <polyline
+    <path
       className="stroke-current text-gray-400"
       fill="none"
-      points={edge.points.map(({ x, y }) => `${x},${y}`).join(' ')}
+      d={`M ${a.x} ${a.y} Q ${b.x} ${b.y} ${c.x} ${c.y}`}
     />
-  )
+  );
 }
 
 type Props = {
