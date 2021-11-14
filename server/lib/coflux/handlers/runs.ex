@@ -30,6 +30,12 @@ defmodule Coflux.Handlers.Runs do
             "repository" => step.repository,
             "target" => step.target,
             "createdAt" => step.created_at,
+            "cachedStep" =>
+              step.cached_step &&
+                %{
+                  "id" => step.cached_step.id,
+                  "runId" => step.cached_step.run_id
+                },
             "arguments" =>
               Enum.map(step.arguments, fn argument ->
                 %{

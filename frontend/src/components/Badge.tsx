@@ -1,6 +1,6 @@
 import classNames from 'classnames';
 
-type Intent = 'success' | 'danger' | 'warning' | 'info';
+type Intent = 'success' | 'danger' | 'warning' | 'info' | 'none';
 
 function classNameForIntent(intent: Intent) {
   switch (intent) {
@@ -12,6 +12,8 @@ function classNameForIntent(intent: Intent) {
       return 'bg-yellow-200 text-yellow-900';
     case 'info':
       return 'bg-blue-200 text-blue-900';
+    case 'none':
+      return 'bg-gray-100 text-gray-900';
   }
 }
 

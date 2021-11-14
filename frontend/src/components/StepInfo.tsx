@@ -16,7 +16,9 @@ export default function StepInfo({ step, className, style }: Props) {
     <div className={classNames('divide-y overflow-hidden', className)} style={style}>
       <div className="px-3 py-3 flex items-center">
         <h2 className="flex-1"><span className="font-mono text-xl">{step.target}</span> <span className="text-gray-500">({step.repository})</span></h2>
-        {!latestExecution ? (
+        {step.cachedStep ? (
+          <Badge intent="none" label="Cached" />
+        ) : !latestExecution ? (
           <Badge intent="info" label="Scheduling" />
         ) : !latestExecution.assignedAt ? (
           <Badge intent="info" label="Assigning" />

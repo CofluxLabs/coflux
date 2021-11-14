@@ -36,13 +36,18 @@ def my_task(xs=None):
     return add(foo(xs), maximum(xs))
 
 
-@task()
+@step(cache_key_fn=lambda n: f"app.repo:fib:{n}")
 def fib(n):
     n = n.result()
     if n == 0 or n == 1:
         return n
     else:
         return fib(n - 1).result() + fib(n - 2).result()
+
+
+@task()
+def fib_task(n):
+    return fib(n.result())
 
 
 @step()
@@ -92,7 +97,7 @@ def random_task(n):
                 (blob_task,),
                 (github_task,),
                 (random_task, i),
-                (blob_task,)
+                (blob_task,),
             ]
         )
         fn(*args)

@@ -28,7 +28,7 @@ defmodule Coflux.Project.Store do
     |> Repo.get!(run_id, prefix: project_id)
     |> Repo.preload([
       :task,
-      steps: [:arguments, executions: [:dependencies, :assignment, :result]]
+      steps: [:arguments, :cached_step, executions: [:dependencies, :assignment, :result]]
     ])
   end
 
@@ -77,6 +77,7 @@ defmodule Coflux.Project.Store do
     tags = Keyword.get(opts, :tags, [])
     priority = Keyword.get(opts, :priority, 0)
     version = Keyword.get(opts, :keyword)
+    cache_key = Keyword.get(opts, :cache_key)
 
     Repo.transaction(fn ->
       parent_execution = Repo.get!(Models.Execution, parent_execution_id, prefix: project_id)
@@ -87,7 +88,8 @@ defmodule Coflux.Project.Store do
         tags: tags,
         priority: priority,
         version: version,
-        parent_id: parent_execution_id
+        parent_id: parent_execution_id,
+        cache_key: cache_key
       )
     end)
   end
@@ -196,7 +198,21 @@ defmodule Coflux.Project.Store do
     priority = Keyword.fetch!(opts, :priority)
     version = Keyword.fetch!(opts, :version)
     parent_id = Keyword.get(opts, :parent_id)
+    cache_key = Keyword.get(opts, :cache_key)
     now = DateTime.utc_now()
+
+    cached_step =
+      if cache_key do
+        query =
+          from(
+            s in Models.Step,
+            where: s.cache_key == ^cache_key,
+            order_by: [desc: s.created_at],
+            limit: 1
+          )
+
+        Repo.one(query, prefix: project_id)
+      end
 
     step =
       Repo.insert!(
@@ -207,6 +223,8 @@ defmodule Coflux.Project.Store do
           target: target,
           tags: run.tags ++ tags,
           priority: priority,
+          cache_key: unless(cached_step, do: cache_key),
+          cached_step_id: if(cached_step, do: cached_step.id),
           created_at: now
         },
         prefix: project_id
@@ -223,14 +241,27 @@ defmodule Coflux.Project.Store do
     Repo.insert_all(Models.StepArgument, step_arguments, prefix: project_id)
 
     execution =
-      Repo.insert!(
-        %Models.Execution{
-          step_id: step.id,
-          version: version,
-          created_at: now
-        },
-        prefix: project_id
-      )
+      if cached_step do
+        # TODO: check result and handle failed execution? (create new step? and/or reschedule?)
+        query =
+          from(
+            e in Models.Execution,
+            where: e.step_id == ^cached_step.id,
+            order_by: [desc: e.created_at],
+            limit: 1
+          )
+
+        Repo.one(query, prefix: project_id)
+      else
+        Repo.insert!(
+          %Models.Execution{
+            step_id: step.id,
+            version: version,
+            created_at: now
+          },
+          prefix: project_id
+        )
+      end
 
     execution.id
   end

@@ -211,10 +211,12 @@ class Client:
                     for task in pending:
                         task.cancel()
 
-    async def schedule_child(self, execution_id, target, arguments, repository=None):
+    async def schedule_child(self, execution_id, target, arguments, repository=None, cache_key=None):
         repository = repository or self._module_name
         serialised_arguments = [_serialise_argument(a) for a in arguments]
-        return await self._channel.request('schedule_child', execution_id, repository, target, serialised_arguments)
+        return await self._channel.request(
+            'schedule_child', execution_id, repository, target, serialised_arguments, cache_key
+        )
 
     async def get_result(self, execution_id, from_execution_id):
         if execution_id not in self._results:
@@ -231,7 +233,7 @@ class Client:
             raise Exception(f"unexeptected result tag ({result[0]})")
 
 
-def _decorate(name=None, type='step'):
+def _decorate(name, type, cache_key_fn=None):
     def decorate(fn):
         target = name or fn.__name__
         metadata = (target, {'type': type, 'module': fn.__module__, 'function': fn})
@@ -242,7 +244,10 @@ def _decorate(name=None, type='step'):
             execution = execution_var.get(None)
             if execution is not None:
                 execution_id, client, loop = execution
-                schedule = client.schedule_child(execution_id, target, args)
+                # TODO: pass more context? (repository, name, ?)
+                # TODO: handle args being futures?
+                cache_key = cache_key_fn(*args) if cache_key_fn else None
+                schedule = client.schedule_child(execution_id, target, args, cache_key=cache_key)
                 new_execution_id = asyncio.run_coroutine_threadsafe(schedule, loop).result()
                 return Future(
                     lambda: client.get_result(new_execution_id, execution_id), ['result', new_execution_id], loop
@@ -261,5 +266,5 @@ def task(name=None):
     return _decorate(name, 'task')
 
 
-def step(name=None):
-    return _decorate(name, 'step')
+def step(name=None, cache_key_fn=None):
+    return _decorate(name, 'step', cache_key_fn)

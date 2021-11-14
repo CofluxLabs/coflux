@@ -18,16 +18,20 @@ function buildGraph(run: models.Run) {
   run.steps.forEach((step) => {
     g.setNode(step.id, { width: 160, height: 50 });
     if (step.parentId) {
-      g.setEdge(executionIdToStepId[step.parentId], step.id, {});
+      g.setEdge(executionIdToStepId[step.parentId], step.id);
     }
   });
 
   return g;
 }
 
-function classNameForResult(result: models.Result | null, open: boolean) {
-  const color = !result ? 'blue' : result.type <= 2 ? 'gray' : result.type == 3 ? 'red' : 'yellow';
-  return classNames(`border-${color}-400 `, open ? `bg-${color}-200` : `bg-${color}-100 hover:bg-${color}-200`);
+function classNameForResult(result: models.Result | null, isCached: boolean, open: boolean) {
+  if (isCached) {
+    return 'border-gray-300 bg-gray-50';
+  } else {
+    const color = !result ? 'blue' : result.type <= 2 ? 'gray' : result.type == 3 ? 'red' : 'yellow';
+    return classNames(`shadow border-${color}-400 `, open ? `bg-${color}-200` : `bg-${color}-100 hover:bg-${color}-200`);
+  }
 }
 
 type ArrowProps = {
@@ -59,7 +63,7 @@ function Node({ node, step }: NodeProps) {
     >
       {({ open }) => (
         <>
-          <Popover.Button className={classNames('flex-1 flex items-center shadow border rounded p-2', classNameForResult(latestExecution?.result || null, open))}>
+          <Popover.Button className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestExecution?.result || null, !!step.cachedStep, open))}>
             <div className={classNames('flex-1 truncate', { 'font-bold': !step.parentId })}>
               <span className="font-mono">{step.target}</span>
             </div>

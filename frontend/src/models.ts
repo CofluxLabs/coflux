@@ -27,6 +27,7 @@ export type Step = {
   createdAt: string;
   arguments: Argument[];
   executions: Execution[];
+  cachedStep: { id: string; runId: string; } | null;
 }
 
 export type Argument = {

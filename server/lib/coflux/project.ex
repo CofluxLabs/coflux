@@ -45,8 +45,15 @@ defmodule Coflux.Project do
     Store.schedule_task(project_id, task_id, arguments)
   end
 
-  def schedule_child(project_id, parent_execution_id, repository, target, arguments \\ []) do
-    Store.schedule_child(project_id, parent_execution_id, repository, target, arguments)
+  def schedule_child(
+        project_id,
+        parent_execution_id,
+        repository,
+        target,
+        arguments \\ [],
+        opts \\ []
+      ) do
+    Store.schedule_child(project_id, parent_execution_id, repository, target, arguments, opts)
   end
 
   def acknowledge_exeutions(project_id, execution_ids) do
