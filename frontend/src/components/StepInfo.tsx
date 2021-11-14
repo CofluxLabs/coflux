@@ -1,17 +1,20 @@
-import React, { Fragment } from 'react';
+import React, { CSSProperties, Fragment } from 'react';
+import classNames from 'classnames';
 
 import * as models from '../models';
 import Badge from './Badge';
 
 type Props = {
   step: models.Step;
+  className?: string;
+  style?: CSSProperties;
 }
 
-export default function StepInfo({ step }: Props) {
+export default function StepInfo({ step, className, style }: Props) {
   const latestExecution = step.executions.length ? step.executions[step.executions.length - 1] : null;
   return (
-    <div className="divide-y">
-      <div className="px-2 py-3 flex items-center">
+    <div className={classNames('divide-y overflow-hidden', className)} style={style}>
+      <div className="px-3 py-3 flex items-center">
         <h2 className="flex-1"><span className="font-mono text-xl">{step.target}</span> <span className="text-gray-500">({step.repository})</span></h2>
         {!latestExecution ? (
           <Badge intent="info" label="Scheduling" />
@@ -26,7 +29,7 @@ export default function StepInfo({ step }: Props) {
         ) : null}
       </div>
       {step.arguments.length > 0 && (
-        <div className="p-2">
+        <div className="p-3">
           <h3 className="uppercase text-sm font-bold text-gray-400">Arguments</h3>
           <ol className="list-disc list-inside ml-1">
             {step.arguments.map((argument, index) => (
@@ -36,7 +39,7 @@ export default function StepInfo({ step }: Props) {
         </div>
       )}
       {step.executions.map((execution, index) => (
-        <div key={execution.id} className="p-2">
+        <div key={execution.id} className="p-3">
           <h3 className="uppercase text-sm font-bold text-gray-400">Execution {index + 1}</h3>
           <p>Scheduled: {execution.createdAt}</p>
           {execution.assignedAt && (

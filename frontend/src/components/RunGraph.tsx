@@ -25,16 +25,24 @@ function buildGraph(run: models.Run) {
   return g;
 }
 
-function classNameForResult(result: models.Result | null) {
-  if (!result) {
-    return 'border-blue-400 bg-blue-100 hover:bg-blue-200';
-  } else if (result.type <= 2) {
-    return 'border-gray-400 bg-gray-100 hover:bg-gray-200';
-  } else if (result.type == 3) {
-    return 'border-red-400 bg-red-100 hover:bg-red-200';
-  } else {
-    return 'border-yellow-400 bg-yellow-100 hover:bg-yellow-200';
-  }
+function classNameForResult(result: models.Result | null, open: boolean) {
+  const color = !result ? 'blue' : result.type <= 2 ? 'gray' : result.type == 3 ? 'red' : 'yellow';
+  return classNames(`border-${color}-400 `, open ? `bg-${color}-200` : `bg-${color}-100 hover:bg-${color}-200`);
+}
+
+type ArrowProps = {
+  nodeWidth: number;
+  size: number;
+}
+
+function Arrow({ nodeWidth, size }: ArrowProps) {
+  const left = nodeWidth / 2 - size + 20;
+  return (
+    <Fragment>
+      <div className="absolute" style={{ left: left, top: -size, borderWidth: `0 ${size}px ${size}px`, borderColor: '#fff transparent', width: 0, zIndex: 1 }} />
+      <div className="absolute" style={{ left: left - 1, top: -size - 1, borderWidth: `0 ${size + 1}px ${size + 1}px`, borderColor: '#9ca3af transparent', width: 0, zIndex: 0 }} />
+    </Fragment>
+  );
 }
 
 type NodeProps = {
@@ -51,7 +59,7 @@ function Node({ node, step }: NodeProps) {
     >
       {({ open }) => (
         <>
-          <Popover.Button className={classNames('flex-1 flex items-center shadow border rounded p-2', classNameForResult(latestExecution?.result || null))}>
+          <Popover.Button className={classNames('flex-1 flex items-center shadow border rounded p-2', classNameForResult(latestExecution?.result || null, open))}>
             <div className={classNames('flex-1 truncate', { 'font-bold': !step.parentId })}>
               <span className="font-mono">{step.target}</span>
             </div>
@@ -65,7 +73,11 @@ function Node({ node, step }: NodeProps) {
             leaveFrom="opacity-100 translate-y-0"
             leaveTo="opacity-0 translate-y-1"
           >
-            <Popover.Panel className="absolute z-10 mt-2 ml-2 w-screen transform max-w-md rounded shadow-2xl border border-gray-400 bg-white overflow-hidden">
+            <Popover.Panel
+              className="absolute z-10 w-screen transform max-w-md rounded shadow-2xl border border-gray-400 bg-white"
+              style={{ marginTop: node.height + 8, marginLeft: -20 }}
+            >
+              <Arrow nodeWidth={node.width} size={12} />
               <StepInfo step={step} />
             </Popover.Panel>
           </Transition>
