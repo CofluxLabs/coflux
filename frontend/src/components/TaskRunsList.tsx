@@ -19,7 +19,7 @@ export default function TaskRunsList({ projectId, taskId }: Props) {
       <ul>
         {runs.map((run) => (
           <li key={run.id}>
-            <Link href={`/projects/${projectId}/tasks/${taskId}/runs/${run.id}`}>
+            <Link href={`/projects/${projectId}/runs/${run.id}`}>
               <a className="underline">{run.createdAt}</a>
             </Link>
           </li>

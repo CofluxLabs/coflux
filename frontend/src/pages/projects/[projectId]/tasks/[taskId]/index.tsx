@@ -17,7 +17,7 @@ export default function TaskPage() {
     fetch(`http://localhost:7070/projects/${projectId}/tasks/${taskId}/runs`, { method: 'POST' })
       .then((response) => response.json())
       .then((result) => {
-        router.push(`/projects/${projectId}/tasks/${taskId}/runs/${result.id}`);
+        router.push(`/projects/${projectId}/runs/${result.id}`);
       });
   }, [router, projectId, taskId]);
   return (

@@ -26,9 +26,10 @@ defmodule Coflux.Project.Store do
   def get_run(project_id, run_id) do
     Models.Run
     |> Repo.get!(run_id, prefix: project_id)
-    |> Repo.preload(
+    |> Repo.preload([
+      :task,
       steps: [:arguments, executions: [:dependencies, :assignment, :result]]
-    )
+    ])
   end
 
   def create_tasks(project_id, repository, version, targets) do
@@ -57,11 +58,12 @@ defmodule Coflux.Project.Store do
       task = Repo.get!(Models.Task, task_id, prefix: project_id)
       run = Repo.insert!(%Models.Run{task_id: task_id, tags: run_tags}, prefix: project_id)
 
-      execution_id = schedule_step(project_id, run, task.repository, task.target, arguments,
-        tags: task_tags,
-        priority: priority,
-        version: version
-      )
+      execution_id =
+        schedule_step(project_id, run, task.repository, task.target, arguments,
+          tags: task_tags,
+          priority: priority,
+          version: version
+        )
 
       {run.id, execution_id}
     end)

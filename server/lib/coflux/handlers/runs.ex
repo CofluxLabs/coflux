@@ -16,6 +16,12 @@ defmodule Coflux.Handlers.Runs do
 
     result = %{
       "id" => run.id,
+      "task" => %{
+        "id" => run.task.id,
+        "repository" => run.task.repository,
+        "target" => run.task.target,
+        "version" => run.task.version
+      },
       "steps" =>
         Enum.map(run.steps, fn step ->
           %{

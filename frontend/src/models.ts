@@ -15,6 +15,7 @@ export type Task = Target & {
 
 export type Run = {
   id: string;
+  task: Task;
   steps: Step[];
 }
 

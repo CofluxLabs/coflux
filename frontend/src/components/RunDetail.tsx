@@ -4,8 +4,8 @@ import classNames from 'classnames';
 
 import * as models from '../models';
 import useRun from '../hooks/useRun';
-import useTask from '../hooks/useTask';
 import Heading from './Heading';
+import ProjectLayout from './ProjectLayout';
 
 type TabProps = {
   href: string;
@@ -23,35 +23,33 @@ function Tab({ title, href, isActive }: TabProps) {
 
 type Props = {
   projectId: string | null;
-  taskId: string | null;
   runId: string | null;
   activeTab: 'overview' | 'timeline';
   children: (run: models.Run) => ReactNode;
 }
 
-export default function RunDetail({ projectId, taskId, runId, activeTab, children }: Props) {
-  const { task, error: taskError } = useTask(projectId, taskId);
-  const { run, error: runError } = useRun(projectId, runId);
-  if (taskError || runError) {
+export default function RunDetail({ projectId, runId, activeTab, children }: Props) {
+  const { run, error } = useRun(projectId, runId);
+  if (error) {
     return <div>Error</div>;
-  } else if (!task || !run) {
+  } else if (!run) {
     return <div>Loading...</div>;
   } else {
     return (
-      <div>
+      <ProjectLayout projectId={projectId} taskId={run.task.id}>
         <Heading>
-          <Link href={`/projects/${projectId}/tasks/${taskId}`}>
-            <a><span className="font-mono">{task.target}</span> <span className="text-gray-500">({task.repository})</span></a>
+          <Link href={`/projects/${projectId}/tasks/${run.task.id}`}>
+            <a><span className="font-mono">{run.task.target}</span> <span className="text-gray-500">({run.task.repository})</span></a>
           </Link>
           <span className="mx-3">&rarr;</span>
           <span className="font-mono">{runId}</span>
         </Heading>
         <div className="my-6">
-          <Tab title="Overview" href={`/projects/${projectId}/tasks/${taskId}/runs/${runId}`} isActive={activeTab == 'overview'} />
-          <Tab title="Timeline" href={`/projects/${projectId}/tasks/${taskId}/runs/${runId}/timeline`} isActive={activeTab == 'timeline'} />
+          <Tab title="Overview" href={`/projects/${projectId}/runs/${runId}`} isActive={activeTab == 'overview'} />
+          <Tab title="Timeline" href={`/projects/${projectId}/runs/${runId}/timeline`} isActive={activeTab == 'timeline'} />
         </div>
         {children(run)}
-      </div>
+      </ProjectLayout>
     );
   }
 }
