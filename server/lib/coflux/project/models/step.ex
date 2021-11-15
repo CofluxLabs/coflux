@@ -13,6 +13,6 @@ defmodule Coflux.Project.Models.Step do
     field :created_at, :utc_datetime_usec
 
     has_many :arguments, Models.StepArgument, preload_order: [:index]
-    has_many :executions, Models.Execution
+    has_many :executions, Models.Execution, preload_order: [:created_at]
   end
 end
