@@ -1,5 +1,5 @@
 defmodule Coflux.Project.Supervisor do
-  alias Coflux.Project.Server
+  alias Coflux.Project.Orchestrator
 
   @registry __MODULE__.Registry
   @supervisor __MODULE__.Supervisor
@@ -40,7 +40,7 @@ defmodule Coflux.Project.Supervisor do
   end
 
   defp start_server(project_id) do
-    spec = {Server, name: {:via, Registry, {@registry, project_id}}, id: project_id}
+    spec = {Orchestrator, name: {:via, Registry, {@registry, project_id}}, id: project_id}
     DynamicSupervisor.start_child(@supervisor, spec)
   end
 end

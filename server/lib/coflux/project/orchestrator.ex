@@ -1,4 +1,4 @@
-defmodule Coflux.Project.Server do
+defmodule Coflux.Project.Orchestrator do
   use GenServer, restart: :transient
 
   alias Coflux.Project.Store
@@ -14,7 +14,7 @@ defmodule Coflux.Project.Server do
   end
 
   def init({project_id}) do
-    IO.puts("Project server started (#{project_id}).")
+    IO.puts("Orchestrator started (#{project_id}).")
     Listener.subscribe(Coflux.ProjectsListener, project_id, self())
     send(self(), :check_abandoned)
     {:ok, %State{project_id: project_id}}
