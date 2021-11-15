@@ -120,6 +120,46 @@ defmodule Coflux.Project.Store do
     Repo.all(query, prefix: project_id)
   end
 
+  def list_running_executions(project_id) do
+    # TODO: just get latest acknowledgment (if any; use inner_lateral_join?)
+    query =
+      from(e in Models.Execution,
+        join: a in assoc(e, :assignment),
+        left_join: r in assoc(e, :result),
+        where: is_nil(r.execution_id),
+        preload: [:acknowledgments, assignment: a]
+      )
+
+    Repo.all(query, prefix: project_id)
+  end
+
+  def abandon_execution(project_id, execution) do
+    now = DateTime.utc_now()
+
+    Repo.transaction(fn ->
+      Repo.insert!(
+        %Models.Result{
+          execution_id: execution.id,
+          type: 4,
+          created_at: now
+        },
+        prefix: project_id
+      )
+
+      execution =
+        Repo.insert!(
+          %Models.Execution{
+            step_id: execution.step_id,
+            version: execution.version,
+            created_at: now
+          },
+          prefix: project_id
+        )
+
+      execution.id
+    end)
+  end
+
   def assign_execution(project_id, execution_id) do
     case Repo.insert(
            %Models.Assignment{
@@ -182,6 +222,7 @@ defmodule Coflux.Project.Store do
       1 -> {:blob, result.value}
       2 -> {:result, result.value}
       3 -> {:failed, result.value, result.extra}
+      4 -> nil
     end
   end
 

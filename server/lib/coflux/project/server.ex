@@ -14,6 +14,7 @@ defmodule Coflux.Project.Server do
 
   def init({project_id}) do
     IO.puts("Project server started (#{project_id}).")
+    send(self(), :check_abandoned)
     {:ok, %State{project_id: project_id}}
   end
 
@@ -126,6 +127,30 @@ defmodule Coflux.Project.Server do
           end
       end
     end)
+  end
+
+  defp is_execution_unacknowledged(execution, now, timeout_ms \\ 5_000) do
+    last_activity_at =
+      execution.acknowledgments
+      |> Enum.map(& &1.created_at)
+      |> Enum.max(DateTime, fn -> execution.assignment.created_at end)
+
+    DateTime.diff(now, last_activity_at, :millisecond) > timeout_ms
+  end
+
+  def handle_info(:check_abandoned, state) do
+    now = DateTime.utc_now()
+
+    state.project_id
+    |> Store.list_running_executions()
+    |> Enum.filter(&is_execution_unacknowledged(&1, now))
+    |> Enum.each(fn execution ->
+      Store.abandon_execution(state.project_id, execution)
+    end)
+
+    # TODO: time?
+    Process.send_after(self(), :check_abandoned, 1_000)
+    {:noreply, state}
   end
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
