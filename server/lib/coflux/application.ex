@@ -9,8 +9,8 @@ defmodule Coflux.Application do
     Supervisor.start_link(
       [
         Coflux.Repo.Projects,
+        {Coflux.Listener, repo: Coflux.Repo.Projects, name: Coflux.ProjectsListener},
         {Coflux.Project.Supervisor, project_ids: project_ids},
-        Coflux.Listener,
         {Coflux.Api, port: port}
       ],
       strategy: :one_for_one,

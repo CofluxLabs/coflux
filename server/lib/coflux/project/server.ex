@@ -2,6 +2,7 @@ defmodule Coflux.Project.Server do
   use GenServer, restart: :transient
 
   alias Coflux.Project.Store
+  alias Coflux.Listener
 
   defmodule State do
     defstruct project_id: nil, targets: %{}, agents: %{}, waiting: %{}
@@ -14,6 +15,7 @@ defmodule Coflux.Project.Server do
 
   def init({project_id}) do
     IO.puts("Project server started (#{project_id}).")
+    Listener.subscribe(Coflux.ProjectsListener, project_id, self())
     send(self(), :check_abandoned)
     {:ok, %State{project_id: project_id}}
   end
@@ -60,13 +62,39 @@ defmodule Coflux.Project.Server do
     end
   end
 
-  def handle_cast({:insert, table, argument}, state) do
+  def handle_info({:insert, _ref, table, argument}, state) do
     state =
       case table do
         "executions" -> try_schedule_executions(state)
         "results" -> try_notify_results(state, argument)
         _other -> state
       end
+
+    {:noreply, state}
+  end
+
+  def handle_info(:check_abandoned, state) do
+    now = DateTime.utc_now()
+
+    state.project_id
+    |> Store.list_running_executions()
+    |> Enum.filter(&is_execution_unacknowledged(&1, now))
+    |> Enum.each(fn execution ->
+      Store.abandon_execution(state.project_id, execution)
+    end)
+
+    # TODO: time?
+    Process.send_after(self(), :check_abandoned, 1_000)
+    {:noreply, state}
+  end
+
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
+    state =
+      state
+      |> Map.update!(:targets, fn targets ->
+        Map.new(targets, fn {target, pids} -> {target, Map.delete(pids, pid)} end)
+      end)
+      |> Map.update!(:agents, &Map.delete(&1, pid))
 
     {:noreply, state}
   end
@@ -136,32 +164,6 @@ defmodule Coflux.Project.Server do
       |> Enum.max(DateTime, fn -> execution.assignment.created_at end)
 
     DateTime.diff(now, last_activity_at, :millisecond) > timeout_ms
-  end
-
-  def handle_info(:check_abandoned, state) do
-    now = DateTime.utc_now()
-
-    state.project_id
-    |> Store.list_running_executions()
-    |> Enum.filter(&is_execution_unacknowledged(&1, now))
-    |> Enum.each(fn execution ->
-      Store.abandon_execution(state.project_id, execution)
-    end)
-
-    # TODO: time?
-    Process.send_after(self(), :check_abandoned, 1_000)
-    {:noreply, state}
-  end
-
-  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
-    state =
-      state
-      |> Map.update!(:targets, fn targets ->
-        Map.new(targets, fn {target, pids} -> {target, Map.delete(pids, pid)} end)
-      end)
-      |> Map.update!(:agents, &Map.delete(&1, pid))
-
-    {:noreply, state}
   end
 
   defp get_result(project_id, execution_id) do
