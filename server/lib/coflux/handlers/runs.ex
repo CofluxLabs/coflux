@@ -36,14 +36,7 @@ defmodule Coflux.Handlers.Runs do
                   "id" => step.cached_step.id,
                   "runId" => step.cached_step.run_id
                 },
-            "arguments" =>
-              Enum.map(step.arguments, fn argument ->
-                %{
-                  # TODO
-                  "type" => argument.type,
-                  "value" => argument.value
-                }
-              end),
+            "arguments" => prepare_arguments(step.arguments),
             "executions" =>
               Enum.map(step.executions, fn execution ->
                 %{
@@ -67,5 +60,15 @@ defmodule Coflux.Handlers.Runs do
 
     req = json_response(req, result)
     {:ok, req, opts}
+  end
+
+  defp prepare_arguments(arguments) do
+    Enum.map(arguments, fn argument ->
+      case argument do
+        "json:" <> json -> %{"type" => "json", "value" => Jason.decode!(json)}
+        "blob:" <> key -> %{"type" => "blob", "value" => key}
+        "result:" <> execution_id -> %{"type" => "result", "value" => execution_id}
+      end
+    end)
   end
 end

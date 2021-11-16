@@ -28,7 +28,7 @@ defmodule Coflux.Project.Store do
     |> Repo.get!(run_id, prefix: project_id)
     |> Repo.preload([
       :task,
-      steps: [:arguments, :cached_step, executions: [:dependencies, :assignment, :result]]
+      steps: [:cached_step, executions: [:dependencies, :assignment, :result]]
     ])
   end
 
@@ -114,7 +114,7 @@ defmodule Coflux.Project.Store do
         where: e.execute_after <= ^now or is_nil(e.execute_after),
         where: is_nil(a.execution_id),
         order_by: [desc: s.priority, asc: s.created_at],
-        preload: [step: {s, [:arguments]}]
+        preload: [:step]
       )
 
     Repo.all(query, prefix: project_id)
@@ -228,9 +228,9 @@ defmodule Coflux.Project.Store do
 
   defp parse_argument({type, value}) do
     case type do
-      :json when is_binary(value) -> {0, value}
-      :blob when is_binary(value) -> {1, value}
-      :result when is_binary(value) -> {2, value}
+      :json when is_binary(value) -> "json:#{value}"
+      :blob when is_binary(value) -> "blob:#{value}"
+      :result when is_binary(value) -> "result:#{value}"
     end
   end
 
@@ -262,6 +262,7 @@ defmodule Coflux.Project.Store do
           parent_id: parent_id,
           repository: repository,
           target: target,
+          arguments: Enum.map(arguments, &parse_argument/1),
           tags: run.tags ++ tags,
           priority: priority,
           cache_key: unless(cached_step, do: cache_key),
@@ -270,16 +271,6 @@ defmodule Coflux.Project.Store do
         },
         prefix: project_id
       )
-
-    step_arguments =
-      arguments
-      |> Enum.map(&parse_argument/1)
-      |> Enum.with_index()
-      |> Enum.map(fn {{type, value}, index} ->
-        %{step_id: step.id, index: index, type: type, value: value}
-      end)
-
-    Repo.insert_all(Models.StepArgument, step_arguments, prefix: project_id)
 
     execution =
       if cached_step do

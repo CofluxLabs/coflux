@@ -127,10 +127,10 @@ defmodule Coflux.Project.Orchestrator do
 
   defp prepare_arguments(arguments) do
     Enum.map(arguments, fn argument ->
-      case argument.type do
-        0 -> {:json, argument.value}
-        1 -> {:blob, argument.value}
-        2 -> {:result, argument.value}
+      case argument do
+        "json:" <> json -> {:json, Jason.decode!(json)}
+        "blob:" <> key -> {:blob, key}
+        "result:" <> execution_id -> {:result, execution_id}
       end
     end)
   end

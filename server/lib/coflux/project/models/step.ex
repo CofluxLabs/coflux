@@ -7,12 +7,12 @@ defmodule Coflux.Project.Models.Step do
     belongs_to :cached_step, Models.Step
     field :repository, :string
     field :target, :string
+    field :arguments, {:array, :string}
     field :tags, {:array, :string}
     field :priority, :integer
     field :cache_key, :string
     field :created_at, :utc_datetime_usec
 
-    has_many :arguments, Models.StepArgument, preload_order: [:index]
     has_many :executions, Models.Execution, preload_order: [:created_at]
   end
 end

@@ -6,6 +6,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateSteps do
       add :run_id, references("runs", on_delete: :delete_all), null: false
       add :repository, :string, null: false
       add :target, :string, null: false
+      add :arguments, {:array, :string}, null: false
       add :tags, {:array, :string}, null: false
       add :priority, :integer, null: false
       add :cache_key, :string
