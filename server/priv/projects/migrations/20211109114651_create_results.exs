@@ -5,7 +5,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateResults do
     create table("results", primary_key: false) do
       add :execution_id, references("executions", on_delete: :delete_all), primary_key: true, null: false
       add :type, :integer, null: false
-      add :value, :text
+      add :value, :string
       add :extra, :map
       add :created_at, :utc_datetime_usec, null: false
     end
