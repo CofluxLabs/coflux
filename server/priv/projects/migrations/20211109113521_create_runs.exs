@@ -8,7 +8,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateRuns do
     end
 
     execute(
-      "CREATE TRIGGER runs_insert AFTER INSERT ON #{prefix()}.runs FOR EACH ROW EXECUTE FUNCTION notify_insert('id')",
+      "CREATE TRIGGER runs_insert AFTER INSERT ON #{prefix()}.runs FOR EACH ROW EXECUTE FUNCTION notify_insert()",
       "DROP TRIGGER runs_insert ON #{prefix()}.runs"
     )
   end

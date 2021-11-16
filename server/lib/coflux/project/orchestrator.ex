@@ -62,11 +62,11 @@ defmodule Coflux.Project.Orchestrator do
     end
   end
 
-  def handle_info({:insert, _ref, table, argument}, state) do
+  def handle_info({:insert, _ref, table, data}, state) do
     state =
       case table do
         "executions" -> try_schedule_executions(state)
-        "results" -> try_notify_results(state, argument)
+        "results" -> try_notify_results(state, data)
         _other -> state
       end
 
@@ -135,7 +135,8 @@ defmodule Coflux.Project.Orchestrator do
     end)
   end
 
-  defp try_notify_results(state, execution_id) do
+  defp try_notify_results(state, data) do
+    execution_id = Map.fetch!(data, "execution_id")
     Map.update!(state, :waiting, fn waiting ->
       case Map.pop(waiting, execution_id) do
         {nil, waiting} ->

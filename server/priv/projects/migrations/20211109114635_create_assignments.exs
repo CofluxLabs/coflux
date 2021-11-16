@@ -8,7 +8,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateAssignments do
     end
 
     execute(
-      "CREATE TRIGGER assignments_insert AFTER INSERT ON #{prefix()}.assignments FOR EACH ROW EXECUTE FUNCTION notify_insert('execution_id')",
+      "CREATE TRIGGER assignments_insert AFTER INSERT ON #{prefix()}.assignments FOR EACH ROW EXECUTE FUNCTION notify_insert()",
       "DROP TRIGGER assignments_insert ON #{prefix()}.assignments"
     )
   end

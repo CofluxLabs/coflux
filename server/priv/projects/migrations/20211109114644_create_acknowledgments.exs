@@ -8,7 +8,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateAcknowledgments do
     end
 
     execute(
-      "CREATE TRIGGER acknowledgments_insert AFTER INSERT ON #{prefix()}.acknowledgments FOR EACH ROW EXECUTE FUNCTION notify_insert('execution_id')",
+      "CREATE TRIGGER acknowledgments_insert AFTER INSERT ON #{prefix()}.acknowledgments FOR EACH ROW EXECUTE FUNCTION notify_insert()",
       "DROP TRIGGER acknowledgments_insert ON #{prefix()}.acknowledgments"
     )
   end

@@ -11,7 +11,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateResults do
     end
 
     execute(
-      "CREATE TRIGGER results_insert AFTER INSERT ON #{prefix()}.results FOR EACH ROW EXECUTE FUNCTION notify_insert('execution_id')",
+      "CREATE TRIGGER results_insert AFTER INSERT ON #{prefix()}.results FOR EACH ROW EXECUTE FUNCTION notify_insert()",
       "DROP TRIGGER results_insert ON #{prefix()}.results"
     )
   end

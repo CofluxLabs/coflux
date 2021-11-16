@@ -12,7 +12,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateTasks do
     create unique_index("tasks", [:repository, :version, :target])
 
     execute(
-      "CREATE TRIGGER tasks_insert AFTER INSERT ON #{prefix()}.tasks FOR EACH ROW EXECUTE FUNCTION notify_insert('id')",
+      "CREATE TRIGGER tasks_insert AFTER INSERT ON #{prefix()}.tasks FOR EACH ROW EXECUTE FUNCTION notify_insert()",
       "DROP TRIGGER tasks_insert ON #{prefix()}.tasks"
     )
   end

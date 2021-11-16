@@ -16,7 +16,7 @@ defmodule Coflux.Repo.Projects.Migrations.CreateSteps do
     create index("steps", [:cache_key])
 
     execute(
-      "CREATE TRIGGER steps_insert AFTER INSERT ON #{prefix()}.steps FOR EACH ROW EXECUTE FUNCTION notify_insert('id')",
+      "CREATE TRIGGER steps_insert AFTER INSERT ON #{prefix()}.steps FOR EACH ROW EXECUTE FUNCTION notify_insert()",
       "DROP TRIGGER steps_insert ON #{prefix()}.steps"
     )
   end
