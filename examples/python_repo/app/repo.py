@@ -85,18 +85,19 @@ def slow_task():
 
 @task()
 def random_task(n):
-    for i in range(random.randint(3, n.result())):
+    n = n.result()
+    for i in range(n):
         fn, *args = random.choice(
             [
                 (raise_error,),
                 (maximum, list(range(i))),
-                (fib, 3),
-                (inc, i),
-                (sleep, i),
+                (fib, random.randint(3, 10)),
+                (inc, random.randint(0, 100)),
+                (sleep, random.randint(1, 5)),
                 (my_task,),
                 (blob_task,),
                 (github_task,),
-                (random_task, i),
+                (random_task, random.randint(2, n)),
                 (blob_task,),
             ]
         )
