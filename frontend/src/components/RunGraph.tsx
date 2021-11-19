@@ -29,7 +29,7 @@ function classNameForResult(result: models.Result | null, isCached: boolean, ope
   if (isCached) {
     return 'border-gray-300 bg-gray-50';
   } else {
-    const color = !result ? 'blue' : result.type <= 2 ? 'gray' : result.type == 3 ? 'red' : 'yellow';
+    const color = !result ? 'blue' : result.type == 3 ? 'red' : result.type == 4 ? 'yellow' : 'gray';
     return classNames(`shadow border-${color}-400 `, open ? `bg-${color}-200` : `bg-${color}-100 hover:bg-${color}-200`);
   }
 }

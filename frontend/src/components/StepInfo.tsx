@@ -28,6 +28,8 @@ export default function StepInfo({ step, className, style }: Props) {
           <Badge intent="success" label="Completed" />
         ) : latestExecution.result.type == 3 ? (
           <Badge intent="danger" label="Failed" />
+        ) : latestExecution.result.type == 4 ? (
+          <Badge intent="warning" label="Abandoned" />
         ) : null}
       </div>
       {step.arguments.length > 0 && (
