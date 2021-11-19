@@ -8,4 +8,4 @@ COPY . ./
 
 ENV PYTHONPATH=/packages
 
-CMD python -m coflux -p project_1 -h server:7070 -m app.repo -v 1
+CMD python -u -m coflux -p project_1 -h server:7070 -m app.repo -v 1
