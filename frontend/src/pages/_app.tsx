@@ -1,17 +1,18 @@
-import type { AppProps } from 'next/app';
 import React from 'react';
-import { SWRConfig } from 'swr';
+import type { AppProps } from 'next/app';
+import { useRouter } from 'next/router';
+
+import useSocket, { SocketContext } from '../hooks/useSocket';
 
 import '../../styles/globals.scss';
 
-const BASE_URL = 'http://localhost:7070';
-
-const fetcher = (path: string) => fetch(`${BASE_URL}${path}`).then((res) => res.json());
-
 export default function App({ Component, pageProps }: AppProps) {
+  const router = useRouter();
+  const projectId = router.query['projectId'] as string || null;
+  const { status, socket } = useSocket(projectId);
   return (
-    <SWRConfig value={{ fetcher }}>
+    <SocketContext.Provider value={[socket, status]}>
       <Component {...pageProps} />
-    </SWRConfig>
+    </SocketContext.Provider>
   );
 }

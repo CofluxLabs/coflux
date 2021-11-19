@@ -3,8 +3,7 @@ import Link from 'next/link';
 import classNames from 'classnames';
 
 import * as models from '../models';
-import useTasks from '../hooks/useTasks';
-import useAgents from '../hooks/useAgents';
+import { useSubscription } from '../hooks/useSocket';
 
 type TaskItemProps = {
   task: models.Task;
@@ -36,9 +35,9 @@ type Props = {
 }
 
 export default function TasksList({ projectId, taskId }: Props) {
-  const { tasks, error: tasksError } = useTasks(projectId);
-  const { agents, error: agentsError } = useAgents(projectId);
-  if (tasksError || agentsError) {
+  const tasks = useSubscription<models.Task[]>('tasks');
+  const agents: models.Agent[] = []; // TODO
+  if (!tasks) {
     return <div>Error</div>
   } else if (!tasks) {
     return <div>Loading...</div>;

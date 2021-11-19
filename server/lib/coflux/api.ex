@@ -3,9 +3,6 @@ defmodule Coflux.Api do
 
   def child_spec(opts) do
     port = Keyword.fetch!(opts, :port)
-
-    IO.puts("Starting API on port #{port}...")
-
     trans_opts = %{socket_opts: [port: port]}
     proto_opts = %{env: %{dispatch: dispatch()}, connection_type: :supervisor}
     :ranch.child_spec(:http, :ranch_tcp, trans_opts, :cowboy_clear, proto_opts)
@@ -22,6 +19,7 @@ defmodule Coflux.Api do
          {"/projects/:project/agents/[:agent]", Handlers.Agents, []},
          {"/projects/:project/blobs/:key", Handlers.Blobs, []},
          {"/projects/:project/agent", Handlers.Agent, []},
+         {"/projects/:project/events", Handlers.Events, []}
        ]}
     ])
   end

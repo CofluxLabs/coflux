@@ -35,11 +35,13 @@ defmodule Coflux.Listener do
   def handle_info({:notification, _pid, _ref, _channel, payload}, state) do
     [identifier, json] = String.split(payload, ":", parts: 2)
     [project_id, table] = String.split(identifier, ".", parts: 2)
+    table_atom = String.to_atom(table)
+    data = Jason.decode!(json, keys: :atoms!)
 
     state.project_pids
     |> Map.get(project_id, %{})
     |> Enum.each(fn {pid, ref} ->
-      send(pid, {:insert, ref, table, Jason.decode!(json)})
+      send(pid, {:insert, ref, table_atom, data})
     end)
 
     {:noreply, state}

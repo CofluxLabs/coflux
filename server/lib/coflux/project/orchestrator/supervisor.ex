@@ -1,4 +1,4 @@
-defmodule Coflux.Project.Supervisor do
+defmodule Coflux.Project.Orchestrator.Supervisor do
   alias Coflux.Project.Orchestrator
 
   @registry __MODULE__.Registry

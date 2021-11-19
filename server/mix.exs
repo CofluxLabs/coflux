@@ -22,6 +22,7 @@ defmodule Coflux.MixProject do
     [
       {:cowboy, "~> 2.9"},
       {:ecto_sql, "~> 3.7"},
+      {:inflex, "~> 2.0"},
       {:jason, "~> 1.2"},
       {:postgrex, "~> 0.15"}
     ]

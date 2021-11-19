@@ -1,9 +1,10 @@
 defmodule Coflux.Project do
   alias Coflux.Project.Store
-  alias Coflux.Project.Supervisor, as: ProjectSupervisor
+  alias Coflux.Project.Orchestrator.Supervisor, as: OrchestratorSupervisor
+  alias Coflux.Project.Observer.Supervisor, as: ObserverSupervisor
 
   def get_agents(project_id) do
-    call_server(project_id, :get_agents)
+    call_orchestrator(project_id, :get_agents)
   end
 
   def list_tasks(project_id) do
@@ -38,7 +39,7 @@ defmodule Coflux.Project do
 
   def register(project_id, repository, version, targets, pid) do
     Store.create_tasks(project_id, repository, version, targets)
-    call_server(project_id, {:register_targets, repository, version, targets, pid})
+    call_orchestrator(project_id, {:register_targets, repository, version, targets, pid})
   end
 
   def schedule_task(project_id, task_id, arguments \\ []) do
@@ -70,11 +71,25 @@ defmodule Coflux.Project do
     end
 
     # TODO: try to get from database first?
-    call_server(project_id, {:get_result, execution_id, pid})
+    call_orchestrator(project_id, {:get_result, execution_id, pid})
   end
 
-  defp call_server(project_id, request) do
-    with {:ok, pid} <- ProjectSupervisor.get_server(project_id) do
+  def subscribe(project_id, topic, pid) do
+    call_observer(project_id, {:subscribe, topic, pid})
+  end
+
+  def unsubscribe(project_id, ref) do
+    call_observer(project_id, {:unsubscribe, ref})
+  end
+
+  defp call_orchestrator(project_id, request) do
+    with {:ok, pid} <- OrchestratorSupervisor.get_server(project_id) do
+      GenServer.call(pid, request, 10_000)
+    end
+  end
+
+  defp call_observer(project_id, request) do
+    with {:ok, pid} <- ObserverSupervisor.get_server(project_id) do
       GenServer.call(pid, request, 10_000)
     end
   end

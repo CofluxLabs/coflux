@@ -15,11 +15,12 @@ defmodule Coflux.Project.Orchestrator do
 
   def init({project_id}) do
     IO.puts("Orchestrator started (#{project_id}).")
-    Listener.subscribe(Coflux.ProjectsListener, project_id, self())
+    :ok = Listener.subscribe(Coflux.ProjectsListener, project_id, self())
     send(self(), :check_abandoned)
     {:ok, %State{project_id: project_id}}
   end
 
+  # TODO: remove? (only tracks agents connected to this server)
   def handle_call(:get_agents, _from, state) do
     {:reply, {:ok, state.agents}, state}
   end
@@ -65,8 +66,8 @@ defmodule Coflux.Project.Orchestrator do
   def handle_info({:insert, _ref, table, data}, state) do
     state =
       case table do
-        "executions" -> try_schedule_executions(state)
-        "results" -> try_notify_results(state, data)
+        :executions -> try_schedule_executions(state)
+        :results -> try_notify_results(state, data)
         _other -> state
       end
 
@@ -136,7 +137,7 @@ defmodule Coflux.Project.Orchestrator do
   end
 
   defp try_notify_results(state, data) do
-    execution_id = Map.fetch!(data, "execution_id")
+    execution_id = Map.fetch!(data, :execution_id)
     Map.update!(state, :waiting, fn waiting ->
       case Map.pop(waiting, execution_id) do
         {nil, waiting} ->
