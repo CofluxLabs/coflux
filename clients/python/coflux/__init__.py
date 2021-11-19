@@ -136,7 +136,7 @@ class Client:
     def _future_argument(self, argument, loop, execution_id):
         tag, value = argument
         if tag == 'json':
-            return Future(lambda: value, argument)
+            return Future(lambda: json.loads(value), argument)
         elif tag == 'blob':
             return Future(lambda: self._get_blob(value), argument, loop)
         elif tag == 'result':
