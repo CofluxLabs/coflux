@@ -200,16 +200,16 @@ class Client:
         print(f"Agent starting ({self._module_name}@{self._version})...")
         targets = {name: {'type': target['type']} for name, target in self._targets.items()}
         async with aiohttp.ClientSession() as self._session:
-            while True:
-                # TODO: heartbeat (and timeout) value?
-                async with self._session.ws_connect(self._url('ws', '/agent'), heartbeat=5) as websocket:
-                    print(f"Connected ({self._server_host}, {self._project_id}).")
-                    # TODO: reset channel?
-                    await self._channel.notify('register', self._module_name, self._version, targets)
-                    coros = [self._channel.run(websocket), self._send_acknowledgments()]
-                    done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
-                    for task in pending:
-                        task.cancel()
+            # TODO: heartbeat (and timeout) value?
+            async with self._session.ws_connect(self._url('ws', '/agent'), heartbeat=5) as websocket:
+                print(f"Connected ({self._server_host}, {self._project_id}).")
+                # TODO: reset channel?
+                await self._channel.notify('register', self._module_name, self._version, targets)
+                coros = [self._channel.run(websocket), self._send_acknowledgments()]
+                done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
+                print("Disconnected.")
+                for task in pending:
+                    task.cancel()
 
     async def schedule_child(self, execution_id, target, arguments, repository=None, cache_key=None):
         repository = repository or self._module_name
