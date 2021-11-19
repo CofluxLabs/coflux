@@ -145,18 +145,6 @@ defmodule Coflux.Project.Store do
         },
         prefix: project_id
       )
-
-      execution =
-        Repo.insert!(
-          %Models.Execution{
-            step_id: execution.step_id,
-            version: execution.version,
-            created_at: now
-          },
-          prefix: project_id
-        )
-
-      execution.id
     end)
   end
 
