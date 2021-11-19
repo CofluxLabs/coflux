@@ -317,7 +317,7 @@ defmodule Coflux.Project.Observer do
     end
   end
 
-  defp handle_insert(state, :acknowledgments, _data) do
+  defp handle_insert(state, :heartbeats, _data) do
     # TODO
     state
   end

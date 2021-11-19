@@ -94,11 +94,11 @@ defmodule Coflux.Project.Store do
     end)
   end
 
-  def acknowledge_executions(project_id, execution_ids) do
+  def record_heartbeats(project_id, execution_ids) do
     now = DateTime.utc_now()
 
     Repo.insert_all(
-      Models.Acknowledgment,
+      Models.Heartbeat,
       Enum.map(execution_ids, &%{execution_id: &1, created_at: now}),
       prefix: project_id
     )
@@ -121,13 +121,13 @@ defmodule Coflux.Project.Store do
   end
 
   def list_running_executions(project_id) do
-    # TODO: just get latest acknowledgment (if any; use inner_lateral_join?)
+    # TODO: just get latest heartbeat (if any; use inner_lateral_join?)
     query =
       from(e in Models.Execution,
         join: a in assoc(e, :assignment),
         left_join: r in assoc(e, :result),
         where: is_nil(r.execution_id),
-        preload: [:acknowledgments, assignment: a]
+        preload: [:heartbeats, assignment: a]
       )
 
     Repo.all(query, prefix: project_id)

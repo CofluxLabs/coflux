@@ -188,12 +188,12 @@ class Client:
         self._executions[execution_id] = (task, time.time())
         asyncio.create_task(self._put_result(task, execution_id))
 
-    async def _send_acknowledgments(self):
+    async def _send_heartbeats(self):
         while True:
             now = time.time()
             execution_ids = [id for id, (_, t) in self._executions.items() if now - t > 1]
             if execution_ids:
-                await self._channel.notify('acknowledge', execution_ids)
+                await self._channel.notify('record_heartbeats', execution_ids)
             await asyncio.sleep(1)
 
     async def run(self):
@@ -205,7 +205,7 @@ class Client:
                 print(f"Connected ({self._server_host}, {self._project_id}).")
                 # TODO: reset channel?
                 await self._channel.notify('register', self._module_name, self._version, targets)
-                coros = [self._channel.run(websocket), self._send_acknowledgments()]
+                coros = [self._channel.run(websocket), self._send_heartbeats()]
                 done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
                 print("Disconnected.")
                 for task in pending:

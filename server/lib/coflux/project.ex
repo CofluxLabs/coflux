@@ -57,8 +57,8 @@ defmodule Coflux.Project do
     Store.schedule_child(project_id, parent_execution_id, repository, target, arguments, opts)
   end
 
-  def acknowledge_exeutions(project_id, execution_ids) do
-    Store.acknowledge_executions(project_id, execution_ids)
+  def record_heartbeats(project_id, execution_ids) do
+    Store.record_heartbeats(project_id, execution_ids)
   end
 
   def put_result(project_id, execution_id, result) do

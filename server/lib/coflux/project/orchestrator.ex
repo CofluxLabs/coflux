@@ -79,7 +79,7 @@ defmodule Coflux.Project.Orchestrator do
 
     state.project_id
     |> Store.list_running_executions()
-    |> Enum.filter(&is_execution_unacknowledged(&1, now))
+    |> Enum.filter(&is_execution_running(&1, now))
     |> Enum.each(fn execution ->
       Store.abandon_execution(state.project_id, execution)
     end)
@@ -159,9 +159,9 @@ defmodule Coflux.Project.Orchestrator do
     end)
   end
 
-  defp is_execution_unacknowledged(execution, now, timeout_ms \\ 5_000) do
+  defp is_execution_running(execution, now, timeout_ms \\ 5_000) do
     last_activity_at =
-      execution.acknowledgments
+      execution.heartbeats
       |> Enum.map(& &1.created_at)
       |> Enum.max(DateTime, fn -> execution.assignment.created_at end)
 
