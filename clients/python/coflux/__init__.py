@@ -12,6 +12,9 @@ BLOB_THRESHOLD = 100
 
 execution_var = contextvars.ContextVar('execution')
 
+def _json_dumps(obj):
+    return json.dumps(obj, separators=(',', ':'))
+
 
 class Future:
     def __init__(self, resolve_fn, serialised=None, loop=None):
@@ -103,7 +106,7 @@ class Channel:
     async def _produce(self, websocket):
         while True:
             data = await (self._queue.get())
-            await websocket.send_str(json.dumps(data))
+            await websocket.send_str(_json_dumps(data))
 
 
 def _load_module(name):
@@ -116,7 +119,7 @@ def _serialise_argument(argument):
     if isinstance(argument, Future):
         return argument.serialise()
     else:
-        return ['json', json.dumps(argument)]
+        return ['json', _json_dumps(argument)]
 
 
 class Client:
@@ -168,7 +171,7 @@ class Client:
             if isinstance(value, Future):
                 type, value = value.serialise()
             else:
-                json_value = json.dumps(value)
+                json_value = _json_dumps(value)
                 if len(json_value) >= BLOB_THRESHOLD:
                     key = await self._put_blob(json_value)
                     type, value = "blob", key
