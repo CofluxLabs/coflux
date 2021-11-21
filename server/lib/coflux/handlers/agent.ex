@@ -26,10 +26,10 @@ defmodule Coflux.Handlers.Agent do
         end
 
       "schedule_child" ->
-        [execution_id, repository, target, arguments, cache_key] = message["params"]
+        [parent_id, repository, target, arguments, cache_key] = message["params"]
         arguments = Enum.map(arguments, &parse_argument/1)
 
-        case Project.schedule_child(state.project_id, execution_id, repository, target, arguments,
+        case Project.schedule_child(state.project_id, parent_id, repository, target, arguments,
                cache_key: cache_key
              ) do
           {:ok, execution_id} ->

@@ -1,6 +1,8 @@
 defmodule Coflux.Project.Observer do
   use GenServer, restart: :transient
 
+  alias Ecto.Changeset
+  alias Coflux.Project.Models
   alias Coflux.Project.Store
   alias Coflux.Listener
 
@@ -19,13 +21,7 @@ defmodule Coflux.Project.Observer do
        # topic → {value: ..., subscribers: {ref → pid}}
        topics: %{},
        # ref → topic
-       subscribers: %{},
-       # run_id → task_id
-       task_ids: %{},
-       # step_id → run_id
-       run_ids: %{},
-       # execution_id → step_id
-       step_ids: %{}
+       subscribers: %{}
      }}
   end
 
@@ -36,14 +32,8 @@ defmodule Coflux.Project.Observer do
       case Map.get(state.topics, topic) do
         nil ->
           case load_topic(topic, state.project_id) do
-            {:ok, value, ids} ->
+            {:ok, value} ->
               state = put_in(state.topics[topic], %{value: value, subscribers: %{ref => pid}})
-
-              state =
-                Enum.reduce(ids, state, fn {key, key_ids}, state ->
-                  update_in(state[key], &Map.merge(&1, key_ids))
-                end)
-
               {state, value}
           end
 
@@ -81,7 +71,7 @@ defmodule Coflux.Project.Observer do
       |> Store.list_tasks()
       |> Enum.map(&Map.take(&1, [:id, :repository, :target, :version]))
 
-    {:ok, tasks, %{}}
+    {:ok, tasks}
   end
 
   defp load_topic("tasks." <> task_id, project_id) do
@@ -93,7 +83,7 @@ defmodule Coflux.Project.Observer do
       |> Enum.map(fn run ->
         run
         |> Map.take([:id])
-        |> Map.put(:created_at, run.initial_step.created_at)
+        |> Map.put(:created_at, run.created_at)
       end)
 
     task =
@@ -102,56 +92,68 @@ defmodule Coflux.Project.Observer do
       |> Map.take([:id, :repository, :target, :version])
       |> Map.put(:runs, runs)
 
-    ids = %{task_ids: Map.new(runs, &{&1.id, task_id})}
-    {:ok, task, ids}
+    {:ok, task}
   end
 
   defp load_topic("runs." <> run_id, project_id) do
-    run =
-      project_id
-      |> Store.get_run(run_id)
-      |> Map.from_struct()
-
-    ids = %{task_ids: %{run.id => run.task_id}, run_ids: %{}, step_ids: %{}}
-
-    ids =
-      Enum.reduce(run.steps, ids, fn step, ids ->
-        ids = put_in(ids.run_ids[step.id], run.id)
-
-        Enum.reduce(step.executions, ids, fn execution, ids ->
-          put_in(ids.step_ids[execution.id], step.id)
-        end)
-      end)
+    run = Store.get_run(project_id, run_id)
+    task = Store.get_task(project_id, run.task_id)
+    steps = Store.get_steps(project_id, run_id)
+    executions = Store.get_executions(project_id, run_id)
+    dependencies = Store.get_dependencies(project_id, run_id)
+    assignments = Store.get_assignments(project_id, run_id)
+    results = Store.get_results(project_id, run_id)
 
     result =
       run
-      |> Map.take([:id])
-      |> Map.put(:task, Map.take(run.task, [:id, :repository, :target, :version]))
+      |> Map.take([:id, :tags, :created_at])
+      |> Map.put(:task, Map.take(task, [:id, :repository, :target, :version]))
       |> Map.put(
         :steps,
-        Enum.map(run.steps, fn step ->
+        Enum.map(steps, fn step ->
           step
-          |> Map.take([:id, :parent_id, :repository, :target, :created_at])
-          |> Map.put(:cached_step, step.cached_step && Map.take(step.cached_step, [:id, :run_id]))
+          |> Map.take([:repository, :target, :created_at])
+          |> Map.put(:id, Models.Step.id(step))
+          |> Map.put(:parent_id, Models.Step.parent_id(step))
+          |> Map.put(:cached_id, Models.Step.cached_id(step))
           # TODO: extract arguments
           |> Map.put(:arguments, Enum.map(step.arguments, & &1))
           |> Map.put(
             :executions,
-            Enum.map(step.executions, fn execution ->
+            executions
+            |> Enum.filter(&(&1.step_id == step.id))
+            |> Enum.map(fn execution ->
               execution
-              |> Map.take([:id, :created_at])
-              |> Map.put(:dependency_ids, Enum.map(execution.dependencies, & &1.dependency_id))
-              |> Map.put(:assigned_at, execution.assignment && execution.assignment.created_at)
+              |> Map.take([:created_at, :attempt])
+              |> Map.put(:id, Models.Execution.id(execution))
+              |> Map.put(
+                :dependency_ids,
+                dependencies
+                |> Enum.filter(&(&1.step_id == step.id && &1.attempt == execution.attempt))
+                |> Enum.map(&Models.Dependency.to_execution_id(&1))
+              )
+              |> Map.put(
+                :assigned_at,
+                Enum.find_value(
+                  assignments,
+                  &(&1.step_id == step.id && &1.attempt == execution.attempt &&
+                      &1.created_at)
+                )
+              )
               |> Map.put(
                 :result,
-                execution.result && Map.take(execution.result, [:type, :value, :created_at])
+                Enum.find_value(
+                  results,
+                  &(&1.step_id == step.id && &1.attempt == execution.attempt &&
+                      Map.take(&1, [:type, :value, :created_at]))
+                )
               )
             end)
           )
         end)
       )
 
-    {:ok, result, ids}
+    {:ok, result}
   end
 
   defp put_value(path, target, value) do
@@ -198,123 +200,98 @@ defmodule Coflux.Project.Observer do
     end)
   end
 
+  defp load_model(type, data) do
+    type
+    |> struct()
+    |> Changeset.cast(data, type.__schema__(:fields))
+    |> Changeset.apply_changes()
+  end
+
   defp handle_insert(state, :tasks, data) do
+    task = load_model(Models.Task, data)
+
     update_topic(state, "tasks", fn tasks ->
-      if !Enum.any?(tasks, &(&1.id == data.id)) do
+      if !Enum.any?(tasks, &(&1.id == task.id)) do
         # TODO: order?
         index = Enum.count(tasks)
-        {[index], Map.take(data, [:id, :repository, :version, :target])}
+        {[index], Map.take(task, [:id, :repository, :version, :target])}
       end
     end)
   end
 
   defp handle_insert(state, :runs, data) do
-    state =
-      update_topic(state, "tasks.#{data.task_id}", fn task ->
-        if !Enum.any?(task.runs, &(&1.id == data.id)) do
-          run =
-            data
-            |> Map.take([:id])
-            |> Map.put(:created_at, nil)
+    run = load_model(Models.Run, data)
 
-          # TODO: order?
-          index = Enum.count(task.runs)
-          {[:runs, index], run}
-        end
-      end)
+    update_topic(state, "tasks.#{run.task_id}", fn task ->
+      if !Enum.any?(task.runs, &(&1.id == run.id)) do
+        run = Map.take(run, [:id, :created_at])
 
-    if Map.has_key?(state.topics, "tasks.#{data.task_id}") do
-      put_in(state, [:task_ids, data.id], data.task_id)
-    else
-      state
-    end
+        # TODO: order?
+        index = Enum.count(task.runs)
+        {[:runs, index], run}
+      end
+    end)
   end
 
   defp handle_insert(state, :steps, data) do
-    state =
-      case Map.fetch(state.task_ids, data.run_id) do
-        {:ok, task_id} ->
-          update_topic(state, "tasks.#{task_id}", fn task ->
-            run_index = Enum.find_index(task.runs, &(&1.id == data.run_id))
-            run = Enum.fetch!(task.runs, run_index)
+    step = load_model(Models.Step, data)
 
-            if is_nil(run.created_at) do
-              {[:runs, run_index, :created_at], data.created_at}
-            end
-          end)
+    update_topic(state, "runs.#{step.run_id}", fn run ->
+      step_id = Models.Step.id(step)
 
-        :error ->
-          state
+      if !Enum.any?(run.steps, &(&1.id == step_id)) do
+        # TODO: order?
+        step =
+          step
+          |> Map.take([:repository, :target, :created_at])
+          |> Map.put(:id, step_id)
+          |> Map.put(:parent_id, Models.Step.parent_id(step))
+          |> Map.put(:cached_id, Models.Step.cached_id(step))
+          # TODO: compose arguments
+          |> Map.put(:arguments, Enum.map(step.arguments, & &1))
+          |> Map.put(:executions, [])
+
+        index = Enum.count(run.steps)
+        {[:steps, index], step}
       end
-
-    state =
-      update_topic(state, "runs.#{data.run_id}", fn run ->
-        if !Enum.any?(run.steps, &(&1.id == data.id)) do
-          # TODO: order?
-          step =
-            data
-            |> Map.take([:id, :parent_id, :repository, :target, :created_at])
-            # TODO: run_id
-            |> Map.put(
-              :cached_step,
-              data.cached_step_id && %{id: data.cached_step_id, run_id: nil}
-            )
-            # TODO: compose arguments
-            |> Map.put(:arguments, Enum.map(data.arguments, & &1))
-            |> Map.put(:executions, [])
-
-          index = Enum.count(run.steps)
-          {[:steps, index], step}
-        end
-      end)
-
-    if Map.has_key?(state.topics, "runs.#{data.run_id}") do
-      put_in(state, [:run_ids, data.id], data.run_id)
-    else
-      state
-    end
+    end)
   end
 
   defp handle_insert(state, :executions, data) do
-    case Map.fetch(state.run_ids, data.step_id) do
-      {:ok, run_id} ->
-        state
-        |> update_topic("runs.#{run_id}", fn run ->
-          step_index = Enum.find_index(run.steps, &(&1.id == data.step_id))
-          step = Enum.fetch!(run.steps, step_index)
+    execution = load_model(Models.Execution, data)
 
-          if !Enum.any?(step.executions, &(&1.id == data.id)) do
-            execution =
-              data
-              |> Map.take([:id, :created_at])
-              |> Map.put(:dependency_ids, [])
-              |> Map.put(:assigned_at, nil)
-              |> Map.put(:result, nil)
+    update_topic(state, "runs.#{execution.run_id}", fn run ->
+      step_id = Models.Execution.step_id(execution)
+      step_index = Enum.find_index(run.steps, &(&1.id == step_id))
+      step = Enum.fetch!(run.steps, step_index)
+      execution_id = Models.Execution.id(execution)
 
-            execution_index = Enum.count(step.executions)
-            {[:steps, step_index, :executions, execution_index], execution}
-          end
-        end)
-        |> put_in([:step_ids, data.id], data.step_id)
+      if !Enum.any?(step.executions, &(&1.id == execution_id)) do
+        execution =
+          execution
+          |> Map.take([:created_at, :attempt])
+          |> Map.put(:id, execution_id)
+          |> Map.put(:dependency_ids, [])
+          |> Map.put(:assigned_at, nil)
+          |> Map.put(:result, nil)
 
-      :error ->
-        state
-    end
+        execution_index = Enum.count(step.executions)
+        {[:steps, step_index, :executions, execution_index], execution}
+      end
+    end)
   end
 
   defp handle_insert(state, :assignments, data) do
-    with {:ok, step_id} <- Map.fetch(state.step_ids, data.execution_id),
-         {:ok, run_id} <- Map.fetch(state.run_ids, step_id) do
-      update_topic(state, "runs.#{run_id}", fn run ->
-        step_index = Enum.find_index(run.steps, &(&1.id == step_id))
-        step = Enum.fetch!(run.steps, step_index)
-        execution_index = Enum.find_index(step.executions, &(&1.id == data.execution_id))
-        {[:steps, step_index, :executions, execution_index, :assigned_at], data.created_at}
-      end)
-    else
-      :error ->
-        state
-    end
+    assignment = load_model(Models.Assignment, data)
+
+    update_topic(state, "runs.#{assignment.run_id}", fn run ->
+      step_id = Models.Assignment.step_id(assignment)
+      step_index = Enum.find_index(run.steps, &(&1.id == step_id))
+      step = Enum.fetch!(run.steps, step_index)
+      execution_id = Models.Assignment.execution_id(assignment)
+      execution_index = Enum.find_index(step.executions, &(&1.id == execution_id))
+      {[:steps, step_index, :executions, execution_index, :assigned_at], assignment.created_at}
+    end)
   end
 
   defp handle_insert(state, :heartbeats, _data) do
@@ -323,40 +300,37 @@ defmodule Coflux.Project.Observer do
   end
 
   defp handle_insert(state, :results, data) do
-    with {:ok, step_id} <- Map.fetch(state.step_ids, data.execution_id),
-         {:ok, run_id} <- Map.fetch(state.run_ids, step_id) do
-      update_topic(state, "runs.#{run_id}", fn run ->
-        result = Map.take(data, [:type, :value, :created_at])
-        step_index = Enum.find_index(run.steps, &(&1.id == step_id))
-        step = Enum.fetch!(run.steps, step_index)
-        execution_index = Enum.find_index(step.executions, &(&1.id == data.execution_id))
-        {[:steps, step_index, :executions, execution_index, :result], result}
-      end)
-    else
-      :error ->
-        state
-    end
+    result = load_model(Models.Result, data)
+
+    update_topic(state, "runs.#{result.run_id}", fn run ->
+      step_id = Models.Result.step_id(result)
+      step_index = Enum.find_index(run.steps, &(&1.id == step_id))
+      step = Enum.fetch!(run.steps, step_index)
+      execution_id = Models.Result.execution_id(result)
+      execution_index = Enum.find_index(step.executions, &(&1.id == execution_id))
+      result = Map.take(result, [:type, :value, :created_at])
+      {[:steps, step_index, :executions, execution_index, :result], result}
+    end)
   end
 
   defp handle_insert(state, :dependencies, data) do
-    with {:ok, step_id} <- Map.fetch(state.step_ids, data.execution_id),
-         {:ok, run_id} <- Map.fetch(state.run_ids, step_id) do
-      update_topic(state, "runs.#{run_id}", fn run ->
-        step_index = Enum.find_index(run.steps, &(&1.id == step_id))
-        step = Enum.fetch!(run.steps, step_index)
-        execution_index = Enum.find_index(step.executions, &(&1.id == data.execution_id))
-        execution = Enum.fetch!(step.executions, execution_index)
+    dependency = load_model(Models.Dependency, data)
 
-        if data.dependency_id not in execution.dependency_ids do
-          dependency_index = Enum.count(execution.dependency_ids)
+    update_topic(state, "runs.#{dependency.run_id}", fn run ->
+      step_id = Models.Dependency.from_step_id(dependency)
+      step_index = Enum.find_index(run.steps, &(&1.id == step_id))
+      step = Enum.fetch!(run.steps, step_index)
+      execution_id = Models.Dependency.from_execution_id(dependency)
+      execution_index = Enum.find_index(step.executions, &(&1.id == execution_id))
+      execution = Enum.fetch!(step.executions, execution_index)
+      dependency_id = Models.Dependency.to_execution_id(dependency)
 
-          {[:steps, step_index, :executions, execution_index, :dependency_ids, dependency_index],
-           data.dependency_id}
-        end
-      end)
-    else
-      :error ->
-        state
-    end
+      if dependency_id not in execution.dependency_ids do
+        dependency_index = Enum.count(execution.dependency_ids)
+
+        {[:steps, step_index, :executions, execution_index, :dependency_ids, dependency_index],
+         dependency_id}
+      end
+    end)
   end
 end

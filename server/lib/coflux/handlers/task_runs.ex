@@ -26,7 +26,7 @@ defmodule Coflux.Handlers.TaskRuns do
       |> Enum.map(fn run ->
         %{
           "id" => run.id,
-          "createdAt" => run.initial_step.created_at
+          "createdAt" => run.created_at
         }
       end)
 

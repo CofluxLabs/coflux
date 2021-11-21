@@ -63,7 +63,7 @@ function Node({ node, step }: NodeProps) {
     >
       {({ open }) => (
         <>
-          <Popover.Button className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestExecution?.result || null, !!step.cachedStep, open))}>
+          <Popover.Button className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestExecution?.result || null, !!step.cachedId, open))}>
             <div className={classNames('flex-1 truncate', { 'font-bold': !step.parentId })}>
               <span className="font-mono">{step.target}</span>
             </div>

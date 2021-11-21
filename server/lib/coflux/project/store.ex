@@ -3,19 +3,14 @@ defmodule Coflux.Project.Store do
   alias Coflux.Repo.Projects, as: Repo
 
   import Ecto.Query, only: [from: 2]
+  import Coflux.Project.Utils
 
   def list_tasks(project_id) do
     Repo.all(Models.Task, prefix: project_id)
   end
 
   def list_task_runs(project_id, task_id) do
-    query =
-      from(
-        r in Models.Run,
-        where: r.task_id == ^task_id,
-        preload: [:initial_step]
-      )
-
+    query = from(r in Models.Run, where: r.task_id == ^task_id)
     Repo.all(query, prefix: project_id)
   end
 
@@ -24,12 +19,33 @@ defmodule Coflux.Project.Store do
   end
 
   def get_run(project_id, run_id) do
-    Models.Run
-    |> Repo.get!(run_id, prefix: project_id)
-    |> Repo.preload([
-      :task,
-      steps: [:cached_step, executions: [:dependencies, :assignment, :result]]
-    ])
+    Repo.get!(Models.Run, run_id, prefix: project_id)
+  end
+
+  def get_steps(project_id, run_id, step_ids \\ nil) do
+    query = from(s in Models.Step, where: s.run_id == ^run_id)
+    query = if step_ids, do: from(s in query, where: s.id in ^step_ids), else: query
+    Repo.all(query, prefix: project_id)
+  end
+
+  def get_executions(project_id, run_id) do
+    query = from(e in Models.Execution, where: e.run_id == ^run_id)
+    Repo.all(query, prefix: project_id)
+  end
+
+  def get_dependencies(project_id, run_id) do
+    query = from(d in Models.Dependency, where: d.run_id == ^run_id)
+    Repo.all(query, prefix: project_id)
+  end
+
+  def get_assignments(project_id, run_id) do
+    query = from(a in Models.Assignment, where: a.run_id == ^run_id)
+    Repo.all(query, prefix: project_id)
+  end
+
+  def get_results(project_id, run_id) do
+    query = from(r in Models.Result, where: r.run_id == ^run_id)
+    Repo.all(query, prefix: project_id)
   end
 
   def create_tasks(project_id, repository, version, targets) do
@@ -56,39 +72,46 @@ defmodule Coflux.Project.Store do
 
     Repo.transaction(fn ->
       task = Repo.get!(Models.Task, task_id, prefix: project_id)
-      run = Repo.insert!(%Models.Run{task_id: task_id, tags: run_tags}, prefix: project_id)
+      now = DateTime.utc_now()
 
-      execution_id =
-        schedule_step(project_id, run, task.repository, task.target, arguments,
-          tags: task_tags,
-          priority: priority,
-          version: version
+      run =
+        Repo.insert!(
+          %Models.Run{
+            id: Base.encode32(:rand.bytes(10)),
+            task_id: task_id,
+            tags: run_tags,
+            created_at: now
+          },
+          prefix: project_id
         )
 
-      {run.id, execution_id}
+      schedule_step(project_id, run, task.repository, task.target, arguments,
+        now: now,
+        tags: task_tags,
+        priority: priority,
+        version: version
+      )
     end)
-    |> case do
-      {:ok, {run_id, execution_id}} ->
-        {:ok, run_id, execution_id}
-    end
   end
 
-  def schedule_child(project_id, parent_execution_id, repository, target, arguments, opts \\ []) do
+  def schedule_child(project_id, parent_id, repository, target, arguments, opts \\ []) do
+    {run_id, parent_step_id, parent_attempt} = decode_execution_id(parent_id)
     tags = Keyword.get(opts, :tags, [])
     priority = Keyword.get(opts, :priority, 0)
     version = Keyword.get(opts, :keyword)
     cache_key = Keyword.get(opts, :cache_key)
 
     Repo.transaction(fn ->
-      parent_execution = Repo.get!(Models.Execution, parent_execution_id, prefix: project_id)
-      parent_step = Repo.get!(Models.Step, parent_execution.step_id, prefix: project_id)
-      run = Repo.get!(Models.Run, parent_step.run_id, prefix: project_id)
+      run = Repo.get!(Models.Run, run_id, prefix: project_id)
+      now = DateTime.utc_now()
 
       schedule_step(project_id, run, repository, target, arguments,
+        now: now,
         tags: tags,
         priority: priority,
         version: version,
-        parent_id: parent_execution_id,
+        parent_step_id: parent_step_id,
+        parent_attempt: parent_attempt,
         cache_key: cache_key
       )
     end)
@@ -99,7 +122,11 @@ defmodule Coflux.Project.Store do
 
     Repo.insert_all(
       Models.Heartbeat,
-      Enum.map(execution_ids, &%{execution_id: &1, created_at: now}),
+      execution_ids
+      |> Enum.map(&decode_execution_id/1)
+      |> Enum.map(fn {run_id, step_id, attempt} ->
+        %{run_id: run_id, step_id: step_id, attempt: attempt, created_at: now}
+      end),
       prefix: project_id
     )
   end
@@ -109,25 +136,32 @@ defmodule Coflux.Project.Store do
 
     query =
       from(e in Models.Execution,
-        join: s in assoc(e, :step),
-        left_join: a in assoc(e, :assignment),
+        join: s in Models.Step,
+        on: s.run_id == e.run_id and s.id == e.step_id,
+        left_join: a in Models.Assignment,
+        on: a.run_id == e.run_id and a.step_id == e.step_id and a.attempt == e.attempt,
         where: e.execute_after <= ^now or is_nil(e.execute_after),
-        where: is_nil(a.execution_id),
+        where: is_nil(a.attempt),
         order_by: [desc: s.priority, asc: s.created_at],
-        preload: [:step]
+        preload: [step: s]
       )
 
     Repo.all(query, prefix: project_id)
   end
 
   def list_running_executions(project_id) do
-    # TODO: just get latest heartbeat (if any; use inner_lateral_join?)
     query =
       from(e in Models.Execution,
-        join: a in assoc(e, :assignment),
-        left_join: r in assoc(e, :result),
-        where: is_nil(r.execution_id),
-        preload: [:heartbeats, assignment: a]
+        join: a in Models.Assignment,
+        on: a.run_id == e.run_id and a.step_id == e.step_id and a.attempt == e.attempt,
+        left_join: r in Models.Result,
+        on: r.run_id == e.run_id and r.step_id == e.step_id and r.attempt == e.attempt,
+        left_join: h in Models.Heartbeat,
+        on: h.run_id == e.run_id and h.step_id == e.step_id and h.attempt == e.attempt,
+        where: is_nil(r.attempt),
+        distinct: [e.run_id, e.step_id, e.attempt],
+        preload: [assignment: a],
+        select: {e, h.created_at}
       )
 
     Repo.all(query, prefix: project_id)
@@ -139,7 +173,9 @@ defmodule Coflux.Project.Store do
     Repo.transaction(fn ->
       Repo.insert!(
         %Models.Result{
-          execution_id: execution.id,
+          run_id: execution.run_id,
+          step_id: execution.step_id,
+          attempt: execution.attempt,
           type: 4,
           created_at: now
         },
@@ -148,10 +184,12 @@ defmodule Coflux.Project.Store do
     end)
   end
 
-  def assign_execution(project_id, execution_id) do
+  def assign_execution(project_id, execution) do
     case Repo.insert(
            %Models.Assignment{
-             execution_id: execution_id,
+             run_id: execution.run_id,
+             step_id: execution.step_id,
+             attempt: execution.attempt,
              created_at: DateTime.utc_now()
            },
            prefix: project_id
@@ -162,11 +200,14 @@ defmodule Coflux.Project.Store do
   end
 
   def put_result(project_id, execution_id, result) do
+    {run_id, step_id, attempt} = decode_execution_id(execution_id)
     {type, value, extra} = parse_result(result)
 
     Repo.insert!(
       %Models.Result{
-        execution_id: execution_id,
+        run_id: run_id,
+        step_id: step_id,
+        attempt: attempt,
         type: type,
         value: value,
         extra: extra,
@@ -177,17 +218,27 @@ defmodule Coflux.Project.Store do
   end
 
   def get_result(project_id, execution_id) do
-    case Repo.get(Models.Result, execution_id, prefix: project_id) do
+    {run_id, step_id, attempt} = decode_execution_id(execution_id)
+    clauses = [run_id: run_id, step_id: step_id, attempt: attempt]
+
+    case Repo.get_by(Models.Result, clauses, prefix: project_id) do
       nil -> nil
       result -> compose_result(result)
     end
   end
 
-  def record_dependency(project_id, execution_id, dependency_id) do
+  def record_dependency(project_id, from, to) do
+    {run_id, step_id, attempt} = decode_execution_id(from)
+    {dependency_run_id, dependency_step_id, dependency_attempt} = decode_execution_id(to)
+
     Repo.insert!(
       %Models.Dependency{
-        execution_id: execution_id,
-        dependency_id: dependency_id,
+        run_id: run_id,
+        step_id: step_id,
+        attempt: attempt,
+        dependency_run_id: dependency_run_id,
+        dependency_step_id: dependency_step_id,
+        dependency_attempt: dependency_attempt,
         created_at: DateTime.utc_now()
       },
       on_conflict: :nothing,
@@ -223,12 +274,14 @@ defmodule Coflux.Project.Store do
   end
 
   defp schedule_step(project_id, run, repository, target, arguments, opts) do
+    now = Keyword.fetch!(opts, :now)
     tags = Keyword.fetch!(opts, :tags)
     priority = Keyword.fetch!(opts, :priority)
     version = Keyword.fetch!(opts, :version)
-    parent_id = Keyword.get(opts, :parent_id)
+    parent_step_id = Keyword.get(opts, :parent_step_id)
+    parent_attempt = Keyword.get(opts, :parent_attempt)
+
     cache_key = Keyword.get(opts, :cache_key)
-    now = DateTime.utc_now()
 
     cached_step =
       if cache_key do
@@ -247,13 +300,16 @@ defmodule Coflux.Project.Store do
       Repo.insert!(
         %Models.Step{
           run_id: run.id,
-          parent_id: parent_id,
+          id: Base.encode32(:rand.bytes(5)),
+          parent_step_id: parent_step_id,
+          parent_attempt: parent_attempt,
           repository: repository,
           target: target,
           arguments: Enum.map(arguments, &parse_argument/1),
           tags: run.tags ++ tags,
           priority: priority,
           cache_key: unless(cached_step, do: cache_key),
+          cached_run_id: if(cached_step, do: cached_step.run_id),
           cached_step_id: if(cached_step, do: cached_step.id),
           created_at: now
         },
@@ -266,7 +322,7 @@ defmodule Coflux.Project.Store do
         query =
           from(
             e in Models.Execution,
-            where: e.step_id == ^cached_step.id,
+            where: e.run_id == ^cached_step.run_id and e.step_id == ^cached_step.id,
             order_by: [desc: e.created_at],
             limit: 1
           )
@@ -275,7 +331,9 @@ defmodule Coflux.Project.Store do
       else
         Repo.insert!(
           %Models.Execution{
+            run_id: step.run_id,
             step_id: step.id,
+            attempt: 1,
             version: version,
             created_at: now
           },
@@ -283,6 +341,7 @@ defmodule Coflux.Project.Store do
         )
       end
 
-    execution.id
+    {execution.run_id,
+     encode_execution_id(execution.run_id, execution.step_id, execution.attempt)}
   end
 end

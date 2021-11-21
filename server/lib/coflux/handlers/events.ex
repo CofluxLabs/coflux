@@ -12,7 +12,6 @@ defmodule Coflux.Handlers.Events do
     {[],
      %{
        project_id: project_id,
-      #  last_subscription_id: 0,
        subscription_ids: %{},
        subscription_refs: %{}
      }}
@@ -87,7 +86,7 @@ defmodule Coflux.Handlers.Events do
       is_list(value) ->
         Enum.map(value, &camelize/1)
 
-      is_atom(value) ->
+      is_atom(value) && value not in [true, false, nil] ->
         Inflex.camelize(value, :lower)
 
       true ->

@@ -68,7 +68,7 @@ export default function RunTimeline({ run }: Props) {
   const totalMillis = latestTime.diff(earliestTime).toMillis();
   return (
     <div className="relative divide-y divide-gray-200">
-      {run.steps.filter((s) => !s.cachedStep).map((step) => {
+      {run.steps.filter((s) => !s.cachedId).map((step) => {
         const lastExecution = step.executions.length ? step.executions[step.executions.length - 1] : null;
         const stepFinishedAt = (lastExecution ? executionTimes[lastExecution.id][2] : null) || latestTime;
         return (

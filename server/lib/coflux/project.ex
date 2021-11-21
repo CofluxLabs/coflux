@@ -43,18 +43,31 @@ defmodule Coflux.Project do
   end
 
   def schedule_task(project_id, task_id, arguments \\ []) do
-    Store.schedule_task(project_id, task_id, arguments)
+    with {:ok, {run_id, execution_id}} <-
+           Store.schedule_task(project_id, task_id, arguments) do
+      {:ok, run_id, execution_id}
+    end
   end
 
   def schedule_child(
         project_id,
-        parent_execution_id,
+        parent_id,
         repository,
         target,
         arguments \\ [],
         opts \\ []
       ) do
-    Store.schedule_child(project_id, parent_execution_id, repository, target, arguments, opts)
+    with {:ok, {_run_id, execution_id}} <-
+           Store.schedule_child(
+             project_id,
+             parent_id,
+             repository,
+             target,
+             arguments,
+             opts
+           ) do
+      {:ok, execution_id}
+    end
   end
 
   def record_heartbeats(project_id, execution_ids) do
@@ -65,9 +78,9 @@ defmodule Coflux.Project do
     Store.put_result(project_id, execution_id, result)
   end
 
-  def get_result(project_id, execution_id, from_execution_id \\ nil, pid) do
-    if from_execution_id do
-      Store.record_dependency(project_id, from_execution_id, execution_id)
+  def get_result(project_id, execution_id, from \\ nil, pid) do
+    if from do
+      Store.record_dependency(project_id, from, execution_id)
     end
 
     # TODO: try to get from database first?

@@ -1,6 +1,8 @@
 defmodule Coflux.Project.Orchestrator do
   use GenServer, restart: :transient
 
+  alias Ecto.Changeset
+  alias Coflux.Project.Models
   alias Coflux.Project.Store
   alias Coflux.Listener
 
@@ -79,8 +81,8 @@ defmodule Coflux.Project.Orchestrator do
 
     state.project_id
     |> Store.list_running_executions()
-    |> Enum.filter(&is_execution_running(&1, now))
-    |> Enum.each(fn execution ->
+    |> Enum.filter(&execution_abandoned?(&1, now))
+    |> Enum.each(fn {execution, _} ->
       Store.abandon_execution(state.project_id, execution)
     end)
 
@@ -108,9 +110,10 @@ defmodule Coflux.Project.Orchestrator do
 
       with {:ok, pid_map} <- Map.fetch(state.targets, {step.repository, step.target}),
            {:ok, pid} <- find_agent(pid_map),
-           :ok <- Store.assign_execution(state.project_id, execution.id) do
+           :ok <- Store.assign_execution(state.project_id, execution) do
+        execution_id = Models.Execution.id(execution)
         arguments = prepare_arguments(step.arguments)
-        send(pid, {:execute, execution.id, step.target, arguments})
+        send(pid, {:execute, execution_id, step.target, arguments})
       end
     end)
 
@@ -137,7 +140,13 @@ defmodule Coflux.Project.Orchestrator do
   end
 
   defp try_notify_results(state, data) do
-    execution_id = Map.fetch!(data, :execution_id)
+    result =
+      %Models.Result{}
+      |> Changeset.cast(data, Models.Result.__schema__(:fields))
+      |> Changeset.apply_changes()
+
+    execution_id = Models.Result.execution_id(result)
+
     Map.update!(state, :waiting, fn waiting ->
       case Map.pop(waiting, execution_id) do
         {nil, waiting} ->
@@ -146,7 +155,7 @@ defmodule Coflux.Project.Orchestrator do
         {execution_waiting, waiting} ->
           case get_result(state.project_id, execution_id) do
             {:pending, execution_id} ->
-              Map.put(waiting, execution_id, execution_waiting)
+              Map.update(waiting, execution_id, execution_waiting, &(&1 ++ execution_waiting))
 
             {:resolved, result} ->
               Enum.each(execution_waiting, fn {pid, ref} ->
@@ -159,17 +168,15 @@ defmodule Coflux.Project.Orchestrator do
     end)
   end
 
-  defp is_execution_running(execution, now, timeout_ms \\ 5_000) do
-    last_activity_at =
-      execution.heartbeats
-      |> Enum.map(& &1.created_at)
-      |> Enum.max(DateTime, fn -> execution.assignment.created_at end)
-
+  defp execution_abandoned?({execution, latest_heartbeat_at}, now, timeout_ms \\ 5_000) do
+    last_activity_at = latest_heartbeat_at || execution.assignment.created_at
     DateTime.diff(now, last_activity_at, :millisecond) > timeout_ms
   end
 
   defp get_result(project_id, execution_id) do
-    case Store.get_result(project_id, execution_id) do
+    result = Store.get_result(project_id, execution_id)
+
+    case result do
       nil -> {:pending, execution_id}
       {:result, execution_id} -> get_result(project_id, execution_id)
       result -> {:resolved, result}

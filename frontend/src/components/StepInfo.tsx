@@ -16,7 +16,7 @@ export default function StepInfo({ step, className, style }: Props) {
     <div className={classNames('divide-y overflow-hidden', className)} style={style}>
       <div className="px-3 py-3 flex items-center">
         <h2 className="flex-1"><span className="font-mono text-xl">{step.target}</span> <span className="text-gray-500">({step.repository})</span></h2>
-        {step.cachedStep ? (
+        {step.cachedId ? (
           <Badge intent="none" label="Cached" />
         ) : !latestExecution ? (
           <Badge intent="info" label="Scheduling" />
@@ -42,9 +42,9 @@ export default function StepInfo({ step, className, style }: Props) {
           </ol>
         </div>
       )}
-      {step.executions.map((execution, index) => (
+      {step.executions.map((execution) => (
         <div key={execution.id} className="p-3">
-          <h3 className="uppercase text-sm font-bold text-gray-400">Execution {index + 1}</h3>
+          <h3 className="uppercase text-sm font-bold text-gray-400">Attempt {execution.attempt}</h3>
           <p>Scheduled: {execution.createdAt}</p>
           {execution.assignedAt && (
             <p>Started: {execution.assignedAt}</p>

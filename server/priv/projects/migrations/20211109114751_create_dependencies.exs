@@ -3,8 +3,12 @@ defmodule Coflux.Repo.Projects.Migrations.CreateDependencies do
 
   def change do
     create table("dependencies", primary_key: false) do
-      add :execution_id, references("executions", on_delete: :delete_all), primary_key: true, null: false
-      add :dependency_id, references("executions", on_delete: :delete_all), primary_key: true, null: false
+      add :run_id, :bytea, null: false, primary_key: true
+      add :step_id, :bytea, null: false, primary_key: true
+      add :attempt, references("executions", column: :attempt, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, step_id: :step_id]), null: false, primary_key: true
+      add :dependency_run_id, :bytea, null: false, primary_key: true
+      add :dependency_step_id, :bytea, null: false, primary_key: true
+      add :dependency_attempt, references("executions", column: :attempt, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, step_id: :step_id]), null: false, primary_key: true
       add :created_at, :utc_datetime_usec, null: false
     end
 

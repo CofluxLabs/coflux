@@ -21,13 +21,13 @@ export type Run = {
 
 export type Step = {
   id: string;
-  parentId: string;
+  parentId: string | null;
   repository: string;
   target: string;
   createdAt: string;
   arguments: Argument[];
   executions: Execution[];
-  cachedStep: { id: string; runId: string; } | null;
+  cachedId: string | null;
 }
 
 export type Argument = {
@@ -37,6 +37,7 @@ export type Argument = {
 
 export type Execution = {
   id: string;
+  attempt: number;
   createdAt: string;
   dependencyIds: string[];
   assignedAt: string | null;
