@@ -37,7 +37,7 @@ export default function StepInfo({ step, className, style }: Props) {
           <h3 className="uppercase text-sm font-bold text-gray-400">Arguments</h3>
           <ol className="list-disc list-inside ml-1">
             {step.arguments.map((argument, index) => (
-              <li key={index}><span className="font-mono truncate">{argument.value}</span></li>
+              <li key={index}><span className="font-mono truncate">{argument}</span></li>
             ))}
           </ol>
         </div>

@@ -25,14 +25,9 @@ export type Step = {
   repository: string;
   target: string;
   createdAt: string;
-  arguments: Argument[];
+  arguments: string[];
   executions: Execution[];
   cachedId: string | null;
-}
-
-export type Argument = {
-  type: number; // TODO
-  value: string;
 }
 
 export type Execution = {
