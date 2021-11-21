@@ -50,9 +50,13 @@ defmodule Coflux.Handlers.Events do
             {[], state}
         end
 
-      "startRun" ->
-        # TODO
-        {[], state}
+      "start_run" ->
+        [task_id] = message["params"]
+
+        case Project.schedule_task(state.project_id, task_id) do
+          {:ok, run_id, _execution_id} ->
+            {[result_message(message["id"], run_id)], state}
+        end
     end
   end
 

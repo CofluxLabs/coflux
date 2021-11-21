@@ -37,9 +37,7 @@ type Props = {
 export default function TasksList({ projectId, taskId }: Props) {
   const tasks = useSubscription<models.Task[]>('tasks');
   const agents: models.Agent[] = []; // TODO
-  if (!tasks) {
-    return <div>Error</div>
-  } else if (!tasks) {
+  if (tasks === undefined) {
     return <div>Loading...</div>;
   } else {
     return (

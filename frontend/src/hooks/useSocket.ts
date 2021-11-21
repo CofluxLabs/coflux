@@ -2,23 +2,10 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 
 import Socket, { SocketStatus } from '../socket';
 
-export const SocketContext = createContext<[Socket | undefined, SocketStatus | undefined]>([undefined, undefined]);
+export const SocketContext = createContext<{ socket?: Socket, status?: SocketStatus }>({});
 
-export default function useSocket(projectId: string | null) {
-  const [status, setStatus] = useState<SocketStatus>('disconnected');
-  const [socket, setSocket] = useState<Socket>();
-  useEffect(() => {
-    if (projectId) {
-      const socket = new Socket(projectId);
-      socket.addListener('connecting', () => setStatus('connecting'));
-      socket.addListener('connected', () => setStatus('connected'));
-      socket.addListener('disconnected', () => setStatus('disconnected'));
-      setStatus('connecting');
-      setSocket(socket);
-      return () => socket.close();
-    }
-  }, [projectId]);
-  return { status, socket };
+export default function useSocket() {
+  return useContext(SocketContext);
 }
 
 function applyUpdate(state: any, path: (string | number)[], value: any): any {
@@ -41,7 +28,7 @@ function applyUpdate(state: any, path: (string | number)[], value: any): any {
 let lastSubscriptionId = 0;
 
 export function useSubscription<T>(topic: string) {
-  const [socket, status] = useContext(SocketContext);
+  const { socket, status } = useSocket();
   const [state, setState] = useState<T>();
   const subscribe = useCallback((socket, topic, subscriptionId) => {
     socket.request('subscribe', [topic, subscriptionId], setState);

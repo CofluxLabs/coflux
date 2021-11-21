@@ -1,6 +1,6 @@
-import React, { ReactNode, useContext } from 'react';
+import React, { ReactNode } from 'react';
 
-import { SocketContext } from '../hooks/useSocket';
+import useSocket from '../hooks/useSocket';
 import TasksList from './TasksList';
 
 type Props = {
@@ -11,7 +11,7 @@ type Props = {
 }
 
 export default function ProjectLayout({ projectId, taskId, children }: Props) {
-  const [_socket, status] = useContext(SocketContext);
+  const { status } = useSocket();
   return (
     <div className="flex h-screen">
       <div className="w-64 bg-gray-200 shadow-inner flex flex-col">
