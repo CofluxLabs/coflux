@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import classNames from 'classnames';
+import { sortBy } from 'lodash';
 
 import * as models from '../models';
 import { useSubscription } from '../hooks/useSocket';
@@ -34,21 +35,21 @@ type Props = {
   taskId?: string | null;
 }
 
-export default function TasksList({ projectId, taskId }: Props) {
-  const tasks = useSubscription<models.Task[]>('tasks');
+export default function TasksList({ projectId, taskId: activeTaskId }: Props) {
+  const tasks = useSubscription<Record<string, models.Task>>('tasks');
   const agents: models.Agent[] = []; // TODO
   if (tasks === undefined) {
     return <div>Loading...</div>;
   } else {
     return (
       <div>
-        {tasks.length ? (
+        {Object.keys(tasks).length ? (
           <ul>
-            {tasks.map((task) => (
-              <li key={task.id} className="">
+            {sortBy(Object.values(tasks), 'target').map((task) => (
+              <li key={task.id}>
                 <Link href={`/projects/${projectId}/tasks/${task.id}`}>
-                  <a className={classNames('block hover:bg-gray-300 px-4 py-2', {'bg-gray-300': task.id == taskId})}>
-                    <TaskItem task={task} agents={agents} isActive={task.id == taskId} />
+                  <a className={classNames('block hover:bg-gray-300 px-4 py-2', {'bg-gray-300': task.id == activeTaskId})}>
+                    <TaskItem task={task} agents={agents} isActive={task.id == activeTaskId} />
                   </a>
                 </Link>
               </li>

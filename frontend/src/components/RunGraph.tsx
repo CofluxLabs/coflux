@@ -2,6 +2,7 @@ import React, { Fragment, useEffect, useState } from 'react';
 import dagre from 'dagre';
 import classNames from 'classnames';
 import { Popover, Transition } from '@headlessui/react';
+import { maxBy } from 'lodash';
 
 import * as models from '../models';
 import StepInfo from './StepInfo';
@@ -11,11 +12,11 @@ function buildGraph(run: models.Run) {
   g.setGraph({ rankdir: 'LR', ranksep: 40, nodesep: 40 });
   g.setDefaultEdgeLabel(function () { return {}; });
 
-  const executionIdToStepId = run.steps.reduce<Record<string, string>>((ess, step) => {
-    return step.executions.reduce((ess, e) => ({ ...ess, [e.id]: step.id }), ess);
+  const executionIdToStepId = Object.values(run.steps).reduce<Record<string, string>>((ess, step) => {
+    return Object.values(step.executions).reduce((ess, e) => ({ ...ess, [e.id]: step.id }), ess);
   }, {});
 
-  run.steps.forEach((step) => {
+  Object.values(run.steps).forEach((step) => {
     g.setNode(step.id, { width: 160, height: 50 });
     if (step.parentId) {
       g.setEdge(executionIdToStepId[step.parentId], step.id);
@@ -55,7 +56,7 @@ type NodeProps = {
 }
 
 function Node({ node, step }: NodeProps) {
-  const latestExecution = step.executions.length ? step.executions[step.executions.length - 1] : null;
+  const latestExecution = maxBy(Object.values(step.executions), 'attempt')
   return (
     <Popover
       className={classNames('absolute flex')}
@@ -127,8 +128,7 @@ export default function RunGraph({ run }: Props) {
         </svg>
         <div className="absolute">
           {graph.nodes().map((nodeId) => {
-            const step = run.steps.find((s) => s.id == nodeId);
-            return <Node key={nodeId} node={graph.node(nodeId)} step={step!} />
+            return <Node key={nodeId} node={graph.node(nodeId)} step={run.steps[nodeId]} />
           })}
         </div>
       </div>

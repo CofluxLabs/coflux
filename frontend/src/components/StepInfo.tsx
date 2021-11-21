@@ -1,5 +1,6 @@
 import React, { CSSProperties, Fragment } from 'react';
 import classNames from 'classnames';
+import { maxBy, sortBy } from 'lodash';
 
 import * as models from '../models';
 import Badge from './Badge';
@@ -11,7 +12,7 @@ type Props = {
 }
 
 export default function StepInfo({ step, className, style }: Props) {
-  const latestExecution = step.executions.length ? step.executions[step.executions.length - 1] : null;
+  const latestExecution = maxBy(Object.values(step.executions), 'attempt')
   return (
     <div className={classNames('divide-y overflow-hidden', className)} style={style}>
       <div className="px-3 py-3 flex items-center">
@@ -42,7 +43,7 @@ export default function StepInfo({ step, className, style }: Props) {
           </ol>
         </div>
       )}
-      {step.executions.map((execution) => (
+      {sortBy(Object.values(step.executions), 'attempt').map((execution) => (
         <div key={execution.id} className="p-3">
           <h3 className="uppercase text-sm font-bold text-gray-400">Attempt {execution.attempt}</h3>
           <p>Scheduled: {execution.createdAt}</p>

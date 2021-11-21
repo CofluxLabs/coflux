@@ -11,12 +11,14 @@ export type Agent = {
 
 export type Task = Target & {
   id: string;
-}
+};
 
 export type Run = {
   id: string;
+  tags: string[];
+  createdAt: string;
   task: Task;
-  steps: Step[];
+  steps: Record<string, Step>;
 }
 
 export type Step = {
@@ -26,7 +28,7 @@ export type Step = {
   target: string;
   createdAt: string;
   arguments: string[];
-  executions: Execution[];
+  executions: Record<string, Execution>;
   cachedId: string | null;
 }
 

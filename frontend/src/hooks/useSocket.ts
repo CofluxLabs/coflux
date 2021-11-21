@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, Dispatch, SetStateAction, useCallback, useContext, useEffect, useState } from 'react';
 
 import Socket, { SocketStatus } from '../socket';
 
@@ -13,14 +13,24 @@ function applyUpdate(state: any, path: (string | number)[], value: any): any {
     return value;
   } else {
     const [key, ...rest] = path;
-    if (typeof key == 'number') {
-      if (rest.length == 0) {
-        return [...state.slice(0, key), value, ...state.slice(key)];
-      } else {
-        return [...state.slice(0, key), applyUpdate(state[key], rest, value), ...state.slice(key + 1)];
-      }
-    } else {
-      return { ...state, [key]: applyUpdate(state[key], rest, value) };
+    return { ...state, [key]: applyUpdate(state[key], rest, value) };
+  }
+}
+
+function subscribe<T>(socket: Socket, topic: string, subscriptionId: string, setState: Dispatch<SetStateAction<T>>) {
+  const listener = (sId: string, path: (string | number)[], value: any) => {
+    if (sId == subscriptionId) {
+      setState(state => applyUpdate(state, path, value));
+    }
+  }
+  socket.addListener('notify:update', listener);
+  socket.request('subscribe', [topic, subscriptionId], (value) => {
+    setState(value);
+  });
+  return () => {
+    socket.removeListener('notify:update', listener);
+    if (socket.isConnected()) {
+      socket.request('unsubscribe', [subscriptionId]);
     }
   }
 }
@@ -30,24 +40,11 @@ let lastSubscriptionId = 0;
 export function useSubscription<T>(topic: string) {
   const { socket, status } = useSocket();
   const [state, setState] = useState<T>();
-  const subscribe = useCallback((socket, topic, subscriptionId) => {
-    socket.request('subscribe', [topic, subscriptionId], setState);
-    socket.addListener('notify:update', (sId: string, path: (string | number)[], value: any) => {
-      if (sId == subscriptionId) {
-        setState(state => applyUpdate(state, path, value));
-      }
-    });
-    return () => {
-      if (socket.isConnected()) {
-        socket.request('unsubscribe', [subscriptionId]);
-      }
-    }
-  }, []);
   useEffect(() => {
-    const subscriptionId = ++lastSubscriptionId;
     if (socket && status == 'connected') {
-      return subscribe(socket, topic, subscriptionId);
+      const subscriptionId = ++lastSubscriptionId;
+      return subscribe(socket, topic, subscriptionId.toString(), setState);
     }
-  }, [socket, status, topic, subscribe]);
+  }, [socket, status, topic]);
   return state;
 }

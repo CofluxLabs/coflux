@@ -7,10 +7,9 @@ import * as models from '../models';
 import Heading from './Heading';
 import useSocket, { useSubscription } from '../hooks/useSocket';
 
-type State = models.Task & { runs: {
-  id: string;
-  createdAt: string;
-}[] };
+type State = models.Task & {
+  runs: Record<string, { id: string, createdAt: string }>
+};
 
 type Props = {
   projectId: string | null;
@@ -44,7 +43,7 @@ export default function TaskDetail({ projectId, taskId }: Props) {
           </button>
         </div>
         <ul>
-          {task.runs.map((run) => (
+          {Object.values(task.runs).map((run) => (
             <li key={run.id}>
               <Link href={`/projects/${projectId}/runs/${run.id}`}>
                 <a className="underline">{run.id} ({run.createdAt})</a>

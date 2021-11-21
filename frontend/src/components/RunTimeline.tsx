@@ -1,12 +1,13 @@
 import { DateTime } from 'luxon';
 import React, { Fragment } from 'react';
 import classNames from 'classnames';
+import { maxBy, sortBy } from 'lodash';
 
 import * as models from '../models';
 
 function loadExecutionTimes(run: models.Run): { [key: string]: [DateTime, DateTime | null, DateTime | null] } {
-  return run.steps.reduce((times, step) => {
-    return step.executions.reduce((times, execution) => {
+  return Object.values(run.steps).reduce((times, step) => {
+    return Object.values(step.executions).reduce((times, execution) => {
       return {
         ...times, [execution.id]: [
           DateTime.fromISO(execution.createdAt),
@@ -15,11 +16,11 @@ function loadExecutionTimes(run: models.Run): { [key: string]: [DateTime, DateTi
         ]
       };
     }, times);
-  }, {})
+  }, {});
 }
 
 function loadStepTimes(run: models.Run): { [key: string]: DateTime } {
-  return run.steps.reduce((times, step) => ({ ...times, [step.id]: DateTime.fromISO(step.createdAt) }), {});
+  return Object.values(run.steps).reduce((times, step) => ({ ...times, [step.id]: DateTime.fromISO(step.createdAt) }), {});
 }
 
 function percentage(value: number) {
@@ -66,11 +67,12 @@ export default function RunTimeline({ run }: Props) {
   const earliestTime = DateTime.min(...times);
   const latestTime = DateTime.max(...times);
   const totalMillis = latestTime.diff(earliestTime).toMillis();
+  const steps = sortBy(Object.values(run.steps).filter(s => !s.cachedId), 'createdAt');
   return (
     <div className="relative divide-y divide-gray-200">
-      {run.steps.filter((s) => !s.cachedId).map((step) => {
-        const lastExecution = step.executions.length ? step.executions[step.executions.length - 1] : null;
-        const stepFinishedAt = (lastExecution ? executionTimes[lastExecution.id][2] : null) || latestTime;
+      {steps.map((step) => {
+        const latestExecution = maxBy(Object.values(step.executions), 'attempt');
+        const stepFinishedAt = (latestExecution ? executionTimes[latestExecution.id][2] : null) || latestTime;
         return (
           <div key={step.id} className="flex">
             <div className="w-40 truncate self-center mr-2">
@@ -78,7 +80,7 @@ export default function RunTimeline({ run }: Props) {
             </div>
             <div className="flex-1 my-2 relative h-6">
               <Bar x1={stepTimes[step.id]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-100" />
-              {step.executions.map((execution) => {
+              {Object.values(step.executions).map((execution) => {
                 const [createdAt, assignedAt, resultAt] = executionTimes[execution.id];
                 return (
                   <Fragment key={execution.id}>
