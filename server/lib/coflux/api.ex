@@ -13,10 +13,6 @@ defmodule Coflux.Api do
       {:_,
        [
          {"/", Handlers.Root, []},
-         {"/projects/:project/tasks/[:task]", Handlers.Tasks, []},
-         {"/projects/:project/tasks/:task/runs", Handlers.TaskRuns, []},
-         {"/projects/:project/runs/[:run]", Handlers.Runs, []},
-         {"/projects/:project/agents/[:agent]", Handlers.Agents, []},
          {"/projects/:project/blobs/:key", Handlers.Blobs, []},
          {"/projects/:project/agent", Handlers.Agent, []},
          {"/projects/:project/events", Handlers.Events, []}

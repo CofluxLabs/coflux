@@ -116,7 +116,6 @@ defmodule Coflux.Project.Observer do
           |> Map.put(:id, Models.Step.id(step))
           |> Map.put(:parent_id, Models.Step.parent_id(step))
           |> Map.put(:cached_id, Models.Step.cached_id(step))
-          # TODO: extract arguments
           |> Map.put(:arguments, Enum.map(step.arguments, & &1))
           |> Map.put(
             :executions,
@@ -247,7 +246,6 @@ defmodule Coflux.Project.Observer do
           |> Map.put(:id, step_id)
           |> Map.put(:parent_id, Models.Step.parent_id(step))
           |> Map.put(:cached_id, Models.Step.cached_id(step))
-          # TODO: compose arguments
           |> Map.put(:arguments, Enum.map(step.arguments, & &1))
           |> Map.put(:executions, [])
 
