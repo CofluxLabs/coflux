@@ -82,7 +82,7 @@ defmodule Coflux.Project.Orchestrator do
     state.project_id
     |> Store.list_running_executions()
     |> Enum.filter(&execution_abandoned?(&1, now))
-    |> Enum.each(fn {execution, _} ->
+    |> Enum.each(fn {execution, _, _} ->
       Store.abandon_execution(state.project_id, execution)
     end)
 
@@ -105,9 +105,7 @@ defmodule Coflux.Project.Orchestrator do
   defp try_schedule_executions(state) do
     state.project_id
     |> Store.list_pending_executions()
-    |> Enum.each(fn execution ->
-      step = execution.step
-
+    |> Enum.each(fn {execution, step} ->
       with {:ok, pid_map} <- Map.fetch(state.targets, {step.repository, step.target}),
            {:ok, pid} <- find_agent(pid_map),
            :ok <- Store.assign_execution(state.project_id, execution) do
@@ -168,8 +166,14 @@ defmodule Coflux.Project.Orchestrator do
     end)
   end
 
-  defp execution_abandoned?({execution, latest_heartbeat_at}, now, timeout_ms \\ 5_000) do
-    last_activity_at = latest_heartbeat_at || execution.assignment.created_at
+  defp execution_abandoned?({_execution, assignment, latest_heartbeat}, now, timeout_ms \\ 5_000) do
+    last_activity_at =
+      if latest_heartbeat do
+        latest_heartbeat.created_at
+      else
+        assignment.created_at
+      end
+
     DateTime.diff(now, last_activity_at, :millisecond) > timeout_ms
   end
 

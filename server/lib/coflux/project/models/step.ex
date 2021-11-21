@@ -5,10 +5,10 @@ defmodule Coflux.Project.Models.Step do
   schema "steps" do
     belongs_to :run, Models.Run, type: Types.RunId, primary_key: true
     field :id, Types.StepId, primary_key: true
-    belongs_to :parent_step, Models.Step, type: Types.StepId
-    belongs_to :parent_execution, Models.Execution, foreign_key: :parent_attempt, references: :attempt, type: :integer
-    belongs_to :cached_run, Models.Run, type: Types.RunId
-    belongs_to :cached_step, Models.Step, type: Types.StepId
+    field :parent_step_id, Types.StepId
+    field :parent_attempt, :integer
+    field :cached_run_id, Types.RunId
+    field :cached_step_id, Types.StepId
     field :repository, :string
     field :target, :string
     field :arguments, {:array, :string}
@@ -16,8 +16,6 @@ defmodule Coflux.Project.Models.Step do
     field :priority, :integer
     field :cache_key, :string
     field :created_at, :utc_datetime_usec
-
-    has_many :executions, Models.Execution, references: :id, preload_order: [:created_at]
   end
 
   def id(step) do

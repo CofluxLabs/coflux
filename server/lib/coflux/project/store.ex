@@ -143,7 +143,7 @@ defmodule Coflux.Project.Store do
         where: e.execute_after <= ^now or is_nil(e.execute_after),
         where: is_nil(a.attempt),
         order_by: [desc: s.priority, asc: s.created_at],
-        preload: [step: s]
+        select: {e, s}
       )
 
     Repo.all(query, prefix: project_id)
@@ -160,8 +160,7 @@ defmodule Coflux.Project.Store do
         on: h.run_id == e.run_id and h.step_id == e.step_id and h.attempt == e.attempt,
         where: is_nil(r.attempt),
         distinct: [e.run_id, e.step_id, e.attempt],
-        preload: [assignment: a],
-        select: {e, h.created_at}
+        select: {e, a, h}
       )
 
     Repo.all(query, prefix: project_id)

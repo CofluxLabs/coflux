@@ -3,9 +3,9 @@ defmodule Coflux.Project.Models.Assignment do
 
   @primary_key false
   schema "assignments" do
-    belongs_to :run, Models.Run, type: Types.RunId, primary_key: true
-    belongs_to :step, Models.Step, type: Types.StepId, primary_key: true
-    belongs_to :execution, Models.Execution, foreign_key: :attempt, references: :attempt, type: :integer, primary_key: true
+    field :run_id, Types.RunId, primary_key: true
+    field :step_id, Types.StepId, primary_key: true
+    field :attempt, :integer, primary_key: true
     field :created_at, :utc_datetime_usec
   end
 

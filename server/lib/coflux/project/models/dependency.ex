@@ -3,12 +3,12 @@ defmodule Coflux.Project.Models.Dependency do
 
   @primary_key false
   schema "dependencies" do
-    belongs_to :run, Models.Run, type: Types.RunId, primary_key: true
-    belongs_to :step, Models.Step, type: Types.StepId, primary_key: true
-    belongs_to :execution, Models.Execution, foreign_key: :attempt, references: :attempt, type: :integer, primary_key: true
-    belongs_to :dependency_run, Models.Run, type: Types.RunId, primary_key: true
-    belongs_to :dependency_step, Models.Step, type: Types.StepId, primary_key: true
-    belongs_to :dependency_execution, Models.Execution, foreign_key: :dependency_attempt, references: :attempt, type: :integer, primary_key: true
+    field :run_id, Types.RunId, primary_key: true
+    field :step_id, Types.StepId, primary_key: true
+    field :attempt, :integer, primary_key: true
+    field :dependency_run_id, Types.RunId, primary_key: true
+    field :dependency_step_id, Types.StepId, primary_key: true
+    field :dependency_attempt, :integer, primary_key: true
     field :created_at, :utc_datetime_usec
   end
 
