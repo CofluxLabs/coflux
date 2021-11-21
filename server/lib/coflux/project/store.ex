@@ -160,6 +160,7 @@ defmodule Coflux.Project.Store do
         on: h.run_id == e.run_id and h.step_id == e.step_id and h.attempt == e.attempt,
         where: is_nil(r.attempt),
         distinct: [e.run_id, e.step_id, e.attempt],
+        order_by: [e.run_id, e.step_id, e.attempt, desc: h.created_at],
         select: {e, a, h}
       )
 
