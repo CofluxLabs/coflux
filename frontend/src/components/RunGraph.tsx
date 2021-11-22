@@ -3,6 +3,7 @@ import dagre from 'dagre';
 import classNames from 'classnames';
 import { Popover, Transition } from '@headlessui/react';
 import { maxBy } from 'lodash';
+import Link from 'next/link';
 
 import * as models from '../models';
 import StepInfo from './StepInfo';
@@ -53,41 +54,44 @@ function Arrow({ nodeWidth, size }: ArrowProps) {
 type NodeProps = {
   node: dagre.Node;
   step: models.Step;
+  runId: string;
+  activeStepId: string | null;
 }
 
-function Node({ node, step }: NodeProps) {
+function Node({ node, step, runId, activeStepId }: NodeProps) {
   const latestExecution = maxBy(Object.values(step.executions), 'attempt')
+  const open = step.id == activeStepId;
   return (
     <Popover
       className={classNames('absolute flex')}
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
-      {({ open }) => (
-        <>
-          <Popover.Button className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestExecution?.result || null, !!step.cachedId, open))}>
-            <div className={classNames('flex-1 truncate', { 'font-bold': !step.parentId })}>
-              <span className="font-mono">{step.target}</span>
-            </div>
-          </Popover.Button>
-          <Transition
-            as={Fragment}
-            enter="transition ease-out duration-200"
-            enterFrom="opacity-0 translate-y-1"
-            enterTo="opacity-100 translate-y-0"
-            leave="transition ease-in duration-150"
-            leaveFrom="opacity-100 translate-y-0"
-            leaveTo="opacity-0 translate-y-1"
-          >
-            <Popover.Panel
-              className="absolute z-10 w-screen transform max-w-md rounded shadow-2xl border border-gray-400 bg-white"
-              style={{ marginTop: node.height + 8, marginLeft: -20 }}
-            >
-              <Arrow nodeWidth={node.width} size={12} />
-              <StepInfo step={step} />
-            </Popover.Panel>
-          </Transition>
-        </>
-      )}
+      <Link href={`/projects/project_1/runs/${runId}${open ? '' : `#${step.id.split('-', 2)[1]}`}`} passHref={true}>
+        <a className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestExecution?.result || null, !!step.cachedId, open))}>
+          <div className={classNames('flex-1 truncate', { 'font-bold': !step.parentId })}>
+            <span className="font-mono">{step.target}</span>
+          </div>
+        </a>
+      </Link>
+      <Transition
+        as={Fragment}
+        enter="transition ease-out duration-200"
+        enterFrom="opacity-0 translate-y-1"
+        enterTo="opacity-100 translate-y-0"
+        leave="transition ease-in duration-150"
+        leaveFrom="opacity-100 translate-y-0"
+        leaveTo="opacity-0 translate-y-1"
+        show={open}
+      >
+        <Popover.Panel
+          className="absolute z-10 w-screen transform max-w-md rounded shadow-2xl border border-gray-400 bg-white"
+          style={{ marginTop: node.height + 8, marginLeft: -20 }}
+          static={true}
+        >
+          <Arrow nodeWidth={node.width} size={12} />
+          <StepInfo step={step} />
+        </Popover.Panel>
+      </Transition>
     </Popover>
   );
 }
@@ -109,9 +113,10 @@ function Edge({ edge }: EdgeProps) {
 
 type Props = {
   run: models.Run;
+  activeStepId: string | null;
 }
 
-export default function RunGraph({ run }: Props) {
+export default function RunGraph({ run, activeStepId }: Props) {
   const [graph, setGraph] = useState<dagre.graphlib.Graph>();
   useEffect(() => {
     const graph = buildGraph(run);
@@ -128,7 +133,15 @@ export default function RunGraph({ run }: Props) {
         </svg>
         <div className="absolute">
           {graph.nodes().map((nodeId) => {
-            return <Node key={nodeId} node={graph.node(nodeId)} step={run.steps[nodeId]} />
+            return (
+              <Node
+                key={nodeId}
+                node={graph.node(nodeId)}
+                step={run.steps[nodeId]}
+                runId={run.id}
+                activeStepId={activeStepId}
+              />
+            );
           })}
         </div>
       </div>
