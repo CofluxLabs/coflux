@@ -2,6 +2,7 @@ import React, { Fragment, useCallback, useState } from 'react';
 import Router from 'next/router';
 import Link from 'next/link';
 import classNames from 'classnames';
+import { sortBy } from 'lodash';
 
 import * as models from '../models';
 import Heading from './Heading';
@@ -43,7 +44,7 @@ export default function TaskDetail({ projectId, taskId }: Props) {
           </button>
         </div>
         <ul>
-          {Object.values(task.runs).map((run) => (
+          {sortBy(Object.values(task.runs), 'createdAt').map((run) => (
             <li key={run.id}>
               <Link href={`/projects/${projectId}/runs/${run.id}`}>
                 <a className="underline">{run.id} ({run.createdAt})</a>
