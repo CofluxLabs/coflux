@@ -37,8 +37,8 @@ defmodule Coflux.Handlers.Agent do
         end
 
       "record_heartbeats" ->
-        [execution_ids] = message["params"]
-        Project.record_heartbeats(state.project_id, execution_ids)
+        [executions] = message["params"]
+        Project.record_heartbeats(state.project_id, executions)
         {[], state}
 
       "put_result" ->

@@ -70,8 +70,8 @@ defmodule Coflux.Project do
     end
   end
 
-  def record_heartbeats(project_id, execution_ids) do
-    Store.record_heartbeats(project_id, execution_ids)
+  def record_heartbeats(project_id, executions) do
+    Store.record_heartbeats(project_id, executions)
   end
 
   def put_result(project_id, execution_id, result) do

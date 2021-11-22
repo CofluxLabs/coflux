@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import json
 import time
+import typing as t
 
 TARGET_KEY = '_coflux_target'
 BLOB_THRESHOLD = 100
@@ -122,6 +123,12 @@ def _serialise_argument(argument):
         return ['json', _json_dumps(argument)]
 
 
+class Execution(t.NamedTuple):
+    task: t.Coroutine
+    start_time: float
+    status: int
+
+
 class Client:
     def __init__(self, project_id, module_name, version, server_host):
         self._project_id = project_id
@@ -188,15 +195,15 @@ class Client:
         execution_var.set((execution_id, self, loop))
         task = asyncio.to_thread(target, *future_arguments)
         # TODO: check execution isn't already running?
-        self._executions[execution_id] = (task, time.time())
+        self._executions[execution_id] = Execution(task, time.time(), 0)
         asyncio.create_task(self._put_result(task, execution_id))
 
-    async def _send_heartbeats(self):
+    async def _send_heartbeats(self, threshold_s=1):
         while True:
             now = time.time()
-            execution_ids = [id for id, (_, t) in self._executions.items() if now - t > 1]
-            if execution_ids:
-                await self._channel.notify('record_heartbeats', execution_ids)
+            executions = {id: e.status for id, e in self._executions.items() if now - e.start_time > threshold_s}
+            if executions:
+                await self._channel.notify('record_heartbeats', executions)
             await asyncio.sleep(1)
 
     async def run(self):
@@ -221,9 +228,14 @@ class Client:
             'schedule_child', execution_id, repository, target, serialised_arguments, cache_key
         )
 
+    def _set_execution_status(self, execution_id, status):
+        self._executions[execution_id] = self._executions[execution_id]._replace(status=status)
+
     async def get_result(self, execution_id, from_execution_id):
         if execution_id not in self._results:
+            self._set_execution_status(from_execution_id, 1)
             self._results[execution_id] = await self._channel.request('get_result', execution_id, from_execution_id)
+            self._set_execution_status(from_execution_id, 0)
         result = self._results[execution_id]
         if result[0] == "json":
             return json.loads(result[1])

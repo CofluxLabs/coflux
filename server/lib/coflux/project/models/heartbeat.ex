@@ -7,6 +7,7 @@ defmodule Coflux.Project.Models.Heartbeat do
     field :step_id, Types.StepId, primary_key: true
     field :attempt, :integer, primary_key: true
     field :created_at, :utc_datetime_usec, primary_key: true
+    field :status, :integer
   end
 
   def execution_id(heartbeat) do

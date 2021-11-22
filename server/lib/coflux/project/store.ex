@@ -117,15 +117,14 @@ defmodule Coflux.Project.Store do
     end)
   end
 
-  def record_heartbeats(project_id, execution_ids) do
+  def record_heartbeats(project_id, executions) do
     now = DateTime.utc_now()
 
     Repo.insert_all(
       Models.Heartbeat,
-      execution_ids
-      |> Enum.map(&decode_execution_id/1)
-      |> Enum.map(fn {run_id, step_id, attempt} ->
-        %{run_id: run_id, step_id: step_id, attempt: attempt, created_at: now}
+      Enum.map(executions, fn {execution_id, status} ->
+        {run_id, step_id, attempt} = decode_execution_id(execution_id)
+        %{run_id: run_id, step_id: step_id, attempt: attempt, created_at: now, status: status}
       end),
       prefix: project_id
     )
