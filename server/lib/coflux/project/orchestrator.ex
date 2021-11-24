@@ -27,11 +27,11 @@ defmodule Coflux.Project.Orchestrator do
     {:reply, {:ok, state.agents}, state}
   end
 
-  def handle_call({:register_targets, repository, version, new_targets, pid}, _from, state) do
+  def handle_call({:register_targets, repository, version, manifest, pid}, _from, state) do
     _ref = Process.monitor(pid)
 
     state =
-      Enum.reduce(new_targets, state, fn {target, _config}, state ->
+      Enum.reduce(manifest, state, fn {target, _config}, state ->
         state
         |> put_in([Access.key(:targets), Access.key({repository, target}, %{}), pid], version)
         |> put_in(

@@ -7,11 +7,13 @@ import importlib
 import json
 import time
 import typing as t
+import inspect
 
 TARGET_KEY = '_coflux_target'
 BLOB_THRESHOLD = 100
 
 execution_var = contextvars.ContextVar('execution')
+
 
 def _json_dumps(obj):
     return json.dumps(obj, separators=(',', ':'))
@@ -123,6 +125,25 @@ def _serialise_argument(argument):
         return ['json', _json_dumps(argument)]
 
 
+def _manifest_parameter(parameter):
+    result = {'name': parameter.name}
+    if parameter.annotation != inspect.Parameter.empty:
+        result['annotation'] = str(parameter.annotation)  # TODO: better way to serialise?
+    if parameter.default != inspect.Parameter.empty:
+        result['default'] = _json_dumps(parameter.default)
+    return result
+
+
+def _generate_manifest(targets):
+    return {
+        name: {
+            'type': type,
+            'parameters': [_manifest_parameter(p) for p in inspect.signature(fn).parameters.values()],
+        }
+        for name, (type, fn) in targets.items()
+    }
+
+
 class Execution(t.NamedTuple):
     task: t.Coroutine
     start_time: float
@@ -189,7 +210,7 @@ class Client:
 
     async def _handle_execute(self, execution_id, target_name, arguments):
         print(f"Executing '{target_name}' ({execution_id})...")
-        target = self._targets[target_name]['function']
+        target = self._targets[target_name][1]
         loop = asyncio.get_running_loop()
         future_arguments = [self._future_argument(argument, loop, execution_id) for argument in arguments]
         execution_var.set((execution_id, self, loop))
@@ -208,13 +229,13 @@ class Client:
 
     async def run(self):
         print(f"Agent starting ({self._module_name}@{self._version})...")
-        targets = {name: {'type': target['type']} for name, target in self._targets.items()}
         async with aiohttp.ClientSession() as self._session:
             # TODO: heartbeat (and timeout) value?
             async with self._session.ws_connect(self._url('ws', '/agent'), heartbeat=5) as websocket:
                 print(f"Connected ({self._server_host}, {self._project_id}).")
                 # TODO: reset channel?
-                await self._channel.notify('register', self._module_name, self._version, targets)
+                manifest = _generate_manifest(self._targets)
+                await self._channel.notify('register', self._module_name, self._version, manifest)
                 coros = [self._channel.run(websocket), self._send_heartbeats()]
                 done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
                 print("Disconnected.")
@@ -251,8 +272,7 @@ class Client:
 def _decorate(name, type, cache_key_fn=None):
     def decorate(fn):
         target = name or fn.__name__
-        metadata = (target, {'type': type, 'module': fn.__module__, 'function': fn})
-        setattr(fn, TARGET_KEY, metadata)
+        setattr(fn, TARGET_KEY, (target, (type, fn)))
 
         @functools.wraps(fn)
         def wrapper(*args):  # TODO: support kwargs?

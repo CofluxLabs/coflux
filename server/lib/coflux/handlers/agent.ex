@@ -17,10 +17,10 @@ defmodule Coflux.Handlers.Agent do
 
     case message["method"] do
       "register" ->
-        [repository, version, targets] = message["params"]
-        targets = parse_targets(targets)
+        [repository, version, manifest] = message["params"]
+        manifest = parse_manifest(manifest)
 
-        case Project.register(state.project_id, repository, version, targets, self()) do
+        case Project.register(state.project_id, repository, version, manifest, self()) do
           :ok ->
             {[], state}
         end
@@ -92,8 +92,14 @@ defmodule Coflux.Handlers.Agent do
     {:text, Jason.encode!(%{"id" => id, "result" => result})}
   end
 
-  defp parse_targets(targets) do
-    Map.new(targets, fn {key, value} -> {key, %{type: parse_type(Map.get(value, "type"))}} end)
+  defp parse_manifest(manifest) do
+    Map.new(manifest, fn {key, value} ->
+      {key,
+       %{
+         type: parse_type(Map.fetch!(value, "type")),
+         parameters: Enum.map(Map.fetch!(value, "parameters"), &parse_parameter/1)
+       }}
+    end)
   end
 
   defp parse_type(type) do
@@ -101,6 +107,14 @@ defmodule Coflux.Handlers.Agent do
       "task" -> :task
       "step" -> :step
     end
+  end
+
+  defp parse_parameter(parameters) do
+    %{
+      name: Map.fetch!(parameters, "name"),
+      annotation: Map.get(parameters, "annotation"),
+      default: Map.get(parameters, "default")
+    }
   end
 
   defp parse_argument(argument) do

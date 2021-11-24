@@ -51,9 +51,10 @@ defmodule Coflux.Handlers.Events do
         end
 
       "start_run" ->
-        [task_id] = message["params"]
+        [task_id, arguments] = message["params"]
+        arguments = Enum.map(arguments, &parse_argument/1)
 
-        case Project.schedule_task(state.project_id, task_id) do
+        case Project.schedule_task(state.project_id, task_id, arguments) do
           {:ok, run_id, _execution_id} ->
             {[result_message(message["id"], run_id)], state}
         end
@@ -80,6 +81,14 @@ defmodule Coflux.Handlers.Events do
 
   defp result_message(id, result) do
     {:text, Jason.encode!(%{"id" => id, "result" => camelize(result)})}
+  end
+
+  defp parse_argument(argument) do
+    case argument do
+      ["json", value] -> {:json, value}
+      ["blob", key] -> {:blob, key}
+      ["result", execution_id] -> {:result, execution_id}
+    end
   end
 
   defp camelize(value) do

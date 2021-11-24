@@ -1,6 +1,7 @@
 import time
 import random
 import requests
+import typing as t
 
 from coflux import step, task
 
@@ -16,28 +17,28 @@ def inc(x):
 
 
 @step()
-def add(x, y):
+def add(x: int, y: int) -> int:
     return x.result() + y.result()
 
 
 @step()
-def foo(xs):
+def foo(xs: t.List[int]):
     return inc(count(xs))
 
 
 @step()
-def maximum(xs):
+def maximum(xs: t.List[int]):
     return max(xs.result())
 
 
 @task()
-def my_task(xs=None):
+def my_task(xs: t.Optional[t.List[int]] = None):
     xs = xs or [5, 2, 6]
     return add(foo(xs), maximum(xs))
 
 
 @step(cache_key_fn=lambda n: f"app.repo:fib:{n}")
-def fib(n):
+def fib(n: int):
     n = n.result()
     if n == 0 or n == 1:
         return n
@@ -46,7 +47,7 @@ def fib(n):
 
 
 @task()
-def fib_task(n):
+def fib_task(n: int):
     return fib(n.result())
 
 
@@ -84,7 +85,7 @@ def slow_task():
 
 
 @task()
-def random_task(n):
+def random_task(n: int = 5):
     n = n.result()
     for i in range(n):
         fn, *args = random.choice(

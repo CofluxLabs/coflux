@@ -69,7 +69,7 @@ defmodule Coflux.Project.Observer do
     tasks =
       project_id
       |> Store.list_tasks()
-      |> Map.new(&{&1.id, Map.take(&1, [:id, :repository, :target, :version])})
+      |> Map.new(&{&1.id, Map.take(&1, [:id, :repository, :version, :target, :parameters])})
 
     {:ok, tasks}
   end
@@ -85,7 +85,7 @@ defmodule Coflux.Project.Observer do
     task =
       project_id
       |> Store.get_task(task_id)
-      |> Map.take([:id, :repository, :target, :version])
+      |> Map.take([:id, :repository, :version, :target, :parameters])
       |> Map.put(:runs, runs)
 
     {:ok, task}
@@ -196,7 +196,7 @@ defmodule Coflux.Project.Observer do
     task = load_model(Models.Task, data)
 
     update_topic(state, "tasks", fn _tasks ->
-      {[task.id], Map.take(task, [:id, :repository, :version, :target])}
+      {[task.id], Map.take(task, [:id, :repository, :version, :target, :parameters])}
     end)
   end
 

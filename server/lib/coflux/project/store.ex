@@ -48,15 +48,16 @@ defmodule Coflux.Project.Store do
     Repo.all(query, prefix: project_id)
   end
 
-  def create_tasks(project_id, repository, version, targets) do
+  def create_tasks(project_id, repository, version, manifest) do
     tasks =
-      targets
+      manifest
       |> Enum.filter(fn {_target, config} -> config.type == :task end)
-      |> Enum.map(fn {target, _} ->
+      |> Enum.map(fn {target, config} ->
         %{
           repository: repository,
           version: version,
           target: target,
+          parameters: config.parameters,
           created_at: DateTime.utc_now()
         }
       end)

@@ -37,9 +37,9 @@ defmodule Coflux.Project do
     File.write!(path, content)
   end
 
-  def register(project_id, repository, version, targets, pid) do
-    Store.create_tasks(project_id, repository, version, targets)
-    call_orchestrator(project_id, {:register_targets, repository, version, targets, pid})
+  def register(project_id, repository, version, manifest, pid) do
+    Store.create_tasks(project_id, repository, version, manifest)
+    call_orchestrator(project_id, {:register_targets, repository, version, manifest, pid})
   end
 
   def schedule_task(project_id, task_id, arguments \\ []) do

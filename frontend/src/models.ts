@@ -1,7 +1,14 @@
+export type Parameter = {
+  name: string;
+  annotation: string;
+  default: string;
+}
+
 type Target = {
   repository: string;
   target: string;
   version: string;
+  parameters: Parameter[];
 }
 
 export type Agent = {
