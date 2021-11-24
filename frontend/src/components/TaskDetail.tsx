@@ -40,10 +40,10 @@ export default function TaskDetail({ projectId, taskId }: Props) {
   } else {
     return (
       <Fragment>
-        <div className="flex">
-          <Heading className="flex-1"><span className="font-mono">{task.target}</span> <span className="text-gray-500">({task.repository})</span></Heading>
+        <div className="flex items-start">
+          <Heading><span className="font-mono">{task.target}</span> <span className="text-gray-500">({task.repository})</span></Heading>
           <button
-            className="px-4 py-2 my-3 border border-blue-400 text-blue-500 rounded font-bold hover:bg-blue-100"
+            className="px-2 py-1 m-2 border border-blue-400 text-blue-500 rounded font-bold hover:bg-blue-100"
             onClick={handleRunClick}
           >
             Run...
