@@ -104,8 +104,9 @@ function Edge({ edge }: EdgeProps) {
   const { points: [a, b, c] } = edge;
   return (
     <path
-      className="stroke-current text-gray-400"
+      className="stroke-current text-gray-200"
       fill="none"
+      strokeWidth={5}
       d={`M ${a.x} ${a.y} Q ${b.x} ${b.y} ${c.x} ${c.y}`}
     />
   );
