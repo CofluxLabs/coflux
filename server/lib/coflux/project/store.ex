@@ -67,31 +67,55 @@ defmodule Coflux.Project.Store do
 
   def schedule_task(project_id, task_id, arguments, opts \\ []) do
     run_tags = Keyword.get(opts, :run_tags, [])
-    task_tags = Keyword.get(opts, :task_tags, [])
+    task_tags = Keyword.get(opts, :step_tags, [])
     priority = Keyword.get(opts, :priority, 0)
-    version = Keyword.get(opts, :keyword)
+    version = Keyword.get(opts, :version)
+    idempotency_key = Keyword.get(opts, :idempotency_key)
 
     Repo.transaction(fn ->
       task = Repo.get!(Models.Task, task_id, prefix: project_id)
       now = DateTime.utc_now()
 
-      run =
-        Repo.insert!(
-          %Models.Run{
-            id: Base.encode32(:rand.bytes(10)),
-            task_id: task_id,
-            tags: run_tags,
-            created_at: now
-          },
-          prefix: project_id
-        )
+      # TODO: hash key with (some?) task details
+      existing_run =
+        idempotency_key &&
+          Repo.get_by(Models.Run, [idempotency_key: idempotency_key], prefix: project_id)
 
-      schedule_step(project_id, run, task.repository, task.target, arguments,
-        now: now,
-        tags: task_tags,
-        priority: priority,
-        version: version
-      )
+      if existing_run do
+        query =
+          from(s in Models.Step, where: s.run_id == ^existing_run.id and is_nil(s.parent_attempt))
+
+        initial_step = Repo.one!(query, prefix: project_id)
+
+        query =
+          from(e in Models.Execution,
+            where: e.run_id == ^existing_run.id and e.step_id == ^initial_step.id,
+            order_by: [desc: :attempt],
+            limit: 1
+          )
+
+        latest_execution = Repo.one!(query, prefix: project_id)
+        {existing_run.id, Models.Execution.id(latest_execution)}
+      else
+        run =
+          Repo.insert!(
+            %Models.Run{
+              id: Base.encode32(:rand.bytes(10)),
+              task_id: task_id,
+              tags: run_tags,
+              idempotency_key: idempotency_key,
+              created_at: now
+            },
+            prefix: project_id
+          )
+
+        schedule_step(project_id, run, task.repository, task.target, arguments,
+          now: now,
+          tags: task_tags,
+          priority: priority,
+          version: version
+        )
+      end
     end)
   end
 
@@ -341,7 +365,6 @@ defmodule Coflux.Project.Store do
         )
       end
 
-    {execution.run_id,
-     encode_execution_id(execution.run_id, execution.step_id, execution.attempt)}
+    {execution.run_id, Models.Execution.id(execution)}
   end
 end

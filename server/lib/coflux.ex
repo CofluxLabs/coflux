@@ -1,7 +1,9 @@
 defmodule Coflux do
   alias Coflux.Project
 
-  def execute(project_id, repository, target, arguments \\ [], timeout \\ 5000) do
+  def execute(project_id, repository, target, arguments \\ [], opts \\ []) do
+    {timeout, opts} = Keyword.pop(opts, :timeout, 5_000)
+
     project_id
     |> Project.list_tasks()
     |> Enum.find(&(&1.repository == repository && &1.target == target))
@@ -10,7 +12,7 @@ defmodule Coflux do
         {:error, :not_registered}
 
       task ->
-        case Project.schedule_task(project_id, task.id, arguments) do
+        case Project.schedule_task(project_id, task.id, arguments, opts) do
           {:ok, _run_id, execution_id} ->
             case Project.get_result(project_id, execution_id, self()) do
               {:ok, result} ->

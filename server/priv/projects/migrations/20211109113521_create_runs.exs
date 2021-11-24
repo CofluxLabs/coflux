@@ -6,8 +6,11 @@ defmodule Coflux.Repo.Projects.Migrations.CreateRuns do
       add :id, :bytea, null: false, primary_key: true
       add :task_id, references("tasks", on_delete: :delete_all), null: false
       add :tags, {:array, :string}, null: false
+      add :idempotency_key, :string
       add :created_at, :utc_datetime_usec, null: false
     end
+
+    create unique_index("runs", [:idempotency_key])
 
     execute(
       "CREATE TRIGGER runs_insert AFTER INSERT ON #{prefix()}.runs FOR EACH ROW EXECUTE FUNCTION notify_insert()",
