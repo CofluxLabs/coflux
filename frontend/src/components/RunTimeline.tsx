@@ -4,6 +4,7 @@ import classNames from 'classnames';
 import { maxBy, sortBy } from 'lodash';
 
 import * as models from '../models';
+import useNow from '../hooks/useNow';
 
 function loadExecutionTimes(run: models.Run): { [key: string]: [DateTime, DateTime | null, DateTime | null] } {
   return Object.values(run.steps).reduce((times, step) => {
@@ -56,20 +57,41 @@ function classNameForResult(result: models.Result | null) {
   }
 }
 
+function isRunning(run: models.Run) {
+  return Object.values(run.steps).some((step) => Object.values(step.executions).some((e) => !e.result));
+}
+
+function formatElapsed(millis: number) {
+  if (millis < 500) {
+    return `${millis}ms`;
+  } else {
+    return `${(millis / 1000).toFixed(1)}s`;
+  }
+}
+
 type Props = {
   run: models.Run;
 }
 
 export default function RunTimeline({ run }: Props) {
+  const running = isRunning(run);
+  const now = useNow(running ? 100 : 0);
   const stepTimes = loadStepTimes(run);
   const executionTimes = loadExecutionTimes(run);
   const times = [...(Object.values(stepTimes)), ...(Object.values(executionTimes).flat().filter((t): t is DateTime => t !== null))];
   const earliestTime = DateTime.min(...times);
-  const latestTime = DateTime.max(...times);
+  const latestTime = running ? DateTime.fromJSDate(now) : DateTime.max(...times);
   const totalMillis = latestTime.diff(earliestTime).toMillis();
   const steps = sortBy(Object.values(run.steps).filter(s => !s.cachedId), 'createdAt');
   return (
     <div className="relative divide-y divide-gray-200">
+      <div className="flex">
+        <div className="w-40 truncate self-center mr-2">
+        </div>
+        <div className="flex-1 text-right">
+          {formatElapsed(totalMillis)}
+        </div>
+      </div>
       {steps.map((step) => {
         const latestExecution = maxBy(Object.values(step.executions), 'attempt');
         const stepFinishedAt = (latestExecution ? executionTimes[latestExecution.id][2] : null) || latestTime;
