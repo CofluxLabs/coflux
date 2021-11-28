@@ -1,6 +1,13 @@
 defmodule Coflux.Repo.Projects.Migrations.Setup do
   use Ecto.Migration
 
+  defp create_notify_trigger(table) do
+    execute(
+      "CREATE TRIGGER #{table}_insert AFTER INSERT ON #{prefix()}.#{table} FOR EACH ROW EXECUTE FUNCTION notify_insert()",
+      "DROP TRIGGER #{table}_insert ON #{prefix()}.#{table}"
+    )
+  end
+
   def change do
     execute(
       """
@@ -25,10 +32,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
 
     create unique_index("tasks", [:repository, :version, :target])
 
-    execute(
-      "CREATE TRIGGER tasks_insert AFTER INSERT ON #{prefix()}.tasks FOR EACH ROW EXECUTE FUNCTION notify_insert()",
-      "DROP TRIGGER tasks_insert ON #{prefix()}.tasks"
-    )
+    create_notify_trigger("tasks")
 
     create table("runs", primary_key: false) do
       add :id, :bytea, null: false, primary_key: true
@@ -40,10 +44,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
 
     create unique_index("runs", [:idempotency_key])
 
-    execute(
-      "CREATE TRIGGER runs_insert AFTER INSERT ON #{prefix()}.runs FOR EACH ROW EXECUTE FUNCTION notify_insert()",
-      "DROP TRIGGER runs_insert ON #{prefix()}.runs"
-    )
+    create_notify_trigger("runs")
 
     create table("steps", primary_key: false) do
       add :run_id, references("runs", type: :bytea, on_delete: :delete_all), null: false, primary_key: true
@@ -61,10 +62,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
 
     create index("steps", [:cache_key])
 
-    execute(
-      "CREATE TRIGGER steps_insert AFTER INSERT ON #{prefix()}.steps FOR EACH ROW EXECUTE FUNCTION notify_insert()",
-      "DROP TRIGGER steps_insert ON #{prefix()}.steps"
-    )
+    create_notify_trigger("steps")
 
     create table("executions", primary_key: false) do
       add :run_id, :bytea, null: false, primary_key: true
@@ -80,10 +78,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       add :parent_attempt, references("executions", column: :attempt, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, parent_step_id: :step_id])
     end
 
-    execute(
-      "CREATE TRIGGER executions_insert AFTER INSERT ON #{prefix()}.executions FOR EACH ROW EXECUTE FUNCTION notify_insert()",
-      "DROP TRIGGER executions_insert ON #{prefix()}.executions"
-    )
+    create_notify_trigger("executions")
 
     create table("assignments", primary_key: false) do
       add :run_id, :bytea, null: false, primary_key: true
@@ -92,10 +87,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       add :created_at, :utc_datetime_usec, null: false
     end
 
-    execute(
-      "CREATE TRIGGER assignments_insert AFTER INSERT ON #{prefix()}.assignments FOR EACH ROW EXECUTE FUNCTION notify_insert()",
-      "DROP TRIGGER assignments_insert ON #{prefix()}.assignments"
-    )
+    create_notify_trigger("assignments")
 
     create table("heartbeats", primary_key: false) do
       add :run_id, :bytea, null: false, primary_key: true
@@ -105,10 +97,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       add :status, :smallint
     end
 
-    execute(
-      "CREATE TRIGGER heartbeats_insert AFTER INSERT ON #{prefix()}.heartbeats FOR EACH ROW EXECUTE FUNCTION notify_insert()",
-      "DROP TRIGGER heartbeats_insert ON #{prefix()}.heartbeats"
-    )
+    create_notify_trigger("heartbeats")
 
     create table("results", primary_key: false) do
       add :run_id, :bytea, null: false, primary_key: true
@@ -120,10 +109,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       add :created_at, :utc_datetime_usec, null: false
     end
 
-    execute(
-      "CREATE TRIGGER results_insert AFTER INSERT ON #{prefix()}.results FOR EACH ROW EXECUTE FUNCTION notify_insert()",
-      "DROP TRIGGER results_insert ON #{prefix()}.results"
-    )
+    create_notify_trigger("results")
 
     create table("dependencies", primary_key: false) do
       add :run_id, :bytea, null: false, primary_key: true
@@ -135,9 +121,6 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       add :created_at, :utc_datetime_usec, null: false
     end
 
-    execute(
-      "CREATE TRIGGER dependencies_insert AFTER INSERT ON #{prefix()}.dependencies FOR EACH ROW EXECUTE FUNCTION notify_insert()",
-      "DROP TRIGGER dependencies_insert ON #{prefix()}.dependencies"
-    )
+    create_notify_trigger("dependencies")
   end
 end
