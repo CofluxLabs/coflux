@@ -13,14 +13,14 @@ function buildGraph(run: models.Run) {
   g.setGraph({ rankdir: 'LR', ranksep: 40, nodesep: 40 });
   g.setDefaultEdgeLabel(function () { return {}; });
 
-  const attemptIdToStepId = Object.values(run.steps).reduce<Record<string, string>>((ess, step) => {
-    return Object.values(step.attempts).reduce((ess, e) => ({ ...ess, [e.id]: step.id }), ess);
+  const attemptToStepId = Object.values(run.steps).reduce<Record<string, string>>((ess, step) => {
+    return Object.values(step.attempts).reduce((ess, a) => ({ ...ess, [`${step.id}:${a.number}`]: step.id }), ess);
   }, {});
 
   Object.values(run.steps).forEach((step) => {
     g.setNode(step.id, { width: 160, height: 50 });
-    if (step.parentId) {
-      g.setEdge(attemptIdToStepId[step.parentId], step.id);
+    if (step.parent) {
+      g.setEdge(attemptToStepId[`${step.parent.stepId}:${step.parent.attempt}`], step.id);
     }
   });
 
@@ -66,9 +66,9 @@ function Node({ node, step, runId, activeStepId }: NodeProps) {
       className={classNames('absolute flex')}
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
-      <Link href={`/projects/project_1/runs/${runId}${open ? '' : `#${step.id.split('-', 2)[1]}`}`} passHref={true}>
-        <a className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestAttempt?.result || null, !!step.cachedId, open))}>
-          <div className={classNames('flex-1 truncate', { 'font-bold': !step.parentId })}>
+      <Link href={`/projects/project_1/runs/${runId}${open ? '' : `#${step.id}`}`} passHref={true}>
+        <a className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestAttempt?.result || null, !!step.cached, open))}>
+          <div className={classNames('flex-1 truncate', { 'font-bold': !step.parent })}>
             <span className="font-mono">{step.target}</span>
           </div>
         </a>

@@ -6,8 +6,6 @@ defmodule Coflux.Project.Observer do
   alias Coflux.Project.Store
   alias Coflux.Listener
 
-  import Coflux.Project.Utils
-
   def start_link(opts) do
     project_id = Keyword.fetch!(opts, :id)
     GenServer.start_link(__MODULE__, project_id, opts)
@@ -116,26 +114,29 @@ defmodule Coflux.Project.Observer do
       |> Map.put(
         :steps,
         Map.new(steps, fn step ->
-          step_id = Models.Step.id(step)
+          parent =
+            if step.parent_step_id,
+              do: %{step_id: step.parent_step_id, attempt: step.parent_attempt}
+
+          cached =
+            if step.cached_step_id,
+              do: %{run_id: step.cached_run_id, step_id: step.cached_step_id}
 
           value =
             step
             |> Map.take([:repository, :target, :created_at])
-            |> Map.put(:id, step_id)
-            |> Map.put(:parent_id, Models.Step.parent_id(step))
-            |> Map.put(:cached_id, Models.Step.cached_id(step))
+            |> Map.put(:id, step.id)
+            |> Map.put(:parent, parent)
+            |> Map.put(:cached, cached)
             |> Map.put(:arguments, Enum.map(step.arguments, & &1))
             |> Map.put(
               :attempts,
               attempts
               |> Enum.filter(&(&1.step_id == step.id))
               |> Map.new(fn attempt ->
-                attempt_id = Models.Attempt.id(attempt)
-
                 value =
                   attempt
                   |> Map.take([:created_at, :number])
-                  |> Map.put(:id, attempt_id)
                   |> Map.put(
                     :dependency_ids,
                     dependencies
@@ -158,11 +159,11 @@ defmodule Coflux.Project.Observer do
                     )
                   )
 
-                {attempt_id, value}
+                {attempt.number, value}
               end)
             )
 
-          {step_id, value}
+          {step.id, value}
         end)
       )
 
@@ -222,18 +223,24 @@ defmodule Coflux.Project.Observer do
     step = load_model(Models.Step, data)
 
     update_topic(state, "runs.#{step.run_id}", fn _run ->
-      step_id = Models.Step.id(step)
+      parent =
+        if step.parent_step_id,
+          do: %{step_id: step.parent_step_id, attempt: step.parent_attempt}
+
+      cached =
+        if step.cached_step_id,
+          do: %{run_id: step.cached_run_id, step_id: step.cached_step_id}
 
       value =
         step
         |> Map.take([:repository, :target, :created_at])
-        |> Map.put(:id, step_id)
-        |> Map.put(:parent_id, Models.Step.parent_id(step))
-        |> Map.put(:cached_id, Models.Step.cached_id(step))
+        |> Map.put(:id, step.id)
+        |> Map.put(:parent, parent)
+        |> Map.put(:cached, cached)
         |> Map.put(:arguments, Enum.map(step.arguments, & &1))
         |> Map.put(:attempts, %{})
 
-      {[:steps, step_id], value}
+      {[:steps, step.id], value}
     end)
   end
 
@@ -249,19 +256,14 @@ defmodule Coflux.Project.Observer do
         {attempt.run_id, attempt.step_id, attempt.number}
       )
       |> update_topic(topic, fn _run ->
-        # TODO: use short id?
-        step_id = Models.Attempt.step_id(attempt)
-        attempt_id = Models.Attempt.id(attempt)
-
         value =
           attempt
           |> Map.take([:created_at, :number])
-          |> Map.put(:id, attempt_id)
           |> Map.put(:dependency_ids, [])
           |> Map.put(:assigned_at, nil)
           |> Map.put(:result, nil)
 
-        {[:steps, step_id, :attempts, attempt_id], value}
+        {[:steps, attempt.step_id, :attempts, attempt.number], value}
       end)
     else
       state
@@ -281,11 +283,8 @@ defmodule Coflux.Project.Observer do
         state
 
       {run_id, step_id, attempt} ->
-        attempt_id = encode_attempt_id(run_id, step_id, attempt)
-        step_id = encode_step_id(run_id, step_id)
-
         update_topic(state, "runs.#{run_id}", fn _run ->
-          {[:steps, step_id, :attempts, attempt_id, :assigned_at], assignment.created_at}
+          {[:steps, step_id, :attempts, attempt, :assigned_at], assignment.created_at}
         end)
     end
   end
@@ -303,13 +302,10 @@ defmodule Coflux.Project.Observer do
         state
 
       {run_id, step_id, attempt} ->
-        attempt_id = encode_attempt_id(run_id, step_id, attempt)
-        step_id = encode_step_id(run_id, step_id)
-
         # TODO: remove execution from state.executions
         update_topic(state, "runs.#{run_id}", fn _run ->
           value = Map.take(result, [:type, :value, :created_at])
-          {[:steps, step_id, :attempts, attempt_id, :result], value}
+          {[:steps, step_id, :attempts, attempt, :result], value}
         end)
     end
   end
@@ -322,14 +318,11 @@ defmodule Coflux.Project.Observer do
         state
 
       {run_id, step_id, attempt} ->
-        attempt_id = encode_attempt_id(run_id, step_id, attempt)
-        step_id = encode_step_id(run_id, step_id)
-
         update_topic(state, "runs.#{run_id}", fn run ->
-          dependency_ids = run.steps[step_id].attempts[attempt_id].dependency_ids
+          dependency_ids = run.steps[step_id].attempts[attempt].dependency_ids
 
           if dependency.dependency_id not in dependency_ids do
-            {[:steps, step_id, :attempts, attempt_id, :dependency_ids],
+            {[:steps, step_id, :attempts, attempt, :dependency_ids],
              [dependency.dependency_id | dependency_ids]}
           end
         end)

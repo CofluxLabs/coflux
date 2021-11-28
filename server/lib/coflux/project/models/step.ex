@@ -17,20 +17,4 @@ defmodule Coflux.Project.Models.Step do
     field :cache_key, :string
     field :created_at, :utc_datetime_usec
   end
-
-  def id(step) do
-    encode_step_id(step.run_id, step.id)
-  end
-
-  def parent_id(step) do
-    if step.parent_step_id do
-      encode_attempt_id(step.run_id, step.parent_step_id, step.parent_attempt)
-    end
-  end
-
-  def cached_id(step) do
-    if step.cached_step_id do
-      encode_step_id(step.cached_run_id, step.cached_step_id)
-    end
-  end
 end

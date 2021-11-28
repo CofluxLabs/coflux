@@ -9,12 +9,4 @@ defmodule Coflux.Project.Models.Attempt do
     belongs_to :execution, Models.Execution
     field :created_at, :utc_datetime_usec
   end
-
-  def step_id(attempt) do
-    encode_step_id(attempt.run_id, attempt.step_id)
-  end
-
-  def id(attempt) do
-    encode_attempt_id(attempt.run_id, attempt.step_id, attempt.number)
-  end
 end

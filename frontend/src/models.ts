@@ -30,17 +30,16 @@ export type Run = {
 
 export type Step = {
   id: string;
-  parentId: string | null;
+  parent: {stepId: string, attempt: number} | null;
   repository: string;
   target: string;
   createdAt: string;
   arguments: string[];
-  attempts: Record<string, Attempt>;
-  cachedId: string | null;
+  attempts: Record<number, Attempt>;
+  cached: {runId: string, stepId: string} | null;
 }
 
 export type Attempt = {
-  id: string;
   number: number;
   createdAt: string;
   dependencyIds: string[];

@@ -11,7 +11,6 @@ export default function RunPage() {
   const hash = useWindowHash();
   const projectId = router.query['projectId'] as string || null;
   const runId = router.query['runId'] as string || null;
-  const stepId = runId && hash ? `${runId}-${hash}` : null;
   return (
     <Fragment>
       <Head>
@@ -19,7 +18,7 @@ export default function RunPage() {
       </Head>
       <RunDetail projectId={projectId} runId={runId} activeTab="overview">
         {(run) => (
-          <RunGraph run={run} activeStepId={stepId} />
+          <RunGraph run={run} activeStepId={hash || null} />
         )}
       </RunDetail>
     </Fragment>
