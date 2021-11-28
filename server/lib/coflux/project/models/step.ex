@@ -24,7 +24,7 @@ defmodule Coflux.Project.Models.Step do
 
   def parent_id(step) do
     if step.parent_step_id do
-      encode_execution_id(step.run_id, step.parent_step_id, step.parent_attempt)
+      encode_attempt_id(step.run_id, step.parent_step_id, step.parent_attempt)
     end
   end
 

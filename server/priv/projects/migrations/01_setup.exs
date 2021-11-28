@@ -64,35 +64,43 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
 
     create_notify_trigger("steps")
 
-    create table("executions", primary_key: false) do
-      add :run_id, :bytea, null: false, primary_key: true
-      add :step_id, references("steps", type: :bytea, on_delete: :delete_all, with: [run_id: :run_id]), null: false, primary_key: true
-      add :attempt, :smallint, null: false, primary_key: true
+    create table("executions") do
+      add :repository, :string, null: false
+      add :target, :string, null: false
+      add :arguments, {:array, :string}, null: false
+      add :tags, {:array, :string}, null: false
+      add :priority, :integer, null: false
       add :version, :string
       add :execute_after, :utc_datetime
       add :created_at, :utc_datetime_usec, null: false
     end
 
-    alter table("steps") do
-      add :parent_step_id, :bytea
-      add :parent_attempt, references("executions", column: :attempt, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, parent_step_id: :step_id])
-    end
-
     create_notify_trigger("executions")
 
-    create table("assignments", primary_key: false) do
+    create table("attempts", primary_key: false) do
       add :run_id, :bytea, null: false, primary_key: true
-      add :step_id, :bytea, null: false, primary_key: true
-      add :attempt, references("executions", column: :attempt, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, step_id: :step_id]), null: false, primary_key: true
+      add :step_id, references("steps", type: :bytea, on_delete: :delete_all, with: [run_id: :run_id]), null: false, primary_key: true
+      add :number, :smallint, null: false, primary_key: true
+      add :execution_id, references("executions", type: :uuid, on_delete: :delete_all), null: false
+      add :created_at, :utc_datetime_usec, null: false
+    end
+
+    create_notify_trigger("attempts")
+
+    alter table("steps") do
+      add :parent_step_id, :bytea
+      add :parent_attempt, references("attempts", column: :number, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, parent_step_id: :step_id])
+    end
+
+    create table("assignments", primary_key: false) do
+      add :execution_id, :uuid, null: false, primary_key: true
       add :created_at, :utc_datetime_usec, null: false
     end
 
     create_notify_trigger("assignments")
 
     create table("heartbeats", primary_key: false) do
-      add :run_id, :bytea, null: false, primary_key: true
-      add :step_id, :bytea, null: false, primary_key: true
-      add :attempt, references("executions", column: :attempt, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, step_id: :step_id]), null: false, primary_key: true
+      add :execution_id, :uuid, null: false, primary_key: true
       add :created_at, :utc_datetime_usec, null: false, primary_key: true
       add :status, :smallint
     end
@@ -100,9 +108,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create_notify_trigger("heartbeats")
 
     create table("results", primary_key: false) do
-      add :run_id, :bytea, null: false, primary_key: true
-      add :step_id, :bytea, null: false, primary_key: true
-      add :attempt, references("executions", column: :attempt, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, step_id: :step_id]), null: false, primary_key: true
+      add :execution_id, :uuid, null: false, primary_key: true
       add :type, :integer, null: false
       add :value, :string
       add :extra, :map
@@ -112,12 +118,8 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create_notify_trigger("results")
 
     create table("dependencies", primary_key: false) do
-      add :run_id, :bytea, null: false, primary_key: true
-      add :step_id, :bytea, null: false, primary_key: true
-      add :attempt, references("executions", column: :attempt, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, step_id: :step_id]), null: false, primary_key: true
-      add :dependency_run_id, :bytea, null: false, primary_key: true
-      add :dependency_step_id, :bytea, null: false, primary_key: true
-      add :dependency_attempt, references("executions", column: :attempt, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, step_id: :step_id]), null: false, primary_key: true
+      add :execution_id, :uuid, null: false, primary_key: true
+      add :dependency_id, :uuid, null: false, primary_key: true
       add :created_at, :utc_datetime_usec, null: false
     end
 

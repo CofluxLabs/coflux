@@ -3,12 +3,12 @@ defmodule Coflux.Project.Utils do
     "#{run_id}-#{step_id}"
   end
 
-  def encode_execution_id(run_id, step_id, attempt) do
+  def encode_attempt_id(run_id, step_id, attempt) do
     "#{run_id}-#{step_id}-#{format_attempt(attempt)}"
   end
 
-  def decode_execution_id(execution_id) do
-    [run_id, step_id, attempt] = String.split(execution_id, "-")
+  def decode_attempt_id(attempt_id) do
+    [run_id, step_id, attempt] = String.split(attempt_id, "-")
     {run_id, step_id, String.to_integer(attempt)}
   end
 

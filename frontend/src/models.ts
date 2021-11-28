@@ -35,13 +35,13 @@ export type Step = {
   target: string;
   createdAt: string;
   arguments: string[];
-  executions: Record<string, Execution>;
+  attempts: Record<string, Attempt>;
   cachedId: string | null;
 }
 
-export type Execution = {
+export type Attempt = {
   id: string;
-  attempt: number;
+  number: number;
   createdAt: string;
   dependencyIds: string[];
   assignedAt: string | null;

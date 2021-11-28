@@ -105,13 +105,14 @@ defmodule Coflux.Project.Orchestrator do
   defp try_schedule_executions(state) do
     state.project_id
     |> Store.list_pending_executions()
-    |> Enum.each(fn {execution, step} ->
-      with {:ok, pid_map} <- Map.fetch(state.targets, {step.repository, step.target}),
+    |> Enum.each(fn execution ->
+      with {:ok, pid_map} <- Map.fetch(state.targets, {execution.repository, execution.target}),
            {:ok, pid} <- find_agent(pid_map),
            :ok <- Store.assign_execution(state.project_id, execution) do
-        execution_id = Models.Execution.id(execution)
-        arguments = prepare_arguments(step.arguments)
-        send(pid, {:execute, execution_id, step.target, arguments})
+        arguments = prepare_arguments(execution.arguments)
+        send(pid, {:execute, execution.id, execution.target, arguments})
+      else
+        :error -> :error
       end
     end)
 
@@ -143,7 +144,7 @@ defmodule Coflux.Project.Orchestrator do
       |> Changeset.cast(data, Models.Result.__schema__(:fields))
       |> Changeset.apply_changes()
 
-    execution_id = Models.Result.execution_id(result)
+    execution_id = result.execution_id
 
     Map.update!(state, :waiting, fn waiting ->
       case Map.pop(waiting, execution_id) do

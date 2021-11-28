@@ -12,24 +12,24 @@ type Props = {
 }
 
 export default function StepInfo({ step, className, style }: Props) {
-  const latestExecution = maxBy(Object.values(step.executions), 'attempt')
+  const latestAttempt = maxBy(Object.values(step.attempts), 'number')
   return (
     <div className={classNames('divide-y overflow-hidden', className)} style={style}>
       <div className="px-3 py-3 flex items-center">
         <h2 className="flex-1"><span className="font-mono text-xl">{step.target}</span> <span className="text-gray-500">({step.repository})</span></h2>
         {step.cachedId ? (
           <Badge intent="none" label="Cached" />
-        ) : !latestExecution ? (
+        ) : !latestAttempt ? (
           <Badge intent="info" label="Scheduling" />
-        ) : !latestExecution.assignedAt ? (
+        ) : !latestAttempt.assignedAt ? (
           <Badge intent="info" label="Assigning" />
-        ) : !latestExecution.result ? (
+        ) : !latestAttempt.result ? (
           <Badge intent="info" label="Running" />
-        ) : latestExecution.result.type <= 2 ? (
+        ) : latestAttempt.result.type <= 2 ? (
           <Badge intent="success" label="Completed" />
-        ) : latestExecution.result.type == 3 ? (
+        ) : latestAttempt.result.type == 3 ? (
           <Badge intent="danger" label="Failed" />
-        ) : latestExecution.result.type == 4 ? (
+        ) : latestAttempt.result.type == 4 ? (
           <Badge intent="warning" label="Abandoned" />
         ) : null}
       </div>
@@ -43,23 +43,23 @@ export default function StepInfo({ step, className, style }: Props) {
           </ol>
         </div>
       )}
-      {sortBy(Object.values(step.executions), 'attempt').map((execution) => (
-        <div key={execution.id} className="p-3">
-          <h3 className="uppercase text-sm font-bold text-gray-400">Attempt {execution.attempt}</h3>
-          <p>Scheduled: {execution.createdAt}</p>
-          {execution.assignedAt && (
-            <p>Started: {execution.assignedAt}</p>
+      {sortBy(Object.values(step.attempts), 'number').map((attempt) => (
+        <div key={attempt.id} className="p-3">
+          <h3 className="uppercase text-sm font-bold text-gray-400">Attempt {attempt.number}</h3>
+          <p>Scheduled: {attempt.createdAt}</p>
+          {attempt.assignedAt && (
+            <p>Started: {attempt.assignedAt}</p>
           )}
-          {execution.result && (
-            execution.result.type <= 2 ? (
+          {attempt.result && (
+            attempt.result.type <= 2 ? (
               <Fragment>
-                <p>Completed: {execution.result.createdAt}</p>
-                <p>Result: <span className="font-mono">{execution.result.value}</span></p>
+                <p>Completed: {attempt.result.createdAt}</p>
+                <p>Result: <span className="font-mono">{attempt.result.value}</span></p>
               </Fragment>
-            ) : execution.result.type == 3 ? (
+            ) : attempt.result.type == 3 ? (
               <Fragment>
-                <p>Failed: {execution.result.createdAt}</p>
-                <p>Error: <span className="font-mono">{execution.result.value}</span></p>
+                <p>Failed: {attempt.result.createdAt}</p>
+                <p>Error: <span className="font-mono">{attempt.result.value}</span></p>
               </Fragment>
             ) : null
           )}

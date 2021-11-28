@@ -8,12 +8,12 @@ import useNow from '../hooks/useNow';
 
 function loadExecutionTimes(run: models.Run): { [key: string]: [DateTime, DateTime | null, DateTime | null] } {
   return Object.values(run.steps).reduce((times, step) => {
-    return Object.values(step.executions).reduce((times, execution) => {
+    return Object.values(step.attempts).reduce((times, attempt) => {
       return {
-        ...times, [execution.id]: [
-          DateTime.fromISO(execution.createdAt),
-          execution.assignedAt ? DateTime.fromISO(execution.assignedAt) : null,
-          execution.result ? DateTime.fromISO(execution.result.createdAt) : null
+        ...times, [attempt.id]: [
+          DateTime.fromISO(attempt.createdAt),
+          attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null,
+          attempt.result ? DateTime.fromISO(attempt.result.createdAt) : null
         ]
       };
     }, times);
@@ -58,7 +58,7 @@ function classNameForResult(result: models.Result | null) {
 }
 
 function isRunning(run: models.Run) {
-  return Object.values(run.steps).some((step) => Object.values(step.executions).some((e) => !e.result));
+  return Object.values(run.steps).some((step) => Object.values(step.attempts).some((a) => !a.result));
 }
 
 function formatElapsed(millis: number) {
@@ -93,8 +93,8 @@ export default function RunTimeline({ run }: Props) {
         </div>
       </div>
       {steps.map((step) => {
-        const latestExecution = maxBy(Object.values(step.executions), 'attempt');
-        const stepFinishedAt = (latestExecution ? executionTimes[latestExecution.id][2] : null) || latestTime;
+        const latestAttempt = maxBy(Object.values(step.attempts), 'number');
+        const stepFinishedAt = (latestAttempt ? executionTimes[latestAttempt.id][2] : null) || latestTime;
         return (
           <div key={step.id} className="flex">
             <div className="w-40 truncate self-center mr-2">
@@ -102,12 +102,12 @@ export default function RunTimeline({ run }: Props) {
             </div>
             <div className="flex-1 my-2 relative h-6">
               <Bar x1={stepTimes[step.id]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-100" />
-              {Object.values(step.executions).map((execution) => {
-                const [createdAt, assignedAt, resultAt] = executionTimes[execution.id];
+              {Object.values(step.attempts).map((attempt) => {
+                const [createdAt, assignedAt, resultAt] = executionTimes[attempt.id];
                 return (
-                  <Fragment key={execution.id}>
+                  <Fragment key={attempt.number}>
                     <Bar x1={createdAt} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-200" />
-                    {assignedAt && <Bar x1={assignedAt} x2={resultAt || latestTime} x0={earliestTime} d={totalMillis} className={classNameForResult(execution.result)} />}
+                    {assignedAt && <Bar x1={assignedAt} x2={resultAt || latestTime} x0={earliestTime} d={totalMillis} className={classNameForResult(attempt.result)} />}
                   </Fragment>
                 );
               })}

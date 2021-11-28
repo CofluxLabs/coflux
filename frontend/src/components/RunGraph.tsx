@@ -13,14 +13,14 @@ function buildGraph(run: models.Run) {
   g.setGraph({ rankdir: 'LR', ranksep: 40, nodesep: 40 });
   g.setDefaultEdgeLabel(function () { return {}; });
 
-  const executionIdToStepId = Object.values(run.steps).reduce<Record<string, string>>((ess, step) => {
-    return Object.values(step.executions).reduce((ess, e) => ({ ...ess, [e.id]: step.id }), ess);
+  const attemptIdToStepId = Object.values(run.steps).reduce<Record<string, string>>((ess, step) => {
+    return Object.values(step.attempts).reduce((ess, e) => ({ ...ess, [e.id]: step.id }), ess);
   }, {});
 
   Object.values(run.steps).forEach((step) => {
     g.setNode(step.id, { width: 160, height: 50 });
     if (step.parentId) {
-      g.setEdge(executionIdToStepId[step.parentId], step.id);
+      g.setEdge(attemptIdToStepId[step.parentId], step.id);
     }
   });
 
@@ -59,7 +59,7 @@ type NodeProps = {
 }
 
 function Node({ node, step, runId, activeStepId }: NodeProps) {
-  const latestExecution = maxBy(Object.values(step.executions), 'attempt')
+  const latestAttempt = maxBy(Object.values(step.attempts), 'number')
   const open = step.id == activeStepId;
   return (
     <Popover
@@ -67,7 +67,7 @@ function Node({ node, step, runId, activeStepId }: NodeProps) {
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
       <Link href={`/projects/project_1/runs/${runId}${open ? '' : `#${step.id.split('-', 2)[1]}`}`} passHref={true}>
-        <a className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestExecution?.result || null, !!step.cachedId, open))}>
+        <a className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestAttempt?.result || null, !!step.cachedId, open))}>
           <div className={classNames('flex-1 truncate', { 'font-bold': !step.parentId })}>
             <span className="font-mono">{step.target}</span>
           </div>
