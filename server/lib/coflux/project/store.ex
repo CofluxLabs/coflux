@@ -194,21 +194,6 @@ defmodule Coflux.Project.Store do
     Repo.all(query, prefix: project_id)
   end
 
-  def abandon_execution(project_id, execution) do
-    now = DateTime.utc_now()
-
-    Repo.transaction(fn ->
-      Repo.insert!(
-        %Models.Result{
-          execution_id: execution.id,
-          type: 4,
-          created_at: now
-        },
-        prefix: project_id
-      )
-    end)
-  end
-
   def assign_execution(project_id, execution) do
     case Repo.insert(
            %Models.Assignment{
@@ -262,6 +247,7 @@ defmodule Coflux.Project.Store do
       {:blob, key} when is_binary(key) -> {1, key, nil}
       {:result, execution_id} when is_binary(execution_id) -> {2, execution_id, nil}
       {:failed, error, stacktrace} -> {3, error, stacktrace}
+      :abandoned -> {4, nil, nil}
     end
   end
 
@@ -271,7 +257,7 @@ defmodule Coflux.Project.Store do
       1 -> {:blob, result.value}
       2 -> {:result, result.value}
       3 -> {:failed, result.value, result.extra}
-      4 -> nil
+      4 -> :abandoned
     end
   end
 
