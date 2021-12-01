@@ -83,7 +83,7 @@ defmodule Coflux.Project.Orchestrator do
     |> Store.list_running_executions()
     |> Enum.filter(&execution_abandoned?(&1, now))
     |> Enum.each(fn {execution, _, _} ->
-      Store.put_result(state.project_id, execution, :abandoned)
+      Store.put_result(state.project_id, execution.id, :abandoned)
     end)
 
     # TODO: time?
