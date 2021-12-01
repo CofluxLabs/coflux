@@ -14,7 +14,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       CREATE FUNCTION notify_insert()
       RETURNS trigger AS $$
       BEGIN
-        PERFORM pg_notify('insert', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME || ':' || (row_to_json(NEW)));
+        PERFORM pg_notify('insert', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME || ':' || row_to_json(NEW));
         RETURN NEW;
       END;
       $$ LANGUAGE plpgsql;
@@ -109,7 +109,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
 
     create table("results", primary_key: false) do
       add :execution_id, :uuid, null: false, primary_key: true
-      add :type, :integer, null: false
+      add :type, :smallint, null: false
       add :value, :string
       add :extra, :map
       add :created_at, :utc_datetime_usec, null: false
