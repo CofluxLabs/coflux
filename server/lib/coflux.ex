@@ -5,8 +5,7 @@ defmodule Coflux do
     {timeout, opts} = Keyword.pop(opts, :timeout, 5_000)
 
     project_id
-    |> Project.list_tasks()
-    |> Enum.find(&(&1.repository == repository && &1.target == target))
+    |> Project.find_task(repository, target)
     |> case do
       nil ->
         {:error, :not_registered}

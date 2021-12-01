@@ -42,6 +42,10 @@ defmodule Coflux.Project do
     call_orchestrator(project_id, {:register_targets, repository, version, manifest, pid})
   end
 
+  def find_task(project_id, repository, version \\ nil, target) do
+    Store.find_task(project_id, repository, version, target)
+  end
+
   def schedule_task(project_id, task_id, arguments \\ [], opts \\ []) do
     with {:ok, {run_id, execution_id}} <-
            Store.schedule_task(project_id, task_id, arguments, opts) do

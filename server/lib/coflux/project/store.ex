@@ -17,6 +17,18 @@ defmodule Coflux.Project.Store do
     Repo.get!(Models.Task, task_id, prefix: project_id)
   end
 
+  def find_task(project_id, repository, version \\ nil, target) do
+    query =
+      from(t in Models.Task,
+        where: t.repository == ^repository and t.target == ^target,
+        order_by: [desc: :created_at],
+        limit: 1
+      )
+
+    query = if version, do: from(t in query, where: t.version == ^version), else: query
+    Repo.one(query, prefix: project_id)
+  end
+
   def get_run(project_id, run_id) do
     Repo.get!(Models.Run, run_id, prefix: project_id)
   end
