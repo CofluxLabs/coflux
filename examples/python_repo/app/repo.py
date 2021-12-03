@@ -65,7 +65,7 @@ def maybe_raise():
 
 
 @task()
-def raise_error():
+def raise_task():
     do_raise()
     return maybe_raise().result()
 
@@ -84,25 +84,33 @@ def slow_task():
     sleep(10)
 
 
+@step()
+def choose_random(i: int):
+    choice = random.randint(0, 12)
+    if choice == 0:
+        random_task(random.randint(1, 4))
+    elif choice == 1:
+        maybe_raise()
+    elif choice <= 4:
+        for j in range(choice):
+            choose_random(j)
+    elif choice <= 6:
+        sleep(choice)
+    elif choice == 7:
+        maximum(list(range(min(2, i.result()))))
+    elif choice == 8:
+        build_content()
+    elif choice == 9:
+        github_events()
+    else:
+        fib(choice)
+
+
 @task()
 def random_task(n: int = 5):
     n = n.result()
     for i in range(n):
-        fn, *args = random.choice(
-            [
-                (raise_error,),
-                (maximum, list(range(i))),
-                (fib, random.randint(3, 10)),
-                (inc, random.randint(0, 100)),
-                (sleep, random.randint(1, 5)),
-                (my_task,),
-                (blob_task,),
-                (github_task,),
-                (random_task, random.randint(2, n)),
-                (blob_task,),
-            ]
-        )
-        fn(*args)
+        choose_random(i)
 
 
 @step()

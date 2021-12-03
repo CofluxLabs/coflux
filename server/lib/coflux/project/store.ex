@@ -59,6 +59,28 @@ defmodule Coflux.Project.Store do
     Repo.all(query, prefix: project_id)
   end
 
+
+  def get_execution_runs(project_id, execution_ids) do
+    query = from(r in Models.Run, where: r.execution_id in ^execution_ids)
+    Repo.all(query, prefix: project_id)
+  end
+
+  def get_run_initial_step(project_id, run_id) do
+    query = from(s in Models.Step, where: s.run_id == ^run_id and is_nil(s.parent_attempt))
+    Repo.one!(query, prefix: project_id)
+  end
+
+  def get_step_latest_attempt(project_id, run_id, step_id) do
+    query =
+      from(e in Models.Attempt,
+        where: e.run_id == ^run_id and e.step_id == ^step_id,
+        order_by: [desc: :number],
+        limit: 1
+      )
+
+    Repo.one!(query, prefix: project_id)
+  end
+
   def create_tasks(project_id, repository, version, manifest) do
     tasks =
       manifest
@@ -81,6 +103,7 @@ defmodule Coflux.Project.Store do
     task_tags = Keyword.get(opts, :step_tags, [])
     priority = Keyword.get(opts, :priority, 0)
     version = Keyword.get(opts, :version)
+    execution_id = Keyword.get(opts, :execution_id)
     idempotency_key = Keyword.get(opts, :idempotency_key)
 
     Repo.transaction(fn ->
@@ -93,20 +116,7 @@ defmodule Coflux.Project.Store do
           Repo.get_by(Models.Run, [idempotency_key: idempotency_key], prefix: project_id)
 
       if existing_run do
-        query =
-          from(s in Models.Step, where: s.run_id == ^existing_run.id and is_nil(s.parent_attempt))
-
-        initial_step = Repo.one!(query, prefix: project_id)
-
-        query =
-          from(e in Models.Attempt,
-            where: e.run_id == ^existing_run.id and e.step_id == ^initial_step.id,
-            order_by: [desc: :attempt],
-            limit: 1
-          )
-
-        latest_attempt = Repo.one!(query, prefix: project_id)
-        {existing_run.id, latest_attempt.execution_id}
+        existing_run.id
       else
         run =
           Repo.insert!(
@@ -114,26 +124,26 @@ defmodule Coflux.Project.Store do
               id: Base.encode32(:rand.bytes(10)),
               task_id: task_id,
               tags: run_tags,
+              execution_id: execution_id,
               idempotency_key: idempotency_key,
               created_at: now
             },
             prefix: project_id
           )
 
-        execution_id =
-          schedule_step(project_id, run, task.repository, task.target, arguments,
-            now: now,
-            tags: task_tags,
-            priority: priority,
-            version: version
-          )
+        do_schedule_step(project_id, run, task.repository, task.target, arguments,
+          now: now,
+          tags: task_tags,
+          priority: priority,
+          version: version
+        )
 
-        {run.id, execution_id}
+        run.id
       end
     end)
   end
 
-  def schedule_child(project_id, from_execution_id, repository, target, arguments, opts \\ []) do
+  def schedule_step(project_id, from_execution_id, repository, target, arguments, opts \\ []) do
     tags = Keyword.get(opts, :tags, [])
     priority = Keyword.get(opts, :priority, 0)
     version = Keyword.get(opts, :keyword)
@@ -147,7 +157,7 @@ defmodule Coflux.Project.Store do
       now = DateTime.utc_now()
 
       execution_id =
-        schedule_step(project_id, run, repository, target, arguments,
+        do_schedule_step(project_id, run, repository, target, arguments,
           now: now,
           tags: tags,
           priority: priority,
@@ -157,7 +167,7 @@ defmodule Coflux.Project.Store do
           cache_key: cache_key
         )
 
-      {run.id, execution_id}
+      execution_id
     end)
   end
 
@@ -281,7 +291,7 @@ defmodule Coflux.Project.Store do
     end
   end
 
-  defp schedule_step(project_id, run, repository, target, arguments, opts) do
+  defp do_schedule_step(project_id, run, repository, target, arguments, opts) do
     now = Keyword.fetch!(opts, :now)
     tags = Keyword.fetch!(opts, :tags)
     priority = Keyword.fetch!(opts, :priority)

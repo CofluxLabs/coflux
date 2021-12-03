@@ -103,9 +103,33 @@ defmodule Coflux.Project.Observer do
     steps = Store.get_steps(project_id, run_id)
     attempts = Store.get_attempts(project_id, run_id)
     execution_ids = Enum.map(attempts, & &1.execution_id)
-    dependencies = Store.get_dependencies(project_id, execution_ids)
-    assignments = Store.get_assignments(project_id, execution_ids)
-    results = Store.get_results(project_id, execution_ids)
+
+    dependencies =
+      project_id
+      |> Store.get_dependencies(execution_ids)
+      |> Enum.group_by(& &1.execution_id)
+      |> Map.new(fn {execution_id, dependencies} ->
+        {execution_id, Enum.map(dependencies, & &1.dependency_id)}
+      end)
+
+    assigned_at =
+      project_id
+      |> Store.get_assignments(execution_ids)
+      |> Map.new(&{&1.execution_id, &1.created_at})
+
+    results =
+      project_id
+      |> Store.get_results(execution_ids)
+      |> Map.new(&{&1.execution_id, Map.take(&1, [:type, :value, :created_at])})
+
+    execution_runs =
+      project_id
+      |> Store.get_execution_runs(execution_ids)
+      |> Enum.group_by(& &1.execution_id)
+      |> Map.new(fn {execution_id, runs} ->
+        # TODO: include run details (repository/target; from task or step?)
+        {execution_id, Enum.map(runs, & &1.id)}
+      end)
 
     result =
       run
@@ -134,30 +158,15 @@ defmodule Coflux.Project.Observer do
               attempts
               |> Enum.filter(&(&1.step_id == step.id))
               |> Map.new(fn attempt ->
+                execution_id = attempt.execution_id
+
                 value =
                   attempt
                   |> Map.take([:created_at, :number])
-                  |> Map.put(
-                    :dependency_ids,
-                    dependencies
-                    |> Enum.filter(&(&1.execution_id == attempt.execution_id))
-                    |> Enum.map(& &1.dependency_id)
-                  )
-                  |> Map.put(
-                    :assigned_at,
-                    Enum.find_value(
-                      assignments,
-                      &(&1.execution_id == attempt.execution_id && &1.created_at)
-                    )
-                  )
-                  |> Map.put(
-                    :result,
-                    Enum.find_value(
-                      results,
-                      &(&1.execution_id == attempt.execution_id &&
-                          Map.take(&1, [:type, :value, :created_at]))
-                    )
-                  )
+                  |> Map.put(:dependency_ids, Map.get(dependencies, execution_id, []))
+                  |> Map.put(:run_ids, Map.get(execution_runs, execution_id, []))
+                  |> Map.put(:assigned_at, Map.get(assigned_at, execution_id))
+                  |> Map.put(:result, Map.get(results, execution_id))
 
                 {attempt.number, value}
               end)
@@ -214,9 +223,30 @@ defmodule Coflux.Project.Observer do
   defp handle_insert(state, :runs, data) do
     run = load_model(Models.Run, data)
 
-    update_topic(state, "tasks.#{run.task_id}", fn _task ->
-      {[:runs, run.id], Map.take(run, [:id, :created_at])}
-    end)
+    state =
+      update_topic(state, "tasks.#{run.task_id}", fn _task ->
+        {[:runs, run.id], Map.take(run, [:id, :created_at])}
+      end)
+
+    if run.execution_id do
+      new_run_id = run.id
+
+      case Map.get(state.executions, run.execution_id) do
+        nil ->
+          state
+
+        {run_id, step_id, attempt} ->
+          update_topic(state, "runs.#{run_id}", fn run ->
+            run_ids = run.steps[step_id].attempts[attempt].run_ids
+
+            if new_run_id not in run_ids do
+              {[:steps, step_id, :attempts, attempt, :run_ids], [new_run_id | run_ids]}
+            end
+          end)
+      end
+    else
+      state
+    end
   end
 
   defp handle_insert(state, :steps, data) do
@@ -260,6 +290,7 @@ defmodule Coflux.Project.Observer do
           attempt
           |> Map.take([:created_at, :number])
           |> Map.put(:dependency_ids, [])
+          |> Map.put(:run_ids, [])
           |> Map.put(:assigned_at, nil)
           |> Map.put(:result, nil)
 

@@ -242,11 +242,18 @@ class Client:
                 for task in pending:
                     task.cancel()
 
-    async def schedule_child(self, execution_id, target, arguments, repository=None, cache_key=None):
+    async def schedule_step(self, execution_id, target, arguments, repository=None, cache_key=None):
         repository = repository or self._module_name
         serialised_arguments = [_serialise_argument(a) for a in arguments]
         return await self._channel.request(
-            'schedule_child', execution_id, repository, target, serialised_arguments, cache_key
+            'schedule_step', repository, target, serialised_arguments, execution_id, cache_key
+        )
+
+    async def schedule_task(self, execution_id, target, arguments, repository=None):
+        repository = repository or self._module_name
+        serialised_arguments = [_serialise_argument(a) for a in arguments]
+        return await self._channel.request(
+            'schedule_task', repository, target, serialised_arguments, execution_id
         )
 
     def _set_execution_status(self, execution_id, status):
@@ -269,10 +276,10 @@ class Client:
             raise Exception(f"unexeptected result tag ({result[0]})")
 
 
-def _decorate(name, type, cache_key_fn=None):
+def step(*, name=None, cache_key_fn=None):
     def decorate(fn):
         target = name or fn.__name__
-        setattr(fn, TARGET_KEY, (target, (type, fn)))
+        setattr(fn, TARGET_KEY, (target, ('step', fn)))
 
         @functools.wraps(fn)
         def wrapper(*args):  # TODO: support kwargs?
@@ -282,7 +289,7 @@ def _decorate(name, type, cache_key_fn=None):
                 # TODO: pass more context? (repository, name, ?)
                 # TODO: handle args being futures?
                 cache_key = cache_key_fn(*args) if cache_key_fn else None
-                schedule = client.schedule_child(execution_id, target, args, cache_key=cache_key)
+                schedule = client.schedule_step(execution_id, target, args, cache_key=cache_key)
                 new_execution_id = asyncio.run_coroutine_threadsafe(schedule, loop).result()
                 return Future(
                     lambda: client.get_result(new_execution_id, execution_id), ['result', new_execution_id], loop
@@ -297,9 +304,24 @@ def _decorate(name, type, cache_key_fn=None):
     return decorate
 
 
-def task(name=None):
-    return _decorate(name, 'task')
+def task(*, name=None):
+    def decorate(fn):
+        target = name or fn.__name__
+        setattr(fn, TARGET_KEY, (target, ('task', fn)))
 
+        @functools.wraps(fn)
+        def wrapper(*args):  # TODO: support kwargs?
+            execution = execution_var.get(None)
+            if execution is not None:
+                execution_id, client, loop = execution
+                # TODO: pass more context? (repository, name, ?)
+                # TODO: handle args being futures?
+                schedule = client.schedule_task(execution_id, target, args)
+                asyncio.run_coroutine_threadsafe(schedule, loop).result()
+            else:
+                # TODO: execute in threadpool
+                fn(*[(Future(lambda: a) if not isinstance(a, Future) else a) for a in args])
 
-def step(name=None, cache_key_fn=None):
-    return _decorate(name, 'step', cache_key_fn)
+        return wrapper
+
+    return decorate

@@ -5,6 +5,7 @@ defmodule Coflux.Project.Models.Run do
   schema "runs" do
     belongs_to :task, Models.Task
     field :tags, {:array, :string}
+    belongs_to :execution, Models.Execution
     field :idempotency_key, :string
     field :created_at, :utc_datetime_usec
 

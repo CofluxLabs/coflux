@@ -43,6 +43,7 @@ export type Attempt = {
   number: number;
   createdAt: string;
   dependencyIds: string[];
+  runIds: string[];
   assignedAt: string | null;
   result: Result | null;
 }

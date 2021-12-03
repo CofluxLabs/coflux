@@ -22,6 +22,12 @@ function buildGraph(run: models.Run) {
     if (step.parent) {
       g.setEdge(attemptToStepId[`${step.parent.stepId}:${step.parent.attempt}`], step.id);
     }
+    Object.values(step.attempts).forEach((attempt) => {
+      attempt.runIds.forEach((runId) => {
+        g.setNode(runId, { width: 160, height: 50 });
+        g.setEdge(step.id, runId);
+      });
+    });
   });
 
   return g;
@@ -51,14 +57,14 @@ function Arrow({ nodeWidth, size }: ArrowProps) {
   );
 }
 
-type NodeProps = {
+type StepNodeProps = {
   node: dagre.Node;
   step: models.Step;
   runId: string;
   activeStepId: string | null;
 }
 
-function Node({ node, step, runId, activeStepId }: NodeProps) {
+function StepNode({ node, step, runId, activeStepId }: StepNodeProps) {
   const latestAttempt = maxBy(Object.values(step.attempts), 'number')
   const open = step.id == activeStepId;
   return (
@@ -93,6 +99,28 @@ function Node({ node, step, runId, activeStepId }: NodeProps) {
         </Popover.Panel>
       </Transition>
     </Popover>
+  );
+}
+
+type RunNodeProps = {
+  node: dagre.Node;
+  runId: string;
+}
+
+function RunNode({ node, runId }: RunNodeProps) {
+  return (
+    <div
+      className="absolute flex"
+      style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
+    >
+      <Link href={`/projects/project_1/runs/${runId}`}>
+        <a className="flex-1 flex items-center border rounded p-2">
+          <div className="flex-1 truncate">
+            <span className="font-mono">{runId}</span>
+          </div>
+        </a>
+      </Link>
+    </div>
   );
 }
 
@@ -134,15 +162,22 @@ export default function RunGraph({ run, activeStepId }: Props) {
         </svg>
         <div className="absolute">
           {graph.nodes().map((nodeId) => {
-            return (
-              <Node
-                key={nodeId}
-                node={graph.node(nodeId)}
-                step={run.steps[nodeId]}
-                runId={run.id}
-                activeStepId={activeStepId}
-              />
-            );
+            const step = run.steps[nodeId];
+            if (step) {
+              return (
+                <StepNode
+                  key={nodeId}
+                  node={graph.node(nodeId)}
+                  step={run.steps[nodeId]}
+                  runId={run.id}
+                  activeStepId={activeStepId}
+                />
+              );
+            } else {
+              return (
+                <RunNode key={nodeId} node={graph.node(nodeId)} runId={nodeId} />
+              );
+            }
           })}
         </div>
       </div>

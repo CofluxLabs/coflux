@@ -55,7 +55,7 @@ defmodule Coflux.Handlers.Events do
         arguments = Enum.map(arguments, &parse_argument/1)
 
         case Project.schedule_task(state.project_id, task_id, arguments) do
-          {:ok, run_id, _execution_id} ->
+          {:ok, run_id} ->
             {[result_message(message["id"], run_id)], state}
         end
     end

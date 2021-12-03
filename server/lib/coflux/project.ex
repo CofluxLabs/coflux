@@ -47,31 +47,11 @@ defmodule Coflux.Project do
   end
 
   def schedule_task(project_id, task_id, arguments \\ [], opts \\ []) do
-    with {:ok, {run_id, execution_id}} <-
-           Store.schedule_task(project_id, task_id, arguments, opts) do
-      {:ok, run_id, execution_id}
-    end
+    Store.schedule_task(project_id, task_id, arguments, opts)
   end
 
-  def schedule_child(
-        project_id,
-        parent_id,
-        repository,
-        target,
-        arguments \\ [],
-        opts \\ []
-      ) do
-    with {:ok, {_run_id, execution_id}} <-
-           Store.schedule_child(
-             project_id,
-             parent_id,
-             repository,
-             target,
-             arguments,
-             opts
-           ) do
-      {:ok, execution_id}
-    end
+  def schedule_step(project_id, parent_id, repository, target, arguments \\ [], opts \\ []) do
+    Store.schedule_step(project_id, parent_id, repository, target, arguments, opts)
   end
 
   def record_heartbeats(project_id, executions) do
@@ -89,6 +69,12 @@ defmodule Coflux.Project do
 
     # TODO: try to get from database first?
     call_orchestrator(project_id, {:get_result, execution_id, pid})
+  end
+
+  def get_run_result(project_id, run_id, pid) do
+    initial_step = Store.get_run_initial_step(project_id, run_id)
+    attempt = Store.get_step_latest_attempt(project_id, run_id, initial_step.id)
+    get_result(project_id, attempt.execution_id, pid)
   end
 
   def subscribe(project_id, topic, pid) do
