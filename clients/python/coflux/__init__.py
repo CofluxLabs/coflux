@@ -166,6 +166,7 @@ class Client:
         self._channel = Channel({'execute': self._handle_execute})
         self._results = {}
         self._executions = {}
+        self._semaphore = threading.Semaphore(5)
 
     def _url(self, scheme, path):
         return f'{scheme}://{self._server_host}/projects/{self._project_id}{path}'
@@ -186,6 +187,7 @@ class Client:
 
     # TODO: consider thread safety
     def _execute_target(self, execution_id, target_name, arguments, loop):
+        self._semaphore.acquire()
         self._set_execution_status(execution_id, 1)
         target = self._targets[target_name][1]
         arguments = [_future_argument(a, self, loop, execution_id) for a in arguments]
@@ -212,6 +214,7 @@ class Client:
             asyncio.run_coroutine_threadsafe(task, loop).result()
         finally:
             del self._executions[execution_id]
+            self._semaphore.release()
 
     async def _handle_execute(self, execution_id, target_name, arguments):
         # TODO: check execution isn't already running?
@@ -219,7 +222,6 @@ class Client:
         loop = asyncio.get_running_loop()
         thread = threading.Thread(target=self._execute_target, args=(execution_id, target_name, arguments, loop))
         self._executions[execution_id] = (thread, time.time(), 0)
-        # TODO: acquire semaphore
         thread.start()
 
     async def _send_heartbeats(self, threshold_s=1):
@@ -263,11 +265,11 @@ class Client:
 
     async def get_result(self, execution_id, from_execution_id):
         if execution_id not in self._results:
-            # TODO: release semaphore
+            self._semaphore.release()
             self._set_execution_status(from_execution_id, 2)
             self._results[execution_id] = await self._channel.request('get_result', execution_id, from_execution_id)
             self._set_execution_status(from_execution_id, 0)
-            # TODO: acquire semaphore
+            self._semaphore.acquire()
             self._set_execution_status(from_execution_id, 1)
         result = self._results[execution_id]
         if result[0] == "json":
