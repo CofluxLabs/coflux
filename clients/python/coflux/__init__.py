@@ -8,6 +8,7 @@ import json
 import time
 import inspect
 import threading
+import os
 
 TARGET_KEY = '_coflux_target'
 BLOB_THRESHOLD = 100
@@ -157,7 +158,7 @@ def _future_argument(argument, client, loop, execution_id):
 
 
 class Client:
-    def __init__(self, project_id, module_name, version, server_host):
+    def __init__(self, project_id, module_name, version, server_host, concurrency=None):
         self._project_id = project_id
         self._module_name = module_name
         self._version = version
@@ -166,7 +167,7 @@ class Client:
         self._channel = Channel({'execute': self._handle_execute})
         self._results = {}
         self._executions = {}
-        self._semaphore = threading.Semaphore(5)
+        self._semaphore = threading.Semaphore(concurrency or min(32, os.cpu_count() + 4))
 
     def _url(self, scheme, path):
         return f'{scheme}://{self._server_host}/projects/{self._project_id}{path}'
