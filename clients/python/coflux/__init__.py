@@ -6,8 +6,8 @@ import hashlib
 import importlib
 import json
 import time
-import typing as t
 import inspect
+import threading
 
 TARGET_KEY = '_coflux_target'
 BLOB_THRESHOLD = 100
@@ -144,10 +144,16 @@ def _generate_manifest(targets):
     }
 
 
-class Execution(t.NamedTuple):
-    task: t.Coroutine
-    start_time: float
-    status: int
+def _future_argument(argument, client, loop, execution_id):
+    tag, value = argument
+    if tag == 'json':
+        return Future(lambda: json.loads(value), argument)
+    elif tag == 'blob':
+        return Future(lambda: client._get_blob(value), argument, loop)
+    elif tag == 'result':
+        return Future(lambda: client.get_result(value, execution_id), argument, loop)
+    else:
+        raise Exception(f"unrecognised tag ({tag})")
 
 
 class Client:
@@ -164,17 +170,6 @@ class Client:
     def _url(self, scheme, path):
         return f'{scheme}://{self._server_host}/projects/{self._project_id}{path}'
 
-    def _future_argument(self, argument, loop, execution_id):
-        tag, value = argument
-        if tag == 'json':
-            return Future(lambda: json.loads(value), argument)
-        elif tag == 'blob':
-            return Future(lambda: self._get_blob(value), argument, loop)
-        elif tag == 'result':
-            return Future(lambda: self.get_result(value, execution_id), argument, loop)
-        else:
-            raise Exception(f"unrecognised tag ({tag})")
-
     async def _get_blob(self, key):
         # TODO: make blob url configurable
         async with self._session.get(self._url('http', f'/blobs/{key}')) as resp:
@@ -189,40 +184,48 @@ class Client:
             resp.raise_for_status()
         return key
 
-    async def _put_result(self, task, execution_id):
+    # TODO: consider thread safety
+    def _execute_target(self, execution_id, target_name, arguments, loop):
+        self._set_execution_status(execution_id, 1)
+        target = self._targets[target_name][1]
+        arguments = [_future_argument(a, self, loop, execution_id) for a in arguments]
+        ctx = contextvars.Context()
+        ctx.run(execution_var.set, (execution_id, self, loop))
         try:
-            value = await task
+            value = ctx.run(target, *arguments)
         except Exception as e:
             # TODO: include exception state
-            await self._channel.notify('put_error', execution_id, str(e), {})
+            task = self._channel.notify('put_error', execution_id, str(e), {})
+            asyncio.run_coroutine_threadsafe(task, loop).result()
         else:
             if isinstance(value, Future):
                 type, value = value.serialise()
             else:
                 json_value = _json_dumps(value)
                 if len(json_value) >= BLOB_THRESHOLD:
-                    key = await self._put_blob(json_value)
+                    task = self._put_blob(json_value)
+                    key = asyncio.run_coroutine_threadsafe(task, loop).result()
                     type, value = "blob", key
                 else:
                     type, value = "json", json_value
-            await self._channel.notify('put_result', execution_id, type, value)
-        del self._executions[execution_id]
+            task = self._channel.notify('put_result', execution_id, type, value)
+            asyncio.run_coroutine_threadsafe(task, loop).result()
+        finally:
+            del self._executions[execution_id]
 
     async def _handle_execute(self, execution_id, target_name, arguments):
-        print(f"Executing '{target_name}' ({execution_id})...")
-        target = self._targets[target_name][1]
-        loop = asyncio.get_running_loop()
-        future_arguments = [self._future_argument(argument, loop, execution_id) for argument in arguments]
-        execution_var.set((execution_id, self, loop))
-        task = asyncio.to_thread(target, *future_arguments)
         # TODO: check execution isn't already running?
-        self._executions[execution_id] = Execution(task, time.time(), 0)
-        asyncio.create_task(self._put_result(task, execution_id))
+        print(f"Handling execute '{target_name}' ({execution_id})...")
+        loop = asyncio.get_running_loop()
+        thread = threading.Thread(target=self._execute_target, args=(execution_id, target_name, arguments, loop))
+        self._executions[execution_id] = (thread, time.time(), 0)
+        # TODO: acquire semaphore
+        thread.start()
 
     async def _send_heartbeats(self, threshold_s=1):
         while True:
             now = time.time()
-            executions = {id: e.status for id, e in self._executions.items() if now - e.start_time > threshold_s}
+            executions = {id: e[2] for id, e in self._executions.items() if now - e[1] > threshold_s}
             if executions:
                 await self._channel.notify('record_heartbeats', executions)
             await asyncio.sleep(1)
@@ -252,18 +255,20 @@ class Client:
     async def schedule_task(self, execution_id, target, arguments, repository=None):
         repository = repository or self._module_name
         serialised_arguments = [_serialise_argument(a) for a in arguments]
-        return await self._channel.request(
-            'schedule_task', repository, target, serialised_arguments, execution_id
-        )
+        return await self._channel.request('schedule_task', repository, target, serialised_arguments, execution_id)
 
     def _set_execution_status(self, execution_id, status):
-        self._executions[execution_id] = self._executions[execution_id]._replace(status=status)
+        thread, start_time, _status = self._executions[execution_id]
+        self._executions[execution_id] = (thread, start_time, status)
 
     async def get_result(self, execution_id, from_execution_id):
         if execution_id not in self._results:
-            self._set_execution_status(from_execution_id, 1)
+            # TODO: release semaphore
+            self._set_execution_status(from_execution_id, 2)
             self._results[execution_id] = await self._channel.request('get_result', execution_id, from_execution_id)
             self._set_execution_status(from_execution_id, 0)
+            # TODO: acquire semaphore
+            self._set_execution_status(from_execution_id, 1)
         result = self._results[execution_id]
         if result[0] == "json":
             return json.loads(result[1])
