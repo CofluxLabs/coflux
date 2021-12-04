@@ -3,7 +3,7 @@ import random
 import requests
 import typing as t
 
-from coflux import step, task
+from coflux import step, task, sensor
 
 
 @step()
@@ -133,6 +133,20 @@ def github_events():
 def github_task():
     events = github_events().result()
     return len(events)
+
+
+@sensor()
+def demo_sensor(cursor: t.Optional[int]):
+    interval = 10
+    cursor = (cursor.result() if cursor else None)
+    cursor = cursor or time.time()
+    while True:
+        remaining = max(0, cursor - time.time())
+        time.sleep(remaining)
+        yield
+        my_task()
+        cursor += remaining + interval
+        yield cursor
 
 
 if __name__ == '__main__':

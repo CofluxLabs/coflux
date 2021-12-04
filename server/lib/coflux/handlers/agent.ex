@@ -53,6 +53,12 @@ defmodule Coflux.Handlers.Agent do
         Project.record_heartbeats(state.project_id, executions)
         {[], state}
 
+      "put_cursor" ->
+        [execution_id, type, value] = message["params"]
+        cursor = parse_cursor(type, value)
+        Project.put_cursor(state.project_id, execution_id, cursor)
+        {[], state}
+
       "put_result" ->
         [execution_id, type, value] = message["params"]
         result = parse_result(type, value)
@@ -118,6 +124,7 @@ defmodule Coflux.Handlers.Agent do
     case type do
       "task" -> :task
       "step" -> :step
+      "sensor" -> :sensor
     end
   end
 
@@ -150,6 +157,13 @@ defmodule Coflux.Handlers.Agent do
       "json" -> {:json, value}
       "blob" -> {:blob, value}
       "result" when is_binary(value) -> {:result, value}
+    end
+  end
+
+  def parse_cursor(type, value) do
+    case type do
+      "json" -> {:json, value}
+      "blob" -> {:blob, value}
     end
   end
 

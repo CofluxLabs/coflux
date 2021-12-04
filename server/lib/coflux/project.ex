@@ -38,7 +38,7 @@ defmodule Coflux.Project do
   end
 
   def register(project_id, repository, version, manifest, pid) do
-    Store.create_tasks(project_id, repository, version, manifest)
+    Store.register_targets(project_id, repository, version, manifest)
     call_orchestrator(project_id, {:register_targets, repository, version, manifest, pid})
   end
 
@@ -62,6 +62,10 @@ defmodule Coflux.Project do
     Store.put_result(project_id, execution_id, result)
   end
 
+  def put_cursor(project_id, execution_id, result) do
+    Store.put_cursor(project_id, execution_id, result)
+  end
+
   def get_result(project_id, execution_id, from \\ nil, pid) do
     if from do
       Store.record_dependency(project_id, from, execution_id)
@@ -75,6 +79,18 @@ defmodule Coflux.Project do
     initial_step = Store.get_run_initial_step(project_id, run_id)
     attempt = Store.get_step_latest_attempt(project_id, run_id, initial_step.id)
     get_result(project_id, attempt.execution_id, pid)
+  end
+
+  def list_sensors(project_id) do
+    Store.list_sensors(project_id)
+  end
+
+  def activate_sensor(project_id, sensor_id, opts \\ []) do
+    Store.activate_sensor(project_id, sensor_id, opts)
+  end
+
+  def deactivate_sensor(project_id, activation_id) do
+    Store.deactivate_sensor(project_id, activation_id)
   end
 
   def subscribe(project_id, topic, pid) do

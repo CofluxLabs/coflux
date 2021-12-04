@@ -19,6 +19,7 @@ defmodule Coflux.Project.Orchestrator do
     IO.puts("Orchestrator started (#{project_id}).")
     :ok = Listener.subscribe(Coflux.ProjectsListener, project_id, self())
     send(self(), :check_abandoned)
+    send(self(), :iterate_sensors)
     {:ok, %State{project_id: project_id}}
   end
 
@@ -88,6 +89,20 @@ defmodule Coflux.Project.Orchestrator do
 
     # TODO: time?
     Process.send_after(self(), :check_abandoned, 1_000)
+    {:noreply, state}
+  end
+
+  def handle_info(:iterate_sensors, state) do
+    state.project_id
+    |> Store.list_pending_sensors()
+    |> Enum.each(fn {sensor, activation, iteration, result} ->
+      if result do
+        # TODO: rate limit
+        Store.iterate_sensor(state.project_id, sensor, activation, iteration)
+      end
+    end)
+
+    Process.send_after(self(), :iterate_sensors, 1_000)
     {:noreply, state}
   end
 

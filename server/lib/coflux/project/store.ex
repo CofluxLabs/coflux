@@ -1,11 +1,16 @@
 defmodule Coflux.Project.Store do
   alias Coflux.Project.Models
   alias Coflux.Repo.Projects, as: Repo
+  alias Ecto.Changeset
 
   import Ecto.Query, only: [from: 2]
 
   def list_tasks(project_id) do
     Repo.all(Models.Task, prefix: project_id)
+  end
+
+  def list_sensors(project_id) do
+    Repo.all(Models.Sensor, prefix: project_id)
   end
 
   def list_task_runs(project_id, task_id) do
@@ -59,7 +64,6 @@ defmodule Coflux.Project.Store do
     Repo.all(query, prefix: project_id)
   end
 
-
   def get_execution_runs(project_id, execution_ids) do
     query = from(r in Models.Run, where: r.execution_id in ^execution_ids)
     Repo.all(query, prefix: project_id)
@@ -81,7 +85,7 @@ defmodule Coflux.Project.Store do
     Repo.one!(query, prefix: project_id)
   end
 
-  def create_tasks(project_id, repository, version, manifest) do
+  def register_targets(project_id, repository, version, manifest) do
     tasks =
       manifest
       |> Enum.filter(fn {_target, config} -> config.type == :task end)
@@ -95,7 +99,20 @@ defmodule Coflux.Project.Store do
         }
       end)
 
+    sensors =
+      manifest
+      |> Enum.filter(fn {_target, config} -> config.type == :sensor end)
+      |> Enum.map(fn {target, _config} ->
+        %{
+          repository: repository,
+          version: version,
+          target: target,
+          created_at: DateTime.utc_now()
+        }
+      end)
+
     Repo.insert_all(Models.Task, tasks, prefix: project_id, on_conflict: :nothing)
+    Repo.insert_all(Models.Sensor, sensors, prefix: project_id, on_conflict: :nothing)
   end
 
   def schedule_task(project_id, task_id, arguments, opts \\ []) do
@@ -251,6 +268,36 @@ defmodule Coflux.Project.Store do
     end
   end
 
+  def put_cursor(project_id, execution_id, result) do
+    {type, value} = parse_cursor(result)
+
+    Repo.transaction(fn ->
+      last_cursor = get_latest_cursor(project_id, execution_id)
+
+      Repo.insert!(
+        %Models.Cursor{
+          execution_id: execution_id,
+          sequence: if(last_cursor, do: last_cursor.sequence + 1, else: 0),
+          type: type,
+          value: value,
+          created_at: DateTime.utc_now()
+        },
+        prefix: project_id
+      )
+    end)
+  end
+
+  defp get_latest_cursor(project_id, execution_id) do
+    query =
+      from(c in Models.Cursor,
+        where: c.execution_id == ^execution_id,
+        order_by: [desc: :sequence],
+        limit: 1
+      )
+
+    Repo.one(query, prefix: project_id)
+  end
+
   def record_dependency(project_id, from, to) do
     Repo.insert!(
       %Models.Dependency{
@@ -263,6 +310,110 @@ defmodule Coflux.Project.Store do
     )
   end
 
+  def activate_sensor(project_id, sensor_id, opts \\ []) do
+    tags = Keyword.get(opts, :tags, [])
+
+    Repo.transaction(fn ->
+      sensor = Repo.get!(Models.Sensor, sensor_id, prefix: project_id)
+
+      activation =
+        Repo.insert!(
+          %Models.SensorActivation{
+            sensor_id: sensor_id,
+            tags: tags,
+            created_at: DateTime.utc_now()
+          },
+          prefix: project_id
+        )
+
+      iterate_sensor(project_id, sensor, activation, nil)
+    end)
+  end
+
+  def deactivate_sensor(project_id, activation_id) do
+    Repo.insert!(
+      %Models.SensorDeactivation{
+        activation_id: activation_id,
+        created_at: DateTime.utc_now()
+      },
+      prefix: project_id
+    )
+  end
+
+  def list_pending_sensors(project_id) do
+    query =
+      from(sa in Models.SensorActivation,
+        join: s in Models.Sensor,
+        on: s.id == sa.sensor_id,
+        left_join: sd in Models.SensorDeactivation,
+        on: sd.activation_id == sa.id,
+        join: si in Models.SensorIteration,
+        on: si.activation_id == sa.id,
+        join: e in Models.Execution,
+        on: e.id == si.execution_id,
+        left_join: r in Models.Result,
+        on: r.execution_id == e.id,
+        where: is_nil(sd.activation_id),
+        # where: not is_nil(r.execution_id),
+        distinct: [sa.id],
+        order_by: [sa.id, desc: si.sequence],
+        select: {s, sa, si, r}
+      )
+
+    Repo.all(query, prefix: project_id)
+  end
+
+  def iterate_sensor(project_id, sensor, activation, last_iteration) do
+    now = DateTime.utc_now()
+
+    Repo.transaction(fn ->
+      argument =
+        if last_iteration do
+          cursor = get_latest_cursor(project_id, last_iteration.execution_id)
+
+          if cursor do
+            cursor
+            |> compose_result()
+            |> parse_argument()
+          else
+            "json:null"
+          end
+        else
+          "json:null"
+        end
+
+      execution =
+        Repo.insert!(
+          %Models.Execution{
+            repository: sensor.repository,
+            target: sensor.target,
+            arguments: [argument],
+            tags: activation.tags,
+            priority: 0,
+            version: sensor.version,
+            created_at: now
+          },
+          prefix: project_id
+        )
+
+      last_sequence = if last_iteration, do: last_iteration.sequence, else: 0
+
+      # TODO: handle (and ignore?) primary key conflict
+      %Models.SensorIteration{}
+      |> Changeset.cast(
+        %{
+          activation_id: activation.id,
+          sequence: last_sequence + 1,
+          execution_id: execution.id,
+          created_at: now
+        },
+        [:activation_id, :sequence, :execution_id, :created_at]
+      )
+      |> Changeset.unique_constraint(:sequence)
+      |> Repo.insert(on_conflict: :nothing, prefix: project_id)
+    end)
+  end
+
   defp parse_result(result) do
     case result do
       {:json, value} when is_binary(value) -> {0, value, nil}
@@ -270,6 +421,13 @@ defmodule Coflux.Project.Store do
       {:result, execution_id} when is_binary(execution_id) -> {2, execution_id, nil}
       {:failed, error, stacktrace} -> {3, error, stacktrace}
       :abandoned -> {4, nil, nil}
+    end
+  end
+
+  defp parse_cursor(result) do
+    case result do
+      {:json, value} when is_binary(value) -> {0, value}
+      {:blob, key} when is_binary(key) -> {1, key}
     end
   end
 

@@ -9,6 +9,7 @@ import time
 import inspect
 import threading
 import os
+import inspect
 
 TARGET_KEY = '_coflux_target'
 BLOB_THRESHOLD = 100
@@ -186,35 +187,51 @@ class Client:
             resp.raise_for_status()
         return key
 
+    async def _prepare_result(self, value):
+        if isinstance(value, Future):
+            return value.serialise()
+        json_value = _json_dumps(value)
+        if len(json_value) >= BLOB_THRESHOLD:
+            key = await self._put_blob(json_value)
+            return 'blob', key
+        return 'json', json_value
+
+    async def _put_result(self, execution_id, value):
+        type, value = await self._prepare_result(value)
+        await self._channel.notify('put_result', execution_id, type, value)
+
+    async def _put_cursor(self, execution_id, value):
+        type, value = await self._prepare_result(value)
+        await self._channel.notify('put_cursor', execution_id, type, value)
+
+    async def _put_error(self, execution_id, exception):
+        # TODO: include exception state
+        await self._channel.notify('put_error', execution_id, str(exception), {})
+
     # TODO: consider thread safety
     def _execute_target(self, execution_id, target_name, arguments, loop):
         self._semaphore.acquire()
         self._set_execution_status(execution_id, 1)
         target = self._targets[target_name][1]
         arguments = [_future_argument(a, self, loop, execution_id) for a in arguments]
-        ctx = contextvars.Context()
-        ctx.run(execution_var.set, (execution_id, self, loop))
+        token = execution_var.set((execution_id, self, loop))
         try:
-            value = ctx.run(target, *arguments)
+            value = target(*arguments)
         except Exception as e:
-            # TODO: include exception state
-            task = self._channel.notify('put_error', execution_id, str(e), {})
+            task = self._put_error(execution_id, e)
             asyncio.run_coroutine_threadsafe(task, loop).result()
         else:
-            if isinstance(value, Future):
-                type, value = value.serialise()
-            else:
-                json_value = _json_dumps(value)
-                if len(json_value) >= BLOB_THRESHOLD:
-                    task = self._put_blob(json_value)
-                    key = asyncio.run_coroutine_threadsafe(task, loop).result()
-                    type, value = "blob", key
-                else:
-                    type, value = "json", json_value
-            task = self._channel.notify('put_result', execution_id, type, value)
+            if inspect.isgenerator(value):
+                for cursor in value:
+                    if cursor is not None:
+                        task = self._put_cursor(execution_id, cursor)
+                        asyncio.run_coroutine_threadsafe(task, loop).result()
+                    # TODO: check execution hasn't been stopped (if it has, value.close())
+            task = self._put_result(execution_id, value)
             asyncio.run_coroutine_threadsafe(task, loop).result()
         finally:
             del self._executions[execution_id]
+            execution_var.reset(token)
             self._semaphore.release()
 
     async def _handle_execute(self, execution_id, target_name, arguments):
@@ -331,5 +348,13 @@ def task(*, name=None):
                 fn(*[(Future(lambda: a) if not isinstance(a, Future) else a) for a in args])
 
         return wrapper
+
+    return decorate
+
+
+def sensor(*, name=None):
+    def decorate(fn):
+        setattr(fn, TARGET_KEY, (name or fn.__name__, ('sensor', fn)))
+        return fn
 
     return decorate

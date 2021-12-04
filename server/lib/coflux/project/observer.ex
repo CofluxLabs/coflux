@@ -359,4 +359,29 @@ defmodule Coflux.Project.Observer do
         end)
     end
   end
+
+  defp handle_insert(state, :sensors, _data) do
+    # TODO
+    state
+  end
+
+  defp handle_insert(state, :cursors, _data) do
+    # TODO
+    state
+  end
+
+  defp handle_insert(state, :sensor_activations, _data) do
+    # TODO
+    state
+  end
+
+  defp handle_insert(state, :sensor_deactivations, _data) do
+    # TODO
+    state
+  end
+
+  defp handle_insert(state, :sensor_iterations, _data) do
+    # TODO
+    state
+  end
 end
