@@ -55,7 +55,7 @@ function StepNode({ node, step, runId, activeStepId }: StepNodeProps) {
       className={classNames('absolute flex')}
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
-      <Link href={`/projects/project_1/runs/${runId}${open ? '' : `#${step.id}`}`} passHref={true}>
+      <Link href={`/projects/project_1/runs/${runId}${open ? '' : `#${step.id}`}`}>
         <a className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestAttempt?.result || null, !!step.cached, open))}>
           <div className={classNames('flex-1 truncate', { 'font-bold': !step.parent })}>
             <span className="font-mono">{step.target}</span>

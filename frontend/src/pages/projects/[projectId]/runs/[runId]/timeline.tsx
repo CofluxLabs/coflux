@@ -4,19 +4,22 @@ import { useRouter } from 'next/router';
 
 import RunDetail from '../../../../../components/RunDetail';
 import RunTimeline from '../../../../../components/RunTimeline';
+import useWindowHash from '../../../../../hooks/useWindowHash';
 
 export default function RunPage() {
   const router = useRouter();
+  const hash = useWindowHash();
   const projectId = router.query['projectId'] as string || null;
   const runId = router.query['runId'] as string || null;
+  const activeStepId = hash || null;
   return (
     <Fragment>
       <Head>
         <title>Coflux</title>
       </Head>
-      <RunDetail projectId={projectId} runId={runId} activeTab="timeline">
+      <RunDetail projectId={projectId} runId={runId} activeTab="timeline" activeStepId={activeStepId}>
         {(run) => (
-          <RunTimeline run={run} />
+          <RunTimeline run={run} activeStepId={activeStepId} />
         )}
       </RunDetail>
     </Fragment>

@@ -5,6 +5,7 @@ import { maxBy, sortBy } from 'lodash';
 
 import * as models from '../models';
 import useNow from '../hooks/useNow';
+import Link from 'next/link';
 
 function loadExecutionTimes(run: models.Run): { [key: string]: [DateTime, DateTime | null, DateTime | null] } {
   return Object.values(run.steps).reduce((times, step) => {
@@ -71,9 +72,10 @@ function formatElapsed(millis: number) {
 
 type Props = {
   run: models.Run;
+  activeStepId: string | null;
 }
 
-export default function RunTimeline({ run }: Props) {
+export default function RunTimeline({ run, activeStepId }: Props) {
   const running = isRunning(run);
   const now = useNow(running ? 100 : 0);
   const stepTimes = loadStepTimes(run);
@@ -95,22 +97,31 @@ export default function RunTimeline({ run }: Props) {
       {steps.map((step) => {
         const latestAttempt = maxBy(Object.values(step.attempts), 'number');
         const stepFinishedAt = (latestAttempt ? executionTimes[`${step.id}:${latestAttempt.number}`][2] : null) || latestTime;
+        const open = step.id == activeStepId;
         return (
           <div key={step.id} className="flex">
             <div className="w-40 truncate self-center mr-2">
-              {step.target} <span className="text-gray-500 text-sm">({step.repository})</span>
+              <Link href={`/projects/project_1/runs/${run.id}/timeline${open ? '' : `#${step.id}`}`}>
+                <a>
+                  {step.target} <span className="text-gray-500 text-sm">({step.repository})</span>
+                </a>
+              </Link>
             </div>
             <div className="flex-1 my-2 relative h-6">
-              <Bar x1={stepTimes[step.id]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-100" />
-              {Object.values(step.attempts).map((attempt) => {
-                const [createdAt, assignedAt, resultAt] = executionTimes[`${step.id}:${attempt.number}`];
-                return (
-                  <Fragment key={attempt.number}>
-                    <Bar x1={createdAt} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-200" />
-                    {assignedAt && <Bar x1={assignedAt} x2={resultAt || latestTime} x0={earliestTime} d={totalMillis} className={classNameForResult(attempt.result)} />}
-                  </Fragment>
-                );
-              })}
+              <Link href={`/projects/project_1/runs/${run.id}/timeline${open ? '' : `#${step.id}`}`}>
+                <a>
+                  <Bar x1={stepTimes[step.id]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-100" />
+                  {Object.values(step.attempts).map((attempt) => {
+                    const [createdAt, assignedAt, resultAt] = executionTimes[`${step.id}:${attempt.number}`];
+                    return (
+                      <Fragment key={attempt.number}>
+                        <Bar x1={createdAt} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-200" />
+                        {assignedAt && <Bar x1={assignedAt} x2={resultAt || latestTime} x0={earliestTime} d={totalMillis} className={classNameForResult(attempt.result)} />}
+                      </Fragment>
+                    );
+                  })}
+                </a>
+              </Link>
             </div>
           </div>
         );

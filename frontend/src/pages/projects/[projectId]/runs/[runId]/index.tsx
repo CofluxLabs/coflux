@@ -11,14 +11,15 @@ export default function RunPage() {
   const hash = useWindowHash();
   const projectId = router.query['projectId'] as string || null;
   const runId = router.query['runId'] as string || null;
+  const activeStepId = hash || null;
   return (
     <Fragment>
       <Head>
         <title>Coflux</title>
       </Head>
-      <RunDetail projectId={projectId} runId={runId} activeTab="overview" activeStepId={hash || null}>
+      <RunDetail projectId={projectId} runId={runId} activeTab="overview" activeStepId={activeStepId}>
         {(run) => (
-          <RunGraph run={run} activeStepId={hash || null} />
+          <RunGraph run={run} activeStepId={activeStepId} />
         )}
       </RunDetail>
     </Fragment>
