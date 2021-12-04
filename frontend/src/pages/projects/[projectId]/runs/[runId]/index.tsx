@@ -16,7 +16,7 @@ export default function RunPage() {
       <Head>
         <title>Coflux</title>
       </Head>
-      <RunDetail projectId={projectId} runId={runId} activeTab="overview">
+      <RunDetail projectId={projectId} runId={runId} activeTab="overview" activeStepId={hash || null}>
         {(run) => (
           <RunGraph run={run} activeStepId={hash || null} />
         )}

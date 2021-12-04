@@ -11,11 +11,11 @@ type Props = {
   style?: CSSProperties;
 }
 
-export default function StepInfo({ step, className, style }: Props) {
+export default function StepPanel({ step, className, style }: Props) {
   const latestAttempt = maxBy(Object.values(step.attempts), 'number')
   return (
     <div className={classNames('divide-y overflow-hidden', className)} style={style}>
-      <div className="px-3 py-3 flex items-center">
+      <div className="p-4 pt-5 flex items-center">
         <h2 className="flex-1"><span className="font-mono text-xl">{step.target}</span> <span className="text-gray-500">({step.repository})</span></h2>
         {step.cached ? (
           <Badge intent="none" label="Cached" />
@@ -34,7 +34,7 @@ export default function StepInfo({ step, className, style }: Props) {
         ) : null}
       </div>
       {step.arguments.length > 0 && (
-        <div className="p-3">
+        <div className="p-4">
           <h3 className="uppercase text-sm font-bold text-gray-400">Arguments</h3>
           <ol className="list-disc list-inside ml-1">
             {step.arguments.map((argument, index) => (
@@ -44,7 +44,7 @@ export default function StepInfo({ step, className, style }: Props) {
         </div>
       )}
       {sortBy(Object.values(step.attempts), 'number').map((attempt) => (
-        <div key={attempt.number} className="p-3">
+        <div key={attempt.number} className="p-4">
           <h3 className="uppercase text-sm font-bold text-gray-400">Attempt {attempt.number}</h3>
           <p>Scheduled: {attempt.createdAt}</p>
           {attempt.assignedAt && (

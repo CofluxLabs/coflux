@@ -1,12 +1,10 @@
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import dagre from 'dagre';
 import classNames from 'classnames';
-import { Popover, Transition } from '@headlessui/react';
 import { maxBy } from 'lodash';
 import Link from 'next/link';
 
 import * as models from '../models';
-import StepInfo from './StepInfo';
 
 function buildGraph(run: models.Run) {
   const g = new dagre.graphlib.Graph();
@@ -42,21 +40,6 @@ function classNameForResult(result: models.Result | null, isCached: boolean, ope
   }
 }
 
-type ArrowProps = {
-  nodeWidth: number;
-  size: number;
-}
-
-function Arrow({ nodeWidth, size }: ArrowProps) {
-  const left = nodeWidth / 2 - size + 20;
-  return (
-    <Fragment>
-      <div className="absolute" style={{ left: left, top: -size, borderWidth: `0 ${size}px ${size}px`, borderColor: '#fff transparent', width: 0, zIndex: 1 }} />
-      <div className="absolute" style={{ left: left - 1, top: -size - 1, borderWidth: `0 ${size + 1}px ${size + 1}px`, borderColor: '#9ca3af transparent', width: 0, zIndex: 0 }} />
-    </Fragment>
-  );
-}
-
 type StepNodeProps = {
   node: dagre.Node;
   step: models.Step;
@@ -68,7 +51,7 @@ function StepNode({ node, step, runId, activeStepId }: StepNodeProps) {
   const latestAttempt = maxBy(Object.values(step.attempts), 'number')
   const open = step.id == activeStepId;
   return (
-    <Popover
+    <div
       className={classNames('absolute flex')}
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
@@ -79,26 +62,7 @@ function StepNode({ node, step, runId, activeStepId }: StepNodeProps) {
           </div>
         </a>
       </Link>
-      <Transition
-        as={Fragment}
-        enter="transition ease-out duration-200"
-        enterFrom="opacity-0 translate-y-1"
-        enterTo="opacity-100 translate-y-0"
-        leave="transition ease-in duration-150"
-        leaveFrom="opacity-100 translate-y-0"
-        leaveTo="opacity-0 translate-y-1"
-        show={open}
-      >
-        <Popover.Panel
-          className="absolute z-10 w-screen transform max-w-md rounded shadow-2xl border border-gray-400 bg-white"
-          style={{ marginTop: node.height + 8, marginLeft: -20 }}
-          static={true}
-        >
-          <Arrow nodeWidth={node.width} size={12} />
-          <StepInfo step={step} />
-        </Popover.Panel>
-      </Transition>
-    </Popover>
+    </div>
   );
 }
 
