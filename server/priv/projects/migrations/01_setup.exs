@@ -22,6 +22,19 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       "DROP FUNCTION notify_insert()"
     )
 
+    create table("manifests") do
+      add :repository, :string, null: false
+      add :version, :string
+      add :hash, :bytea, null: false
+      add :tasks, :map, null: false
+      add :sensors, {:array, :string}, null: false
+      add :created_at, :utc_datetime_usec, null: false
+    end
+
+    create unique_index("manifests", [:hash])
+
+    create_notify_trigger("manifests")
+
     create table("executions") do
       add :repository, :string, null: false
       add :target, :string, null: false
@@ -78,32 +91,8 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
 
     create_notify_trigger("dependencies")
 
-    create table("tasks") do
-      add :repository, :string, null: false
-      add :version, :string, null: false
-      add :target, :string, null: false
-      add :parameters, {:array, :map}, null: false
-      add :created_at, :utc_datetime_usec, null: false
-    end
-
-    create unique_index("tasks", [:repository, :version, :target])
-
-    create_notify_trigger("tasks")
-
-    create table("sensors") do
-      add :repository, :string, null: false
-      add :version, :string, null: false
-      add :target, :string, null: false
-      add :created_at, :utc_datetime_usec, null: false
-    end
-
-    create unique_index("sensors", [:repository, :version, :target])
-
-    create_notify_trigger("sensors")
-
     create table("runs", primary_key: false) do
       add :id, :bytea, null: false, primary_key: true
-      add :task_id, references("tasks", on_delete: :delete_all), null: false
       add :tags, {:array, :string}, null: false
       add :execution_id, references("executions", type: :uuid, on_delete: :nilify_all)
       add :idempotency_key, :string
@@ -149,7 +138,8 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     end
 
     create table("sensor_activations") do
-      add :sensor_id, references("sensors", on_delete: :delete_all), null: false
+      add :repository, :string, null: false
+      add :target, :string, null: false
       add :tags, {:array, :string}, null: false
       add :created_at, :utc_datetime_usec, null: false
     end

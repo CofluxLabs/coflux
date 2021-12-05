@@ -95,10 +95,10 @@ defmodule Coflux.Project.Orchestrator do
   def handle_info(:iterate_sensors, state) do
     state.project_id
     |> Store.list_pending_sensors()
-    |> Enum.each(fn {sensor, activation, iteration, result} ->
+    |> Enum.each(fn {activation, iteration, result} ->
       if result do
         # TODO: rate limit
-        Store.iterate_sensor(state.project_id, sensor, activation, iteration)
+        Store.iterate_sensor(state.project_id, activation, iteration)
       end
     end)
 

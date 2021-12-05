@@ -52,9 +52,11 @@ defmodule Coflux.Handlers.Events do
 
       "start_run" ->
         [task_id, arguments] = message["params"]
+        [repository, target] = String.split(task_id, ":", parts: 2)
         arguments = Enum.map(arguments, &parse_argument/1)
 
-        case Project.schedule_task(state.project_id, task_id, arguments) do
+        # TODO: prevent scheduling unrecognised tasks?
+        case Project.schedule_task(state.project_id, repository, target, arguments) do
           {:ok, run_id} ->
             {[result_message(message["id"], run_id)], state}
         end

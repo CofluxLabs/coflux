@@ -29,10 +29,10 @@ defmodule Coflux.Handlers.Agent do
         [repository, target, arguments, parent_id] = message["params"]
         arguments = Enum.map(arguments, &parse_argument/1)
 
-        # TODO: handle unrecognised task
-        task = Project.find_task(state.project_id, repository, target)
-
-        case Project.schedule_task(state.project_id, task.id, arguments, execution_id: parent_id) do
+        # TODO: prevent scheduling unrecognised tasks?
+        case Project.schedule_task(state.project_id, repository, target, arguments,
+               execution_id: parent_id
+             ) do
           {:ok, run_id} ->
             {[result_message(message["id"], run_id)], state}
         end

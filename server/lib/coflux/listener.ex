@@ -36,7 +36,13 @@ defmodule Coflux.Listener do
     [identifier, json] = String.split(payload, ":", parts: 2)
     [project_id, table] = String.split(identifier, ".", parts: 2)
     table_atom = String.to_atom(table)
-    data = Jason.decode!(json, keys: :atoms!)
+
+    data =
+      json
+      |> Jason.decode!()
+      |> Map.new(fn {key, value} ->
+        {String.to_existing_atom(key), value}
+      end)
 
     state.project_pids
     |> Map.get(project_id, %{})

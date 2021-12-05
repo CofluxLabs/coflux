@@ -4,7 +4,7 @@ export type Parameter = {
   default: string;
 }
 
-type Target = {
+export type Task = {
   repository: string;
   target: string;
   version: string;
@@ -13,18 +13,13 @@ type Target = {
 
 export type Agent = {
   id: string;
-  targets: Target[];
+  targets: Task[];
 }
-
-export type Task = Target & {
-  id: string;
-};
 
 export type Run = {
   id: string;
   tags: string[];
   createdAt: string;
-  task: Task;
   steps: Record<string, Step>;
 }
 

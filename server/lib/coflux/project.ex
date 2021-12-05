@@ -7,16 +7,8 @@ defmodule Coflux.Project do
     call_orchestrator(project_id, :get_agents)
   end
 
-  def list_tasks(project_id) do
-    Store.list_tasks(project_id)
-  end
-
-  def list_task_runs(project_id, task_id) do
-    Store.list_task_runs(project_id, task_id)
-  end
-
-  def get_task(project_id, task_id) do
-    Store.get_task(project_id, task_id)
+  def list_task_runs(project_id, repository, target) do
+    Store.list_task_runs(project_id, repository, target)
   end
 
   def get_run(project_id, run_id) do
@@ -42,12 +34,8 @@ defmodule Coflux.Project do
     call_orchestrator(project_id, {:register_targets, repository, version, manifest, pid})
   end
 
-  def find_task(project_id, repository, version \\ nil, target) do
-    Store.find_task(project_id, repository, version, target)
-  end
-
-  def schedule_task(project_id, task_id, arguments \\ [], opts \\ []) do
-    Store.schedule_task(project_id, task_id, arguments, opts)
+  def schedule_task(project_id, repository, target, arguments \\ [], opts \\ []) do
+    Store.schedule_task(project_id, repository, target, arguments, opts)
   end
 
   def schedule_step(project_id, parent_id, repository, target, arguments \\ [], opts \\ []) do
@@ -79,10 +67,6 @@ defmodule Coflux.Project do
     initial_step = Store.get_run_initial_step(project_id, run_id)
     attempt = Store.get_step_latest_attempt(project_id, run_id, initial_step.id)
     get_result(project_id, attempt.execution_id, pid)
-  end
-
-  def list_sensors(project_id) do
-    Store.list_sensors(project_id)
   end
 
   def activate_sensor(project_id, sensor_id, opts \\ []) do

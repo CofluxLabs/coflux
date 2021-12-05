@@ -36,7 +36,7 @@ type Props = {
 }
 
 export default function TasksList({ projectId, taskId: activeTaskId }: Props) {
-  const tasks = useSubscription<Record<string, models.Task>>('tasks');
+  const tasks = useSubscription<models.Task[]>('tasks');
   const agents: models.Agent[] = []; // TODO
   if (tasks === undefined) {
     return <div>Loading...</div>;
@@ -45,15 +45,18 @@ export default function TasksList({ projectId, taskId: activeTaskId }: Props) {
       <div>
         {Object.keys(tasks).length ? (
           <ul>
-            {sortBy(Object.values(tasks), 'target').map((task) => (
-              <li key={task.id}>
-                <Link href={`/projects/${projectId}/tasks/${task.id}`}>
-                  <a className={classNames('block hover:bg-gray-300 px-4 py-2', {'bg-gray-300': task.id == activeTaskId})}>
-                    <TaskItem task={task} agents={agents} isActive={task.id == activeTaskId} />
-                  </a>
-                </Link>
-              </li>
-            ))}
+            {sortBy(Object.values(tasks), 'target').map((task) => {
+              const taskId = `${task.repository}:${task.target}`;
+              return (
+                <li key={taskId}>
+                  <Link href={`/projects/${projectId}/tasks/${taskId}`}>
+                    <a className={classNames('block hover:bg-gray-300 px-4 py-2', { 'bg-gray-300': taskId == activeTaskId })}>
+                      <TaskItem task={task} agents={agents} isActive={taskId == activeTaskId} />
+                    </a>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p>No tasks</p>

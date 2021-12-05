@@ -6,32 +6,52 @@ defmodule Coflux.Project.Store do
   import Ecto.Query, only: [from: 2]
 
   def list_tasks(project_id) do
-    Repo.all(Models.Task, prefix: project_id)
+    # TODO: include/merge all recent manifests (based on agent connection)
+    query =
+      from(
+        m in Models.Manifest,
+        distinct: m.repository,
+        order_by: [desc: m.created_at]
+      )
+
+    query
+    |> Repo.all(prefix: project_id)
+    |> Enum.flat_map(fn manifest ->
+      Enum.map(manifest.tasks, fn {target, parameters} ->
+        %{
+          repository: manifest.repository,
+          version: manifest.version,
+          target: target,
+          parameters: parameters
+        }
+      end)
+    end)
   end
 
-  def list_sensors(project_id) do
-    Repo.all(Models.Sensor, prefix: project_id)
-  end
+  # TODO: list sensors
 
-  def list_task_runs(project_id, task_id) do
-    query = from(r in Models.Run, where: r.task_id == ^task_id)
+  def list_task_runs(project_id, repository, target) do
+    query =
+      from(r in Models.Run,
+        join: s in Models.Step,
+        on: s.run_id == r.id,
+        where: is_nil(s.parent_attempt) and s.repository == ^repository and s.target == ^target
+      )
+
     Repo.all(query, prefix: project_id)
   end
 
-  def get_task(project_id, task_id) do
-    Repo.get!(Models.Task, task_id, prefix: project_id)
-  end
-
-  def find_task(project_id, repository, version \\ nil, target) do
+  def get_manifest(project_id, repository) do
+    # TODO: get manifest based on agent connection?
     query =
-      from(t in Models.Task,
-        where: t.repository == ^repository and t.target == ^target,
-        order_by: [desc: :created_at],
+      from(
+        m in Models.Manifest,
+        where: m.repository == ^repository,
+        order_by: [desc: m.created_at],
         limit: 1
       )
 
-    query = if version, do: from(t in query, where: t.version == ^version), else: query
-    Repo.one(query, prefix: project_id)
+    Repo.one!(query, prefix: project_id)
   end
 
   def get_run(project_id, run_id) do
@@ -85,46 +105,59 @@ defmodule Coflux.Project.Store do
     Repo.one!(query, prefix: project_id)
   end
 
-  def register_targets(project_id, repository, version, manifest) do
+  defp hash_manifest(repository_name, version, tasks, sensors) do
+    task_parts =
+      tasks
+      |> Enum.sort()
+      |> Enum.flat_map(fn {target, parameters} ->
+        [target | Enum.map(parameters, &[&1.name, &1.annotation || "", &1.default || ""])]
+      end)
+
+    content =
+      [repository_name, version || ""]
+      |> Enum.concat(task_parts)
+      |> Enum.concat(Enum.sort(sensors))
+      |> Enum.join("\0")
+
+    :crypto.hash(:sha, content)
+  end
+
+  def register_targets(project_id, repository, version, targets) do
     tasks =
-      manifest
+      targets
       |> Enum.filter(fn {_target, config} -> config.type == :task end)
-      |> Enum.map(fn {target, config} ->
-        %{
-          repository: repository,
-          version: version,
-          target: target,
-          parameters: config.parameters,
-          created_at: DateTime.utc_now()
-        }
+      |> Map.new(fn {target, config} ->
+        {target, config.parameters}
       end)
 
     sensors =
-      manifest
+      targets
       |> Enum.filter(fn {_target, config} -> config.type == :sensor end)
-      |> Enum.map(fn {target, _config} ->
-        %{
-          repository: repository,
-          version: version,
-          target: target,
-          created_at: DateTime.utc_now()
-        }
-      end)
+      |> Enum.map(fn {target, _config} -> target end)
 
-    Repo.insert_all(Models.Task, tasks, prefix: project_id, on_conflict: :nothing)
-    Repo.insert_all(Models.Sensor, sensors, prefix: project_id, on_conflict: :nothing)
+    Repo.insert!(
+      %Models.Manifest{
+        repository: repository,
+        version: version,
+        hash: hash_manifest(repository, version, tasks, sensors),
+        tasks: tasks,
+        sensors: sensors,
+        created_at: DateTime.utc_now()
+      },
+      prefix: project_id,
+      on_conflict: :nothing
+    )
   end
 
-  def schedule_task(project_id, task_id, arguments, opts \\ []) do
+  def schedule_task(project_id, repository, target, arguments, opts \\ []) do
     run_tags = Keyword.get(opts, :run_tags, [])
-    task_tags = Keyword.get(opts, :step_tags, [])
+    step_tags = Keyword.get(opts, :step_tags, [])
     priority = Keyword.get(opts, :priority, 0)
     version = Keyword.get(opts, :version)
     execution_id = Keyword.get(opts, :execution_id)
     idempotency_key = Keyword.get(opts, :idempotency_key)
 
     Repo.transaction(fn ->
-      task = Repo.get!(Models.Task, task_id, prefix: project_id)
       now = DateTime.utc_now()
 
       # TODO: hash key with (some?) task details
@@ -139,7 +172,6 @@ defmodule Coflux.Project.Store do
           Repo.insert!(
             %Models.Run{
               id: Base.encode32(:rand.bytes(10)),
-              task_id: task_id,
               tags: run_tags,
               execution_id: execution_id,
               idempotency_key: idempotency_key,
@@ -148,9 +180,9 @@ defmodule Coflux.Project.Store do
             prefix: project_id
           )
 
-        do_schedule_step(project_id, run, task.repository, task.target, arguments,
+        do_schedule_step(project_id, run, repository, target, arguments,
           now: now,
-          tags: task_tags,
+          tags: step_tags,
           priority: priority,
           version: version
         )
@@ -226,7 +258,7 @@ defmodule Coflux.Project.Store do
         on: h.execution_id == e.id,
         where: is_nil(r.execution_id),
         distinct: [e.id],
-        order_by: [e.id, desc: h.created_at],
+        order_by: [desc: h.created_at],
         select: {e, a, h}
       )
 
@@ -310,23 +342,22 @@ defmodule Coflux.Project.Store do
     )
   end
 
-  def activate_sensor(project_id, sensor_id, opts \\ []) do
+  def activate_sensor(project_id, repository, target, opts \\ []) do
     tags = Keyword.get(opts, :tags, [])
 
     Repo.transaction(fn ->
-      sensor = Repo.get!(Models.Sensor, sensor_id, prefix: project_id)
-
       activation =
         Repo.insert!(
           %Models.SensorActivation{
-            sensor_id: sensor_id,
+            repository: repository,
+            target: target,
             tags: tags,
             created_at: DateTime.utc_now()
           },
           prefix: project_id
         )
 
-      iterate_sensor(project_id, sensor, activation, nil)
+      iterate_sensor(project_id, activation, nil)
     end)
   end
 
@@ -343,8 +374,6 @@ defmodule Coflux.Project.Store do
   def list_pending_sensors(project_id) do
     query =
       from(sa in Models.SensorActivation,
-        join: s in Models.Sensor,
-        on: s.id == sa.sensor_id,
         left_join: sd in Models.SensorDeactivation,
         on: sd.activation_id == sa.id,
         join: si in Models.SensorIteration,
@@ -354,16 +383,15 @@ defmodule Coflux.Project.Store do
         left_join: r in Models.Result,
         on: r.execution_id == e.id,
         where: is_nil(sd.activation_id),
-        # where: not is_nil(r.execution_id),
         distinct: [sa.id],
-        order_by: [sa.id, desc: si.sequence],
-        select: {s, sa, si, r}
+        order_by: [desc: si.sequence],
+        select: {sa, si, r}
       )
 
     Repo.all(query, prefix: project_id)
   end
 
-  def iterate_sensor(project_id, sensor, activation, last_iteration) do
+  def iterate_sensor(project_id, activation, last_iteration) do
     now = DateTime.utc_now()
 
     Repo.transaction(fn ->
@@ -382,15 +410,15 @@ defmodule Coflux.Project.Store do
           "json:null"
         end
 
+      # TODO: support getting specific version from activation?
       execution =
         Repo.insert!(
           %Models.Execution{
-            repository: sensor.repository,
-            target: sensor.target,
+            repository: activation.repository,
+            target: activation.target,
             arguments: [argument],
             tags: activation.tags,
             priority: 0,
-            version: sensor.version,
             created_at: now
           },
           prefix: project_id

@@ -75,31 +75,36 @@ defmodule Coflux.Project.Observer do
     tasks =
       project_id
       |> Store.list_tasks()
-      |> Map.new(&{&1.id, Map.take(&1, [:id, :repository, :version, :target, :parameters])})
+      |> Enum.map(&Map.take(&1, [:repository, :version, :target, :parameters]))
 
     {:ok, tasks, %{}}
   end
 
-  defp load_topic("tasks." <> task_id, project_id) do
+  defp load_topic("tasks." <> repository_target, project_id) do
+    [repository, target] = String.split(repository_target, ":", parts: 2)
+    manifest = Store.get_manifest(project_id, repository)
+    parameters = Map.fetch!(manifest.tasks, target)
+
     runs =
       project_id
-      |> Store.list_task_runs(task_id)
+      |> Store.list_task_runs(repository, target)
       |> Map.new(fn run ->
         {run.id, Map.take(run, [:id, :tags, :created_at])}
       end)
 
-    task =
-      project_id
-      |> Store.get_task(task_id)
-      |> Map.take([:id, :repository, :version, :target, :parameters])
-      |> Map.put(:runs, runs)
+    task = %{
+      repository: repository,
+      version: manifest.version,
+      target: target,
+      parameters: parameters,
+      runs: runs
+    }
 
     {:ok, task, %{}}
   end
 
   defp load_topic("runs." <> run_id, project_id) do
     run = Store.get_run(project_id, run_id)
-    task = Store.get_task(project_id, run.task_id)
     steps = Store.get_steps(project_id, run_id)
     attempts = Store.get_attempts(project_id, run_id)
     execution_ids = Enum.map(attempts, & &1.execution_id)
@@ -134,7 +139,6 @@ defmodule Coflux.Project.Observer do
     result =
       run
       |> Map.take([:id, :tags, :created_at])
-      |> Map.put(:task, Map.take(task, [:id, :repository, :target, :version]))
       |> Map.put(
         :steps,
         Map.new(steps, fn step ->
@@ -212,21 +216,14 @@ defmodule Coflux.Project.Observer do
     |> Changeset.apply_changes()
   end
 
-  defp handle_insert(state, :tasks, data) do
-    task = load_model(Models.Task, data)
-
-    update_topic(state, "tasks", fn _tasks ->
-      {[task.id], Map.take(task, [:id, :repository, :version, :target, :parameters])}
-    end)
+  defp handle_insert(state, :manifests, data) do
+    _manifest = load_model(Models.Manifest, data)
+    # TODO: update tasks ('tasks' and 'tasks.X') with new manifest (version/parameters)
+    state
   end
 
   defp handle_insert(state, :runs, data) do
     run = load_model(Models.Run, data)
-
-    state =
-      update_topic(state, "tasks.#{run.task_id}", fn _task ->
-        {[:runs, run.id], Map.take(run, [:id, :created_at])}
-      end)
 
     if run.execution_id do
       new_run_id = run.id
@@ -251,6 +248,16 @@ defmodule Coflux.Project.Observer do
 
   defp handle_insert(state, :steps, data) do
     step = load_model(Models.Step, data)
+
+    state =
+      if is_nil(step.parent_attempt) do
+        task_id = "#{step.repository}:#{step.target}"
+        update_topic(state, "tasks.#{task_id}", fn _task ->
+          {[:runs, step.run_id], %{id: step.run_id, created_at: step.created_at}}
+        end)
+      else
+        state
+      end
 
     update_topic(state, "runs.#{step.run_id}", fn _run ->
       parent =
@@ -341,6 +348,11 @@ defmodule Coflux.Project.Observer do
     end
   end
 
+  defp handle_insert(state, :cursors, _data) do
+    # TODO
+    state
+  end
+
   defp handle_insert(state, :dependencies, data) do
     dependency = load_model(Models.Dependency, data)
 
@@ -358,16 +370,6 @@ defmodule Coflux.Project.Observer do
           end
         end)
     end
-  end
-
-  defp handle_insert(state, :sensors, _data) do
-    # TODO
-    state
-  end
-
-  defp handle_insert(state, :cursors, _data) do
-    # TODO
-    state
   end
 
   defp handle_insert(state, :sensor_activations, _data) do

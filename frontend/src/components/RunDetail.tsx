@@ -61,13 +61,15 @@ type Props = {
 
 export default function RunDetail({ projectId, runId, activeTab, activeStepId, children }: Props) {
   const run = useSubscription<models.Run>(`runs.${runId}`);
+  const initialStep = run && Object.values(run.steps).find((s) => !s.parent);
+  const taskId = initialStep && `${initialStep.repository}:${initialStep.target}`;
   return (
-    <ProjectLayout projectId={projectId} taskId={run?.task.id}>
-      {run ? (
+    <ProjectLayout projectId={projectId} taskId={taskId}>
+      {run && initialStep ? (
         <Fragment>
           <Heading>
-            <Link href={`/projects/${projectId}/tasks/${run.task.id}`}>
-              <a><span className="font-mono">{run.task.target}</span> <span className="text-gray-500">({run.task.repository})</span></a>
+            <Link href={`/projects/${projectId}/tasks/${taskId}`}>
+              <a><span className="font-mono">{initialStep.target}</span> <span className="text-gray-500">({initialStep.repository})</span></a>
             </Link>
             <span className="mx-3">&rarr;</span>
             <span className="font-mono">{runId}</span>
