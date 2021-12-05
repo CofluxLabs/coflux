@@ -3,14 +3,6 @@ defmodule Coflux.Project do
   alias Coflux.Project.Orchestrator.Supervisor, as: OrchestratorSupervisor
   alias Coflux.Project.Observer.Supervisor, as: ObserverSupervisor
 
-  def get_agents(project_id) do
-    call_orchestrator(project_id, :get_agents)
-  end
-
-  def list_task_runs(project_id, repository, target) do
-    Store.list_task_runs(project_id, repository, target)
-  end
-
   def get_run(project_id, run_id) do
     Store.get_run(project_id, run_id)
   end

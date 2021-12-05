@@ -23,11 +23,6 @@ defmodule Coflux.Project.Orchestrator do
     {:ok, %State{project_id: project_id}}
   end
 
-  # TODO: remove? (only tracks agents connected to this server)
-  def handle_call(:get_agents, _from, state) do
-    {:reply, {:ok, state.agents}, state}
-  end
-
   def handle_call({:register_targets, repository, version, manifest, pid}, _from, state) do
     _ref = Process.monitor(pid)
 

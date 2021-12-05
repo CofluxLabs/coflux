@@ -5,8 +5,8 @@ defmodule Coflux.Project.Store do
 
   import Ecto.Query, only: [from: 2]
 
-  def list_tasks(project_id) do
-    # TODO: include/merge all recent manifests (based on agent connection)
+  def list_repositories(project_id) do
+    # TODO: include/merge all recent manifests (based on agent connection)?
     query =
       from(
         m in Models.Manifest,
@@ -16,19 +16,10 @@ defmodule Coflux.Project.Store do
 
     query
     |> Repo.all(prefix: project_id)
-    |> Enum.flat_map(fn manifest ->
-      Enum.map(manifest.tasks, fn {target, parameters} ->
-        %{
-          repository: manifest.repository,
-          version: manifest.version,
-          target: target,
-          parameters: parameters
-        }
-      end)
+    |> Map.new(fn manifest ->
+      {manifest.repository, Map.take(manifest, [:version, :tasks, :sensors])}
     end)
   end
-
-  # TODO: list sensors
 
   def list_task_runs(project_id, repository, target) do
     query =

@@ -71,13 +71,9 @@ defmodule Coflux.Project.Observer do
     update_in(state.topics[topic].subscribers, &Map.delete(&1, ref))
   end
 
-  defp load_topic("tasks", project_id) do
-    tasks =
-      project_id
-      |> Store.list_tasks()
-      |> Enum.map(&Map.take(&1, [:repository, :version, :target, :parameters]))
-
-    {:ok, tasks, %{}}
+  defp load_topic("repositories", project_id) do
+    repositories = Store.list_repositories(project_id)
+    {:ok, repositories, %{}}
   end
 
   defp load_topic("tasks." <> repository_target, project_id) do
@@ -188,15 +184,14 @@ defmodule Coflux.Project.Observer do
   defp update_topic(state, topic, fun) do
     case Map.fetch(state.topics, topic) do
       {:ok, %{value: value, subscribers: subscribers}} ->
-        case fun.(value) do
-          nil ->
-            state
-
-          {path, new_value} ->
-            state = put_in(state, [:topics, topic, :value] ++ path, new_value)
-            notify_subscribers(subscribers, path, new_value)
-            state
-        end
+        value
+        |> fun.()
+        |> List.wrap()
+        |> Enum.reduce(state, fn {path, new_value}, state ->
+          state = put_in(state, [:topics, topic, :value] ++ path, new_value)
+          notify_subscribers(subscribers, path, new_value)
+          state
+        end)
 
       :error ->
         state
@@ -217,9 +212,16 @@ defmodule Coflux.Project.Observer do
   end
 
   defp handle_insert(state, :manifests, data) do
-    _manifest = load_model(Models.Manifest, data)
-    # TODO: update tasks ('tasks' and 'tasks.X') with new manifest (version/parameters)
-    state
+    manifest = load_model(Models.Manifest, data)
+    manifest.tasks
+    |> Enum.reduce(state, fn {target, parameters}, state ->
+      update_topic(state, "tasks.#{manifest.repository}:#{target}", fn _task ->
+        [{[:parameters], parameters}, {[:version], manifest.version}]
+      end)
+    end)
+    |> update_topic("repositories", fn _repositories ->
+      {[manifest.repository], Map.take(manifest, [:version, :tasks, :sensors])}
+    end)
   end
 
   defp handle_insert(state, :runs, data) do
@@ -252,6 +254,7 @@ defmodule Coflux.Project.Observer do
     state =
       if is_nil(step.parent_attempt) do
         task_id = "#{step.repository}:#{step.target}"
+
         update_topic(state, "tasks.#{task_id}", fn _task ->
           {[:runs, step.run_id], %{id: step.run_id, created_at: step.created_at}}
         end)

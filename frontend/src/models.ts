@@ -4,16 +4,17 @@ export type Parameter = {
   default: string;
 }
 
+export type Repository = {
+  version: string;
+  tasks: Record<string, Parameter[]>;
+  sensors: string[];
+}
+
 export type Task = {
   repository: string;
   target: string;
   version: string;
   parameters: Parameter[];
-}
-
-export type Agent = {
-  id: string;
-  targets: Task[];
 }
 
 export type Run = {
