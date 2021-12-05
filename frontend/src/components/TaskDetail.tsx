@@ -1,7 +1,6 @@
 import React, { Fragment, useCallback, useState } from 'react';
 import Router from 'next/router';
 import Link from 'next/link';
-import classNames from 'classnames';
 import { sortBy } from 'lodash';
 
 import * as models from '../models';
@@ -10,7 +9,7 @@ import RunDialog from './RunDialog';
 import useSocket, { useSubscription } from '../hooks/useSocket';
 
 type State = models.Task & {
-  runs: Record<string, { id: string, createdAt: string }>
+  runs: Record<string, models.BaseRun>
 };
 
 type Props = {

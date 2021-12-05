@@ -17,10 +17,14 @@ export type Task = {
   parameters: Parameter[];
 }
 
-export type Run = {
+export type BaseRun = {
   id: string;
-  tags: string[];
   createdAt: string;
+  // TODO: ?
+}
+
+export type Run = BaseRun & {
+  tags: string[];
   steps: Record<string, Step>;
 }
 
@@ -50,3 +54,11 @@ export type Result = {
   createdAt: string;
 }
 
+export type SensorActivation = {
+  repository: string;
+  target: string;
+  tags: string[];
+  createdAt: string;
+  deactivatedAt: string | null;
+  runs: Record<string, BaseRun>;
+}

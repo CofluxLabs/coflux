@@ -22,7 +22,7 @@ defmodule Coflux.Project.Observer do
        topics: %{},
        # ref → topic
        subscribers: %{},
-       # execution id → {run id, step id, attempt}
+       # execution id → {:run, {run id, step id, attempt}} | {:sensor, activation_id}
        executions: %{}
      }}
   end
@@ -74,6 +74,43 @@ defmodule Coflux.Project.Observer do
   defp load_topic("repositories", project_id) do
     repositories = Store.list_repositories(project_id)
     {:ok, repositories, %{}}
+  end
+
+  defp load_topic("sensors", project_id) do
+    activations =
+      project_id
+      |> Store.list_sensor_activations()
+      |> Map.new(fn activation ->
+        {activation.id, Map.take(activation, [:repository, :target, :tags])}
+      end)
+
+    {:ok, activations, %{}}
+  end
+
+  defp load_topic("sensors." <> activation_id, project_id) do
+    activation = Store.get_sensor_activation(project_id, activation_id)
+    deactivation = Store.get_sensor_deactivation(project_id, activation_id)
+
+    runs =
+      project_id
+      |> Store.list_sensor_runs(activation_id)
+      |> Map.new(fn run ->
+        {run.id, Map.take(run, [:id, :created_at])}
+      end)
+
+    sensor =
+      activation
+      |> Map.take([:repository, :target, :tags, :created_at])
+      |> Map.put(:deactivated_at, if(deactivation, do: deactivation.created_at))
+      |> Map.put(:runs, runs)
+
+    executions =
+      case Store.latest_sensor_execution(project_id, activation_id) do
+        %{id: execution_id} -> %{execution_id => {:sensor, activation_id}}
+        nil -> %{}
+      end
+
+    {:ok, sensor, executions}
   end
 
   defp load_topic("tasks." <> repository_target, project_id) do
@@ -176,7 +213,7 @@ defmodule Coflux.Project.Observer do
         end)
       )
 
-    executions = Map.new(attempts, &{&1.execution_id, {&1.run_id, &1.step_id, &1.number}})
+    executions = Map.new(attempts, &{&1.execution_id, {:run, {&1.run_id, &1.step_id, &1.number}}})
 
     {:ok, result, executions}
   end
@@ -188,7 +225,14 @@ defmodule Coflux.Project.Observer do
         |> fun.()
         |> List.wrap()
         |> Enum.reduce(state, fn {path, new_value}, state ->
-          state = put_in(state, [:topics, topic, :value] ++ path, new_value)
+          state =
+            if is_nil(new_value) do
+              {_, state} = pop_in(state, [:topics, topic, :value] ++ path)
+              state
+            else
+              put_in(state, [:topics, topic, :value] ++ path, new_value)
+            end
+
           notify_subscribers(subscribers, path, new_value)
           state
         end)
@@ -213,6 +257,7 @@ defmodule Coflux.Project.Observer do
 
   defp handle_insert(state, :manifests, data) do
     manifest = load_model(Models.Manifest, data)
+
     manifest.tasks
     |> Enum.reduce(state, fn {target, parameters}, state ->
       update_topic(state, "tasks.#{manifest.repository}:#{target}", fn _task ->
@@ -234,13 +279,19 @@ defmodule Coflux.Project.Observer do
         nil ->
           state
 
-        {run_id, step_id, attempt} ->
+        {:run, {run_id, step_id, attempt}} ->
           update_topic(state, "runs.#{run_id}", fn run ->
             run_ids = run.steps[step_id].attempts[attempt].run_ids
 
             if new_run_id not in run_ids do
               {[:steps, step_id, :attempts, attempt, :run_ids], [new_run_id | run_ids]}
             end
+          end)
+
+        {:sensor, activation_id} ->
+          update_topic(state, "sensors.#{activation_id}", fn _sensor ->
+            # TODO: limit number of runs?
+            {[:runs, run.id], Map.take(run, [:id, :created_at])}
           end)
       end
     else
@@ -293,7 +344,7 @@ defmodule Coflux.Project.Observer do
       state
       |> put_in(
         [:executions, attempt.execution_id],
-        {attempt.run_id, attempt.step_id, attempt.number}
+        {:run, {attempt.run_id, attempt.step_id, attempt.number}}
       )
       |> update_topic(topic, fn _run ->
         value =
@@ -320,13 +371,13 @@ defmodule Coflux.Project.Observer do
     assignment = load_model(Models.Assignment, data)
 
     case Map.get(state.executions, assignment.execution_id) do
-      nil ->
-        state
-
-      {run_id, step_id, attempt} ->
+      {:run, {run_id, step_id, attempt}} ->
         update_topic(state, "runs.#{run_id}", fn _run ->
           {[:steps, step_id, :attempts, attempt, :assigned_at], assignment.created_at}
         end)
+
+      _other ->
+        state
     end
   end
 
@@ -338,16 +389,17 @@ defmodule Coflux.Project.Observer do
   defp handle_insert(state, :results, data) do
     result = load_model(Models.Result, data)
 
-    case Map.get(state.executions, result.execution_id) do
-      nil ->
-        state
+    # TODO: remove execution from state.executions
 
-      {run_id, step_id, attempt} ->
-        # TODO: remove execution from state.executions
+    case Map.get(state.executions, result.execution_id) do
+      {:run, {run_id, step_id, attempt}} ->
         update_topic(state, "runs.#{run_id}", fn _run ->
           value = Map.take(result, [:type, :value, :created_at])
           {[:steps, step_id, :attempts, attempt, :result], value}
         end)
+
+      _other ->
+        state
     end
   end
 
@@ -360,10 +412,7 @@ defmodule Coflux.Project.Observer do
     dependency = load_model(Models.Dependency, data)
 
     case Map.get(state.executions, dependency.execution_id) do
-      nil ->
-        state
-
-      {run_id, step_id, attempt} ->
+      {:run, {run_id, step_id, attempt}} ->
         update_topic(state, "runs.#{run_id}", fn run ->
           dependency_ids = run.steps[step_id].attempts[attempt].dependency_ids
 
@@ -372,21 +421,34 @@ defmodule Coflux.Project.Observer do
              [dependency.dependency_id | dependency_ids]}
           end
         end)
+
+      _other ->
+        state
     end
   end
 
-  defp handle_insert(state, :sensor_activations, _data) do
-    # TODO
-    state
+  defp handle_insert(state, :sensor_activations, data) do
+    activation = load_model(Models.SensorActivation, data)
+
+    update_topic(state, "sensors", fn _sensors ->
+      {[activation.id], Map.take(activation, [:repository, :target, :tags])}
+    end)
   end
 
-  defp handle_insert(state, :sensor_deactivations, _data) do
-    # TODO
+  defp handle_insert(state, :sensor_deactivations, data) do
+    deactivation = load_model(Models.SensorDeactivation, data)
+
     state
+    |> update_topic("sensors", fn _sensors ->
+      {[deactivation.activation_id], nil}
+    end)
+    |> update_topic("sensors.#{deactivation.activation_id}", fn _sensor ->
+      {[:deactivated_at], deactivation.created_at}
+    end)
   end
 
-  defp handle_insert(state, :sensor_iterations, _data) do
-    # TODO
-    state
+  defp handle_insert(state, :sensor_iterations, data) do
+    iteration = load_model(Models.SensorIteration, data)
+    put_in(state.executions[iteration.execution_id], {:sensor, iteration.activation_id})
   end
 end

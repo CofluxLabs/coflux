@@ -349,6 +349,7 @@ defmodule Coflux.Project.Store do
         )
 
       iterate_sensor(project_id, activation, nil)
+      activation.id
     end)
   end
 
@@ -360,6 +361,56 @@ defmodule Coflux.Project.Store do
       },
       prefix: project_id
     )
+    # TODO: stop current execution (if any)
+  end
+
+  def list_sensor_activations(project_id) do
+    query =
+      from(sa in Models.SensorActivation,
+        left_join: sd in Models.SensorDeactivation,
+        on: sd.activation_id == sa.id,
+        where: is_nil(sd.activation_id)
+      )
+
+    Repo.all(query, prefix: project_id)
+  end
+
+  def get_sensor_activation(project_id, activation_id) do
+    Repo.get!(Models.SensorActivation, activation_id, prefix: project_id)
+  end
+
+  def get_sensor_deactivation(project_id, activation_id) do
+    Repo.get_by(Models.SensorDeactivation, [activation_id: activation_id], prefix: project_id)
+  end
+
+  def list_sensor_runs(project_id, activation_id) do
+    query =
+      from(r in Models.Run,
+        join: e in Models.Execution,
+        on: e.id == r.execution_id,
+        join: si in Models.SensorIteration,
+        on: si.execution_id == e.id,
+        where: si.activation_id == ^activation_id,
+        order_by: [desc: e.created_at],
+        limit: 100
+      )
+
+    Repo.all(query, prefix: project_id)
+  end
+
+  def latest_sensor_execution(project_id, activation_id) do
+    query =
+      from(e in Models.Execution,
+        join: si in Models.SensorIteration,
+        on: si.execution_id == e.id,
+        left_join: r in Models.Result,
+        on: r.execution_id == e.id,
+        where: si.activation_id == ^activation_id and is_nil(r.execution_id),
+        order_by: [desc: si.sequence],
+        limit: 1
+      )
+
+    Repo.one(query, prefix: project_id)
   end
 
   def list_pending_sensors(project_id) do

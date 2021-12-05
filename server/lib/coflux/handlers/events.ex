@@ -60,6 +60,19 @@ defmodule Coflux.Handlers.Events do
           {:ok, run_id} ->
             {[result_message(message["id"], run_id)], state}
         end
+
+      "activate_sensor" ->
+        [repository, target] = message["params"]
+
+        case Project.activate_sensor(state.project_id, repository, target) do
+          {:ok, activation_id} ->
+            {[result_message(message["id"], activation_id)], state}
+        end
+
+      "deactivate_sensor" ->
+        [activation_id] = message["params"]
+        Project.deactivate_sensor(state.project_id, activation_id)
+        {[result_message(message["id"], true)], state}
     end
   end
 

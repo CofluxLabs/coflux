@@ -11,6 +11,10 @@ export default function useSocket() {
 function applyUpdate(state: any, path: (string | number)[], value: any): any {
   if (path.length == 0) {
     return value;
+  } else if (value === null && path.length == 1) {
+    const [key] = path;
+    const { [key]: _oldValue, ...rest } = state;
+    return rest;
   } else {
     const [key, ...rest] = path;
     return { ...state, [key]: applyUpdate(state[key], rest, value) };
