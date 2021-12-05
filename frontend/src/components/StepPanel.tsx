@@ -1,9 +1,48 @@
 import React, { CSSProperties, Fragment } from 'react';
 import classNames from 'classnames';
 import { maxBy, sortBy } from 'lodash';
+import { DateTime } from 'luxon';
 
 import * as models from '../models';
 import Badge from './Badge';
+
+type AttemptProps = {
+  attempt: models.Attempt;
+}
+
+function Attempt({ attempt }: AttemptProps) {
+  const scheduledAt = DateTime.fromISO(attempt.createdAt);
+  const assignedAt = attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null;
+  const resultAt = attempt.result && DateTime.fromISO(attempt.result.createdAt);
+  return (
+    <div key={attempt.number} className="p-4">
+      <h3 className="text-sm flex mb-2">
+        <span className="uppercase font-bold text-gray-400 flex-1">
+          Attempt {attempt.number}
+          </span>
+        <span className="ml-2 text-gray-400">
+          {scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}
+        </span>
+      </h3>
+      {resultAt ? (
+        <p>Duration: {resultAt.diff(assignedAt!).toMillis()}ms <span className="text-gray-500 text-sm">(+{assignedAt!.diff(scheduledAt).toMillis()}ms wait)</span></p>
+      ) : assignedAt ? (
+        <p>Executing...</p>
+      ) : null}
+      {attempt.result && (
+        attempt.result.type <= 2 ? (
+          <div className="font-mono p-2 mt-2 rounded bg-white border border-gray-200">
+            {attempt.result.value}
+          </div>
+        ) : attempt.result.type == 3 ? (
+          <div className="font-mono p-2 mt-2 rounded bg-red-50 border border-red-200">
+            {attempt.result.value}
+          </div>
+        ) : null
+      )}
+    </div>
+  );
+}
 
 type Props = {
   step: models.Step;
@@ -44,26 +83,7 @@ export default function StepPanel({ step, className, style }: Props) {
         </div>
       )}
       {sortBy(Object.values(step.attempts), 'number').map((attempt) => (
-        <div key={attempt.number} className="p-4">
-          <h3 className="uppercase text-sm font-bold text-gray-400">Attempt {attempt.number}</h3>
-          <p>Scheduled: {attempt.createdAt}</p>
-          {attempt.assignedAt && (
-            <p>Started: {attempt.assignedAt}</p>
-          )}
-          {attempt.result && (
-            attempt.result.type <= 2 ? (
-              <Fragment>
-                <p>Completed: {attempt.result.createdAt}</p>
-                <p>Result: <span className="font-mono">{attempt.result.value}</span></p>
-              </Fragment>
-            ) : attempt.result.type == 3 ? (
-              <Fragment>
-                <p>Failed: {attempt.result.createdAt}</p>
-                <p>Error: <span className="font-mono">{attempt.result.value}</span></p>
-              </Fragment>
-            ) : null
-          )}
-        </div>
+        <Attempt key={attempt.number} attempt={attempt} />
       ))}
     </div>
   );
