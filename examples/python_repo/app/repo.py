@@ -145,7 +145,7 @@ def demo_sensor(cursor: t.Optional[int]):
         time.sleep(remaining)
         yield
         my_task()
-        cursor += remaining + interval
+        cursor += interval
         yield cursor
 
 
