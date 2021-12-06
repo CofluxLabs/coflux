@@ -7,7 +7,7 @@ defmodule Coflux.Project.Orchestrator do
   alias Coflux.Listener
 
   defmodule State do
-    defstruct project_id: nil, targets: %{}, agents: %{}, waiting: %{}
+    defstruct project_id: nil, targets: %{}, waiting: %{}, executions: %{}
   end
 
   def start_link(opts) do
@@ -28,12 +28,7 @@ defmodule Coflux.Project.Orchestrator do
 
     state =
       Enum.reduce(manifest, state, fn {target, _config}, state ->
-        state
-        |> put_in([Access.key(:targets), Access.key({repository, target}, %{}), pid], version)
-        |> put_in(
-          [Access.key(:agents), Access.key(pid, %{}), Access.key({repository, target})],
-          version
-        )
+        put_in(state, [Access.key(:targets), Access.key({repository, target}, %{}), pid], version)
       end)
 
     state = try_schedule_executions(state)
@@ -64,9 +59,25 @@ defmodule Coflux.Project.Orchestrator do
   def handle_info({:insert, _ref, table, data}, state) do
     state =
       case table do
-        :executions -> try_schedule_executions(state)
-        :results -> try_notify_results(state, data)
-        _other -> state
+        :executions ->
+          try_schedule_executions(state)
+
+        :results ->
+          result =
+            %Models.Result{}
+            |> Changeset.cast(data, Models.Result.__schema__(:fields))
+            |> Changeset.apply_changes()
+
+          if result.type in [4, 5] do
+            try_abort(state, result.execution_id)
+          end
+
+          {_, state} = pop_in(state.executions[result.execution_id])
+
+          try_notify_results(state, result)
+
+        _other ->
+          state
       end
 
     {:noreply, state}
@@ -105,9 +116,14 @@ defmodule Coflux.Project.Orchestrator do
     state =
       state
       |> Map.update!(:targets, fn targets ->
+        # TODO: remove target if no pids left
         Map.new(targets, fn {target, pids} -> {target, Map.delete(pids, pid)} end)
       end)
-      |> Map.update!(:agents, &Map.delete(&1, pid))
+      |> Map.update!(:executions, fn executions ->
+        executions
+        |> Enum.reject(fn {_, execution_pid} -> execution_pid == pid end)
+        |> Map.new()
+      end)
 
     {:noreply, state}
   end
@@ -115,18 +131,18 @@ defmodule Coflux.Project.Orchestrator do
   defp try_schedule_executions(state) do
     state.project_id
     |> Store.list_pending_executions()
-    |> Enum.each(fn execution ->
+    |> Enum.reduce(state, fn execution, state ->
       with {:ok, pid_map} <- Map.fetch(state.targets, {execution.repository, execution.target}),
            {:ok, pid} <- find_agent(pid_map),
            :ok <- Store.assign_execution(state.project_id, execution) do
         arguments = prepare_arguments(execution.arguments)
         send(pid, {:execute, execution.id, execution.target, arguments})
+        put_in(state.executions[execution.id], pid)
       else
-        :error -> :error
+        :error ->
+          state
       end
     end)
-
-    state
   end
 
   defp find_agent(pid_map) do
@@ -148,12 +164,7 @@ defmodule Coflux.Project.Orchestrator do
     end)
   end
 
-  defp try_notify_results(state, data) do
-    result =
-      %Models.Result{}
-      |> Changeset.cast(data, Models.Result.__schema__(:fields))
-      |> Changeset.apply_changes()
-
+  defp try_notify_results(state, result) do
     execution_id = result.execution_id
 
     Map.update!(state, :waiting, fn waiting ->
@@ -186,6 +197,14 @@ defmodule Coflux.Project.Orchestrator do
       end
 
     DateTime.diff(now, last_activity_at, :millisecond) > timeout_ms
+  end
+
+  defp try_abort(state, execution_id) do
+    pid = Map.get(state.executions, execution_id)
+
+    if pid do
+      send(pid, {:abort, execution_id})
+    end
   end
 
   defp get_result(project_id, execution_id) do

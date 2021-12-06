@@ -165,7 +165,7 @@ class Client:
         self._version = version
         self._server_host = server_host
         self._targets = _load_module(module_name)
-        self._channel = Channel({'execute': self._handle_execute})
+        self._channel = Channel({'execute': self._handle_execute, 'abort': self._handle_abort})
         self._results = {}
         self._executions = {}
         self._semaphore = threading.Semaphore(concurrency or min(32, os.cpu_count() + 4))
@@ -226,9 +226,11 @@ class Client:
                     if cursor is not None:
                         task = self._put_cursor(execution_id, cursor)
                         asyncio.run_coroutine_threadsafe(task, loop).result()
-                    # TODO: check execution hasn't been stopped (if it has, value.close())
-            task = self._put_result(execution_id, value)
-            asyncio.run_coroutine_threadsafe(task, loop).result()
+                    if self._executions[execution_id][2] == 3:
+                        value.close()
+            else:
+                task = self._put_result(execution_id, value)
+                asyncio.run_coroutine_threadsafe(task, loop).result()
         finally:
             del self._executions[execution_id]
             execution_var.reset(token)
@@ -242,6 +244,10 @@ class Client:
         thread = threading.Thread(target=self._execute_target, args=args, daemon=True)
         self._executions[execution_id] = (thread, time.time(), 0)
         thread.start()
+
+    async def _handle_abort(self, execution_id):
+        print(f"Aborting execution ({execution_id})...")
+        self._set_execution_status(execution_id, 3)
 
     async def _send_heartbeats(self, threshold_s=1):
         while True:

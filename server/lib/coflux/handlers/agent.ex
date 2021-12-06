@@ -98,6 +98,10 @@ defmodule Coflux.Handlers.Agent do
     {[result_message(id, compose_result(result))], state}
   end
 
+  def websocket_info({:abort, execution_id}, state) do
+    {[notify_message("abort", [execution_id])], state}
+  end
+
   def websocket_info(_info, state) do
     {[], state}
   end

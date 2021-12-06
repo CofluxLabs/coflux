@@ -230,8 +230,10 @@ defmodule Coflux.Project.Store do
       from(e in Models.Execution,
         left_join: a in Models.Assignment,
         on: a.execution_id == e.id,
+        left_join: r in Models.Result,
+        on: r.execution_id == e.id,
         where: e.execute_after <= ^now or is_nil(e.execute_after),
-        where: is_nil(a.execution_id),
+        where: is_nil(a.execution_id) and is_nil(r.execution_id),
         order_by: [desc: e.priority, asc: e.created_at]
       )
 
@@ -354,14 +356,37 @@ defmodule Coflux.Project.Store do
   end
 
   def deactivate_sensor(project_id, activation_id) do
-    Repo.insert!(
-      %Models.SensorDeactivation{
-        activation_id: activation_id,
-        created_at: DateTime.utc_now()
-      },
-      prefix: project_id
-    )
-    # TODO: stop current execution (if any)
+    now = DateTime.utc_now()
+
+    Repo.transaction(fn ->
+      query =
+        from(si in Models.SensorIteration,
+          left_join: r in Models.Result,
+          on: r.execution_id == si.execution_id,
+          where: si.activation_id == ^activation_id and is_nil(r.execution_id),
+          order_by: [desc: si.sequence],
+          limit: 1
+        )
+
+      iteration = Repo.one(query, prefix: project_id)
+
+      Repo.insert!(
+        %Models.SensorDeactivation{
+          activation_id: activation_id,
+          created_at: now
+        },
+        prefix: project_id
+      )
+
+      Repo.insert!(
+        %Models.Result{
+          execution_id: iteration.execution_id,
+          type: 5,
+          created_at: now
+        },
+        prefix: project_id
+      )
+    end)
   end
 
   def list_sensor_activations(project_id) do
