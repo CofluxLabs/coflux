@@ -238,7 +238,8 @@ class Client:
         # TODO: check execution isn't already running?
         print(f"Handling execute '{target_name}' ({execution_id})...")
         loop = asyncio.get_running_loop()
-        thread = threading.Thread(target=self._execute_target, args=(execution_id, target_name, arguments, loop))
+        args = (execution_id, target_name, arguments, loop)
+        thread = threading.Thread(target=self._execute_target, args=args, daemon=True)
         self._executions[execution_id] = (thread, time.time(), 0)
         thread.start()
 
