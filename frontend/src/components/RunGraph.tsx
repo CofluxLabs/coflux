@@ -31,12 +31,12 @@ function buildGraph(run: models.Run) {
   return g;
 }
 
-function classNameForResult(result: models.Result | null, isCached: boolean, open: boolean) {
+function classNameForResult(result: models.Result | null, isCached: boolean) {
   if (isCached) {
     return 'border-gray-300 bg-gray-50';
   } else {
     const color = !result ? 'blue' : result.type == 3 ? 'red' : result.type == 4 ? 'yellow' : 'gray';
-    return classNames(`shadow border-${color}-400 `, open ? `bg-${color}-200` : `bg-${color}-100 hover:bg-${color}-200`);
+    return `shadow border-${color}-400 bg-${color}-100`;
   }
 }
 
@@ -52,14 +52,21 @@ function StepNode({ node, step, runId, activeStepId }: StepNodeProps) {
   const open = step.id == activeStepId;
   return (
     <div
-      className={classNames('absolute flex')}
+      className="absolute flex items-center"
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
       <Link href={`/projects/project_1/runs/${runId}${open ? '' : `#${step.id}`}`}>
-        <a className={classNames('flex-1 flex items-center border rounded p-2', classNameForResult(latestAttempt?.result || null, !!step.cached, open))}>
-          <div className={classNames('flex-1 truncate', { 'font-bold': !step.parent })}>
-            <span className="font-mono">{step.target}</span>
-          </div>
+        <a
+          className={
+            classNames(
+              'flex-1 items-center border block rounded p-2 truncate',
+              classNameForResult(latestAttempt?.result || null, !!step.cached),
+              open && 'ring ring-offset-2',
+              { 'font-bold': !step.parent }
+            )
+          }
+        >
+          <span className="font-mono">{step.target}</span>
         </a>
       </Link>
     </div>
