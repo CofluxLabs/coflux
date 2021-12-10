@@ -8,4 +8,4 @@ COPY . ./
 
 ENV PYTHONPATH=/packages
 
-CMD python -u -m coflux -p $PROJECT -h $HOST -m $MODULE -v $VERSION
+CMD python -u -m coflux -p $PROJECT -h $HOST -m $MODULE -v $VERSION --reload
