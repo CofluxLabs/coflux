@@ -206,7 +206,7 @@ class Client:
 
     async def _put_error(self, execution_id, exception):
         # TODO: include exception state
-        await self._channel.notify('put_error', execution_id, str(exception), {})
+        await self._channel.notify('put_error', execution_id, str(exception)[:200], {})
 
     # TODO: consider thread safety
     def _execute_target(self, execution_id, target_name, arguments, loop):
