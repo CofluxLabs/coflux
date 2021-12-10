@@ -1,0 +1,6 @@
+aiohttp
+click
+
+requests
+beautifulsoup4
+nltk

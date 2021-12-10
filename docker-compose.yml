@@ -31,4 +31,21 @@ services:
     volumes:
       - "./examples/python_repo:/app"
       - "./clients/python:/packages"
+    environment:
+      PROJECT: project_1
+      HOST: server:7070
+      MODULE: app.repo
+      VERSION: 1
+    init: true
+
+  example_wikipedia:
+    build: "examples/wikipedia"
+    volumes:
+      - "./examples/wikipedia:/app"
+      - "./clients/python:/packages"
+    environment:
+      PROJECT: project_1
+      HOST: server:7070
+      MODULE: wikipedia.repo
+      VERSION: 1
     init: true
