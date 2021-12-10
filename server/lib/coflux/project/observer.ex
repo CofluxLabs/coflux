@@ -199,7 +199,7 @@ defmodule Coflux.Project.Observer do
 
                 value =
                   attempt
-                  |> Map.take([:created_at, :number])
+                  |> Map.take([:created_at, :number, :execution_id])
                   |> Map.put(:dependency_ids, Map.get(dependencies, execution_id, []))
                   |> Map.put(:run_ids, Map.get(execution_runs, execution_id, []))
                   |> Map.put(:assigned_at, Map.get(assigned_at, execution_id))
@@ -349,7 +349,7 @@ defmodule Coflux.Project.Observer do
       |> update_topic(topic, fn _run ->
         value =
           attempt
-          |> Map.take([:created_at, :number])
+          |> Map.take([:created_at, :number, :execution_id])
           |> Map.put(:dependency_ids, [])
           |> Map.put(:run_ids, [])
           |> Map.put(:assigned_at, nil)

@@ -41,6 +41,7 @@ export type Step = {
 
 export type Attempt = {
   number: number;
+  executionId: string | null;
   createdAt: string;
   dependencyIds: string[];
   runIds: string[];
