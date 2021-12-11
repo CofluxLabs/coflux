@@ -1,7 +1,7 @@
-import React, { Fragment, ReactNode } from 'react';
+import React, { Fragment, ReactNode, useState } from 'react';
 import Link from 'next/link';
 import classNames from 'classnames';
-import { Transition } from '@headlessui/react';
+import { Dialog, Transition } from '@headlessui/react';
 
 import * as models from '../models';
 import Heading from './Heading';
@@ -26,9 +26,12 @@ function Tab({ title, href, isActive }: TabProps) {
 
 type DetailPanelProps = {
   step: models.Step | null;
+  run: models.Run;
+  projectId: string;
+  onFrameUrlChange: (url: string | undefined) => void;
 }
 
-function DetailPanel({ step }: DetailPanelProps) {
+function DetailPanel({ step, run, projectId, onFrameUrlChange }: DetailPanelProps) {
   const previousStep = usePrevious(step);
   const stepOrPrevious = step || previousStep;
   return (
@@ -44,10 +47,30 @@ function DetailPanel({ step }: DetailPanelProps) {
     >
       <div className="fixed inset-y-0 right-0 w-1/4 bg-gray-50 shadow-xl border-l border-gray-200 h-screen">
         {stepOrPrevious && (
-          <StepPanel step={stepOrPrevious} />
+          <StepPanel step={stepOrPrevious} run={run} projectId={projectId} onFrameUrlChange={onFrameUrlChange} />
         )}
       </div>
     </Transition>
+  );
+}
+
+type FrameProps = {
+  url: string | undefined;
+  onUrlChange: (url: string | undefined) => void;
+}
+
+function Frame({ url, onUrlChange }: FrameProps) {
+  return (
+    <Dialog
+      open={!!url}
+      onClose={() => onUrlChange(undefined)}
+      className="fixed z-10 inset-0 overflow-y-auto"
+    >
+      <div className="flex min-h-screen">
+        <Dialog.Overlay className="fixed inset-0 bg-black opacity-70" />
+        <iframe className="relative m-8 bg-white rounded w-full" src={url} />
+      </div>
+    </Dialog>
   );
 }
 
@@ -61,11 +84,12 @@ type Props = {
 
 export default function RunDetail({ projectId, runId, activeTab, activeStepId, children }: Props) {
   const run = useSubscription<models.Run>(`runs.${runId}`);
+  const [frameUrl, setFrameUrl] = useState<string>();
   const initialStep = run && Object.values(run.steps).find((s) => !s.parent);
   const taskId = initialStep && `${initialStep.repository}:${initialStep.target}`;
   return (
     <ProjectLayout projectId={projectId} taskId={taskId}>
-      {run && initialStep ? (
+      {run && initialStep && projectId ? (
         <Fragment>
           <Heading>
             <Link href={`/projects/${projectId}/tasks/${taskId}`}>
@@ -79,7 +103,8 @@ export default function RunDetail({ projectId, runId, activeTab, activeStepId, c
             <Tab title="Timeline" href={`/projects/${projectId}/runs/${runId}/timeline`} isActive={activeTab == 'timeline'} />
           </div>
           {children(run)}
-          <DetailPanel step={activeStepId ? run.steps[activeStepId] : null} />
+          <DetailPanel step={activeStepId ? run.steps[activeStepId] : null} run={run} projectId={projectId} onFrameUrlChange={setFrameUrl} />
+          <Frame url={frameUrl} onUrlChange={setFrameUrl} />
         </Fragment>
       ) : (
         <p>Loading...</p>

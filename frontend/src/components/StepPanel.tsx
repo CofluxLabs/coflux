@@ -1,16 +1,79 @@
-import React, { CSSProperties, Fragment } from 'react';
+import React, { CSSProperties, useCallback } from 'react';
 import classNames from 'classnames';
-import { maxBy, sortBy } from 'lodash';
+import { findKey, maxBy, sortBy } from 'lodash';
 import { DateTime } from 'luxon';
 
 import * as models from '../models';
 import Badge from './Badge';
+import Link from 'next/link';
+
+function findStepForExecution(run: models.Run, executionId: string) {
+  return findKey(run.steps, (s) => Object.values(s.attempts).some((a) => a.executionId == executionId));
+}
+
+type ResultProps = {
+  result: models.Result;
+  run: models.Run;
+  projectId: string;
+  onFrameUrlChange: (url: string | undefined) => void;
+}
+
+function Result({ result, run, projectId, onFrameUrlChange }: ResultProps) {
+  const handleBlobClick = useCallback((ev) => {
+    if (!ev.ctrlKey) {
+      ev.preventDefault();
+      onFrameUrlChange(ev.target.href);
+    }
+  }, [onFrameUrlChange]);
+  switch (result.type) {
+    case 0:
+      return (
+        <div className="font-mono p-2 mt-2 rounded bg-white border border-gray-200">
+          {result.value}
+        </div>
+      );
+    case 1:
+      return (
+        <a
+          href={`http://localhost:7070/projects/${projectId}/blobs/${result.value}`}
+          className="border border-blue-500 hover:bg-blue-50 text-blue-500 rounded px-2 py-1 my-2 inline-block"
+          onClick={handleBlobClick}
+        >
+          Blob
+        </a>
+      );
+    case 2:
+      const stepId = findStepForExecution(run, result.value);
+      if (stepId) {
+        return (
+          <Link href={`/projects/${projectId}/runs/${run.id}#${stepId}`}>
+            <a className="border border-blue-500 hover:bg-blue-50 text-blue-500 rounded px-2 py-1 my-2 inline-block">
+              Result
+            </a>
+          </Link>
+        );
+      } else {
+        return <em>Unrecognised execution</em>
+      }
+    case 3:
+      return (
+        <div className="font-mono p-2 mt-2 rounded bg-red-50 border border-red-200">
+          {result.value}
+        </div>
+      );
+    default:
+      return null;
+  }
+}
 
 type AttemptProps = {
   attempt: models.Attempt;
+  run: models.Run;
+  projectId: string;
+  onFrameUrlChange: (url: string | undefined) => void;
 }
 
-function Attempt({ attempt }: AttemptProps) {
+function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
   const scheduledAt = DateTime.fromISO(attempt.createdAt);
   const assignedAt = attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null;
   const resultAt = attempt.result && DateTime.fromISO(attempt.result.createdAt);
@@ -19,7 +82,7 @@ function Attempt({ attempt }: AttemptProps) {
       <h3 className="text-sm flex mb-2">
         <span className="uppercase font-bold text-gray-400 flex-1">
           Attempt {attempt.number}
-          </span>
+        </span>
         <span className="ml-2 text-gray-400">
           {scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}
         </span>
@@ -30,15 +93,7 @@ function Attempt({ attempt }: AttemptProps) {
         <p>Executing...</p>
       ) : null}
       {attempt.result && (
-        attempt.result.type <= 2 ? (
-          <div className="font-mono p-2 mt-2 rounded bg-white border border-gray-200">
-            {attempt.result.value}
-          </div>
-        ) : attempt.result.type == 3 ? (
-          <div className="font-mono p-2 mt-2 rounded bg-red-50 border border-red-200">
-            {attempt.result.value}
-          </div>
-        ) : null
+        <Result result={attempt.result} run={run} projectId={projectId} onFrameUrlChange={onFrameUrlChange} />
       )}
     </div>
   );
@@ -46,11 +101,14 @@ function Attempt({ attempt }: AttemptProps) {
 
 type Props = {
   step: models.Step;
+  run: models.Run;
+  projectId: string;
   className?: string;
   style?: CSSProperties;
+  onFrameUrlChange: (url: string | undefined) => void;
 }
 
-export default function StepPanel({ step, className, style }: Props) {
+export default function StepPanel({ step, run, projectId, className, style, onFrameUrlChange }: Props) {
   const latestAttempt = maxBy(Object.values(step.attempts), 'number')
   return (
     <div className={classNames('divide-y overflow-hidden', className)} style={style}>
@@ -83,7 +141,13 @@ export default function StepPanel({ step, className, style }: Props) {
         </div>
       )}
       {sortBy(Object.values(step.attempts), 'number').map((attempt) => (
-        <Attempt key={attempt.number} attempt={attempt} />
+        <Attempt
+          key={attempt.number}
+          attempt={attempt}
+          run={run}
+          projectId={projectId}
+          onFrameUrlChange={onFrameUrlChange}
+        />
       ))}
     </div>
   );
