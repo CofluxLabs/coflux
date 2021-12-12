@@ -25,13 +25,15 @@ function Tab({ title, href, isActive }: TabProps) {
 }
 
 type DetailPanelProps = {
-  step: models.Step | null;
+  stepId: string | null;
+  attemptNumber: number | null;
   run: models.Run;
   projectId: string;
   onFrameUrlChange: (url: string | undefined) => void;
 }
 
-function DetailPanel({ step, run, projectId, onFrameUrlChange }: DetailPanelProps) {
+function DetailPanel({ stepId, attemptNumber, run, projectId, onFrameUrlChange }: DetailPanelProps) {
+  const step = stepId && run.steps[stepId];
   const previousStep = usePrevious(step);
   const stepOrPrevious = step || previousStep;
   return (
@@ -45,9 +47,16 @@ function DetailPanel({ step, run, projectId, onFrameUrlChange }: DetailPanelProp
       leaveFrom="translate-x-0"
       leaveTo="translate-x-full"
     >
-      <div className="fixed inset-y-0 right-0 w-1/4 bg-gray-50 shadow-xl border-l border-gray-200 h-screen">
+      <div className="fixed inset-y-0 right-0 w-1/4 bg-gray-50 shadow-xl border-l border-gray-200 h-screen flex">
         {stepOrPrevious && (
-          <StepDetail step={stepOrPrevious} run={run} projectId={projectId} onFrameUrlChange={onFrameUrlChange} />
+          <StepDetail
+            step={stepOrPrevious}
+            attemptNumber={attemptNumber || 1}
+            run={run}
+            projectId={projectId}
+            className="flex-1"
+            onFrameUrlChange={onFrameUrlChange}
+          />
         )}
       </div>
     </Transition>
@@ -79,10 +88,11 @@ type Props = {
   runId: string | null;
   activeTab: 'overview' | 'timeline';
   activeStepId: string | null;
+  activeAttemptNumber: number | null;
   children: (run: models.Run) => ReactNode;
 }
 
-export default function RunDetail({ projectId, runId, activeTab, activeStepId, children }: Props) {
+export default function RunDetail({ projectId, runId, activeTab, activeStepId, activeAttemptNumber, children }: Props) {
   const run = useSubscription<models.Run>(`runs.${runId}`);
   const [frameUrl, setFrameUrl] = useState<string>();
   const initialStep = run && Object.values(run.steps).find((s) => !s.parent);
@@ -103,7 +113,13 @@ export default function RunDetail({ projectId, runId, activeTab, activeStepId, c
             <Tab title="Timeline" href={`/projects/${projectId}/runs/${runId}/timeline`} isActive={activeTab == 'timeline'} />
           </div>
           {children(run)}
-          <DetailPanel step={activeStepId ? run.steps[activeStepId] : null} run={run} projectId={projectId} onFrameUrlChange={setFrameUrl} />
+          <DetailPanel
+            stepId={activeStepId}
+            attemptNumber={activeAttemptNumber}
+            run={run}
+            projectId={projectId}
+            onFrameUrlChange={setFrameUrl}
+          />
           <Frame url={frameUrl} onUrlChange={setFrameUrl} />
         </Fragment>
       ) : (

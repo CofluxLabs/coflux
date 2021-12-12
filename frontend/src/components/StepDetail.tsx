@@ -1,11 +1,12 @@
-import React, { CSSProperties, useCallback } from 'react';
+import React, { CSSProperties, Fragment, ReactNode, useCallback } from 'react';
 import classNames from 'classnames';
-import { findKey, maxBy, sortBy } from 'lodash';
+import { findKey, sortBy } from 'lodash';
 import { DateTime } from 'luxon';
+import Link from 'next/link';
+import { Listbox, Transition } from '@headlessui/react';
 
 import * as models from '../models';
 import Badge from './Badge';
-import Link from 'next/link';
 
 function findStepForExecution(run: models.Run, executionId: string) {
   return findKey(run.steps, (s) => Object.values(s.attempts).some((a) => a.executionId == executionId));
@@ -78,29 +79,71 @@ function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
   const assignedAt = attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null;
   const resultAt = attempt.result && DateTime.fromISO(attempt.result.createdAt);
   return (
-    <div key={attempt.number} className="p-4">
-      <h3 className="text-sm flex mb-2">
-        <span className="uppercase font-bold text-gray-400 flex-1">
-          Attempt {attempt.number}
-        </span>
-        <span className="ml-2 text-gray-400">
-          {scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}
-        </span>
-      </h3>
-      {resultAt ? (
-        <p>Duration: {resultAt.diff(assignedAt!).toMillis()}ms <span className="text-gray-500 text-sm">(+{assignedAt!.diff(scheduledAt).toMillis()}ms wait)</span></p>
-      ) : assignedAt ? (
-        <p>Executing...</p>
-      ) : null}
+    <Fragment>
+      <div className="p-4">
+        <h3 className="uppercase text-sm font-bold text-gray-400">Execution</h3>
+        <p>Started: {scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}</p>
+        {resultAt ? (
+          <p>Duration: {resultAt.diff(assignedAt!).toMillis()}ms <span className="text-gray-500 text-sm">(+{assignedAt!.diff(scheduledAt).toMillis()}ms wait)</span></p>
+        ) : assignedAt ? (
+          <p>Executing...</p>
+        ) : null}
+      </div>
       {attempt.result && (
-        <Result result={attempt.result} run={run} projectId={projectId} onFrameUrlChange={onFrameUrlChange} />
+        <div className="p-4">
+          <h3 className="uppercase text-sm font-bold text-gray-400">Result</h3>
+          <Result result={attempt.result} run={run} projectId={projectId} onFrameUrlChange={onFrameUrlChange} />
+        </div>
       )}
-    </div>
+    </Fragment>
+  );
+}
+
+type AttemptSelectorProps = {
+  selectedNumber: number;
+  attempts: Record<number, models.Attempt>;
+  onChange: (number: number) => void;
+  children: (attempt: models.Attempt, selected: boolean, active: boolean) => ReactNode;
+}
+
+function AttemptSelector({ selectedNumber, attempts, onChange, children }: AttemptSelectorProps) {
+  const selectedAttempt = attempts[selectedNumber];
+  return (
+    <Listbox value={selectedNumber} onChange={onChange}>
+      <div className="relative mt-1">
+        <Listbox.Button className="relative w-full p-2 bg-white text-left border rounded-lg">
+          {children(selectedAttempt, true, false)}
+        </Listbox.Button>
+        <Transition
+          as={Fragment}
+          leave="transition ease-in duration-100"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <Listbox.Options className="absolute right-0 py-1 mt-1 overflow-auto text-base bg-white rounded-md shadow-lg max-h-60">
+            {sortBy(Object.values(attempts), 'number').map((attempt) => (
+              <Listbox.Option
+                key={attempt.number}
+                className="relative cursor-default"
+                value={attempt.number}
+              >
+                {({ selected, active }) => (
+                  <div className={classNames('p-2', selected && 'font-bold', active && 'bg-gray-100')}>
+                    {children(attempt, selected, active)}
+                  </div>
+                )}
+              </Listbox.Option>
+            ))}
+          </Listbox.Options>
+        </Transition>
+      </div>
+    </Listbox>
   );
 }
 
 type Props = {
   step: models.Step;
+  attemptNumber: number;
   run: models.Run;
   projectId: string;
   className?: string;
@@ -108,27 +151,39 @@ type Props = {
   onFrameUrlChange: (url: string | undefined) => void;
 }
 
-export default function StepDetail({ step, run, projectId, className, style, onFrameUrlChange }: Props) {
-  const latestAttempt = maxBy(Object.values(step.attempts), 'number')
+export default function StepDetail({ step, attemptNumber, run, projectId, className, style, onFrameUrlChange }: Props) {
+  const handleAttemptChange = useCallback((number) => { window.location.hash = `#${step.id}/${number}`; }, [step]);
+  const attempt = step.attempts[attemptNumber];
   return (
     <div className={classNames('divide-y overflow-hidden', className)} style={style}>
       <div className="p-4 pt-5 flex items-center">
         <h2 className="flex-1"><span className="font-mono text-xl">{step.target}</span> <span className="text-gray-500">({step.repository})</span></h2>
         {step.cached ? (
           <Badge intent="none" label="Cached" />
-        ) : !latestAttempt ? (
+        ) : !Object.keys(step.attempts).length ? (
           <Badge intent="info" label="Scheduling" />
-        ) : !latestAttempt.assignedAt ? (
-          <Badge intent="info" label="Assigning" />
-        ) : !latestAttempt.result ? (
-          <Badge intent="info" label="Running" />
-        ) : latestAttempt.result.type <= 2 ? (
-          <Badge intent="success" label="Completed" />
-        ) : latestAttempt.result.type == 3 ? (
-          <Badge intent="danger" label="Failed" />
-        ) : latestAttempt.result.type == 4 ? (
-          <Badge intent="warning" label="Abandoned" />
-        ) : null}
+        ) : (
+          <AttemptSelector selectedNumber={attemptNumber} attempts={step.attempts} onChange={handleAttemptChange}>
+            {(attempt) => (
+              <div className="flex items-center">
+                <span className="mr-1 flex-1">
+                  #{attempt.number}
+                </span>
+                {!attempt.assignedAt ? (
+                  <Badge intent="info" label="Assigning" />
+                ) : !attempt.result ? (
+                  <Badge intent="info" label="Running" />
+                ) : attempt.result.type <= 2 ? (
+                  <Badge intent="success" label="Completed" />
+                ) : attempt.result.type == 3 ? (
+                  <Badge intent="danger" label="Failed" />
+                ) : attempt.result.type == 4 ? (
+                  <Badge intent="warning" label="Abandoned" />
+                ) : null}
+              </div>
+            )}
+          </AttemptSelector>
+        )}
       </div>
       {step.arguments.length > 0 && (
         <div className="p-4">
@@ -140,7 +195,7 @@ export default function StepDetail({ step, run, projectId, className, style, onF
           </ol>
         </div>
       )}
-      {sortBy(Object.values(step.attempts), 'number').map((attempt) => (
+      {attempt && (
         <Attempt
           key={attempt.number}
           attempt={attempt}
@@ -148,7 +203,7 @@ export default function StepDetail({ step, run, projectId, className, style, onF
           projectId={projectId}
           onFrameUrlChange={onFrameUrlChange}
         />
-      ))}
+      )}
     </div>
   );
 }
