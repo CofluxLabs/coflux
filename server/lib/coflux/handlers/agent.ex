@@ -62,12 +62,12 @@ defmodule Coflux.Handlers.Agent do
       "put_result" ->
         [execution_id, type, value] = message["params"]
         result = parse_result(type, value)
-        Project.put_result(state.project_id, execution_id, result)
+        :ok = Project.put_result(state.project_id, execution_id, result)
         {[], state}
 
       "put_error" ->
         [execution_id, error, details] = message["params"]
-        Project.put_result(state.project_id, execution_id, {:failed, error, details})
+        :ok = Project.put_result(state.project_id, execution_id, {:failed, error, details})
         {[], state}
 
       "get_result" ->

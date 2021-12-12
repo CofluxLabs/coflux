@@ -1,7 +1,6 @@
 defmodule Coflux.Project.Store do
   alias Coflux.Project.Models
   alias Coflux.Repo.Projects, as: Repo
-  alias Ecto.Changeset
 
   import Ecto.Query, only: [from: 2]
 
@@ -259,30 +258,21 @@ defmodule Coflux.Project.Store do
   end
 
   def assign_execution(project_id, execution) do
-    case Repo.insert(
-           %Models.Assignment{
-             execution_id: execution.id,
-             created_at: DateTime.utc_now()
-           },
-           prefix: project_id
-         ) do
-      {:ok, _} -> :ok
-      {:error, _} -> :error
-    end
+    try_insert(project_id, Models.Assignment,
+      execution_id: execution.id,
+      created_at: DateTime.utc_now()
+    )
   end
 
   def put_result(project_id, execution_id, result) do
     {type, value, extra} = parse_result(result)
 
-    Repo.insert!(
-      %Models.Result{
-        execution_id: execution_id,
-        type: type,
-        value: value,
-        extra: extra,
-        created_at: DateTime.utc_now()
-      },
-      prefix: project_id
+    try_insert(project_id, Models.Result,
+      execution_id: execution_id,
+      type: type,
+      value: value,
+      extra: extra,
+      created_at: DateTime.utc_now()
     )
   end
 
@@ -493,19 +483,12 @@ defmodule Coflux.Project.Store do
 
       last_sequence = if last_iteration, do: last_iteration.sequence, else: 0
 
-      # TODO: handle (and ignore?) primary key conflict
-      %Models.SensorIteration{}
-      |> Changeset.cast(
-        %{
-          activation_id: activation.id,
-          sequence: last_sequence + 1,
-          execution_id: execution.id,
-          created_at: now
-        },
-        [:activation_id, :sequence, :execution_id, :created_at]
+      try_insert(project_id, Models.SensorIteration,
+        activation_id: activation.id,
+        sequence: last_sequence + 1,
+        execution_id: execution.id,
+        created_at: now
       )
-      |> Changeset.unique_constraint(:sequence)
-      |> Repo.insert(on_conflict: :nothing, prefix: project_id)
     end)
   end
 
@@ -630,5 +613,12 @@ defmodule Coflux.Project.Store do
       end
 
     execution_id
+  end
+
+  defp try_insert(project_id, model, entry) do
+    case Repo.insert_all(model, [entry], on_conflict: :nothing, prefix: project_id) do
+      {0, nil} -> :error
+      {1, nil} -> :ok
+    end
   end
 end
