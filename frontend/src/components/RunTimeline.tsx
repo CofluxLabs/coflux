@@ -99,7 +99,7 @@ export default function RunTimeline({ run, activeStepId }: Props) {
         const stepFinishedAt = (latestAttempt ? executionTimes[`${step.id}:${latestAttempt.number}`][2] : null) || latestTime;
         const open = step.id == activeStepId;
         return (
-          <div key={step.id} className="flex">
+          <div key={step.id} className={classNames('flex rounded px-2', open && 'ring ring-offset-2')}>
             <div className="w-40 truncate self-center mr-2">
               <Link href={`/projects/project_1/runs/${run.id}/timeline${open ? '' : `#${step.id}`}`}>
                 <a>
