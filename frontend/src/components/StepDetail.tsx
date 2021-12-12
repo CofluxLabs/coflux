@@ -108,7 +108,7 @@ type Props = {
   onFrameUrlChange: (url: string | undefined) => void;
 }
 
-export default function StepPanel({ step, run, projectId, className, style, onFrameUrlChange }: Props) {
+export default function StepDetail({ step, run, projectId, className, style, onFrameUrlChange }: Props) {
   const latestAttempt = maxBy(Object.values(step.attempts), 'number')
   return (
     <div className={classNames('divide-y overflow-hidden', className)} style={style}>
