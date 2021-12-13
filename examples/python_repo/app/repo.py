@@ -3,7 +3,7 @@ import random
 import requests
 import typing as t
 
-from coflux import step, task, sensor
+from coflux import step, task, sensor, context
 
 
 @step()
@@ -18,22 +18,26 @@ def inc(x):
 
 @step()
 def add(x: int, y: int) -> int:
+    context.log_debug("This is a debug message")
     return x.result() + y.result()
 
 
 @step()
 def foo(xs: t.List[int]):
+    context.log_warning("This is a warning message")
     return inc(count(xs))
 
 
 @step()
 def maximum(xs: t.List[int]):
+    context.log_error("This is an error message")
     return max(xs.result())
 
 
 @task()
 def my_task(xs: t.Optional[t.List[int]] = None):
     xs = xs or [5, 2, 6]
+    context.log_info("Task has started")
     return add(foo(xs), maximum(xs))
 
 

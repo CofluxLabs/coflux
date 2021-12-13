@@ -63,3 +63,9 @@ export type SensorActivation = {
   deactivatedAt: string | null;
   runs: Record<string, BaseRun>;
 }
+
+export type LogMessage = {
+  level: 0 | 1 | 2 | 3;
+  message: string;
+  createdAt: string;
+}

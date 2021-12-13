@@ -7,6 +7,7 @@ import { Listbox, Transition } from '@headlessui/react';
 
 import * as models from '../models';
 import Badge from './Badge';
+import { useSubscription } from '../hooks/useSocket';
 
 function findStepForExecution(run: models.Run, executionId: string) {
   return findKey(run.steps, (s) => Object.values(s.attempts).some((a) => a.executionId == executionId));
@@ -67,6 +68,32 @@ function Result({ result, run, projectId, onFrameUrlChange }: ResultProps) {
   }
 }
 
+type LogMessageProps = {
+  message: models.LogMessage;
+}
+
+const LOG_LEVELS = {
+  0: ['Debug', 'bg-gray-400'],
+  1: ['Info', 'bg-blue-400'],
+  2: ['Warning', 'bg-yellow-400'],
+  3: ['Error', 'bg-red-600']
+}
+
+function LogMessage({ message }: LogMessageProps) {
+  const [name, className] = LOG_LEVELS[message.level];
+  return (
+    <div className="my-2">
+      <div className="my-1">
+        <span className={classNames('rounded px-2 py-1 text-xs uppercase text-white mr-1 font-bold', className)}>{name}</span>
+      </div>
+      <div className="my-1">
+        {message.message}
+      </div>
+      <div className="text-xs text-gray-500 my-1">{message.createdAt}</div>
+    </div>
+  );
+}
+
 type AttemptProps = {
   attempt: models.Attempt;
   run: models.Run;
@@ -78,6 +105,7 @@ function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
   const scheduledAt = DateTime.fromISO(attempt.createdAt);
   const assignedAt = attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null;
   const resultAt = attempt.result && DateTime.fromISO(attempt.result.createdAt);
+  const logs = useSubscription<Record<string, models.LogMessage>>(`logs.${attempt.executionId}`);
   return (
     <Fragment>
       <div className="p-4">
@@ -95,6 +123,22 @@ function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
           <Result result={attempt.result} run={run} projectId={projectId} onFrameUrlChange={onFrameUrlChange} />
         </div>
       )}
+      <div className="p-4">
+        <h3 className="uppercase text-sm font-bold text-gray-400">Logs</h3>
+        {logs === undefined ? (
+          <p><em>Loading...</em></p>
+        ) : Object.keys(logs).length == 0 ? (
+          <p><em>None</em></p>
+        ) : (
+          <ol>
+            {sortBy(Object.values(logs), 'createdAt').map((message, index) => (
+              <li key={index}>
+                <LogMessage message={message} />
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
     </Fragment>
   );
 }

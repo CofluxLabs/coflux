@@ -161,5 +161,14 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     end
 
     create_notify_trigger("sensor_iterations")
+
+    create table("log_messages") do
+      add :execution_id, references("executions", type: :uuid, on_delete: :delete_all), null: false
+      add :level, :smallint, null: false
+      add :message, :text, null: false
+      add :created_at, :utc_datetime_usec, null: false
+    end
+
+    create_notify_trigger("log_messages")
   end
 end

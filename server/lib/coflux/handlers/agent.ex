@@ -81,6 +81,11 @@ defmodule Coflux.Handlers.Agent do
             state = put_in(state.requests[ref], message["id"])
             {[], state}
         end
+
+      "log_message" ->
+        [execution_id, level, log_message] = message["params"]
+        Project.log_message(state.project_id, execution_id, level, log_message)
+        {[], state}
     end
   end
 

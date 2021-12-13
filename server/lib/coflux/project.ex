@@ -69,6 +69,10 @@ defmodule Coflux.Project do
     Store.deactivate_sensor(project_id, activation_id)
   end
 
+  def log_message(project_id, execution_id, level, message) do
+    Store.log_message(project_id, execution_id, level, message)
+  end
+
   def subscribe(project_id, topic, pid) do
     call_observer(project_id, {:subscribe, topic, pid})
   end

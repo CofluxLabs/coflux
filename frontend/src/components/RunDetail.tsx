@@ -47,7 +47,7 @@ function DetailPanel({ stepId, attemptNumber, run, projectId, onFrameUrlChange }
       leaveFrom="translate-x-0"
       leaveTo="translate-x-full"
     >
-      <div className="fixed inset-y-0 right-0 w-1/4 bg-gray-50 shadow-xl border-l border-gray-200 h-screen flex">
+      <div className="fixed inset-y-0 right-0 w-1/3 bg-gray-50 shadow-xl border-l border-gray-200 h-screen flex">
         {stepOrPrevious && (
           <StepDetail
             step={stepOrPrevious}

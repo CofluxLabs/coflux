@@ -284,6 +284,9 @@ class Client:
         serialised_arguments = [_serialise_argument(a) for a in arguments]
         return await self._channel.request('schedule_task', repository, target, serialised_arguments, execution_id)
 
+    async def log_message(self, execution_id, level, message):
+        return await self._channel.notify('log_message', execution_id, level, message)
+
     def _set_execution_status(self, execution_id, status):
         thread, start_time, _status = self._executions[execution_id]
         self._executions[execution_id] = (thread, start_time, status)
@@ -339,6 +342,26 @@ class Context:
             ['result', target_execution_id],
             loop,
         )
+
+    def log_debug(self, message):
+        execution_id, client, loop = self._get()
+        task = client.log_message(execution_id, 0, message)
+        asyncio.run_coroutine_threadsafe(task, loop).result()
+
+    def log_info(self, message):
+        execution_id, client, loop = self._get()
+        task = client.log_message(execution_id, 1, message)
+        asyncio.run_coroutine_threadsafe(task, loop).result()
+
+    def log_warning(self, message):
+        execution_id, client, loop = self._get()
+        task = client.log_message(execution_id, 2, message)
+        asyncio.run_coroutine_threadsafe(task, loop).result()
+
+    def log_error(self, message):
+        execution_id, client, loop = self._get()
+        task = client.log_message(execution_id, 3, message)
+        asyncio.run_coroutine_threadsafe(task, loop).result()
 
 
 context = Context(execution_var)

@@ -218,6 +218,17 @@ defmodule Coflux.Project.Observer do
     {:ok, result, executions}
   end
 
+  defp load_topic("logs." <> execution_id, project_id) do
+    log_messages = Store.get_log_messages(project_id, [execution_id])
+
+    result =
+      Map.new(log_messages, fn log_message ->
+        {log_message.id, Map.take(log_message, [:level, :message, :created_at])}
+      end)
+
+    {:ok, result, %{}}
+  end
+
   defp update_topic(state, topic, fun) do
     case Map.fetch(state.topics, topic) do
       {:ok, %{value: value, subscribers: subscribers}} ->
@@ -450,5 +461,13 @@ defmodule Coflux.Project.Observer do
   defp handle_insert(state, :sensor_iterations, data) do
     iteration = load_model(Models.SensorIteration, data)
     put_in(state.executions[iteration.execution_id], {:sensor, iteration.activation_id})
+  end
+
+  defp handle_insert(state, :log_messages, data) do
+    log_message = load_model(Models.LogMessage, data)
+
+    update_topic(state, "logs.#{log_message.execution_id}", fn _logs ->
+      {[log_message.execution_id, Map.take(log_message, [:level, :message, :created_at])]}
+    end)
   end
 end

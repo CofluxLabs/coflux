@@ -492,6 +492,29 @@ defmodule Coflux.Project.Store do
     end)
   end
 
+  def log_message(project_id, execution_id, level, message) do
+    Repo.insert!(
+      %Models.LogMessage{
+        execution_id: execution_id,
+        level: level,
+        message: message,
+        created_at: DateTime.utc_now()
+      },
+      prefix: project_id
+    )
+  end
+
+  def get_log_messages(project_id, execution_ids) do
+    Repo.all(
+      from(
+        l in Models.LogMessage,
+        where: l.execution_id in ^execution_ids,
+        order_by: :created_at
+      ),
+      prefix: project_id
+    )
+  end
+
   defp parse_result(result) do
     case result do
       {:json, value} when is_binary(value) -> {0, value, nil}
