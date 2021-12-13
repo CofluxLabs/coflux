@@ -308,6 +308,42 @@ class Client:
             raise Exception(f"unexeptected result tag ({result[0]})")
 
 
+class NotInContextException(Exception):
+    pass
+
+
+class Context:
+    def __init__(self, var):
+        self._var = var
+
+    def _get(self):
+        execution = self._var.get(None)
+        if execution is None:
+            raise NotInContextException("Not running in execution context.")
+        return execution
+
+    def schedule_task(self, target, args, repository=None):
+        execution_id, client, loop = self._get()
+        task = client.schedule_task(execution_id, target, args, repository)
+        asyncio.run_coroutine_threadsafe(task, loop).result()
+
+    def schedule_step(self, target, args, repository=None, cache_key=None):
+        execution_id, client, loop = self._get()
+        task = client.schedule_step(execution_id, target, args, repository, cache_key)
+        return asyncio.run_coroutine_threadsafe(task, loop).result()
+
+    def get_result(self, target_execution_id):
+        execution_id, client, loop = self._get()
+        return Future(
+            lambda: client.get_result(target_execution_id, execution_id),
+            ['result', target_execution_id],
+            loop,
+        )
+
+
+context = Context(execution_var)
+
+
 def step(*, name=None, cache_key_fn=None):
     def decorate(fn):
         target = name or fn.__name__
@@ -315,19 +351,12 @@ def step(*, name=None, cache_key_fn=None):
 
         @functools.wraps(fn)
         def wrapper(*args):  # TODO: support kwargs?
-            execution = execution_var.get(None)
-            if execution is not None:
-                execution_id, client, loop = execution
-                # TODO: pass more context? (repository, name, ?)
+            try:
                 # TODO: handle args being futures?
                 cache_key = cache_key_fn(*args) if cache_key_fn else None
-                schedule = client.schedule_step(execution_id, target, args, cache_key=cache_key)
-                new_execution_id = asyncio.run_coroutine_threadsafe(schedule, loop).result()
-                return Future(
-                    lambda: client.get_result(new_execution_id, execution_id), ['result', new_execution_id], loop
-                )
-            else:
-                # TODO: execute in threadpool
+                execution_id = context.schedule_step(target, args, cache_key=cache_key)
+                return context.get_result(execution_id)
+            except NotInContextException:
                 result = fn(*[(Future(lambda: a) if not isinstance(a, Future) else a) for a in args])
                 return Future(lambda: result) if not isinstance(result, Future) else result
 
@@ -343,14 +372,9 @@ def task(*, name=None):
 
         @functools.wraps(fn)
         def wrapper(*args):  # TODO: support kwargs?
-            execution = execution_var.get(None)
-            if execution is not None:
-                execution_id, client, loop = execution
-                # TODO: pass more context? (repository, name, ?)
-                # TODO: handle args being futures?
-                schedule = client.schedule_task(execution_id, target, args)
-                asyncio.run_coroutine_threadsafe(schedule, loop).result()
-            else:
+            try:
+                context.schedule_task(target, args)
+            except NotInContextException:
                 # TODO: execute in threadpool
                 fn(*[(Future(lambda: a) if not isinstance(a, Future) else a) for a in args])
 
