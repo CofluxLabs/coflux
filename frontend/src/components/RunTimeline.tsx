@@ -2,10 +2,10 @@ import { DateTime } from 'luxon';
 import React, { Fragment } from 'react';
 import classNames from 'classnames';
 import { maxBy, sortBy } from 'lodash';
+import Link from 'next/link';
 
 import * as models from '../models';
 import useNow from '../hooks/useNow';
-import Link from 'next/link';
 
 function loadExecutionTimes(run: models.Run): { [key: string]: [DateTime, DateTime | null, DateTime | null] } {
   return Object.values(run.steps).reduce((times, step) => {
@@ -103,7 +103,7 @@ export default function RunTimeline({ run, activeStepId }: Props) {
             <div className="w-40 truncate self-center mr-2">
               <Link href={`/projects/project_1/runs/${run.id}/timeline${open ? '' : `#${step.id}`}`}>
                 <a>
-                  {step.target} <span className="text-gray-500 text-sm">({step.repository})</span>
+                  <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
                 </a>
               </Link>
             </div>

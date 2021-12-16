@@ -218,12 +218,14 @@ defmodule Coflux.Project.Observer do
     {:ok, result, executions}
   end
 
-  defp load_topic("logs." <> execution_id, project_id) do
-    log_messages = Store.get_log_messages(project_id, [execution_id])
+  defp load_topic("logs." <> run_id, project_id) do
+    attempts = Store.get_attempts(project_id, run_id)
+    execution_ids = Enum.map(attempts, & &1.execution_id)
+    log_messages = Store.get_log_messages(project_id, execution_ids)
 
     result =
       Map.new(log_messages, fn log_message ->
-        {log_message.id, Map.take(log_message, [:level, :message, :created_at])}
+        {log_message.id, Map.take(log_message, [:execution_id, :level, :message, :created_at])}
       end)
 
     {:ok, result, %{}}
@@ -466,8 +468,12 @@ defmodule Coflux.Project.Observer do
   defp handle_insert(state, :log_messages, data) do
     log_message = load_model(Models.LogMessage, data)
 
-    update_topic(state, "logs.#{log_message.execution_id}", fn _logs ->
-      {[log_message.execution_id, Map.take(log_message, [:level, :message, :created_at])]}
-    end)
+    case Map.get(state.executions, log_message.execution_id) do
+      {:run, {run_id, _step_id, _attempt}} ->
+        update_topic(state, "logs.#{run_id}", fn _logs ->
+          {[log_message.execution_id],
+           Map.take(log_message, [:execution_id, :level, :message, :created_at])}
+        end)
+    end
   end
 end

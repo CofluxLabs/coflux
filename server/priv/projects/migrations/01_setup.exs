@@ -169,6 +169,8 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       add :created_at, :utc_datetime_usec, null: false
     end
 
+    create index("log_messages", [:execution_id])
+
     create_notify_trigger("log_messages")
   end
 end

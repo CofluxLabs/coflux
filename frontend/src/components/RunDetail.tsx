@@ -1,4 +1,4 @@
-import React, { Fragment, ReactNode, useState } from 'react';
+import React, { Fragment, ReactNode, useCallback, useState } from 'react';
 import Link from 'next/link';
 import classNames from 'classnames';
 import { Dialog, Transition } from '@headlessui/react';
@@ -86,7 +86,7 @@ function Frame({ url, onUrlChange }: FrameProps) {
 type Props = {
   projectId: string | null;
   runId: string | null;
-  activeTab: 'overview' | 'timeline';
+  activeTab: 'overview' | 'timeline' | 'logs';
   activeStepId: string | null;
   activeAttemptNumber: number | null;
   children: (run: models.Run) => ReactNode;
@@ -97,6 +97,9 @@ export default function RunDetail({ projectId, runId, activeTab, activeStepId, a
   const [frameUrl, setFrameUrl] = useState<string>();
   const initialStep = run && Object.values(run.steps).find((s) => !s.parent);
   const taskId = initialStep && `${initialStep.repository}:${initialStep.target}`;
+  const buildUrl = useCallback(
+    (page: string | null = null) => `/projects/${projectId}/runs/${runId}${page ? '/' + page : ''}${activeStepId ? '#' + activeStepId + (activeAttemptNumber ? '/' + activeAttemptNumber : '') : ''}`,
+    [projectId, runId, activeStepId, activeAttemptNumber]);
   return (
     <ProjectLayout projectId={projectId} taskId={taskId}>
       {run && initialStep && projectId ? (
@@ -109,8 +112,9 @@ export default function RunDetail({ projectId, runId, activeTab, activeStepId, a
             <span className="font-mono">{runId}</span>
           </Heading>
           <div className="my-6">
-            <Tab title="Overview" href={`/projects/${projectId}/runs/${runId}`} isActive={activeTab == 'overview'} />
-            <Tab title="Timeline" href={`/projects/${projectId}/runs/${runId}/timeline`} isActive={activeTab == 'timeline'} />
+            <Tab title="Overview" href={buildUrl()} isActive={activeTab == 'overview'} />
+            <Tab title="Timeline" href={buildUrl('timeline')} isActive={activeTab == 'timeline'} />
+            <Tab title="Logs" href={buildUrl('logs')} isActive={activeTab == 'logs'} />
           </div>
           {children(run)}
           <DetailPanel

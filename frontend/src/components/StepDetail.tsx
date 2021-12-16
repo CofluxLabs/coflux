@@ -1,6 +1,6 @@
 import React, { CSSProperties, Fragment, ReactNode, useCallback } from 'react';
 import classNames from 'classnames';
-import { findKey, sortBy } from 'lodash';
+import { filter, findKey, sortBy } from 'lodash';
 import { DateTime } from 'luxon';
 import Link from 'next/link';
 import { Listbox, Transition } from '@headlessui/react';
@@ -105,7 +105,8 @@ function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
   const scheduledAt = DateTime.fromISO(attempt.createdAt);
   const assignedAt = attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null;
   const resultAt = attempt.result && DateTime.fromISO(attempt.result.createdAt);
-  const logs = useSubscription<Record<string, models.LogMessage>>(`logs.${attempt.executionId}`);
+  const logs = useSubscription<Record<string, models.LogMessage>>(`logs.${run.id}`);
+  const attemptLogs = logs && attempt.executionId !== null && filter(logs, {executionId: attempt.executionId});
   return (
     <Fragment>
       <div className="p-4">
@@ -125,13 +126,13 @@ function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
       )}
       <div className="p-4">
         <h3 className="uppercase text-sm font-bold text-gray-400">Logs</h3>
-        {logs === undefined ? (
+        {attemptLogs === undefined ? (
           <p><em>Loading...</em></p>
-        ) : Object.keys(logs).length == 0 ? (
+        ) : Object.keys(attemptLogs).length == 0 ? (
           <p><em>None</em></p>
         ) : (
           <ol>
-            {sortBy(Object.values(logs), 'createdAt').map((message, index) => (
+            {sortBy(Object.values(attemptLogs), 'createdAt').map((message, index) => (
               <li key={index}>
                 <LogMessage message={message} />
               </li>

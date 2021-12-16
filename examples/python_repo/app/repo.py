@@ -57,14 +57,17 @@ def fib_task(n: int):
 
 @step()
 def do_raise():
+    context.log_warning("Raising...")
     raise Exception("some error")
 
 
 @step()
 def maybe_raise():
     if random.random() > 0.5:
+        context.log_error("Raising exception...")
         raise Exception("some error")
     else:
+        context.log_debug("Not going to raise.")
         return 123
 
 
@@ -91,6 +94,7 @@ def slow_task():
 @step()
 def choose_random(i: int):
     choice = random.randint(0, 12)
+    context.log_info(f"Choice: {choice}")
     if choice == 0:
         random_task(random.randint(1, 4))
     elif choice == 1:
@@ -129,7 +133,10 @@ def blob_task():
 
 @step()
 def github_events():
+    context.log_debug("Requesting events...")
     r = requests.get('https://api.github.com/events')
+    r.raise_for_status()
+    context.log_debug(f"Elapsed: {r.elapsed}")
     return r.json()
 
 

@@ -65,6 +65,7 @@ export type SensorActivation = {
 }
 
 export type LogMessage = {
+  executionId: string;
   level: 0 | 1 | 2 | 3;
   message: string;
   createdAt: string;
