@@ -70,6 +70,10 @@ function formatElapsed(millis: number) {
   }
 }
 
+function buildUrl(runId: string, stepId: string | null, attempt: number | undefined) {
+  return `/projects/project_1/runs/${runId}/timeline${stepId ? `#${stepId}${attempt ? `/${attempt}` : ''}` : ''}`;
+}
+
 type Props = {
   run: models.Run;
   activeStepId: string | null;
@@ -97,18 +101,18 @@ export default function RunTimeline({ run, activeStepId }: Props) {
       {steps.map((step) => {
         const latestAttempt = maxBy(Object.values(step.attempts), 'number');
         const stepFinishedAt = (latestAttempt ? executionTimes[`${step.id}:${latestAttempt.number}`][2] : null) || latestTime;
-        const open = step.id == activeStepId;
+        const isActive = step.id == activeStepId;
         return (
-          <div key={step.id} className={classNames('flex rounded px-2', open && 'ring ring-offset-2')}>
+          <div key={step.id} className={classNames('flex rounded px-2', isActive && 'ring ring-offset-2')}>
             <div className="w-40 truncate self-center mr-2">
-              <Link href={`/projects/project_1/runs/${run.id}/timeline${open ? '' : `#${step.id}`}`}>
+              <Link href={buildUrl(run.id, isActive ? null : step.id, latestAttempt?.number)}>
                 <a>
                   <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
                 </a>
               </Link>
             </div>
             <div className="flex-1 my-2 relative h-6">
-              <Link href={`/projects/project_1/runs/${run.id}/timeline${open ? '' : `#${step.id}`}`}>
+              <Link href={buildUrl(run.id, isActive ? null : step.id, latestAttempt?.number)}>
                 <a>
                   <Bar x1={stepTimes[step.id]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-100" />
                   {Object.values(step.attempts).map((attempt) => {

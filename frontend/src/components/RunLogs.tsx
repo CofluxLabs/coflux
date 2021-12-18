@@ -17,9 +17,10 @@ const LOG_LEVELS = {
 type Props = {
   run: models.Run;
   activeStepId: string | null;
+  activeAttemptNumber: number | null;
 }
 
-export default function RunLogs({ run, activeStepId }: Props) {
+export default function RunLogs({ run, activeStepId, activeAttemptNumber }: Props) {
   const logs = useSubscription<Record<string, models.LogMessage>>(`logs.${run.id}`);
   const startTime = DateTime.fromISO(run.createdAt);
   return (
@@ -34,7 +35,8 @@ export default function RunLogs({ run, activeStepId }: Props) {
             {sortBy(Object.values(logs), 'createdAt').map((message, index) => {
               const [name, className] = LOG_LEVELS[message.level];
               const step = Object.values(run.steps).find((s) => Object.values(s.attempts).some((a) => a.executionId == message.executionId));
-              const open = step && step.id == activeStepId;
+              const attempt = step && Object.values(step.attempts).find((a) => a.executionId == message.executionId);
+              const isActive = step && step.id == activeStepId && attempt && attempt.number == activeAttemptNumber;
               const createdAt = DateTime.fromISO(message.createdAt);
               return (
                 <tr key={index}>
@@ -44,9 +46,9 @@ export default function RunLogs({ run, activeStepId }: Props) {
                     </span>
                   </td>
                   <td className="px-2 w-48">
-                    {step && (
-                    <Link href={`/projects/project_1/runs/${run.id}/logs${open ? '' : `#${step.id}`}`}>
-                      <a className={classNames('whitespace-nowrap p-1', step.id == activeStepId && 'ring rounded')}>
+                    {step && attempt && (
+                    <Link href={`/projects/project_1/runs/${run.id}/logs${isActive ? '' : `#${step.id}/${attempt.number}`}`}>
+                      <a className={classNames('whitespace-nowrap p-1', isActive && 'ring rounded')}>
                         <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
                       </a>
                     </Link>
