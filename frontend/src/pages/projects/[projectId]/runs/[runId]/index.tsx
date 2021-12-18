@@ -26,7 +26,7 @@ export default function RunPage() {
         activeAttemptNumber={activeAttemptNumber}
       >
         {(run) => (
-          <RunGraph run={run} activeStepId={activeStepId} />
+          <RunGraph run={run} activeStepId={activeStepId} activeAttemptNumber={activeAttemptNumber} />
         )}
       </RunDetail>
     </Fragment>
