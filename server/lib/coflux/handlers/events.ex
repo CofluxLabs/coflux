@@ -61,6 +61,14 @@ defmodule Coflux.Handlers.Events do
             {[result_message(message["id"], run_id)], state}
         end
 
+      "rerun_step" ->
+        [run_id, step_id] = message["params"]
+
+        case Project.rerun_step(state.project_id, run_id, step_id) do
+          {:ok, attempt} ->
+            {[result_message(message["id"], attempt)], state}
+        end
+
       "activate_sensor" ->
         [repository, target] = message["params"]
 

@@ -34,6 +34,10 @@ defmodule Coflux.Project do
     Store.schedule_step(project_id, parent_id, repository, target, arguments, opts)
   end
 
+  def rerun_step(project_id, run_id, step_id) do
+    Store.rerun_step(project_id, run_id, step_id)
+  end
+
   def record_heartbeats(project_id, executions) do
     Store.record_heartbeats(project_id, executions)
   end

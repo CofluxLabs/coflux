@@ -1,4 +1,4 @@
-import React, { CSSProperties, Fragment, ReactNode, useCallback } from 'react';
+import React, { CSSProperties, Fragment, ReactNode, useCallback, useState } from 'react';
 import classNames from 'classnames';
 import { filter, findKey, sortBy } from 'lodash';
 import { DateTime } from 'luxon';
@@ -7,7 +7,7 @@ import { Listbox, Transition } from '@headlessui/react';
 
 import * as models from '../models';
 import Badge from './Badge';
-import { useSubscription } from '../hooks/useSocket';
+import useSocket, { useSubscription } from '../hooks/useSocket';
 
 function findStepForExecution(run: models.Run, executionId: string) {
   return findKey(run.steps, (s) => Object.values(s.attempts).some((a) => a.executionId == executionId));
@@ -38,7 +38,7 @@ function Result({ result, run, projectId, onFrameUrlChange }: ResultProps) {
       return (
         <a
           href={`http://localhost:7070/projects/${projectId}/blobs/${result.value}`}
-          className="border border-blue-500 hover:bg-blue-50 text-blue-500 rounded px-2 py-1 my-2 inline-block"
+          className="border border-blue-300 hover:border-blue-600 text-blue-600 text-sm rounded px-2 py-1 my-2 inline-block"
           onClick={handleBlobClick}
         >
           Blob
@@ -49,7 +49,7 @@ function Result({ result, run, projectId, onFrameUrlChange }: ResultProps) {
       if (stepId) {
         return (
           <Link href={`/projects/${projectId}/runs/${run.id}#${stepId}`}>
-            <a className="border border-blue-500 hover:bg-blue-50 text-blue-500 rounded px-2 py-1 my-2 inline-block">
+            <a className="border border-blue-300 hover:border-blue-600 text-blue-600 text-sm rounded px-2 py-1 my-2 inline-block">
               Result
             </a>
           </Link>
@@ -112,8 +112,8 @@ function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
       <div className="p-4">
         <h3 className="uppercase text-sm font-bold text-gray-400">Execution</h3>
         <p>Started: {scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}</p>
-        {resultAt ? (
-          <p>Duration: {resultAt.diff(assignedAt!).toMillis()}ms <span className="text-gray-500 text-sm">(+{assignedAt!.diff(scheduledAt).toMillis()}ms wait)</span></p>
+        {assignedAt && resultAt ? (
+          <p>Duration: {resultAt.diff(assignedAt).toMillis()}ms <span className="text-gray-500 text-sm">(+{assignedAt!.diff(scheduledAt).toMillis()}ms wait)</span></p>
         ) : assignedAt ? (
           <p>Executing...</p>
         ) : null}
@@ -155,9 +155,9 @@ function AttemptSelector({ selectedNumber, attempts, onChange, children }: Attem
   const selectedAttempt = attempts[selectedNumber];
   return (
     <Listbox value={selectedNumber} onChange={onChange}>
-      <div className="relative mt-1">
-        <Listbox.Button className="relative w-full p-2 bg-white text-left border rounded-lg">
-          {children(selectedAttempt, true, false)}
+      <div className="relative">
+        <Listbox.Button className="relative w-full p-1 pl-2 bg-white text-left border border-blue-300 text-blue-600 hover:border-blue-600 rounded">
+          {selectedAttempt && children(selectedAttempt, true, false)}
         </Listbox.Button>
         <Transition
           as={Fragment}
@@ -165,7 +165,7 @@ function AttemptSelector({ selectedNumber, attempts, onChange, children }: Attem
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <Listbox.Options className="absolute right-0 py-1 mt-1 overflow-auto text-base bg-white rounded-md shadow-lg max-h-60">
+          <Listbox.Options className="absolute right-0 py-1 mt-1 overflow-auto text-base bg-white rounded shadow-lg max-h-60">
             {sortBy(Object.values(attempts), 'number').map((attempt) => (
               <Listbox.Option
                 key={attempt.number}
@@ -197,7 +197,16 @@ type Props = {
 }
 
 export default function StepDetail({ step, attemptNumber, run, projectId, className, style, onFrameUrlChange }: Props) {
+  const { socket } = useSocket();
+  const [rerunning, setRerunning] = useState(false);
   const handleAttemptChange = useCallback((number) => { window.location.hash = `#${step.id}/${number}`; }, [step]);
+  const handleRetryClick = useCallback(() => {
+    setRerunning(true);
+    socket?.request('rerun_step', [run.id, step.id], (attempt) => {
+      setRerunning(false);
+      handleAttemptChange(attempt);
+    });
+  }, [socket, run, step, handleAttemptChange]);
   const attempt = step.attempts[attemptNumber];
   return (
     <div className={classNames('divide-y overflow-hidden', className)} style={style}>
@@ -208,26 +217,35 @@ export default function StepDetail({ step, attemptNumber, run, projectId, classN
         ) : !Object.keys(step.attempts).length ? (
           <Badge intent="info" label="Scheduling" />
         ) : (
-          <AttemptSelector selectedNumber={attemptNumber} attempts={step.attempts} onChange={handleAttemptChange}>
-            {(attempt) => (
-              <div className="flex items-center">
-                <span className="mr-1 flex-1">
-                  #{attempt.number}
-                </span>
-                {!attempt.assignedAt ? (
-                  <Badge intent="info" label="Assigning" />
-                ) : !attempt.result ? (
-                  <Badge intent="info" label="Running" />
-                ) : attempt.result.type <= 2 ? (
-                  <Badge intent="success" label="Completed" />
-                ) : attempt.result.type == 3 ? (
-                  <Badge intent="danger" label="Failed" />
-                ) : attempt.result.type == 4 ? (
-                  <Badge intent="warning" label="Abandoned" />
-                ) : null}
-              </div>
-            )}
-          </AttemptSelector>
+          <div className="flex">
+            <AttemptSelector selectedNumber={attemptNumber} attempts={step.attempts} onChange={handleAttemptChange}>
+              {(attempt) => (
+                <div className="flex items-center">
+                  <span className="mr-1 flex-1">
+                    #{attempt.number}
+                  </span>
+                  {!attempt.assignedAt ? (
+                    <Badge intent="info" label="Assigning" />
+                  ) : !attempt.result ? (
+                    <Badge intent="info" label="Running" />
+                  ) : attempt.result.type <= 2 ? (
+                    <Badge intent="success" label="Completed" />
+                  ) : attempt.result.type == 3 ? (
+                    <Badge intent="danger" label="Failed" />
+                  ) : attempt.result.type == 4 ? (
+                    <Badge intent="warning" label="Abandoned" />
+                  ) : null}
+                </div>
+              )}
+            </AttemptSelector>
+            <button
+              className={classNames('ml-1 rounded border border-blue-300 text-blue-600 bg-white hover:border-blue-600 px-2 py-1 text-sm', rerunning && 'text-gray-500')}
+              disabled={rerunning}
+              onClick={handleRetryClick}
+            >
+              Retry
+            </button>
+          </div>
         )}
       </div>
       {step.arguments.length > 0 && (

@@ -185,7 +185,7 @@ defmodule Coflux.Project.Store do
   def schedule_step(project_id, from_execution_id, repository, target, arguments, opts \\ []) do
     tags = Keyword.get(opts, :tags, [])
     priority = Keyword.get(opts, :priority, 0)
-    version = Keyword.get(opts, :keyword)
+    version = Keyword.get(opts, :version)
     cache_key = Keyword.get(opts, :cache_key)
 
     Repo.transaction(fn ->
@@ -208,6 +208,41 @@ defmodule Coflux.Project.Store do
 
       execution_id
     end)
+  end
+
+  def rerun_step(project_id, run_id, step_id, opts \\ []) do
+    version = Keyword.get(opts, :version)
+    now = DateTime.utc_now()
+    step = Repo.get_by!(Models.Step, [run_id: run_id, id: step_id], prefix: project_id)
+    last_attempt = get_step_latest_attempt(project_id, run_id, step_id)
+    number = last_attempt.number + 1
+
+    execution =
+      Repo.insert!(
+        %Models.Execution{
+          repository: step.repository,
+          target: step.target,
+          arguments: step.arguments,
+          tags: step.tags,
+          priority: step.priority,
+          version: version,
+          created_at: now
+        },
+        prefix: project_id
+      )
+
+    Repo.insert!(
+      %Models.Attempt{
+        run_id: step.run_id,
+        step_id: step.id,
+        number: number,
+        execution_id: execution.id,
+        created_at: now
+      },
+      prefix: project_id
+    )
+
+    {:ok, number}
   end
 
   def record_heartbeats(project_id, executions) do

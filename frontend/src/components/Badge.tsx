@@ -24,7 +24,7 @@ type Props = {
 
 export default function Badge({ label, intent }: Props) {
   return (
-    <span className={classNames('rounded px-2 py-1 text-sm uppercase font-bold', classNameForIntent(intent))}>
+    <span className={classNames('rounded px-2 py-1 text-xs uppercase font-bold', classNameForIntent(intent))}>
       {label}
     </span>
   )
