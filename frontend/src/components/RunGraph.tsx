@@ -49,9 +49,14 @@ function buildGraph(run: models.Run, activeStepId: string | null, activeAttemptN
 function classNameForResult(result: models.Result | null, isCached: boolean) {
   if (isCached) {
     return 'border-gray-300 bg-gray-50';
+  } else if (!result) {
+    return 'border-blue-400 bg-blue-100';
+  } else if (result.type == 3) {
+    return 'border-red-400 bg-red-100';
+  } else if (result.type == 4) {
+    return 'border-yellow-400 bg-yellow-100'
   } else {
-    const color = !result ? 'blue' : result.type == 3 ? 'red' : result.type == 4 ? 'yellow' : 'gray';
-    return `shadow border-${color}-400 bg-${color}-100`;
+    return 'border-gray-400 bg-gray-100';
   }
 }
 
