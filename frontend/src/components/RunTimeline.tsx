@@ -39,7 +39,7 @@ type BarProps = {
 
 function Bar({ x1, x2, x0, d, className }: BarProps) {
   const left = x1.diff(x0).toMillis() / d;
-  const width = x2.diff(x1).toMillis() / d;
+  const width = Math.max(0.001, x2.diff(x1).toMillis() / d);
   const style = { left: percentage(left), width: percentage(width) };
   return (
     <div className={classNames('absolute h-6 rounded', className)} style={style}></div>
