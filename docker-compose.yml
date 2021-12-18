@@ -9,7 +9,7 @@ services:
   server:
     build: "server"
     ports:
-      - "7070:7070"
+      - "7070-7074:7070"
     environment:
       PROJECT_IDS: project_1
     volumes:
@@ -37,6 +37,8 @@ services:
       MODULE: app.repo
       VERSION: 1
     init: true
+    depends_on:
+      - server
 
   example_wikipedia:
     build: "examples/wikipedia"
@@ -49,3 +51,5 @@ services:
       MODULE: wikipedia.repo
       VERSION: 1
     init: true
+    depends_on:
+      - server
