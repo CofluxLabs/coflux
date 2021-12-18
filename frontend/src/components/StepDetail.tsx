@@ -75,7 +75,7 @@ type LogMessageProps = {
 const LOG_LEVELS = {
   0: ['Debug', 'bg-gray-400'],
   1: ['Info', 'bg-blue-400'],
-  2: ['Warning', 'bg-yellow-400'],
+  2: ['Warning', 'bg-yellow-500'],
   3: ['Error', 'bg-red-600']
 }
 
@@ -84,7 +84,7 @@ function LogMessage({ message }: LogMessageProps) {
   return (
     <div className="my-2">
       <div className="my-1">
-        <span className={classNames('rounded px-2 py-1 text-xs uppercase text-white mr-1 font-bold', className)}>{name}</span>
+        <span className={classNames('rounded p-1 text-xs uppercase text-white mr-1 font-bold', className)}>{name}</span>
       </div>
       <div className="my-1">
         {message.message}
