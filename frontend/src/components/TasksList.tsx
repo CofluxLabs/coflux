@@ -31,20 +31,23 @@ export default function TasksList({ projectId, taskId: activeTaskId }: Props) {
     return (
       <div className="py-2">
         <div className="flex items-center mt-4 p-1 pl-4">
-          <h2 className="flex-1 font-bold uppercase text-gray-500 text-sm">Tasks</h2>
+          <h2 className="flex-1 font-bold uppercase text-gray-400 text-sm">Tasks</h2>
         </div>
         {tasks.length ? (
           <ul>
-            {tasks.map((task) => (
-              <li key={task.id}>
-                <Link href={`/projects/${projectId}/tasks/${task.id}`}>
-                  <a className={classNames('block hover:bg-gray-300 px-4 py-2', { 'bg-gray-300': task.id == activeTaskId })}>
-                    <div className="font-mono">{task.target}</div>
-                    <div className="text-sm text-gray-500">{task.repository}</div>
-                  </a>
-                </Link>
-              </li>
-            ))}
+            {tasks.map((task) => {
+              const isActive = task.id == activeTaskId;
+              return (
+                <li key={task.id}>
+                  <Link href={`/projects/${projectId}/tasks/${task.id}`}>
+                    <a className={classNames('block px-4 py-2 group', isActive && 'bg-gray-600')}>
+                      <div className={classNames('font-mono text-gray-100', !isActive && 'group-hover:underline')}>{task.target}</div>
+                      <div className="text-sm text-gray-400">{task.repository}</div>
+                    </a>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="px-4 text-gray-400 italic">No tasks</p>

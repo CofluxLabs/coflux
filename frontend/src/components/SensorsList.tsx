@@ -33,8 +33,8 @@ export default function SensorsList({ projectId, sensorId: activeSensorId }: Pro
     return (
       <div className="py-2">
         <div className="flex items-center mt-4 p-1 pl-4">
-          <h2 className="flex-1 font-bold uppercase text-gray-500 text-sm">Sensors</h2>
-          <button className="bg-gray-500 bg-opacity-10 hover:bg-opacity-20 w-7 h-7 rounded text-lg text-gray-500" onClick={handleActivateClick}>+</button>
+          <h2 className="flex-1 font-bold uppercase text-gray-400 text-sm">Sensors</h2>
+          <button className="w-7 h-7 rounded text-xl border border-gray-500 text-gray-400" onClick={handleActivateClick}>+</button>
           <ActivateSensorDialog open={activateDialogOpen} activating={activating} onActivate={handleActivate} onClose={handleActivateDialogClose} />
         </div>
         {Object.keys(activations).length ? (

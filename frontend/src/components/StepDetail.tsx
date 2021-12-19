@@ -30,7 +30,7 @@ function Result({ result, run, projectId, onFrameUrlChange }: ResultProps) {
   switch (result.type) {
     case 0:
       return (
-        <div className="font-mono p-2 mt-2 rounded bg-white border border-gray-200">
+        <div className="font-mono p-2 mt-2 rounded bg-white border border-slate-200">
           {result.value}
         </div>
       );
@@ -89,7 +89,7 @@ function LogMessage({ message }: LogMessageProps) {
       <div className="my-1">
         {message.message}
       </div>
-      <div className="text-xs text-gray-500 my-1">{message.createdAt}</div>
+      <div className="text-xs text-slate-500 my-1">{message.createdAt}</div>
     </div>
   );
 }
@@ -110,22 +110,22 @@ function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
   return (
     <Fragment>
       <div className="p-4">
-        <h3 className="uppercase text-sm font-bold text-gray-400">Execution</h3>
+        <h3 className="uppercase text-sm font-bold text-slate-400">Execution</h3>
         <p>Started: {scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}</p>
         {assignedAt && resultAt ? (
-          <p>Duration: {resultAt.diff(assignedAt).toMillis()}ms <span className="text-gray-500 text-sm">(+{assignedAt!.diff(scheduledAt).toMillis()}ms wait)</span></p>
+          <p>Duration: {resultAt.diff(assignedAt).toMillis()}ms <span className="text-slate-500 text-sm">(+{assignedAt!.diff(scheduledAt).toMillis()}ms wait)</span></p>
         ) : assignedAt ? (
           <p>Executing...</p>
         ) : null}
       </div>
       {attempt.result && (
         <div className="p-4">
-          <h3 className="uppercase text-sm font-bold text-gray-400">Result</h3>
+          <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
           <Result result={attempt.result} run={run} projectId={projectId} onFrameUrlChange={onFrameUrlChange} />
         </div>
       )}
       <div className="p-4">
-        <h3 className="uppercase text-sm font-bold text-gray-400">Logs</h3>
+        <h3 className="uppercase text-sm font-bold text-slate-400">Logs</h3>
         {attemptLogs === undefined ? (
           <p><em>Loading...</em></p>
         ) : Object.keys(attemptLogs).length == 0 ? (
@@ -173,7 +173,7 @@ function AttemptSelector({ selectedNumber, attempts, onChange, children }: Attem
                 value={attempt.number}
               >
                 {({ selected, active }) => (
-                  <div className={classNames('p-2', selected && 'font-bold', active && 'bg-gray-100')}>
+                  <div className={classNames('p-2', selected && 'font-bold', active && 'bg-slate-100')}>
                     {children(attempt, selected, active)}
                   </div>
                 )}
@@ -209,9 +209,9 @@ export default function StepDetail({ step, attemptNumber, run, projectId, classN
   }, [socket, run, step, handleAttemptChange]);
   const attempt = step.attempts[attemptNumber];
   return (
-    <div className={classNames('divide-y overflow-hidden', className)} style={style}>
+    <div className={classNames('divide-y divide-slate-200 overflow-hidden', className)} style={style}>
       <div className="p-4 pt-5 flex items-center">
-        <h2 className="flex-1"><span className="font-mono text-xl">{step.target}</span> <span className="text-gray-500">({step.repository})</span></h2>
+        <h2 className="flex-1"><span className="font-mono text-xl">{step.target}</span> <span className="text-slate-500">({step.repository})</span></h2>
         {step.cached ? (
           <Badge intent="none" label="Cached" />
         ) : !Object.keys(step.attempts).length ? (
@@ -239,7 +239,7 @@ export default function StepDetail({ step, attemptNumber, run, projectId, classN
               )}
             </AttemptSelector>
             <button
-              className={classNames('ml-1 rounded border border-blue-300 text-blue-600 bg-white hover:border-blue-600 px-2 py-1 text-sm', rerunning && 'text-gray-500')}
+              className={classNames('ml-1 rounded border border-blue-300 text-blue-600 bg-white hover:border-blue-600 px-2 py-1 text-sm', rerunning && 'text-slate-500')}
               disabled={rerunning}
               onClick={handleRetryClick}
             >
@@ -250,7 +250,7 @@ export default function StepDetail({ step, attemptNumber, run, projectId, classN
       </div>
       {step.arguments.length > 0 && (
         <div className="p-4">
-          <h3 className="uppercase text-sm font-bold text-gray-400">Arguments</h3>
+          <h3 className="uppercase text-sm font-bold text-slate-400">Arguments</h3>
           <ol className="list-disc list-inside ml-1">
             {step.arguments.map((argument, index) => (
               <li key={index}><span className="font-mono truncate">{argument}</span></li>

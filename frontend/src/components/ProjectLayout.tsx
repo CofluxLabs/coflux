@@ -15,7 +15,7 @@ export default function ProjectLayout({ projectId, taskId, sensorId, children }:
   const { status } = useSocket();
   return (
     <div className="flex h-screen">
-      <div className="w-64 bg-gray-200 shadow-inner flex flex-col">
+      <div className="w-64 bg-slate-700 text-gray-100 shadow-inner flex flex-col">
         <div className="flex-1 overflow-auto">
           <TasksList projectId={projectId} taskId={taskId} />
           <SensorsList projectId={projectId} sensorId={sensorId} />
