@@ -9,7 +9,7 @@ services:
   server:
     build: "server"
     ports:
-      - "7070-7074:7070"
+      - "7070:7070"
     environment:
       PROJECT_IDS: project_1
     volumes:
@@ -26,30 +26,6 @@ services:
       - "./frontend:/app"
     command: "yarn dev"
 
-  example_python_repo:
-    build: "examples/python_repo"
-    volumes:
-      - "./examples/python_repo:/app"
-      - "./clients/python:/packages"
-    environment:
-      PROJECT: project_1
-      HOST: server:7070
-      MODULE: app.repo
-      VERSION: 1
-    init: true
-    depends_on:
-      - server
-
-  example_wikipedia:
-    build: "examples/wikipedia"
-    volumes:
-      - "./examples/wikipedia:/app"
-      - "./clients/python:/packages"
-    environment:
-      PROJECT: project_1
-      HOST: server:7070
-      MODULE: wikipedia.repo
-      VERSION: 1
-    init: true
-    depends_on:
-      - server
+networks:
+  default:
+    name: coflux

@@ -1,0 +1,18 @@
+version: "3.7"
+
+services:
+  repo:
+    build: "."
+    volumes:
+      - ".:/app"
+      - "../../clients/python:/packages"
+    environment:
+      PROJECT: project_1
+      HOST: server:7070
+      MODULE: app.repo
+      VERSION: 1
+    init: true
+
+networks:
+  default:
+    name: coflux
