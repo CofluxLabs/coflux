@@ -3,7 +3,7 @@ defmodule Coflux.Project.Models.Result do
 
   @primary_key false
   schema "results" do
-    field :execution_id, :binary_id, primary_key: true
+    belongs_to :execution, Models.Execution, type: :binary_id, primary_key: true
     field :type, :integer
     field :value, :string
     field :extra, :map

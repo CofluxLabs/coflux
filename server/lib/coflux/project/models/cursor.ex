@@ -3,7 +3,7 @@ defmodule Coflux.Project.Models.Cursor do
 
   @primary_key false
   schema "cursors" do
-    field :execution_id, :binary_id, primary_key: true
+    belongs_to :execution, Models.Execution, type: :binary_id, primary_key: true
     field :sequence, :integer
     field :type, :integer
     field :value, :string

@@ -130,7 +130,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       add :tags, {:array, :string}, null: false
       add :priority, :integer, null: false
       add :cache_key, :string
-      add :cached_run_id, :bytea
+      add :cached_run_id, references("runs", type: :bytea, on_delete: :nilify_all)
       add :cached_step_id, references("steps", column: :id, type: :bytea, on_delete: :nilify_all, with: [cached_run_id: :run_id])
       add :created_at, :utc_datetime_usec, null: false
     end
@@ -140,7 +140,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create_notify_trigger("steps")
 
     create table("attempts", primary_key: false) do
-      add :run_id, :bytea, null: false, primary_key: true
+      add :run_id, references("runs", type: :bytea, on_delete: :delete_all), null: false, primary_key: true
       add :step_id, references("steps", type: :bytea, on_delete: :delete_all, with: [run_id: :run_id]), null: false, primary_key: true
       add :number, :smallint, null: false, primary_key: true
       add :execution_id, references("executions", type: :uuid, on_delete: :delete_all), null: false
@@ -150,7 +150,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create_notify_trigger("attempts")
 
     alter table("steps") do
-      add :parent_step_id, :bytea
+      add :parent_step_id, references("steps", type: :bytea, on_delete: :delete_all, with: [run_id: :run_id])
       add :parent_attempt, references("attempts", column: :number, type: :smallint, on_delete: :delete_all, with: [run_id: :run_id, parent_step_id: :step_id])
     end
 
