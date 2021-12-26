@@ -95,6 +95,13 @@ defmodule Coflux.Project.Store do
     Repo.one!(query, prefix: project_id)
   end
 
+  def create_session(project_id) do
+    case Repo.insert(%Models.Session{created_at: DateTime.utc_now()}, prefix: project_id) do
+      {:ok, session} ->
+        {:ok, session.id}
+    end
+  end
+
   defp hash_manifest(repository_name, version, tasks, sensors) do
     task_parts =
       tasks
@@ -112,7 +119,9 @@ defmodule Coflux.Project.Store do
     :crypto.hash(:sha, content)
   end
 
-  def register_targets(project_id, repository, version, targets) do
+  def register_targets(project_id, session_id, repository, version, targets) do
+    now = DateTime.utc_now()
+
     tasks =
       targets
       |> Enum.filter(fn {_target, config} -> config.type == :task end)
@@ -125,18 +134,33 @@ defmodule Coflux.Project.Store do
       |> Enum.filter(fn {_target, config} -> config.type == :sensor end)
       |> Enum.map(fn {target, _config} -> target end)
 
-    Repo.insert!(
-      %Models.Manifest{
-        repository: repository,
-        version: version,
-        hash: hash_manifest(repository, version, tasks, sensors),
-        tasks: tasks,
-        sensors: sensors,
-        created_at: DateTime.utc_now()
-      },
-      prefix: project_id,
-      on_conflict: :nothing
-    )
+    hash = hash_manifest(repository, version, tasks, sensors)
+
+    Repo.transaction(fn ->
+      # TODO: get id on conflict?
+      manifest =
+        Repo.insert!(
+          %Models.Manifest{
+            repository: repository,
+            version: version,
+            hash: hash,
+            tasks: tasks,
+            sensors: sensors,
+            created_at: now
+          },
+          prefix: project_id,
+          on_conflict: :nothing
+        )
+
+      Repo.insert!(
+        %Models.SessionManifest{
+          session_id: session_id,
+          manifest_id: manifest.id,
+          created_at: now
+        },
+        prefix: project_id
+      )
+    end)
   end
 
   def schedule_task(project_id, repository, target, arguments, opts \\ []) do

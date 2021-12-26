@@ -9,7 +9,11 @@ defmodule Coflux.Handlers.Agent do
   def websocket_init(project_id) do
     # TODO: authenticate
     # TODO: monitor project server?
-    {[], %{project_id: project_id, requests: %{}}}
+    # TODO: support resuming session
+    case Project.create_session(project_id) do
+      {:ok, session_id} ->
+        {[], %{project_id: project_id, session_id: session_id, requests: %{}}}
+    end
   end
 
   def websocket_handle({:text, text}, state) do
@@ -20,7 +24,14 @@ defmodule Coflux.Handlers.Agent do
         [repository, version, manifest] = message["params"]
         manifest = parse_manifest(manifest)
 
-        case Project.register(state.project_id, repository, version, manifest, self()) do
+        case Project.register(
+               state.project_id,
+               state.session_id,
+               repository,
+               version,
+               manifest,
+               self()
+             ) do
           :ok ->
             {[], state}
         end

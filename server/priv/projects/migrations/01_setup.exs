@@ -25,7 +25,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create table("manifests") do
       add :repository, :string, null: false
       add :version, :string
-      add :hash, :bytea, null: false
+      add :hash, :bytea, null: false # TODO: primary key?
       add :tasks, :map, null: false
       add :sensors, {:array, :string}, null: false
       add :created_at, :utc_datetime_usec, null: false
@@ -35,7 +35,23 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
 
     create_notify_trigger("manifests")
 
-    create table("executions") do
+    create table("sessions", primary_key: false) do
+      add :id, :uuid, null: false, primary_key: true
+      add :created_at, :utc_datetime_usec, null: false
+    end
+
+    create_notify_trigger("sessions")
+
+    create table("session_manifests", primary_key: false) do
+      add :session_id, references("sessions", type: :uuid, on_delete: :delete_all), null: false, primary_key: true
+      add :manifest_id, references("manifests", on_delete: :delete_all), null: false, primary_key: true
+      add :created_at, :utc_datetime_usec, null: false
+    end
+
+    create_notify_trigger("session_manifests")
+
+    create table("executions", primary_key: false) do
+      add :id, :uuid, null: false, primary_key: true
       add :repository, :string, null: false
       add :target, :string, null: false
       add :arguments, {:array, :string}, null: false
@@ -49,14 +65,15 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create_notify_trigger("executions")
 
     create table("assignments", primary_key: false) do
-      add :execution_id, :uuid, null: false, primary_key: true
+      add :execution_id, references("executions", type: :uuid, on_delete: :delete_all), null: false, primary_key: true
+      add :session_id, references("sessions", type: :uuid, on_delete: :nilify_all)
       add :created_at, :utc_datetime_usec, null: false
     end
 
     create_notify_trigger("assignments")
 
     create table("heartbeats", primary_key: false) do
-      add :execution_id, :uuid, null: false, primary_key: true
+      add :execution_id, references("executions", type: :uuid, on_delete: :delete_all), null: false, primary_key: true
       add :created_at, :utc_datetime_usec, null: false, primary_key: true
       add :status, :smallint
     end
@@ -64,7 +81,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create_notify_trigger("heartbeats")
 
     create table("results", primary_key: false) do
-      add :execution_id, :uuid, null: false, primary_key: true
+      add :execution_id, references("executions", type: :uuid), null: false, primary_key: true
       add :type, :smallint, null: false
       add :value, :string
       add :extra, :map
@@ -74,7 +91,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create_notify_trigger("results")
 
     create table("cursors", primary_key: false) do
-      add :execution_id, :uuid, null: false, primary_key: true
+      add :execution_id, references("executions", type: :uuid), null: false, primary_key: true
       add :sequence, :integer, null: false, primary_key: true
       add :type, :smallint, null: false
       add :value, :string
@@ -84,8 +101,8 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create_notify_trigger("cursors")
 
     create table("dependencies", primary_key: false) do
-      add :execution_id, :uuid, null: false, primary_key: true
-      add :dependency_id, :uuid, null: false, primary_key: true
+      add :execution_id, references("executions", type: :uuid), null: false, primary_key: true
+      add :dependency_id, references("executions", type: :uuid), null: false, primary_key: true
       add :created_at, :utc_datetime_usec, null: false
     end
 

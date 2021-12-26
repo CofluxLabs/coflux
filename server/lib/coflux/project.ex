@@ -21,8 +21,12 @@ defmodule Coflux.Project do
     File.write!(path, content)
   end
 
-  def register(project_id, repository, version, manifest, pid) do
-    Store.register_targets(project_id, repository, version, manifest)
+  def create_session(project_id) do
+    Store.create_session(project_id)
+  end
+
+  def register(project_id, session_id, repository, version, manifest, pid) do
+    Store.register_targets(project_id, session_id, repository, version, manifest)
     call_orchestrator(project_id, {:register_targets, repository, version, manifest, pid})
   end
 

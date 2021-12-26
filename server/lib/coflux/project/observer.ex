@@ -282,6 +282,16 @@ defmodule Coflux.Project.Observer do
     end)
   end
 
+  defp handle_insert(state, :sessions, _data) do
+    # TODO
+    state
+  end
+
+  defp handle_insert(state, :session_manifests, _data) do
+    # TODO
+    state
+  end
+
   defp handle_insert(state, :runs, data) do
     run = load_model(Models.Run, data)
 

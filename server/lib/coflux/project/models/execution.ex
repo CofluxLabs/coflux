@@ -1,6 +1,7 @@
 defmodule Coflux.Project.Models.Execution do
   use Coflux.Project.Model
 
+  @primary_key {:id, :binary_id, autogenerate: true}
   schema "executions" do
     field :repository, :string
     field :target, :string
