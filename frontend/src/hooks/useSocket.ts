@@ -1,4 +1,4 @@
-import { createContext, Dispatch, SetStateAction, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, Dispatch, SetStateAction, useContext, useEffect, useState } from 'react';
 
 import Socket, { SocketStatus } from '../socket';
 
@@ -21,12 +21,13 @@ function applyUpdate(state: any, path: (string | number)[], value: any): any {
   }
 }
 
-function subscribe<T>(socket: Socket, topic: string, subscriptionId: string, setState: Dispatch<SetStateAction<T>>) {
+function subscribe<T>(socket: Socket, topic: string, subscriptionId: string, setState: Dispatch<SetStateAction<T | null | undefined>>) {
   const listener = (sId: string, path: (string | number)[], value: any) => {
     if (sId == subscriptionId) {
       setState(state => applyUpdate(state, path, value));
     }
   }
+  setState(undefined);
   socket.addListener('notify:update', listener);
   socket.request('subscribe', [topic, subscriptionId], (value) => {
     setState(value);
@@ -43,7 +44,7 @@ let lastSubscriptionId = 0;
 
 export function useSubscription<T>(topic: string) {
   const { socket, status } = useSocket();
-  const [state, setState] = useState<T>();
+  const [state, setState] = useState<T | null>();
   useEffect(() => {
     if (socket && status == 'connected') {
       const subscriptionId = ++lastSubscriptionId;

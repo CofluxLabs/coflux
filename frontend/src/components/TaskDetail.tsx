@@ -34,8 +34,10 @@ export default function TaskDetail({ projectId, taskId }: Props) {
   }, [projectId, taskId, socket]);
   const handleRunDialogClose = useCallback(() => setRunDialogOpen(false), []);
   const task = useSubscription<State>(`tasks.${taskId}`);
-  if (!task) {
+  if (task === undefined) {
     return <p>Loading...</p>
+  } else if (task === null) {
+    return <p>Not found</p>
   } else {
     return (
       <Fragment>

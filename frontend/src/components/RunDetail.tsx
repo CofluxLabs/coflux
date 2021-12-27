@@ -102,7 +102,11 @@ export default function RunDetail({ projectId, runId, activeTab, activeStepId, a
     [projectId, runId, activeStepId, activeAttemptNumber]);
   return (
     <ProjectLayout projectId={projectId} taskId={taskId}>
-      {run && initialStep && projectId ? (
+      {(run === undefined || initialStep === undefined) ? (
+        <p>Loading...</p>
+      ) : (run === null || initialStep === null) ? (
+        <p>Not found</p>
+      ) : (
         <Fragment>
           <Heading>
             <Link href={`/projects/${projectId}/tasks/${taskId}`}>
@@ -121,13 +125,12 @@ export default function RunDetail({ projectId, runId, activeTab, activeStepId, a
             stepId={activeStepId}
             attemptNumber={activeAttemptNumber}
             run={run}
-            projectId={projectId}
+            projectId={projectId!}
             onFrameUrlChange={setFrameUrl}
           />
           <Frame url={frameUrl} onUrlChange={setFrameUrl} />
         </Fragment>
-      ) : (
-        <p>Loading...</p>
+
       )}
     </ProjectLayout>
   );
