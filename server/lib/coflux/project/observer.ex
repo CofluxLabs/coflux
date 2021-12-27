@@ -30,26 +30,30 @@ defmodule Coflux.Project.Observer do
   def handle_call({:subscribe, topic, pid}, _from, state) do
     ref = Process.monitor(pid)
 
-    {state, value} =
-      case Map.get(state.topics, topic) do
-        nil ->
-          case load_topic(topic, state.project_id) do
-            {:ok, value, executions} ->
-              state =
-                state
-                |> put_in([:topics, topic], %{value: value, subscribers: %{ref => pid}})
-                |> Map.update!(:executions, &Map.merge(&1, executions))
+    case Map.get(state.topics, topic) do
+      nil ->
+        case load_topic(topic, state.project_id) do
+          {:ok, value, executions} ->
+            state =
+              state
+              |> put_in([:topics, topic], %{value: value, subscribers: %{ref => pid}})
+              |> Map.update!(:executions, &Map.merge(&1, executions))
+              |> put_in([:subscribers, ref], topic)
 
-              {state, value}
-          end
+            {:reply, {:ok, ref, value}, state}
 
-        %{value: value} ->
-          state = update_in(state.topics[topic].subscribers, &Map.put(&1, ref, pid))
-          {state, value}
-      end
+          {:error, :not_found} ->
+            {:reply, {:error, :not_found}, state}
+        end
 
-    state = put_in(state.subscribers[ref], topic)
-    {:reply, {:ok, ref, value}, state}
+      %{value: value} ->
+        state =
+          state
+          |> update_in([:topics, topic, :subscribers], &Map.put(&1, ref, pid))
+          |> put_in([:subscribers, ref], topic)
+
+        {:reply, {:ok, ref, value}, state}
+    end
   end
 
   def handle_call({:unsubscribe, ref}, _from, state) do
@@ -72,163 +76,171 @@ defmodule Coflux.Project.Observer do
   end
 
   defp load_topic("repositories", project_id) do
-    repositories = Store.list_repositories(project_id)
-    {:ok, repositories, %{}}
+    case Store.list_repositories(project_id) do
+      {:ok, repositories} ->
+        {:ok, repositories, %{}}
+    end
   end
 
   defp load_topic("sensors", project_id) do
-    activations =
-      project_id
-      |> Store.list_sensor_activations()
-      |> Map.new(fn activation ->
-        {activation.id, Map.take(activation, [:repository, :target, :tags])}
-      end)
+    result =
+      case Store.list_sensor_activations(project_id) do
+        {:ok, activations} ->
+          Map.new(activations, fn activation ->
+            {activation.id, Map.take(activation, [:repository, :target, :tags])}
+          end)
+      end
 
-    {:ok, activations, %{}}
+    {:ok, result, %{}}
   end
 
   defp load_topic("sensors." <> activation_id, project_id) do
-    activation = Store.get_sensor_activation(project_id, activation_id)
-    deactivation = Store.get_sensor_deactivation(project_id, activation_id)
+    with {:ok, activation} <- Store.get_sensor_activation(project_id, activation_id),
+         {:ok, deactivation} <- Store.get_sensor_deactivation(project_id, activation_id),
+         {:ok, runs} <- Store.list_sensor_runs(project_id, activation_id) do
+      runs =
+        Map.new(runs, fn run ->
+          {run.id, Map.take(run, [:id, :created_at])}
+        end)
 
-    runs =
-      project_id
-      |> Store.list_sensor_runs(activation_id)
-      |> Map.new(fn run ->
-        {run.id, Map.take(run, [:id, :created_at])}
-      end)
+      sensor =
+        activation
+        |> Map.take([:repository, :target, :tags, :created_at])
+        |> Map.put(:deactivated_at, if(deactivation, do: deactivation.created_at))
+        |> Map.put(:runs, runs)
 
-    sensor =
-      activation
-      |> Map.take([:repository, :target, :tags, :created_at])
-      |> Map.put(:deactivated_at, if(deactivation, do: deactivation.created_at))
-      |> Map.put(:runs, runs)
+      executions =
+        case Store.latest_sensor_execution(project_id, activation_id) do
+          {:ok, %{id: execution_id}} -> %{execution_id => {:sensor, activation_id}}
+          {:error, :not_found} -> %{}
+        end
 
-    executions =
-      case Store.latest_sensor_execution(project_id, activation_id) do
-        %{id: execution_id} -> %{execution_id => {:sensor, activation_id}}
-        nil -> %{}
-      end
-
-    {:ok, sensor, executions}
+      {:ok, sensor, executions}
+    end
   end
 
   defp load_topic("tasks." <> repository_target, project_id) do
-    [repository, target] = String.split(repository_target, ":", parts: 2)
-    manifest = Store.get_manifest(project_id, repository)
-    parameters = Map.fetch!(manifest.tasks, target)
+    case String.split(repository_target, ":", parts: 2) do
+      [repository, target] ->
+        with {:ok, manifest} <- Store.get_manifest(project_id, repository),
+             {:ok, runs} <- Store.list_task_runs(project_id, repository, target) do
+          case Map.fetch(manifest.tasks, target) do
+            {:ok, parameters} ->
+              runs =
+                Map.new(runs, fn run ->
+                  {run.id, Map.take(run, [:id, :tags, :created_at])}
+                end)
 
-    runs =
-      project_id
-      |> Store.list_task_runs(repository, target)
-      |> Map.new(fn run ->
-        {run.id, Map.take(run, [:id, :tags, :created_at])}
-      end)
+              task = %{
+                repository: repository,
+                version: manifest.version,
+                target: target,
+                parameters: parameters,
+                runs: runs
+              }
 
-    task = %{
-      repository: repository,
-      version: manifest.version,
-      target: target,
-      parameters: parameters,
-      runs: runs
-    }
+              {:ok, task, %{}}
 
-    {:ok, task, %{}}
+            :error ->
+              {:error, :not_found}
+          end
+        end
+
+      _other ->
+        {:error, :not_found}
+    end
   end
 
   defp load_topic("runs." <> run_id, project_id) do
-    run = Store.get_run(project_id, run_id)
-    steps = Store.get_steps(project_id, run_id)
-    attempts = Store.get_attempts(project_id, run_id)
-    execution_ids = Enum.map(attempts, & &1.execution_id)
-
-    dependencies =
-      project_id
-      |> Store.get_dependencies(execution_ids)
-      |> Enum.group_by(& &1.execution_id)
-      |> Map.new(fn {execution_id, dependencies} ->
-        {execution_id, Enum.map(dependencies, & &1.dependency_id)}
-      end)
-
-    assigned_at =
-      project_id
-      |> Store.get_assignments(execution_ids)
-      |> Map.new(&{&1.execution_id, &1.created_at})
-
-    results =
-      project_id
-      |> Store.get_results(execution_ids)
-      |> Map.new(&{&1.execution_id, Map.take(&1, [:type, :value, :created_at])})
-
-    execution_runs =
-      project_id
-      |> Store.get_execution_runs(execution_ids)
-      |> Enum.group_by(& &1.execution_id)
-      |> Map.new(fn {execution_id, runs} ->
-        # TODO: include run details (repository/target; from task or step?)
-        {execution_id, Enum.map(runs, & &1.id)}
-      end)
-
-    result =
-      run
-      |> Map.take([:id, :tags, :created_at])
-      |> Map.put(
-        :steps,
-        Map.new(steps, fn step ->
-          parent =
-            if step.parent_step_id,
-              do: %{step_id: step.parent_step_id, attempt: step.parent_attempt}
-
-          cached =
-            if step.cached_step_id,
-              do: %{run_id: step.cached_run_id, step_id: step.cached_step_id}
-
-          value =
-            step
-            |> Map.take([:repository, :target, :created_at])
-            |> Map.put(:id, step.id)
-            |> Map.put(:parent, parent)
-            |> Map.put(:cached, cached)
-            |> Map.put(:arguments, Enum.map(step.arguments, & &1))
-            |> Map.put(
-              :attempts,
-              attempts
-              |> Enum.filter(&(&1.step_id == step.id))
-              |> Map.new(fn attempt ->
-                execution_id = attempt.execution_id
-
-                value =
-                  attempt
-                  |> Map.take([:created_at, :number, :execution_id])
-                  |> Map.put(:dependency_ids, Map.get(dependencies, execution_id, []))
-                  |> Map.put(:run_ids, Map.get(execution_runs, execution_id, []))
-                  |> Map.put(:assigned_at, Map.get(assigned_at, execution_id))
-                  |> Map.put(:result, Map.get(results, execution_id))
-
-                {attempt.number, value}
-              end)
-            )
-
-          {step.id, value}
+    with {:ok, run} <- Store.get_run(project_id, run_id),
+         {:ok, steps} <- Store.get_steps(project_id, run_id),
+         {:ok, attempts} <- Store.get_attempts(project_id, run_id),
+         execution_ids = Enum.map(attempts, & &1.execution_id),
+         {:ok, dependencies} <- Store.get_dependencies(project_id, execution_ids),
+         {:ok, assignments} <- Store.get_assignments(project_id, execution_ids),
+         {:ok, results} <- Store.get_results(project_id, execution_ids),
+         {:ok, execution_runs} <- Store.get_execution_runs(project_id, execution_ids) do
+      dependencies =
+        dependencies
+        |> Enum.group_by(& &1.execution_id)
+        |> Map.new(fn {execution_id, dependencies} ->
+          {execution_id, Enum.map(dependencies, & &1.dependency_id)}
         end)
-      )
 
-    executions = Map.new(attempts, &{&1.execution_id, {:run, {&1.run_id, &1.step_id, &1.number}}})
+      assigned_at = Map.new(assignments, &{&1.execution_id, &1.created_at})
 
-    {:ok, result, executions}
+      results = Map.new(results, &{&1.execution_id, Map.take(&1, [:type, :value, :created_at])})
+
+      execution_runs =
+        execution_runs
+        |> Enum.group_by(& &1.execution_id)
+        |> Map.new(fn {execution_id, runs} ->
+          # TODO: include run details (repository/target; from task or step?)
+          {execution_id, Enum.map(runs, & &1.id)}
+        end)
+
+      result =
+        run
+        |> Map.take([:id, :tags, :created_at])
+        |> Map.put(
+          :steps,
+          Map.new(steps, fn step ->
+            parent =
+              if step.parent_step_id,
+                do: %{step_id: step.parent_step_id, attempt: step.parent_attempt}
+
+            cached =
+              if step.cached_step_id,
+                do: %{run_id: step.cached_run_id, step_id: step.cached_step_id}
+
+            value =
+              step
+              |> Map.take([:repository, :target, :created_at])
+              |> Map.put(:id, step.id)
+              |> Map.put(:parent, parent)
+              |> Map.put(:cached, cached)
+              |> Map.put(:arguments, Enum.map(step.arguments, & &1))
+              |> Map.put(
+                :attempts,
+                attempts
+                |> Enum.filter(&(&1.step_id == step.id))
+                |> Map.new(fn attempt ->
+                  execution_id = attempt.execution_id
+
+                  value =
+                    attempt
+                    |> Map.take([:created_at, :number, :execution_id])
+                    |> Map.put(:dependency_ids, Map.get(dependencies, execution_id, []))
+                    |> Map.put(:run_ids, Map.get(execution_runs, execution_id, []))
+                    |> Map.put(:assigned_at, Map.get(assigned_at, execution_id))
+                    |> Map.put(:result, Map.get(results, execution_id))
+
+                  {attempt.number, value}
+                end)
+              )
+
+            {step.id, value}
+          end)
+        )
+
+      executions =
+        Map.new(attempts, &{&1.execution_id, {:run, {&1.run_id, &1.step_id, &1.number}}})
+
+      {:ok, result, executions}
+    end
   end
 
   defp load_topic("logs." <> run_id, project_id) do
-    attempts = Store.get_attempts(project_id, run_id)
-    execution_ids = Enum.map(attempts, & &1.execution_id)
-    log_messages = Store.get_log_messages(project_id, execution_ids)
+    with {:ok, attempts} <- Store.get_attempts(project_id, run_id),
+         execution_ids = Enum.map(attempts, & &1.execution_id),
+         {:ok, log_messages} <- Store.get_log_messages(project_id, execution_ids) do
+      result =
+        Map.new(log_messages, fn log_message ->
+          {log_message.id, Map.take(log_message, [:execution_id, :level, :message, :created_at])}
+        end)
 
-    result =
-      Map.new(log_messages, fn log_message ->
-        {log_message.id, Map.take(log_message, [:execution_id, :level, :message, :created_at])}
-      end)
-
-    {:ok, result, %{}}
+      {:ok, result, %{}}
+    end
   end
 
   defp update_topic(state, topic, fun) do
@@ -484,6 +496,9 @@ defmodule Coflux.Project.Observer do
           {[log_message.execution_id],
            Map.take(log_message, [:execution_id, :level, :message, :created_at])}
         end)
+
+      _other ->
+        state
     end
   end
 end

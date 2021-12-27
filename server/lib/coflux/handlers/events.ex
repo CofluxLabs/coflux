@@ -34,19 +34,28 @@ defmodule Coflux.Handlers.Events do
               |> put_in([:subscription_refs, subscription_id], ref)
 
             {[result_message(message["id"], value)], state}
+
+          {:error, :not_found} ->
+            {[result_message(message["id"], nil)], state}
         end
 
       "unsubscribe" ->
         [subscription_id] = message["params"]
-        ref = Map.fetch!(state.subscription_refs, subscription_id)
 
-        case Project.unsubscribe(state.project_id, ref) do
-          :ok ->
-            state =
-              state
-              |> Map.update!(:subscription_ids, &Map.delete(&1, ref))
-              |> Map.update!(:subscription_refs, &Map.delete(&1, subscription_id))
+        case Map.fetch(state.subscription_refs, subscription_id) do
+          {:ok, ref} ->
+            case Project.unsubscribe(state.project_id, ref) do
+              :ok ->
+                state =
+                  state
+                  |> Map.update!(:subscription_ids, &Map.delete(&1, ref))
+                  |> Map.update!(:subscription_refs, &Map.delete(&1, subscription_id))
 
+                {[], state}
+            end
+
+          :error ->
+            # TODO: ?
             {[], state}
         end
 
@@ -79,7 +88,7 @@ defmodule Coflux.Handlers.Events do
 
       "deactivate_sensor" ->
         [activation_id] = message["params"]
-        Project.deactivate_sensor(state.project_id, activation_id)
+        :ok = Project.deactivate_sensor(state.project_id, activation_id)
         {[result_message(message["id"], true)], state}
     end
   end

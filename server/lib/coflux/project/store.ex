@@ -13,11 +13,14 @@ defmodule Coflux.Project.Store do
         order_by: [desc: m.created_at]
       )
 
-    query
-    |> Repo.all(prefix: project_id)
-    |> Map.new(fn manifest ->
-      {manifest.repository, Map.take(manifest, [:version, :tasks, :sensors])}
-    end)
+    repositories =
+      query
+      |> Repo.all(prefix: project_id)
+      |> Map.new(fn manifest ->
+        {manifest.repository, Map.take(manifest, [:version, :tasks, :sensors])}
+      end)
+
+    {:ok, repositories}
   end
 
   def list_task_runs(project_id, repository, target) do
@@ -28,7 +31,7 @@ defmodule Coflux.Project.Store do
         where: is_nil(s.parent_attempt) and s.repository == ^repository and s.target == ^target
       )
 
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def get_manifest(project_id, repository) do
@@ -41,47 +44,57 @@ defmodule Coflux.Project.Store do
         limit: 1
       )
 
-    Repo.one!(query, prefix: project_id)
+    case Repo.one(query, prefix: project_id) do
+      nil -> {:error, :not_found}
+      manifest -> {:ok, manifest}
+    end
   end
 
   def get_run(project_id, run_id) do
-    Repo.get!(Models.Run, run_id, prefix: project_id)
+    case Repo.get(Models.Run, run_id, prefix: project_id) do
+      nil -> {:error, :not_found}
+      run -> {:ok, run}
+    end
   end
 
   def get_steps(project_id, run_id, step_ids \\ nil) do
     query = from(s in Models.Step, where: s.run_id == ^run_id)
     query = if step_ids, do: from(s in query, where: s.id in ^step_ids), else: query
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def get_attempts(project_id, run_id) do
     query = from(a in Models.Attempt, where: a.run_id == ^run_id)
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def get_dependencies(project_id, execution_ids) do
     query = from(d in Models.Dependency, where: d.execution_id in ^execution_ids)
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def get_assignments(project_id, execution_ids) do
     query = from(a in Models.Assignment, where: a.execution_id in ^execution_ids)
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def get_results(project_id, execution_ids) do
     query = from(r in Models.Result, where: r.execution_id in ^execution_ids)
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def get_execution_runs(project_id, execution_ids) do
     query = from(r in Models.Run, where: r.execution_id in ^execution_ids)
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def get_run_initial_step(project_id, run_id) do
     query = from(s in Models.Step, where: s.run_id == ^run_id and is_nil(s.parent_attempt))
-    Repo.one!(query, prefix: project_id)
+
+    case Repo.one(query, prefix: project_id) do
+      nil -> {:error, :not_found}
+      step -> {:ok, step}
+    end
   end
 
   def get_step_latest_attempt(project_id, run_id, step_id) do
@@ -92,7 +105,10 @@ defmodule Coflux.Project.Store do
         limit: 1
       )
 
-    Repo.one!(query, prefix: project_id)
+    case Repo.one(query, prefix: project_id) do
+      nil -> {:error, :not_found}
+      attempt -> {:ok, attempt}
+    end
   end
 
   def create_session(project_id) do
@@ -100,23 +116,6 @@ defmodule Coflux.Project.Store do
       {:ok, session} ->
         {:ok, session.id}
     end
-  end
-
-  defp hash_manifest(repository_name, version, tasks, sensors) do
-    task_parts =
-      tasks
-      |> Enum.sort()
-      |> Enum.flat_map(fn {target, parameters} ->
-        [target | Enum.map(parameters, &[&1.name, &1.annotation || "", &1.default || ""])]
-      end)
-
-    content =
-      [repository_name, version || ""]
-      |> Enum.concat(task_parts)
-      |> Enum.concat(Enum.sort(sensors))
-      |> Enum.join("\0")
-
-    :crypto.hash(:sha, content)
   end
 
   def register_targets(project_id, session_id, repository, version, targets) do
@@ -152,14 +151,23 @@ defmodule Coflux.Project.Store do
           on_conflict: :nothing
         )
 
+      manifest_id =
+        if manifest.id do
+          manifest.id
+        else
+          Repo.get_by!(Models.Manifest, [hash: hash], prefix: project_id).id
+        end
+
       Repo.insert!(
         %Models.SessionManifest{
           session_id: session_id,
-          manifest_id: manifest.id,
+          manifest_id: manifest_id,
           created_at: now
         },
         prefix: project_id
       )
+
+      hash
     end)
   end
 
@@ -238,7 +246,7 @@ defmodule Coflux.Project.Store do
     version = Keyword.get(opts, :version)
     now = DateTime.utc_now()
     step = Repo.get_by!(Models.Step, [run_id: run_id, id: step_id], prefix: project_id)
-    last_attempt = get_step_latest_attempt(project_id, run_id, step_id)
+    {:ok, last_attempt} = get_step_latest_attempt(project_id, run_id, step_id)
     number = last_attempt.number + 1
 
     execution =
@@ -279,6 +287,8 @@ defmodule Coflux.Project.Store do
       end),
       prefix: project_id
     )
+
+    :ok
   end
 
   def list_pending_executions(project_id) do
@@ -295,7 +305,7 @@ defmodule Coflux.Project.Store do
         order_by: [desc: e.priority, asc: e.created_at]
       )
 
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def list_running_executions(project_id) do
@@ -313,7 +323,7 @@ defmodule Coflux.Project.Store do
         select: {e, a, h}
       )
 
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def assign_execution(project_id, execution) do
@@ -337,8 +347,8 @@ defmodule Coflux.Project.Store do
 
   def get_result(project_id, execution_id) do
     case Repo.get_by(Models.Result, [execution_id: execution_id], prefix: project_id) do
-      nil -> nil
-      result -> compose_result(result)
+      nil -> {:error, :not_found}
+      result -> {:ok, compose_result(result)}
     end
   end
 
@@ -347,29 +357,21 @@ defmodule Coflux.Project.Store do
 
     Repo.transaction(fn ->
       last_cursor = get_latest_cursor(project_id, execution_id)
+      sequence = if(last_cursor, do: last_cursor.sequence + 1, else: 0)
 
       Repo.insert!(
         %Models.Cursor{
           execution_id: execution_id,
-          sequence: if(last_cursor, do: last_cursor.sequence + 1, else: 0),
+          sequence: sequence,
           type: type,
           value: value,
           created_at: DateTime.utc_now()
         },
         prefix: project_id
       )
+
+      sequence
     end)
-  end
-
-  defp get_latest_cursor(project_id, execution_id) do
-    query =
-      from(c in Models.Cursor,
-        where: c.execution_id == ^execution_id,
-        order_by: [desc: :sequence],
-        limit: 1
-      )
-
-    Repo.one(query, prefix: project_id)
   end
 
   def record_dependency(project_id, from, to) do
@@ -382,6 +384,8 @@ defmodule Coflux.Project.Store do
       on_conflict: :nothing,
       prefix: project_id
     )
+
+    :ok
   end
 
   def activate_sensor(project_id, repository, target, opts \\ []) do
@@ -407,35 +411,38 @@ defmodule Coflux.Project.Store do
   def deactivate_sensor(project_id, activation_id) do
     now = DateTime.utc_now()
 
-    Repo.transaction(fn ->
-      query =
-        from(si in Models.SensorIteration,
-          left_join: r in Models.Result,
-          on: r.execution_id == si.execution_id,
-          where: si.activation_id == ^activation_id and is_nil(r.execution_id),
-          order_by: [desc: si.sequence],
-          limit: 1
+    {:ok, _} =
+      Repo.transaction(fn ->
+        query =
+          from(si in Models.SensorIteration,
+            left_join: r in Models.Result,
+            on: r.execution_id == si.execution_id,
+            where: si.activation_id == ^activation_id and is_nil(r.execution_id),
+            order_by: [desc: si.sequence],
+            limit: 1
+          )
+
+        iteration = Repo.one(query, prefix: project_id)
+
+        Repo.insert!(
+          %Models.SensorDeactivation{
+            activation_id: activation_id,
+            created_at: now
+          },
+          prefix: project_id
         )
 
-      iteration = Repo.one(query, prefix: project_id)
+        Repo.insert!(
+          %Models.Result{
+            execution_id: iteration.execution_id,
+            type: 5,
+            created_at: now
+          },
+          prefix: project_id
+        )
+      end)
 
-      Repo.insert!(
-        %Models.SensorDeactivation{
-          activation_id: activation_id,
-          created_at: now
-        },
-        prefix: project_id
-      )
-
-      Repo.insert!(
-        %Models.Result{
-          execution_id: iteration.execution_id,
-          type: 5,
-          created_at: now
-        },
-        prefix: project_id
-      )
-    end)
+    :ok
   end
 
   def list_sensor_activations(project_id) do
@@ -446,15 +453,21 @@ defmodule Coflux.Project.Store do
         where: is_nil(sd.activation_id)
       )
 
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def get_sensor_activation(project_id, activation_id) do
-    Repo.get!(Models.SensorActivation, activation_id, prefix: project_id)
+    case Repo.get(Models.SensorActivation, activation_id, prefix: project_id) do
+      nil -> {:error, :not_found}
+      activation -> {:ok, activation}
+    end
   end
 
   def get_sensor_deactivation(project_id, activation_id) do
-    Repo.get_by(Models.SensorDeactivation, [activation_id: activation_id], prefix: project_id)
+    case Repo.get_by(Models.SensorDeactivation, [activation_id: activation_id], prefix: project_id) do
+      nil -> {:error, :not_found}
+      deactivation -> {:ok, deactivation}
+    end
   end
 
   def list_sensor_runs(project_id, activation_id) do
@@ -469,7 +482,7 @@ defmodule Coflux.Project.Store do
         limit: 100
       )
 
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def latest_sensor_execution(project_id, activation_id) do
@@ -484,7 +497,10 @@ defmodule Coflux.Project.Store do
         limit: 1
       )
 
-    Repo.one(query, prefix: project_id)
+    case Repo.one(query, prefix: project_id) do
+      nil -> {:error, :not_found}
+      execution -> {:ok, execution}
+    end
   end
 
   def list_pending_sensors(project_id) do
@@ -504,7 +520,7 @@ defmodule Coflux.Project.Store do
         select: {sa, si, r}
       )
 
-    Repo.all(query, prefix: project_id)
+    {:ok, Repo.all(query, prefix: project_id)}
   end
 
   def iterate_sensor(project_id, activation, last_iteration) do
@@ -549,6 +565,8 @@ defmodule Coflux.Project.Store do
         created_at: now
       )
     end)
+
+    # TODO: return?
   end
 
   def log_message(project_id, execution_id, level, message) do
@@ -561,17 +579,22 @@ defmodule Coflux.Project.Store do
       },
       prefix: project_id
     )
+
+    :ok
   end
 
   def get_log_messages(project_id, execution_ids) do
-    Repo.all(
-      from(
-        l in Models.LogMessage,
-        where: l.execution_id in ^execution_ids,
-        order_by: :created_at
-      ),
-      prefix: project_id
-    )
+    messages =
+      Repo.all(
+        from(
+          l in Models.LogMessage,
+          where: l.execution_id in ^execution_ids,
+          order_by: :created_at
+        ),
+        prefix: project_id
+      )
+
+    {:ok, messages}
   end
 
   defp parse_result(result) do
@@ -702,5 +725,33 @@ defmodule Coflux.Project.Store do
       {0, nil} -> :error
       {1, nil} -> :ok
     end
+  end
+
+  defp hash_manifest(repository_name, version, tasks, sensors) do
+    task_parts =
+      tasks
+      |> Enum.sort()
+      |> Enum.flat_map(fn {target, parameters} ->
+        [target | Enum.map(parameters, &[&1.name, &1.annotation || "", &1.default || ""])]
+      end)
+
+    content =
+      [repository_name, version || ""]
+      |> Enum.concat(task_parts)
+      |> Enum.concat(Enum.sort(sensors))
+      |> Enum.join("\0")
+
+    :crypto.hash(:sha, content)
+  end
+
+  defp get_latest_cursor(project_id, execution_id) do
+    query =
+      from(c in Models.Cursor,
+        where: c.execution_id == ^execution_id,
+        order_by: [desc: :sequence],
+        limit: 1
+      )
+
+    Repo.one(query, prefix: project_id)
   end
 end

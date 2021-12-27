@@ -54,7 +54,7 @@ defmodule Coflux.Project do
     Store.put_cursor(project_id, execution_id, result)
   end
 
-  def get_result(project_id, execution_id, from \\ nil, pid) do
+  def get_execution_result(project_id, execution_id, from \\ nil, pid) do
     if from do
       Store.record_dependency(project_id, from, execution_id)
     end
@@ -64,9 +64,10 @@ defmodule Coflux.Project do
   end
 
   def get_run_result(project_id, run_id, pid) do
-    initial_step = Store.get_run_initial_step(project_id, run_id)
-    attempt = Store.get_step_latest_attempt(project_id, run_id, initial_step.id)
-    get_result(project_id, attempt.execution_id, pid)
+    with {:ok, initial_step} <- Store.get_run_initial_step(project_id, run_id),
+         {:ok, attempt} <- Store.get_step_latest_attempt(project_id, run_id, initial_step.id) do
+      get_execution_result(project_id, attempt.execution_id, pid)
+    end
   end
 
   def activate_sensor(project_id, sensor_id, opts \\ []) do

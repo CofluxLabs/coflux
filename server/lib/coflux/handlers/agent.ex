@@ -61,13 +61,13 @@ defmodule Coflux.Handlers.Agent do
 
       "record_heartbeats" ->
         [executions] = message["params"]
-        Project.record_heartbeats(state.project_id, executions)
+        :ok = Project.record_heartbeats(state.project_id, executions)
         {[], state}
 
       "put_cursor" ->
         [execution_id, type, value] = message["params"]
         cursor = parse_cursor(type, value)
-        Project.put_cursor(state.project_id, execution_id, cursor)
+        {:ok, _} = Project.put_cursor(state.project_id, execution_id, cursor)
         {[], state}
 
       "put_result" ->
@@ -84,7 +84,7 @@ defmodule Coflux.Handlers.Agent do
       "get_result" ->
         [execution_id, from_execution_id] = message["params"]
 
-        case Project.get_result(state.project_id, execution_id, from_execution_id, self()) do
+        case Project.get_execution_result(state.project_id, execution_id, from_execution_id, self()) do
           {:ok, result} ->
             {[result_message(message["id"], compose_result(result))], state}
 

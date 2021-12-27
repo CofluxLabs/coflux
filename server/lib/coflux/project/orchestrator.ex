@@ -86,30 +86,33 @@ defmodule Coflux.Project.Orchestrator do
   def handle_info(:check_abandoned, state) do
     now = DateTime.utc_now()
 
-    state.project_id
-    |> Store.list_running_executions()
-    |> Enum.filter(&execution_abandoned?(&1, now))
-    |> Enum.each(fn {execution, _, _} ->
-      Store.put_result(state.project_id, execution.id, :abandoned)
-    end)
+    case Store.list_running_executions(state.project_id) do
+      {:ok, executions} ->
+        executions
+        |> Enum.filter(&execution_abandoned?(&1, now))
+        |> Enum.each(fn {execution, _, _} ->
+          Store.put_result(state.project_id, execution.id, :abandoned)
+        end)
 
-    # TODO: time?
-    Process.send_after(self(), :check_abandoned, 1_000)
-    {:noreply, state}
+        # TODO: time?
+        Process.send_after(self(), :check_abandoned, 1_000)
+        {:noreply, state}
+    end
   end
 
   def handle_info(:iterate_sensors, state) do
-    state.project_id
-    |> Store.list_pending_sensors()
-    |> Enum.each(fn {activation, iteration, result} ->
-      if result do
-        # TODO: rate limit
-        Store.iterate_sensor(state.project_id, activation, iteration)
-      end
-    end)
+    case Store.list_pending_sensors(state.project_id) do
+      {:ok, sensors} ->
+        Enum.each(sensors, fn {activation, iteration, result} ->
+          if result do
+            # TODO: rate limit
+            Store.iterate_sensor(state.project_id, activation, iteration)
+          end
+        end)
 
-    Process.send_after(self(), :iterate_sensors, 1_000)
-    {:noreply, state}
+        Process.send_after(self(), :iterate_sensors, 1_000)
+        {:noreply, state}
+    end
   end
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
@@ -129,20 +132,22 @@ defmodule Coflux.Project.Orchestrator do
   end
 
   defp try_schedule_executions(state) do
-    state.project_id
-    |> Store.list_pending_executions()
-    |> Enum.reduce(state, fn execution, state ->
-      with {:ok, pid_map} <- Map.fetch(state.targets, {execution.repository, execution.target}),
-           {:ok, pid} <- find_agent(pid_map),
-           :ok <- Store.assign_execution(state.project_id, execution) do
-        arguments = prepare_arguments(execution.arguments)
-        send(pid, {:execute, execution.id, execution.target, arguments})
-        put_in(state.executions[execution.id], pid)
-      else
-        :error ->
-          state
-      end
-    end)
+    case Store.list_pending_executions(state.project_id) do
+      {:ok, executions} ->
+        Enum.reduce(executions, state, fn execution, state ->
+          with {:ok, pid_map} <-
+                 Map.fetch(state.targets, {execution.repository, execution.target}),
+               {:ok, pid} <- find_agent(pid_map),
+               :ok <- Store.assign_execution(state.project_id, execution) do
+            arguments = prepare_arguments(execution.arguments)
+            send(pid, {:execute, execution.id, execution.target, arguments})
+            put_in(state.executions[execution.id], pid)
+          else
+            :error ->
+              state
+          end
+        end)
+    end
   end
 
   defp find_agent(pid_map) do
@@ -208,12 +213,10 @@ defmodule Coflux.Project.Orchestrator do
   end
 
   defp get_result(project_id, execution_id) do
-    result = Store.get_result(project_id, execution_id)
-
-    case result do
-      nil -> {:pending, execution_id}
-      {:result, execution_id} -> get_result(project_id, execution_id)
-      result -> {:resolved, result}
+    case Store.get_result(project_id, execution_id) do
+      {:error, :not_found} -> {:pending, execution_id}
+      {:ok, {:result, execution_id}} -> get_result(project_id, execution_id)
+      {:ok, result} -> {:resolved, result}
     end
   end
 end
