@@ -1,7 +1,6 @@
 defmodule Coflux.Project.Orchestrator do
   use GenServer, restart: :transient
 
-  alias Ecto.Changeset
   alias Coflux.Project.Models
   alias Coflux.Project.Store
   alias Coflux.Listener
@@ -17,7 +16,13 @@ defmodule Coflux.Project.Orchestrator do
 
   def init({project_id}) do
     IO.puts("Orchestrator started (#{project_id}).")
-    :ok = Listener.subscribe(Coflux.ProjectsListener, project_id, self())
+
+    :ok =
+      Listener.subscribe(Coflux.ProjectsListener, project_id, self(), [
+        Models.Execution,
+        Models.Result
+      ])
+
     send(self(), :check_abandoned)
     send(self(), :iterate_sensors)
     {:ok, %State{project_id: project_id}}
@@ -56,18 +61,13 @@ defmodule Coflux.Project.Orchestrator do
     end
   end
 
-  def handle_info({:insert, _ref, table, data}, state) do
+  def handle_info({:insert, _ref, model}, state) do
     state =
-      case table do
-        :executions ->
+      case model do
+        %Models.Execution{} ->
           try_schedule_executions(state)
 
-        :results ->
-          result =
-            %Models.Result{}
-            |> Changeset.cast(data, Models.Result.__schema__(:fields))
-            |> Changeset.apply_changes()
-
+        %Models.Result{} = result ->
           if result.type in [4, 5] do
             try_abort(state, result.execution_id)
           end
@@ -75,9 +75,6 @@ defmodule Coflux.Project.Orchestrator do
           {_, state} = pop_in(state.executions[result.execution_id])
 
           try_notify_results(state, result)
-
-        _other ->
-          state
       end
 
     {:noreply, state}

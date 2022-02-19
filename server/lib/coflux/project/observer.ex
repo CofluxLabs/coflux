@@ -1,7 +1,6 @@
 defmodule Coflux.Project.Observer do
   use GenServer, restart: :transient
 
-  alias Ecto.Changeset
   alias Coflux.Project.Models
   alias Coflux.Project.Store
   alias Coflux.Listener
@@ -13,7 +12,19 @@ defmodule Coflux.Project.Observer do
 
   def init(project_id) do
     IO.puts("Observer started (#{project_id}).")
-    :ok = Listener.subscribe(Coflux.ProjectsListener, project_id, self())
+    :ok = Listener.subscribe(Coflux.ProjectsListener, project_id, self(), [
+      Models.Manifest,
+      Models.Run,
+      Models.Step,
+      Models.Attempt,
+      Models.Assignment,
+      Models.Result,
+      Models.Dependency,
+      Models.SensorActivation,
+      Models.SensorDeactivation,
+      Models.SensorIteration,
+      Models.LogMessage
+    ])
     # TODO: timeout
     {:ok,
      %{
@@ -62,8 +73,8 @@ defmodule Coflux.Project.Observer do
     {:reply, :ok, state}
   end
 
-  def handle_info({:insert, _ref, table, data}, state) do
-    {:noreply, handle_insert(state, table, data)}
+  def handle_info({:insert, _ref, model}, state) do
+    {:noreply, handle_insert(state, model)}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
@@ -273,16 +284,7 @@ defmodule Coflux.Project.Observer do
     end)
   end
 
-  defp load_model(type, data) do
-    type
-    |> struct()
-    |> Changeset.cast(data, type.__schema__(:fields))
-    |> Changeset.apply_changes()
-  end
-
-  defp handle_insert(state, :manifests, data) do
-    manifest = load_model(Models.Manifest, data)
-
+  defp handle_insert(state, %Models.Manifest{} = manifest) do
     manifest.tasks
     |> Enum.reduce(state, fn {target, parameters}, state ->
       update_topic(state, "tasks.#{manifest.repository}:#{target}", fn _task ->
@@ -294,19 +296,7 @@ defmodule Coflux.Project.Observer do
     end)
   end
 
-  defp handle_insert(state, :sessions, _data) do
-    # TODO
-    state
-  end
-
-  defp handle_insert(state, :session_manifests, _data) do
-    # TODO
-    state
-  end
-
-  defp handle_insert(state, :runs, data) do
-    run = load_model(Models.Run, data)
-
+  defp handle_insert(state, %Models.Run{} = run) do
     if run.execution_id do
       new_run_id = run.id
 
@@ -334,9 +324,7 @@ defmodule Coflux.Project.Observer do
     end
   end
 
-  defp handle_insert(state, :steps, data) do
-    step = load_model(Models.Step, data)
-
+  defp handle_insert(state, %Models.Step{} = step) do
     state =
       if is_nil(step.parent_attempt) do
         task_id = "#{step.repository}:#{step.target}"
@@ -370,9 +358,7 @@ defmodule Coflux.Project.Observer do
     end)
   end
 
-  defp handle_insert(state, :attempts, data) do
-    attempt = load_model(Models.Attempt, data)
-
+  defp handle_insert(state, %Models.Attempt{} = attempt) do
     topic = "runs.#{attempt.run_id}"
 
     if Map.has_key?(state.topics, topic) do
@@ -397,14 +383,7 @@ defmodule Coflux.Project.Observer do
     end
   end
 
-  defp handle_insert(state, :executions, _data) do
-    # TODO
-    state
-  end
-
-  defp handle_insert(state, :assignments, data) do
-    assignment = load_model(Models.Assignment, data)
-
+  defp handle_insert(state, %Models.Assignment{} = assignment) do
     case Map.get(state.executions, assignment.execution_id) do
       {:run, {run_id, step_id, attempt}} ->
         update_topic(state, "runs.#{run_id}", fn _run ->
@@ -416,14 +395,7 @@ defmodule Coflux.Project.Observer do
     end
   end
 
-  defp handle_insert(state, :heartbeats, _data) do
-    # TODO
-    state
-  end
-
-  defp handle_insert(state, :results, data) do
-    result = load_model(Models.Result, data)
-
+  defp handle_insert(state, %Models.Result{} = result) do
     # TODO: remove execution from state.executions
 
     case Map.get(state.executions, result.execution_id) do
@@ -438,14 +410,7 @@ defmodule Coflux.Project.Observer do
     end
   end
 
-  defp handle_insert(state, :cursors, _data) do
-    # TODO
-    state
-  end
-
-  defp handle_insert(state, :dependencies, data) do
-    dependency = load_model(Models.Dependency, data)
-
+  defp handle_insert(state, %Models.Dependency{} = dependency) do
     case Map.get(state.executions, dependency.execution_id) do
       {:run, {run_id, step_id, attempt}} ->
         update_topic(state, "runs.#{run_id}", fn run ->
@@ -462,17 +427,13 @@ defmodule Coflux.Project.Observer do
     end
   end
 
-  defp handle_insert(state, :sensor_activations, data) do
-    activation = load_model(Models.SensorActivation, data)
-
+  defp handle_insert(state, %Models.SensorActivation{} = activation) do
     update_topic(state, "sensors", fn _sensors ->
       {[activation.id], Map.take(activation, [:repository, :target, :tags])}
     end)
   end
 
-  defp handle_insert(state, :sensor_deactivations, data) do
-    deactivation = load_model(Models.SensorDeactivation, data)
-
+  defp handle_insert(state, %Models.SensorDeactivation{} = deactivation) do
     state
     |> update_topic("sensors", fn _sensors ->
       {[deactivation.activation_id], nil}
@@ -482,14 +443,11 @@ defmodule Coflux.Project.Observer do
     end)
   end
 
-  defp handle_insert(state, :sensor_iterations, data) do
-    iteration = load_model(Models.SensorIteration, data)
+  defp handle_insert(state, %Models.SensorIteration{} = iteration) do
     put_in(state.executions[iteration.execution_id], {:sensor, iteration.activation_id})
   end
 
-  defp handle_insert(state, :log_messages, data) do
-    log_message = load_model(Models.LogMessage, data)
-
+  defp handle_insert(state, %Models.LogMessage{} = log_message) do
     case Map.get(state.executions, log_message.execution_id) do
       {:run, {run_id, _step_id, _attempt}} ->
         update_topic(state, "logs.#{run_id}", fn _logs ->
