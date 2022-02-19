@@ -1,5 +1,5 @@
 defmodule Coflux.Project.Observer.Supervisor do
-  alias Coflux.Project.Observer
+  alias Coflux.Project.Observer.Server
 
   @registry __MODULE__.Registry
   @supervisor __MODULE__.Supervisor
@@ -31,7 +31,7 @@ defmodule Coflux.Project.Observer.Supervisor do
         {:ok, pid}
 
       [] ->
-        spec = {Observer, name: {:via, Registry, {@registry, project_id}}, id: project_id}
+        spec = {Server, name: {:via, Registry, {@registry, project_id}}, id: project_id}
 
         case DynamicSupervisor.start_child(@supervisor, spec) do
           {:ok, pid} -> {:ok, pid}

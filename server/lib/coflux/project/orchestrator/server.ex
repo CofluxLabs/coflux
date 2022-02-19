@@ -1,4 +1,4 @@
-defmodule Coflux.Project.Orchestrator do
+defmodule Coflux.Project.Orchestrator.Server do
   use GenServer, restart: :transient
 
   alias Coflux.Project.Models

@@ -1,4 +1,4 @@
-defmodule Coflux.Project.Observer do
+defmodule Coflux.Project.Observer.Server do
   use GenServer, restart: :transient
 
   alias Coflux.Project.Models
