@@ -14,9 +14,7 @@ defmodule Coflux.Listener do
   end
 
   def init(repo) do
-    config = Keyword.put(repo.config(), :auto_reconnect, true)
-
-    with {:ok, pid} <- Notifications.start_link(config),
+    with {:ok, pid} <- Notifications.start_link(repo.config()),
          {:ok, _ref} <- Notifications.listen(pid, "insert") do
       {:ok, %{project_pids: %{}, ref_project: %{}, models: %{}}}
     end
