@@ -22,16 +22,16 @@ defmodule Coflux.Handlers.Events do
 
     case message["method"] do
       "subscribe" ->
-        [topic, subscription_id] = message["params"]
+        [topic, arguments, subscription_id] = message["params"]
 
-        case Project.subscribe(state.project_id, topic, self()) do
+        case Project.subscribe(state.project_id, topic, arguments, self()) do
           {:ok, ref, value} ->
             # TODO: validate subscription id (check numeric and unused)
 
             state =
               state
               |> put_in([:subscription_ids, ref], subscription_id)
-              |> put_in([:subscription_refs, subscription_id], ref)
+              |> put_in([:subscription_refs, subscription_id], {topic, arguments, ref})
 
             {[result_message(message["id"], value)], state}
 
@@ -43,8 +43,8 @@ defmodule Coflux.Handlers.Events do
         [subscription_id] = message["params"]
 
         case Map.fetch(state.subscription_refs, subscription_id) do
-          {:ok, ref} ->
-            case Project.unsubscribe(state.project_id, ref) do
+          {:ok, {topic, arguments, ref}} ->
+            case Project.unsubscribe(state.project_id, topic, arguments, ref) do
               :ok ->
                 state =
                   state

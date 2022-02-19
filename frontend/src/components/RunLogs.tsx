@@ -21,7 +21,7 @@ type Props = {
 }
 
 export default function RunLogs({ run, activeStepId, activeAttemptNumber }: Props) {
-  const logs = useSubscription<Record<string, models.LogMessage>>(`logs.${run.id}`);
+  const logs = useSubscription<Record<string, models.LogMessage>>('run_logs', run.id);
   const startTime = DateTime.fromISO(run.createdAt);
   return (
     <div>

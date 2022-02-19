@@ -15,7 +15,9 @@ export default function TaskPage() {
         <title>Coflux</title>
       </Head>
       <ProjectLayout projectId={projectId} taskId={taskId}>
-        <TaskDetail projectId={projectId} taskId={taskId} />
+        {projectId && taskId && (
+          <TaskDetail projectId={projectId} taskId={taskId} />
+        )}
       </ProjectLayout>
     </Fragment>
   );

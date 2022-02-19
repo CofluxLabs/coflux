@@ -105,7 +105,7 @@ function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
   const scheduledAt = DateTime.fromISO(attempt.createdAt);
   const assignedAt = attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null;
   const resultAt = attempt.result && DateTime.fromISO(attempt.result.createdAt);
-  const logs = useSubscription<Record<string, models.LogMessage>>(`logs.${run.id}`);
+  const logs = useSubscription<Record<string, models.LogMessage>>('run_logs', run.id);
   const attemptLogs = logs && attempt.executionId !== null && filter(logs, {executionId: attempt.executionId});
   return (
     <Fragment>

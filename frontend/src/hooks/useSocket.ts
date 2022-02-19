@@ -21,7 +21,7 @@ function applyUpdate(state: any, path: (string | number)[], value: any): any {
   }
 }
 
-function subscribe<T>(socket: Socket, topic: string, subscriptionId: string, setState: Dispatch<SetStateAction<T | null | undefined>>) {
+function subscribe<T>(socket: Socket, topic: string, args: any[], subscriptionId: string, setState: Dispatch<SetStateAction<T | null | undefined>>) {
   const listener = (sId: string, path: (string | number)[], value: any) => {
     if (sId == subscriptionId) {
       setState(state => applyUpdate(state, path, value));
@@ -29,7 +29,7 @@ function subscribe<T>(socket: Socket, topic: string, subscriptionId: string, set
   }
   setState(undefined);
   socket.addListener('notify:update', listener);
-  socket.request('subscribe', [topic, subscriptionId], (value) => {
+  socket.request('subscribe', [topic, args, subscriptionId], (value) => {
     setState(value);
   });
   return () => {
@@ -42,14 +42,14 @@ function subscribe<T>(socket: Socket, topic: string, subscriptionId: string, set
 
 let lastSubscriptionId = 0;
 
-export function useSubscription<T>(topic: string) {
+export function useSubscription<T>(topic: string, ...args: any) {
   const { socket, status } = useSocket();
   const [state, setState] = useState<T | null>();
   useEffect(() => {
     if (socket && status == 'connected') {
       const subscriptionId = ++lastSubscriptionId;
-      return subscribe(socket, topic, subscriptionId.toString(), setState);
+      return subscribe(socket, topic, args, subscriptionId.toString(), setState);
     }
-  }, [socket, status, topic]);
+  }, [socket, status, topic, ...args]);
   return state;
 }

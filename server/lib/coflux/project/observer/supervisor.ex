@@ -25,13 +25,15 @@ defmodule Coflux.Project.Observer.Supervisor do
     )
   end
 
-  def get_server(project_id) do
-    case Registry.lookup(@registry, project_id) do
+  def get_server(project_id, topic, arguments) do
+    key = {project_id, topic, arguments}
+
+    case Registry.lookup(@registry, key) do
       [{pid, _}] ->
         {:ok, pid}
 
       [] ->
-        spec = {Server, name: {:via, Registry, {@registry, project_id}}, id: project_id}
+        spec = {Server, name: {:via, Registry, {@registry, key}}, id: key}
 
         case DynamicSupervisor.start_child(@supervisor, spec) do
           {:ok, pid} -> {:ok, pid}

@@ -14,7 +14,7 @@ type Props = {
 
 export default function SensorDetail({ projectId, sensorId }: Props) {
   const { socket } = useSocket();
-  const sensor = useSubscription<models.SensorActivation>(`sensors.${sensorId}`);
+  const sensor = useSubscription<models.SensorActivation>('sensor_activation', sensorId);
   const [deactivating, setDeactivating] = useState(false);
   const handleDeactivateClick = useCallback(() => {
     if (confirm('Are you sure you want to deactivate this sensor?')) {

@@ -13,8 +13,8 @@ type State = models.Task & {
 };
 
 type Props = {
-  projectId: string | null;
-  taskId: string | null;
+  projectId: string;
+  taskId: string;
 }
 
 export default function TaskDetail({ projectId, taskId }: Props) {
@@ -33,7 +33,8 @@ export default function TaskDetail({ projectId, taskId }: Props) {
     });
   }, [projectId, taskId, socket]);
   const handleRunDialogClose = useCallback(() => setRunDialogOpen(false), []);
-  const task = useSubscription<State>(`tasks.${taskId}`);
+  const [repository, target] = taskId.split(':', 2);
+  const task = useSubscription<State>('task', repository, target);
   if (task === undefined) {
     return <p>Loading...</p>
   } else if (task === null) {

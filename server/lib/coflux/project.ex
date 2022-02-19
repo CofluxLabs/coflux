@@ -82,12 +82,12 @@ defmodule Coflux.Project do
     Store.log_message(project_id, execution_id, level, message)
   end
 
-  def subscribe(project_id, topic, pid) do
-    call_observer(project_id, {:subscribe, topic, pid})
+  def subscribe(project_id, topic, arguments, pid) do
+    call_observer(project_id, topic, arguments, {:subscribe, pid})
   end
 
-  def unsubscribe(project_id, ref) do
-    call_observer(project_id, {:unsubscribe, ref})
+  def unsubscribe(project_id, topic, arguments, ref) do
+    call_observer(project_id, topic, arguments, {:unsubscribe, ref})
   end
 
   defp call_orchestrator(project_id, request) do
@@ -96,8 +96,8 @@ defmodule Coflux.Project do
     end
   end
 
-  defp call_observer(project_id, request) do
-    with {:ok, pid} <- ObserverSupervisor.get_server(project_id) do
+  defp call_observer(project_id, topic, arguments, request) do
+    with {:ok, pid} <- ObserverSupervisor.get_server(project_id, topic, arguments) do
       GenServer.call(pid, request, 10_000)
     end
   end

@@ -93,7 +93,7 @@ type Props = {
 }
 
 export default function RunDetail({ projectId, runId, activeTab, activeStepId, activeAttemptNumber, children }: Props) {
-  const run = useSubscription<models.Run>(`runs.${runId}`);
+  const run = useSubscription<models.Run>('run', runId);
   const [frameUrl, setFrameUrl] = useState<string>();
   const initialStep = run && Object.values(run.steps).find((s) => !s.parent);
   const taskId = initialStep && `${initialStep.repository}:${initialStep.target}`;
