@@ -136,8 +136,7 @@ defmodule Coflux.Project.Orchestrator do
                  Map.fetch(state.targets, {execution.repository, execution.target}),
                {:ok, pid} <- find_agent(pid_map),
                :ok <- Store.assign_execution(state.project_id, execution) do
-            arguments = prepare_arguments(execution.arguments)
-            send(pid, {:execute, execution.id, execution.target, arguments})
+            send(pid, {:execute, execution.id, execution.target, execution.arguments})
             put_in(state.executions[execution.id], pid)
           else
             :error ->
@@ -154,16 +153,6 @@ defmodule Coflux.Project.Orchestrator do
     else
       {:ok, Enum.random(Map.keys(pid_map))}
     end
-  end
-
-  defp prepare_arguments(arguments) do
-    Enum.map(arguments, fn argument ->
-      case argument do
-        "json:" <> json -> {:json, json}
-        "blob:" <> key -> {:blob, key}
-        "result:" <> execution_id -> {:result, execution_id}
-      end
-    end)
   end
 
   defp try_notify_results(state, result) do

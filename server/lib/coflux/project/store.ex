@@ -532,14 +532,12 @@ defmodule Coflux.Project.Store do
           cursor = get_latest_cursor(project_id, last_iteration.execution_id)
 
           if cursor do
-            cursor
-            |> compose_result()
-            |> parse_argument()
+            compose_result(cursor)
           else
-            "json:null"
+            {:json, nil}
           end
         else
-          "json:null"
+          {:json, nil}
         end
 
       # TODO: support getting specific version from activation?
@@ -624,14 +622,6 @@ defmodule Coflux.Project.Store do
     end
   end
 
-  defp parse_argument({type, value}) do
-    case type do
-      :json when is_binary(value) -> "json:#{value}"
-      :blob when is_binary(value) -> "blob:#{value}"
-      :result when is_binary(value) -> "result:#{value}"
-    end
-  end
-
   defp do_schedule_step(project_id, run, repository, target, arguments, opts) do
     now = Keyword.fetch!(opts, :now)
     tags = Keyword.fetch!(opts, :tags)
@@ -664,7 +654,7 @@ defmodule Coflux.Project.Store do
           parent_attempt: parent_attempt,
           repository: repository,
           target: target,
-          arguments: Enum.map(arguments, &parse_argument/1),
+          arguments: arguments,
           tags: run.tags ++ tags,
           priority: priority,
           cache_key: unless(cached_step, do: cache_key),

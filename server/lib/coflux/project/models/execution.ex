@@ -5,7 +5,7 @@ defmodule Coflux.Project.Models.Execution do
   schema "executions" do
     field :repository, :string
     field :target, :string
-    field :arguments, {:array, :string}
+    field :arguments, {:array, Types.Argument}
     field :tags, {:array, :string}
     field :priority, :integer
     field :version, :string

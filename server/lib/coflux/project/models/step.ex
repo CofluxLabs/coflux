@@ -11,7 +11,7 @@ defmodule Coflux.Project.Models.Step do
     field :cached_step_id, Types.StepId
     field :repository, :string
     field :target, :string
-    field :arguments, {:array, :string}
+    field :arguments, {:array, Types.Argument}
     field :tags, {:array, :string}
     field :priority, :integer
     field :cache_key, :string
