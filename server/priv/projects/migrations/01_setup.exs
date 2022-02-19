@@ -1,17 +1,25 @@
 defmodule Coflux.Repo.Projects.Migrations.Setup do
   use Ecto.Migration
 
+  defp table_name(table) do
+    if prefix() do
+      "#{prefix()}.#{table}"
+    else
+      "#{table}"
+    end
+  end
+
   defp create_notify_trigger(table) do
     execute(
-      "CREATE TRIGGER #{table}_insert AFTER INSERT ON #{prefix()}.#{table} FOR EACH ROW EXECUTE FUNCTION notify_insert()",
-      "DROP TRIGGER #{table}_insert ON #{prefix()}.#{table}"
+      "CREATE TRIGGER #{table}_insert AFTER INSERT ON #{table_name(table)} FOR EACH ROW EXECUTE FUNCTION #{table_name("notify_insert")}()",
+      "DROP TRIGGER #{table}_insert ON #{table_name(table)}"
     )
   end
 
   def change do
     execute(
       """
-      CREATE FUNCTION notify_insert()
+      CREATE FUNCTION #{table_name("notify_insert")}()
       RETURNS trigger AS $$
       BEGIN
         PERFORM pg_notify('insert', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME || ':' || row_to_json(NEW));
@@ -19,7 +27,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       END;
       $$ LANGUAGE plpgsql;
       """,
-      "DROP FUNCTION notify_insert()"
+      "DROP FUNCTION #{table_name("notify_insert")}()"
     )
 
     create table("manifests") do
