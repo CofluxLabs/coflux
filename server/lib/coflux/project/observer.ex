@@ -210,7 +210,7 @@ defmodule Coflux.Project.Observer do
               |> Map.put(:id, step.id)
               |> Map.put(:parent, parent)
               |> Map.put(:cached, cached)
-              |> Map.put(:arguments, Enum.map(step.arguments, & &1))
+              |> Map.put(:arguments, Enum.map(step.arguments, &compose_argument/1))
               |> Map.put(
                 :attempts,
                 attempts
@@ -351,7 +351,7 @@ defmodule Coflux.Project.Observer do
         |> Map.put(:id, step.id)
         |> Map.put(:parent, parent)
         |> Map.put(:cached, cached)
-        |> Map.put(:arguments, Enum.map(step.arguments, & &1))
+        |> Map.put(:arguments, Enum.map(step.arguments, &compose_argument/1))
         |> Map.put(:attempts, %{})
 
       {[:steps, step.id], value}
@@ -457,6 +457,14 @@ defmodule Coflux.Project.Observer do
 
       _other ->
         state
+    end
+  end
+
+  defp compose_argument(argument) do
+    case argument do
+      {:json, json} -> "json:#{json}"
+      {:result, execution_id} -> "result:#{execution_id}"
+      {:blob, hash} -> "blob:#{hash}"
     end
   end
 end
