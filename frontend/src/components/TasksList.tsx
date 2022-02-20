@@ -18,12 +18,13 @@ function extractTasks(repositories: Record<string, models.Repository>) {
 }
 
 type Props = {
-  projectId: string | null;
+  projectId: string;
+  environmentName: string;
   taskId?: string | null;
 }
 
-export default function TasksList({ projectId, taskId: activeTaskId }: Props) {
-  const repositories = useSubscription<Record<string, models.Repository>>('repositories');
+export default function TasksList({ projectId, environmentName, taskId: activeTaskId }: Props) {
+  const repositories = useSubscription<Record<string, models.Repository>>('repositories', environmentName);
   if (repositories === undefined) {
     return <div>Loading...</div>;
   } else {
@@ -39,9 +40,9 @@ export default function TasksList({ projectId, taskId: activeTaskId }: Props) {
               const isActive = task.id == activeTaskId;
               return (
                 <li key={task.id}>
-                  <Link href={`/projects/${projectId}/tasks/${task.id}`}>
-                    <a className={classNames('block px-4 py-2 group', isActive && 'bg-gray-600')}>
-                      <div className={classNames('font-mono text-gray-100', !isActive && 'group-hover:underline')}>{task.target}</div>
+                  <Link href={`/projects/${projectId}/tasks/${task.id}?environment=${environmentName}`}>
+                    <a className={classNames('block px-4 py-2', isActive ? 'bg-gray-600' : 'hover:bg-gray-600/50')}>
+                      <div className={classNames('font-mono text-gray-100')}>{task.target}</div>
                       <div className="text-sm text-gray-400">{task.repository}</div>
                     </a>
                   </Link>

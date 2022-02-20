@@ -30,16 +30,17 @@ function Field({ label, value, className, placeholder, onChange }: FieldProps) {
 type Props = {
   open: boolean;
   activating: boolean;
-  onActivate: (repository: string, target: string) => void;
+  onActivate: (repository: string, target: string, environmentName: string) => void;
   onClose: () => void;
 }
 
 export default function ActivateSensorDialog({ open, activating, onActivate, onClose }: Props) {
   const [repository, setRepository] = useState('');
   const [target, setTarget] = useState('');
+  const [environment, setEnvironment] = useState('');
   const handleActivateClick = useCallback(() => {
-    onActivate(repository, target);
-  }, [repository, target, onActivate]);
+    onActivate(repository, target, environment);
+  }, [repository, target, environment, onActivate]);
   return (
     <Transition appear show={open} as={Fragment}>
       <Dialog className="fixed inset-0 z-10 overflow-y-auto" onClose={onClose}>
@@ -70,6 +71,7 @@ export default function ActivateSensorDialog({ open, activating, onActivate, onC
               </Dialog.Title>
               <Field label="Repository" value={repository} onChange={setRepository} />
               <Field label="Target" value={target} onChange={setTarget} />
+              <Field label="Environment" value={environment} onChange={setEnvironment} />
               <div className="mt-4">
                 <button
                   type="button"

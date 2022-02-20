@@ -15,9 +15,10 @@ type State = models.Task & {
 type Props = {
   projectId: string;
   taskId: string;
+  environmentName: string;
 }
 
-export default function TaskDetail({ projectId, taskId }: Props) {
+export default function TaskDetail({ projectId, taskId, environmentName }: Props) {
   const { socket } = useSocket();
   const [starting, setStarting] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
@@ -26,15 +27,15 @@ export default function TaskDetail({ projectId, taskId }: Props) {
   }, []);
   const handleStartRun = useCallback((args) => {
     setStarting(true);
-    socket?.request('start_run', [taskId, args], (runId) => {
+    socket?.request('start_run', [taskId, environmentName, args], (runId) => {
       setStarting(false);
       setRunDialogOpen(false);
       Router.push(`/projects/${projectId}/runs/${runId}`);
     });
-  }, [projectId, taskId, socket]);
+  }, [projectId, taskId, environmentName, socket]);
   const handleRunDialogClose = useCallback(() => setRunDialogOpen(false), []);
   const [repository, target] = taskId.split(':', 2);
-  const task = useSubscription<State>('task', repository, target);
+  const task = useSubscription<State>('task', repository, target, environmentName);
   if (task === undefined) {
     return <p>Loading...</p>
   } else if (task === null) {

@@ -191,22 +191,23 @@ type Props = {
   attemptNumber: number;
   run: models.Run;
   projectId: string;
+  environmentName: string;
   className?: string;
   style?: CSSProperties;
   onFrameUrlChange: (url: string | undefined) => void;
 }
 
-export default function StepDetail({ step, attemptNumber, run, projectId, className, style, onFrameUrlChange }: Props) {
+export default function StepDetail({ step, attemptNumber, run, projectId, environmentName, className, style, onFrameUrlChange }: Props) {
   const { socket } = useSocket();
   const [rerunning, setRerunning] = useState(false);
   const handleAttemptChange = useCallback((number) => { window.location.hash = `#${step.id}/${number}`; }, [step]);
   const handleRetryClick = useCallback(() => {
     setRerunning(true);
-    socket?.request('rerun_step', [run.id, step.id], (attempt) => {
+    socket?.request('rerun_step', [run.id, step.id, environmentName], (attempt) => {
       setRerunning(false);
       handleAttemptChange(attempt);
     });
-  }, [socket, run, step, handleAttemptChange]);
+  }, [socket, run, step, environmentName, handleAttemptChange]);
   const attempt = step.attempts[attemptNumber];
   return (
     <div className={classNames('divide-y divide-slate-200 overflow-hidden', className)} style={style}>

@@ -1,10 +1,12 @@
-import React, { ReactNode } from 'react';
+import React, { Fragment, ReactNode, useCallback } from 'react';
 import classNames from 'classnames';
 
-import useSocket from '../hooks/useSocket';
+import * as models from '../models';
+import useSocket, { useSubscription } from '../hooks/useSocket';
 import TasksList from './TasksList';
 import SensorsList from './SensorsList';
 import { SocketStatus } from '../socket';
+
 
 function optionsForSocketStatus(status: SocketStatus | undefined) {
   switch (status) {
@@ -17,24 +19,64 @@ function optionsForSocketStatus(status: SocketStatus | undefined) {
   }
 }
 
+type EnvironmentSelectorProps = {
+  selectedName: string | null | undefined;
+  onChange: (environmentName: string) => void;
+}
+
+function EnvironmentSelector({ selectedName, onChange }: EnvironmentSelectorProps) {
+  const environments = useSubscription<Record<string, models.Environment>>('environments');
+  const handleChange = useCallback((ev) => onChange(ev.target.value), [onChange]);
+  return (
+    <div className="p-2 pt-2 pb-4 border-b border-slate-600">
+      <label className="uppercase text-xs text-slate-500 font-bold px-1">Environment</label>
+      {environments === undefined ? (
+        <p>Loading...</p>
+      ) : !Object.keys(environments).length ? (
+        <p>No environments</p>
+      ) : (
+        <select
+          value={selectedName || ""}
+          onChange={handleChange}
+          className="text-slate-300 bg-slate-800/50 rounded p-2 w-full"
+        >
+          <option value="">Select...</option>
+          {Object.entries(environments).map(([environmentId, environment]) => (
+            <option value={environment.name} key={environmentId}>
+              {environment.name}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
 type Props = {
   projectId: string | null;
+  environmentName: string | null | undefined;
   taskId?: string | null;
   sensorId?: string | null;
   children: ReactNode;
+  onEnvironmentChange: (environmentName: string) => void;
 }
 
-export default function ProjectLayout({ projectId, taskId, sensorId, children }: Props) {
+export default function ProjectLayout({ projectId, environmentName, taskId, sensorId, children, onEnvironmentChange }: Props) {
   const { status } = useSocket();
   const [statusIcon, statusIconClassName, statusText] = optionsForSocketStatus(status);
   return (
     <div className="flex h-screen">
       <div className="w-64 bg-slate-700 text-gray-100 shadow-inner flex flex-col">
+        <EnvironmentSelector selectedName={environmentName} onChange={onEnvironmentChange} />
         <div className="flex-1 overflow-auto">
-          <TasksList projectId={projectId} taskId={taskId} />
-          <SensorsList projectId={projectId} sensorId={sensorId} />
+          {projectId && environmentName && (
+            <Fragment>
+              <TasksList projectId={projectId} environmentName={environmentName} taskId={taskId} />
+              <SensorsList projectId={projectId} sensorId={sensorId} />
+            </Fragment>
+          )}
         </div>
-        <div className="p-2 border-t border-slate-600">
+        <div className="px-4 py-3 border-t border-slate-600">
           <div className="flex items-center">
             <span className={classNames("text-emerald-400 text-opacity-70 text-xs", statusIconClassName)}>
               {statusIcon}

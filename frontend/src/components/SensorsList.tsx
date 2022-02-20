@@ -18,9 +18,9 @@ export default function SensorsList({ projectId, sensorId: activeSensorId }: Pro
   const [activating, setActivating] = useState(false);
   const [activateDialogOpen, setActivateDialogOpen] = useState(false);
   const handleActivateClick = useCallback(() => setActivateDialogOpen(true), []);
-  const handleActivate = useCallback((repository, target) => {
+  const handleActivate = useCallback((repository, target, environmentName) => {
     setActivating(true);
-    socket?.request('activate_sensor', [repository, target], (activationId) => {
+    socket?.request('activate_sensor', [repository, target, environmentName], (activationId) => {
       setActivating(false);
       setActivateDialogOpen(false);
       Router.push(`/projects/${projectId}/sensors/${activationId}`);

@@ -1,6 +1,6 @@
-import React, { Fragment } from 'react';
+import React, { Fragment, useCallback } from 'react';
 import Head from 'next/head';
-import { useRouter } from 'next/router';
+import Router, { useRouter } from 'next/router';
 
 import RunDetail from '../../../../../components/RunDetail';
 import RunTimeline from '../../../../../components/RunTimeline';
@@ -12,7 +12,11 @@ export default function RunPage() {
   const hash = useWindowHash();
   const projectId = router.query['projectId'] as string || null;
   const runId = router.query['runId'] as string || null;
+  const environmentName = router.query['environment'] as string || null;
   const [activeStepId, activeAttemptNumber] = parseHash(hash);
+  const handleEnvironmentChange = useCallback((environmentName) => {
+    Router.push(`/projects/${projectId}/runs/${runId}/timeline${environmentName ? `?environment=${environmentName}` : ''}${hash ? `#${hash}` : ''}`);
+  }, [projectId, runId, hash]);
   return (
     <Fragment>
       <Head>
@@ -21,12 +25,18 @@ export default function RunPage() {
       <RunDetail
         projectId={projectId}
         runId={runId}
+        environmentName={environmentName}
         activeTab="timeline"
         activeStepId={activeStepId}
         activeAttemptNumber={activeAttemptNumber}
+        onEnvironmentChange={handleEnvironmentChange}
       >
         {(run) => (
-          <RunTimeline run={run} activeStepId={activeStepId} />
+          <RunTimeline
+            run={run}
+            environmentName={environmentName}
+            activeStepId={activeStepId}
+          />
         )}
       </RunDetail>
     </Fragment>

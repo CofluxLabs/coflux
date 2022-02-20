@@ -16,11 +16,12 @@ const LOG_LEVELS = {
 
 type Props = {
   run: models.Run;
+  environmentName: string | null | undefined;
   activeStepId: string | null;
   activeAttemptNumber: number | null;
 }
 
-export default function RunLogs({ run, activeStepId, activeAttemptNumber }: Props) {
+export default function RunLogs({ run, environmentName, activeStepId, activeAttemptNumber }: Props) {
   const logs = useSubscription<Record<string, models.LogMessage>>('run_logs', run.id);
   const startTime = DateTime.fromISO(run.createdAt);
   return (
@@ -47,7 +48,7 @@ export default function RunLogs({ run, activeStepId, activeAttemptNumber }: Prop
                   </td>
                   <td className="px-2 w-48">
                     {step && attempt && (
-                    <Link href={`/projects/project_1/runs/${run.id}/logs${isActive ? '' : `#${step.id}/${attempt.number}`}`}>
+                    <Link href={`/projects/project_1/runs/${run.id}/logs${environmentName ? `?environment=${environmentName}` : ''}${isActive ? '' : `#${step.id}/${attempt.number}`}`}>
                       <a className={classNames('whitespace-nowrap p-1', isActive && 'ring rounded')}>
                         <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
                       </a>

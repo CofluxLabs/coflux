@@ -60,17 +60,18 @@ type StepNodeProps = {
   step: models.Step;
   attemptNumber: number;
   runId: string;
+  environmentName: string | null | undefined;
   isActive: boolean;
 }
 
-function StepNode({ node, step, attemptNumber, runId, isActive }: StepNodeProps) {
+function StepNode({ node, step, attemptNumber, runId, environmentName, isActive }: StepNodeProps) {
   const attempt = step.attempts[attemptNumber];
   return (
     <div
       className="absolute flex items-center"
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
-      <Link href={`/projects/project_1/runs/${runId}${isActive ? '' : `#${step.id}/${attemptNumber}`}`}>
+      <Link href={`/projects/project_1/runs/${runId}${environmentName ? `?environment=${environmentName}` : ''}${isActive ? '' : `#${step.id}/${attemptNumber}`}`}>
         <a
           className={
             classNames(
@@ -128,11 +129,12 @@ function Edge({ edge }: EdgeProps) {
 
 type Props = {
   run: models.Run;
+  environmentName: string | null | undefined;
   activeStepId: string | null;
   activeAttemptNumber: number | null;
 }
 
-export default function RunGraph({ run, activeStepId, activeAttemptNumber }: Props) {
+export default function RunGraph({ run, environmentName, activeStepId, activeAttemptNumber }: Props) {
   const [graph, setGraph] = useState<dagre.graphlib.Graph>();
   useEffect(() => {
     const graph = buildGraph(run, activeStepId, activeAttemptNumber);
@@ -162,6 +164,7 @@ export default function RunGraph({ run, activeStepId, activeAttemptNumber }: Pro
                     step={step}
                     attemptNumber={attemptNumber}
                     runId={run.id}
+                    environmentName={environmentName}
                     isActive={nodeId == `${activeStepId}/${activeAttemptNumber}`}
                   />
                 );

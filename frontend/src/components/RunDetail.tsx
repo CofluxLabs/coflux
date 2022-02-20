@@ -29,10 +29,11 @@ type DetailPanelProps = {
   attemptNumber: number | null;
   run: models.Run;
   projectId: string;
+  environmentName: string | null;
   onFrameUrlChange: (url: string | undefined) => void;
 }
 
-function DetailPanel({ stepId, attemptNumber, run, projectId, onFrameUrlChange }: DetailPanelProps) {
+function DetailPanel({ stepId, attemptNumber, run, projectId, environmentName, onFrameUrlChange }: DetailPanelProps) {
   const step = stepId && run.steps[stepId];
   const previousStep = usePrevious(step);
   const stepOrPrevious = step || previousStep;
@@ -54,6 +55,7 @@ function DetailPanel({ stepId, attemptNumber, run, projectId, onFrameUrlChange }
             attemptNumber={attemptNumber || 1}
             run={run}
             projectId={projectId}
+            environmentName={run.environment.name}
             className="flex-1"
             onFrameUrlChange={onFrameUrlChange}
           />
@@ -86,22 +88,28 @@ function Frame({ url, onUrlChange }: FrameProps) {
 type Props = {
   projectId: string | null;
   runId: string | null;
+  environmentName: string | null;
   activeTab: 'overview' | 'timeline' | 'logs';
   activeStepId: string | null;
   activeAttemptNumber: number | null;
   children: (run: models.Run) => ReactNode;
+  onEnvironmentChange: (environmentName: string) => void;
 }
 
-export default function RunDetail({ projectId, runId, activeTab, activeStepId, activeAttemptNumber, children }: Props) {
+export default function RunDetail({ projectId, runId, environmentName, activeTab, activeStepId, activeAttemptNumber, children, onEnvironmentChange }: Props) {
   const run = useSubscription<models.Run>('run', runId);
   const [frameUrl, setFrameUrl] = useState<string>();
   const initialStep = run && Object.values(run.steps).find((s) => !s.parent);
   const taskId = initialStep && `${initialStep.repository}:${initialStep.target}`;
   const buildUrl = useCallback(
-    (page: string | null = null) => `/projects/${projectId}/runs/${runId}${page ? '/' + page : ''}${activeStepId ? '#' + activeStepId + (activeAttemptNumber ? '/' + activeAttemptNumber : '') : ''}`,
-    [projectId, runId, activeStepId, activeAttemptNumber]);
+    (page: string | null = null) => `/projects/${projectId}/runs/${runId}${page ? '/' + page : ''}${environmentName ? `?environment=${environmentName}` : ''}${activeStepId ? '#' + activeStepId + (activeAttemptNumber ? '/' + activeAttemptNumber : '') : ''}`,
+    [projectId, runId, environmentName, activeStepId, activeAttemptNumber]);
+  const handleEnvironmentChange = useCallback((environmentName) => {
+    const name = (run && run.environment.name != environmentName) ? environmentName : null;
+    onEnvironmentChange(name);
+  }, [run, onEnvironmentChange]);
   return (
-    <ProjectLayout projectId={projectId} taskId={taskId}>
+    <ProjectLayout projectId={projectId} environmentName={environmentName || run && run.environment.name} taskId={taskId} onEnvironmentChange={handleEnvironmentChange}>
       {(run === undefined || initialStep === undefined) ? (
         <p>Loading...</p>
       ) : (run === null || initialStep === null) ? (
@@ -114,6 +122,9 @@ export default function RunDetail({ projectId, runId, activeTab, activeStepId, a
             </Link>
             <span className="mx-3">&rarr;</span>
             <span className="font-mono">{runId}</span>
+            {environmentName && environmentName != run.environment.name && (
+              <span className="rounded bg-gray-300 text-sm px-1 py-0.5 ml-2">{run.environment.name}</span>
+            )}
           </Heading>
           <div className="my-6">
             <Tab title="Overview" href={buildUrl()} isActive={activeTab == 'overview'} />
@@ -126,6 +137,7 @@ export default function RunDetail({ projectId, runId, activeTab, activeStepId, a
             attemptNumber={activeAttemptNumber}
             run={run}
             projectId={projectId!}
+            environmentName={environmentName}
             onFrameUrlChange={setFrameUrl}
           />
           <Frame url={frameUrl} onUrlChange={setFrameUrl} />

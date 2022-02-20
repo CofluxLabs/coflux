@@ -17,6 +17,11 @@ export type Task = {
   parameters: Parameter[];
 }
 
+export type Environment = {
+  id: number;
+  name: string;
+}
+
 export type BaseRun = {
   id: string;
   createdAt: string;
@@ -24,7 +29,7 @@ export type BaseRun = {
 }
 
 export type Run = BaseRun & {
-  tags: string[];
+  environment: Environment;
   steps: Record<string, Step>;
 }
 
@@ -58,7 +63,7 @@ export type Result = {
 export type SensorActivation = {
   repository: string;
   target: string;
-  tags: string[];
+  environment: Environment;
   createdAt: string;
   deactivatedAt: string | null;
   runs: Record<string, BaseRun>;

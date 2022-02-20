@@ -21,7 +21,7 @@ function applyUpdate(state: any, path: (string | number)[], value: any): any {
   }
 }
 
-function subscribe<T>(socket: Socket, topic: string, args: any[], subscriptionId: string, setState: Dispatch<SetStateAction<T | null | undefined>>) {
+function subscribe<T>(socket: Socket, topic: string, args: any[], subscriptionId: string, setState: Dispatch<SetStateAction<T | undefined>>) {
   const listener = (sId: string, path: (string | number)[], value: any) => {
     if (sId == subscriptionId) {
       setState(state => applyUpdate(state, path, value));
@@ -44,7 +44,7 @@ let lastSubscriptionId = 0;
 
 export function useSubscription<T>(topic: string, ...args: any) {
   const { socket, status } = useSocket();
-  const [state, setState] = useState<T | null>();
+  const [state, setState] = useState<T>();
   useEffect(() => {
     if (socket && status == 'connected') {
       const subscriptionId = ++lastSubscriptionId;
