@@ -6,8 +6,9 @@ defmodule Coflux.Project.Observer.Topics.Task do
     do: [Models.Manifest, Models.Step]
 
   def load(project_id, [repository, target, environment_name]) do
+    # TODO: find latest manifest with target
     with {:ok, environment} <- Store.get_environment_by_name(project_id, environment_name),
-         {:ok, manifest} <- Store.get_manifest(project_id, repository, environment.id),
+         {:ok, manifest} <- Store.find_manifest(project_id, repository, environment.id),
          {:ok, runs} <- Store.list_task_runs(project_id, repository, target, environment.id) do
       case Map.fetch(manifest.tasks, target) do
         {:ok, parameters} ->

@@ -48,7 +48,11 @@ defmodule Coflux.Project.Store do
     {:ok, Repo.one(query, prefix: project_id)}
   end
 
-  def get_manifest(project_id, repository, environment_id) do
+  def get_manifest(project_id, manifest_id) do
+    {:ok, Repo.get!(Models.Manifest, manifest_id, prefix: project_id)}
+  end
+
+  def find_manifest(project_id, repository, environment_id) do
     query =
       from(
         m in Models.Manifest,
