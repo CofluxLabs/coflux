@@ -30,9 +30,9 @@ export default function TasksList({ projectId, environmentName, taskId: activeTa
   } else {
     const tasks = extractTasks(repositories);
     return (
-      <div className="py-2">
-        <div className="flex items-center mt-4 p-1 pl-4">
-          <h2 className="flex-1 font-bold uppercase text-gray-400 text-sm">Tasks</h2>
+      <div className="p-2">
+        <div className="flex items-center mt-4 py-1 px-2">
+          <h2 className="flex-1 font-bold uppercase text-slate-400 text-sm">Tasks</h2>
         </div>
         {tasks.length ? (
           <ul>
@@ -41,9 +41,9 @@ export default function TasksList({ projectId, environmentName, taskId: activeTa
               return (
                 <li key={task.id}>
                   <Link href={`/projects/${projectId}/tasks/${task.id}?environment=${environmentName}`}>
-                    <a className={classNames('block px-4 py-2', isActive ? 'bg-gray-600' : 'hover:bg-gray-600/50')}>
-                      <div className={classNames('font-mono text-gray-100')}>{task.target}</div>
-                      <div className="text-sm text-gray-400">{task.repository}</div>
+                    <a className={classNames('block p-2 my-1 rounded-md leading-none', isActive ? 'bg-slate-200' : 'hover:bg-slate-200/50')}>
+                      <div className={classNames('font-mono text-slate-900')}>{task.target}</div>
+                      <div className="text-sm text-slate-400">{task.repository}</div>
                     </a>
                   </Link>
                 </li>
@@ -51,7 +51,7 @@ export default function TasksList({ projectId, environmentName, taskId: activeTa
             })}
           </ul>
         ) : (
-          <p className="px-4 text-gray-400 italic">No tasks</p>
+          <p className="px-4 text-slate-400 italic">No tasks</p>
         )}
       </div>
     );

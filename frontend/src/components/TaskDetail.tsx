@@ -1,4 +1,4 @@
-import React, { Fragment } from 'react';
+import React from 'react';
 import Router from 'next/router';
 import { maxBy } from 'lodash';
 
@@ -26,13 +26,13 @@ export default function TaskDetail({ projectId, taskId, environmentName }: Props
     return <p>Not found</p>
   } else if (!Object.keys(task.runs).length) {
     return (
-      <Fragment>
+      <div className="px-4 py-3">
         <div className="flex items-center">
-          <Heading><span className="font-mono">{task.target}</span> <span className="text-gray-500">({task.repository})</span></Heading>
+          <Heading className="flex-1"><span className="font-mono">{task.target}</span> <span className="text-gray-500">({task.repository})</span></Heading>
           <RunButton projectId={projectId} repository={repository} target={target} environmentName={environmentName} />
         </div>
-        <p>This task hasn&apos;t been run yet.</p>
-      </Fragment>
+        <p className="text-slate-500">This task hasn&apos;t been run yet.</p>
+      </div>
     );
   } else {
     const latestRun = maxBy(Object.values(task.runs), 'createdAt');

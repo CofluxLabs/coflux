@@ -8,10 +8,10 @@ import * as models from '../models';
 import { useSubscription } from '../hooks/useSocket';
 
 const LOG_LEVELS = {
-  0: ['Debug', 'bg-gray-400'],
-  1: ['Info', 'bg-blue-400'],
-  2: ['Warning', 'bg-yellow-500'],
-  3: ['Error', 'bg-red-600']
+  0: ['Debug', 'text-gray-400'],
+  1: ['Info', 'text-blue-400'],
+  2: ['Warning', 'text-yellow-500'],
+  3: ['Error', 'text-red-600']
 }
 
 type Props = {
@@ -41,24 +41,30 @@ export default function RunLogs({ run, environmentName, activeStepId, activeAtte
               const createdAt = DateTime.fromISO(message.createdAt);
               return (
                 <tr key={index}>
-                  <td className="px-2 text-sm w-20">
+                  <td className="text-sm w-0">
                     <span title={createdAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)}>
                       +{(createdAt.diff(startTime).toMillis())}ms
                     </span>
                   </td>
-                  <td className="px-2 w-48">
-                    {step && attempt && (
-                    <Link href={`/projects/project_1/runs/${run.id}/logs${environmentName ? `?environment=${environmentName}` : ''}${isActive ? '' : `#${step.id}/${attempt.number}`}`}>
-                      <a className={classNames('whitespace-nowrap p-1', isActive && 'ring rounded')}>
-                        <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
-                      </a>
-                    </Link>
-                    )}
+                  <td className="w-0">
+                    <div className="w-40">
+                      {step && attempt && (
+                        <Link href={`/projects/project_1/runs/${run.id}/logs${environmentName ? `?environment=${environmentName}` : ''}${isActive ? '' : `#${step.id}/${attempt.number}`}`}>
+                          <a className={classNames('inline-block whitespace-nowrap px-1 truncate max-w-full rounded', isActive && 'ring ring-offset-2')}>
+                            <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
+                          </a>
+                        </Link>
+                      )}
+                    </div>
                   </td>
-                  <td className="px-2 w-20">
-                    <span className={classNames('rounded p-1 text-xs uppercase text-white mr-1 font-bold', className)}>{name}</span>
+                  <td className="w-0">
+                    <span className={classNames('font-bold pr-1 inline-block', className)} title={name}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
+                        <circle cx="8" cy="8" r="8"/>
+                      </svg>
+                    </span>
                   </td>
-                  <td className="px-2">
+                  <td className="">
                     {message.message}
                   </td>
                 </tr>

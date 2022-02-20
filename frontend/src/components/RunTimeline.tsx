@@ -42,7 +42,7 @@ function Bar({ x1, x2, x0, d, className }: BarProps) {
   const width = Math.max(0.001, x2.diff(x1).toMillis() / d);
   const style = { left: percentage(left), width: percentage(width) };
   return (
-    <div className={classNames('absolute h-6 rounded', className)} style={style}></div>
+    <div className={classNames('absolute h-2 rounded', className)} style={style}></div>
   );
 }
 
@@ -91,11 +91,11 @@ export default function RunTimeline({ run, environmentName, activeStepId }: Prop
   const totalMillis = latestTime.diff(earliestTime).toMillis();
   const steps = sortBy(Object.values(run.steps).filter(s => !s.cached), 'createdAt');
   return (
-    <div className="relative divide-y divide-gray-200">
+    <div className="">
       <div className="flex">
         <div className="w-40 truncate self-center mr-2">
         </div>
-        <div className="flex-1 text-right">
+        <div className="flex-1 text-right text-slate-400">
           {formatElapsed(totalMillis)}
         </div>
       </div>
@@ -104,17 +104,17 @@ export default function RunTimeline({ run, environmentName, activeStepId }: Prop
         const stepFinishedAt = (latestAttempt ? executionTimes[`${step.id}:${latestAttempt.number}`][2] : null) || latestTime;
         const isActive = step.id == activeStepId;
         return (
-          <div key={step.id} className={classNames('flex rounded px-2', isActive && 'ring ring-offset-2')}>
-            <div className="w-40 truncate self-center mr-2">
+          <div key={step.id} className="flex items-center border-r border-slate-200">
+            <div className="w-40 mr-2 border-r border-slate-200">
               <Link href={buildUrl(run.id, environmentName, isActive ? null : step.id, latestAttempt?.number)}>
-                <a>
+                <a className={classNames('inline-block px-1 max-w-full truncate', isActive && 'rounded ring ring-offset-2')}>
                   <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
                 </a>
               </Link>
             </div>
-            <div className="flex-1 my-2 relative h-6">
+            <div className="flex-1 relative">
               <Link href={buildUrl(run.id, environmentName, isActive ? null : step.id, latestAttempt?.number)}>
-                <a>
+                <a className="block h-2">
                   <Bar x1={stepTimes[step.id]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-100" />
                   {Object.values(step.attempts).map((attempt) => {
                     const [createdAt, assignedAt, resultAt] = executionTimes[`${step.id}:${attempt.number}`];

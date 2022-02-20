@@ -67,9 +67,10 @@ export default function RunSelector({ projectId, repository, target, runId, envi
   return (
     <Menu>
       {({ open }) => (
-        <div className="relative text-lg">
+        <div className="relative">
           <Menu.Button className="relative w-full p-1 pl-2 bg-white border border-gray-300 hover:border-gray-600 rounded">
             <span className="font-mono">{runId}</span>
+            <span className="text-slate-400 text-xs mx-2">▼</span>
           </Menu.Button>
           <Transition
             as={Fragment}

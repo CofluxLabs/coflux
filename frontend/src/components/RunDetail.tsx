@@ -21,7 +21,7 @@ type TabProps = {
 function Tab({ title, href, isActive }: TabProps) {
   return (
     <Link href={href}>
-      <a className={classNames('mr-2 px-3 py-2 rounded-md', isActive ? 'bg-gray-200' : 'bg-gray-100')}>{title}</a>
+      <a className={classNames('inline-block mr-2 px-3 py-1 text-sm', isActive ? 'border-b-4 border-slate-500 text-slate-800' : 'text-slate-500')}>{title}</a>
     </Link>
   );
 }
@@ -50,7 +50,7 @@ function DetailPanel({ stepId, attemptNumber, run, projectId, environmentName, o
       leaveFrom="translate-x-0"
       leaveTo="translate-x-full"
     >
-      <div className="fixed inset-y-0 right-0 w-1/3 bg-slate-100 shadow-xl border-l border-slate-200 h-screen flex">
+      <div className="fixed bottom-0 right-0 top-14 w-1/3 bg-slate-100 border-l border-slate-200 h-screen flex shadow-lg">
         {stepOrPrevious && (
           <StepDetail
             step={stepOrPrevious}
@@ -118,36 +118,41 @@ export default function RunDetail({ projectId, runId, environmentName, activeTab
         <p>Not found</p>
       ) : (
         <Fragment>
-          <div className="flex items-center">
-            <Heading>
-              <Link href={`/projects/${projectId}/tasks/${taskId}?environment=${environmentName || run.environment.name}`}>
-                <a><span className="font-mono">{initialStep.target}</span> <span className="text-gray-500">({initialStep.repository})</span></a>
-              </Link>
-            </Heading>
-            <span className="mx-3">&rarr;</span>
-            <RunSelector
-              projectId={projectId}
-              repository={initialStep.repository}
-              target={initialStep.target}
-              runId={run.id}
-              environmentName={environmentName || run.environment.name}
-            />
-            {environmentName && environmentName != run.environment.name && (
-              <span className="rounded bg-gray-300 text-sm px-1 py-0.5 ml-2">{run.environment.name}</span>
-            )}
-            <RunButton
-              projectId={projectId!}
-              repository={initialStep.repository}
-              target={initialStep.target}
-              environmentName={environmentName || run.environment.name}
-            />
+          <div className="px-4 py-3">
+            <div className="flex items-center">
+              <Heading>
+                <Link href={`/projects/${projectId}/tasks/${taskId}?environment=${environmentName || run.environment.name}`}>
+                  <a><span className="font-mono">{initialStep.target}</span> <span className="text-gray-500">({initialStep.repository})</span></a>
+                </Link>
+              </Heading>
+              <span className="mx-3">&rarr;</span>
+              <RunSelector
+                projectId={projectId}
+                repository={initialStep.repository}
+                target={initialStep.target}
+                runId={run.id}
+                environmentName={environmentName || run.environment.name}
+              />
+              {environmentName && environmentName != run.environment.name && (
+                <span className="rounded bg-gray-300 text-sm px-1 py-0.5 ml-2">{run.environment.name}</span>
+              )}
+              <span className="flex-1"></span>
+              <RunButton
+                projectId={projectId!}
+                repository={initialStep.repository}
+                target={initialStep.target}
+                environmentName={environmentName || run.environment.name}
+              />
+            </div>
           </div>
-          <div className="my-6">
+          <div className="border-b border-slate-300 px-3">
             <Tab title="Overview" href={buildUrl()} isActive={activeTab == 'overview'} />
             <Tab title="Timeline" href={buildUrl('timeline')} isActive={activeTab == 'timeline'} />
             <Tab title="Logs" href={buildUrl('logs')} isActive={activeTab == 'logs'} />
           </div>
-          {children(run)}
+          <div className="p-4 flex-1 overflow-auto">
+            {children(run)}
+          </div>
           <DetailPanel
             stepId={activeStepId}
             attemptNumber={activeAttemptNumber}

@@ -7,5 +7,5 @@ type Props = {
 }
 
 export default function Heading({ className, children }: Props) {
-  return <h1 className={classNames('text-2xl text-gray-900 tracking-tight', className)}>{children}</h1>
+  return <h1 className={classNames('text-xl text-gray-900 tracking-tight', className)}>{children}</h1>
 }
