@@ -10,6 +10,7 @@ import inspect
 import threading
 import os
 import inspect
+import urllib.parse
 
 TARGET_KEY = '_coflux_target'
 BLOB_THRESHOLD = 100
@@ -120,13 +121,6 @@ def _load_module(name):
     return dict(a._coflux_target for a in attrs if hasattr(a, TARGET_KEY))
 
 
-def _serialise_argument(argument):
-    if isinstance(argument, Future):
-        return argument.serialise()
-    else:
-        return ['json', _json_dumps(argument)]
-
-
 def _manifest_parameter(parameter):
     result = {'name': parameter.name}
     if parameter.annotation != inspect.Parameter.empty:
@@ -159,8 +153,9 @@ def _future_argument(argument, client, loop, execution_id):
 
 
 class Client:
-    def __init__(self, project_id, module_name, version, server_host, concurrency=None):
+    def __init__(self, project_id, environment_name, module_name, version, server_host, concurrency=None):
         self._project_id = project_id
+        self._environment_name = environment_name
         self._module_name = module_name
         self._version = version
         self._server_host = server_host
@@ -169,9 +164,11 @@ class Client:
         self._results = {}
         self._executions = {}
         self._semaphore = threading.Semaphore(concurrency or min(32, os.cpu_count() + 4))
+        self._last_heartbeat_sent = None
 
-    def _url(self, scheme, path):
-        return f'{scheme}://{self._server_host}/projects/{self._project_id}{path}'
+    def _url(self, scheme, path, **kwargs):
+        query_string = f'?{urllib.parse.urlencode(kwargs)}' if kwargs else ''
+        return f'{scheme}://{self._server_host}/projects/{self._project_id}{path}{query_string}'
 
     async def _get_blob(self, key):
         # TODO: make blob url configurable
@@ -188,6 +185,16 @@ class Client:
         return key
 
     async def _prepare_result(self, value):
+        if isinstance(value, Future):
+            return value.serialise()
+        json_value = _json_dumps(value)
+        if len(json_value) >= BLOB_THRESHOLD:
+            key = await self._put_blob(json_value)
+            return 'blob', key
+        return 'json', json_value
+
+    # TODO: combine with above
+    async def _serialise_argument(self, value):
         if isinstance(value, Future):
             return value.serialise()
         json_value = _json_dumps(value)
@@ -249,19 +256,26 @@ class Client:
         print(f"Aborting execution ({execution_id})...")
         self._set_execution_status(execution_id, 3)
 
-    async def _send_heartbeats(self, threshold_s=1):
+    def _should_send_heartbeat(self, executions, threshold_s, now):
+        return executions or not self._last_heartbeat_sent or (now - self._last_heartbeat_sent) > threshold_s
+
+    async def _send_heartbeats(self, execution_threshold_s=1, agent_threshold_s=5):
         while True:
             now = time.time()
-            executions = {id: e[2] for id, e in self._executions.items() if now - e[1] > threshold_s}
-            if executions:
+            executions = {id: e[2] for id, e in self._executions.items() if now - e[1] > execution_threshold_s}
+            if self._should_send_heartbeat(executions, agent_threshold_s, now):
                 await self._channel.notify('record_heartbeats', executions)
+                self._last_heartbeat_sent = now
             await asyncio.sleep(1)
 
     async def run(self):
         print(f"Agent starting ({self._module_name}@{self._version})...")
         async with aiohttp.ClientSession() as self._session:
             # TODO: heartbeat (and timeout) value?
-            async with self._session.ws_connect(self._url('ws', '/agent'), heartbeat=5) as websocket:
+            async with self._session.ws_connect(
+                self._url('ws', '/agent', environment=self._environment_name),
+                heartbeat=5,
+            ) as websocket:
                 print(f"Connected ({self._server_host}, {self._project_id}).")
                 # TODO: reset channel?
                 manifest = _generate_manifest(self._targets)
@@ -274,14 +288,14 @@ class Client:
 
     async def schedule_step(self, execution_id, target, arguments, repository=None, cache_key=None):
         repository = repository or self._module_name
-        serialised_arguments = [_serialise_argument(a) for a in arguments]
+        serialised_arguments = [await self._serialise_argument(a) for a in arguments]
         return await self._channel.request(
             'schedule_step', repository, target, serialised_arguments, execution_id, cache_key
         )
 
     async def schedule_task(self, execution_id, target, arguments, repository=None):
         repository = repository or self._module_name
-        serialised_arguments = [_serialise_argument(a) for a in arguments]
+        serialised_arguments = [await self._serialise_argument(a) for a in arguments]
         return await self._channel.request('schedule_task', repository, target, serialised_arguments, execution_id)
 
     async def log_message(self, execution_id, level, message):
