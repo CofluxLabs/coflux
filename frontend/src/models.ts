@@ -4,7 +4,8 @@ export type Parameter = {
   default: string;
 }
 
-export type Repository = {
+export type Manifest = {
+  repository: string;
   version: string;
   tasks: Record<string, Parameter[]>;
   sensors: string[];
