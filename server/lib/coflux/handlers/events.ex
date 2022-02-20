@@ -60,8 +60,7 @@ defmodule Coflux.Handlers.Events do
         end
 
       "start_run" ->
-        [task_id, environment_name, arguments] = message["params"]
-        [repository, target] = String.split(task_id, ":", parts: 2)
+        [repository, target, environment_name, arguments] = message["params"]
         arguments = Enum.map(arguments, &parse_argument/1)
 
         # TODO: prevent scheduling unrecognised tasks?
