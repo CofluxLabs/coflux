@@ -5,9 +5,10 @@ defmodule Coflux.Project.Observer.Topics.Task do
   def models(),
     do: [Models.Manifest, Models.Step]
 
-  def load(project_id, [repository, target]) do
-    with {:ok, manifest} <- Store.get_manifest(project_id, repository),
-         {:ok, runs} <- Store.list_task_runs(project_id, repository, target) do
+  def load(project_id, [repository, target, environment_name]) do
+    with {:ok, environment} <- Store.get_environment_by_name(project_id, environment_name),
+         {:ok, manifest} <- Store.get_manifest(project_id, repository, environment.id),
+         {:ok, runs} <- Store.list_task_runs(project_id, repository, target, environment.id) do
       case Map.fetch(manifest.tasks, target) do
         {:ok, parameters} ->
           runs =

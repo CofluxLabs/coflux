@@ -60,30 +60,47 @@ defmodule Coflux.Handlers.Events do
         end
 
       "start_run" ->
-        [task_id, arguments] = message["params"]
+        [task_id, environment_name, arguments] = message["params"]
         [repository, target] = String.split(task_id, ":", parts: 2)
         arguments = Enum.map(arguments, &parse_argument/1)
 
         # TODO: prevent scheduling unrecognised tasks?
-        case Project.schedule_task(state.project_id, repository, target, arguments) do
-          {:ok, run_id} ->
-            {[result_message(message["id"], run_id)], state}
+        with {:ok, environment} <-
+               Project.get_environment_by_name(state.project_id, environment_name) do
+          case Project.schedule_task(
+                 state.project_id,
+                 environment.id,
+                 repository,
+                 target,
+                 arguments
+               ) do
+            {:ok, run_id} ->
+              {[result_message(message["id"], run_id)], state}
+          end
         end
 
       "rerun_step" ->
-        [run_id, step_id] = message["params"]
+        [run_id, step_id, environment_name] = message["params"]
 
-        case Project.rerun_step(state.project_id, run_id, step_id) do
-          {:ok, attempt} ->
-            {[result_message(message["id"], attempt)], state}
+        with {:ok, environment} <-
+               Project.get_environment_by_name(state.project_id, environment_name) do
+          case Project.rerun_step(state.project_id, run_id, step_id,
+                 environment_id: environment.id
+               ) do
+            {:ok, attempt} ->
+              {[result_message(message["id"], attempt)], state}
+          end
         end
 
       "activate_sensor" ->
-        [repository, target] = message["params"]
+        [repository, target, environment_name] = message["params"]
 
-        case Project.activate_sensor(state.project_id, repository, target) do
-          {:ok, activation_id} ->
-            {[result_message(message["id"], activation_id)], state}
+        with {:ok, environment} <-
+               Project.get_environment_by_name(state.project_id, environment_name) do
+          case Project.activate_sensor(state.project_id, environment.id, repository, target) do
+            {:ok, activation_id} ->
+              {[result_message(message["id"], activation_id)], state}
+          end
         end
 
       "deactivate_sensor" ->

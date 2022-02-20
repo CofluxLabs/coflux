@@ -2,17 +2,31 @@ defmodule Coflux.Handlers.Agent do
   alias Coflux.Project
 
   def init(req, _opts) do
-    bindings = :cowboy_req.bindings(req)
-    {:cowboy_websocket, req, bindings[:project]}
+    project_id = req |> :cowboy_req.bindings() |> Map.fetch!(:project)
+
+    {"environment", environment_name} =
+      req |> :cowboy_req.parse_qs() |> List.keyfind!("environment", 0)
+
+    {:cowboy_websocket, req, {project_id, environment_name}}
   end
 
-  def websocket_init(project_id) do
+  def websocket_init({project_id, environment_name}) do
     # TODO: authenticate
     # TODO: monitor project server?
     # TODO: support resuming session
-    case Project.create_session(project_id) do
-      {:ok, session_id} ->
-        {[], %{project_id: project_id, session_id: session_id, requests: %{}}}
+
+    case Project.get_environment_by_name(project_id, environment_name, create: true) do
+      {:ok, environment} ->
+        case Project.create_session(project_id, environment.id) do
+          {:ok, session_id} ->
+            {[],
+             %{
+               project_id: project_id,
+               environment_id: environment.id,
+               session_id: session_id,
+               requests: %{}
+             }}
+        end
     end
   end
 
@@ -41,7 +55,12 @@ defmodule Coflux.Handlers.Agent do
         arguments = Enum.map(arguments, &parse_argument/1)
 
         # TODO: prevent scheduling unrecognised tasks?
-        case Project.schedule_task(state.project_id, repository, target, arguments,
+        case Project.schedule_task(
+               state.project_id,
+               state.environment_id,
+               repository,
+               target,
+               arguments,
                execution_id: parent_id
              ) do
           {:ok, run_id} ->
@@ -52,7 +71,13 @@ defmodule Coflux.Handlers.Agent do
         [repository, target, arguments, parent_id, cache_key] = message["params"]
         arguments = Enum.map(arguments, &parse_argument/1)
 
-        case Project.schedule_step(state.project_id, parent_id, repository, target, arguments,
+        case Project.schedule_step(
+               state.project_id,
+               state.environment_id,
+               parent_id,
+               repository,
+               target,
+               arguments,
                cache_key: cache_key
              ) do
           {:ok, execution_id} ->
@@ -84,7 +109,12 @@ defmodule Coflux.Handlers.Agent do
       "get_result" ->
         [execution_id, from_execution_id] = message["params"]
 
-        case Project.get_execution_result(state.project_id, execution_id, from_execution_id, self()) do
+        case Project.get_execution_result(
+               state.project_id,
+               execution_id,
+               from_execution_id,
+               self()
+             ) do
           {:ok, result} ->
             {[result_message(message["id"], compose_result(result))], state}
 

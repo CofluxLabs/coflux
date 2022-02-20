@@ -28,12 +28,20 @@ defmodule Coflux.Project.Orchestrator.Server do
     {:ok, %State{project_id: project_id}}
   end
 
-  def handle_call({:register_targets, repository, version, manifest, pid}, _from, state) do
+  def handle_call(
+        {:register_targets, environment_id, repository, version, manifest, pid},
+        _from,
+        state
+      ) do
     _ref = Process.monitor(pid)
 
     state =
       Enum.reduce(manifest, state, fn {target, _config}, state ->
-        put_in(state, [Access.key(:targets), Access.key({repository, target}, %{}), pid], version)
+        put_in(
+          state,
+          [Access.key(:targets), Access.key({repository, target, environment_id}, %{}), pid],
+          version
+        )
       end)
 
     state = try_schedule_executions(state)
@@ -132,8 +140,9 @@ defmodule Coflux.Project.Orchestrator.Server do
     case Store.list_pending_executions(state.project_id) do
       {:ok, executions} ->
         Enum.reduce(executions, state, fn execution, state ->
-          with {:ok, pid_map} <-
-                 Map.fetch(state.targets, {execution.repository, execution.target}),
+          target = {execution.repository, execution.target, execution.environment_id}
+
+          with {:ok, pid_map} <- Map.fetch(state.targets, target),
                {:ok, pid} <- find_agent(pid_map),
                :ok <- Store.assign_execution(state.project_id, execution) do
             send(pid, {:execute, execution.id, execution.target, execution.arguments})
@@ -147,7 +156,7 @@ defmodule Coflux.Project.Orchestrator.Server do
   end
 
   defp find_agent(pid_map) do
-    # TODO: filter against version (and tags)
+    # TODO: filter against version
     if Enum.empty?(pid_map) do
       :error
     else

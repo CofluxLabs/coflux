@@ -6,7 +6,7 @@ defmodule Coflux.Project.Models.Execution do
     field :repository, :string
     field :target, :string
     field :arguments, {:array, Types.Argument}
-    field :tags, {:array, :string}
+    belongs_to :environment, Models.Environment
     field :priority, :integer
     field :version, :string
     field :execute_after, :utc_datetime

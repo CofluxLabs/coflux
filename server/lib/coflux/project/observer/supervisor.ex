@@ -37,6 +37,7 @@ defmodule Coflux.Project.Observer.Supervisor do
 
         case DynamicSupervisor.start_child(@supervisor, spec) do
           {:ok, pid} -> {:ok, pid}
+          {:error, reason} -> {:error, reason}
         end
     end
   end

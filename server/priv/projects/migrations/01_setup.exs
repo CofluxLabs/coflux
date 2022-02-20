@@ -43,8 +43,18 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
 
     create_notify_trigger("manifests")
 
+    create table("environments") do
+      add :name, :string, null: false
+      add :created_at, :utc_datetime_usec, null: false
+    end
+
+    create unique_index("environments", [:name])
+
+    create_notify_trigger("environments")
+
     create table("sessions", primary_key: false) do
       add :id, :uuid, null: false, primary_key: true
+      add :environment_id, references("environments", on_delete: :delete_all), null: false
       add :created_at, :utc_datetime_usec, null: false
     end
 
@@ -63,7 +73,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       add :repository, :string, null: false
       add :target, :string, null: false
       add :arguments, {:array, :string}, null: false
-      add :tags, {:array, :string}, null: false
+      add :environment_id, references("environments", on_delete: :delete_all), null: false
       add :priority, :integer, null: false
       add :version, :string
       add :execute_after, :utc_datetime
@@ -118,7 +128,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
 
     create table("runs", primary_key: false) do
       add :id, :bytea, null: false, primary_key: true
-      add :tags, {:array, :string}, null: false
+      add :environment_id, references("environments", on_delete: :delete_all), null: false
       add :execution_id, references("executions", type: :uuid, on_delete: :nilify_all)
       add :idempotency_key, :string
       add :created_at, :utc_datetime_usec, null: false
@@ -135,7 +145,6 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
       add :repository, :string, null: false
       add :target, :string, null: false
       add :arguments, {:array, :string}, null: false
-      add :tags, {:array, :string}, null: false
       add :priority, :integer, null: false
       add :cache_key, :string
       add :cached_run_id, references("runs", type: :bytea, on_delete: :nilify_all)
@@ -165,7 +174,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create table("sensor_activations") do
       add :repository, :string, null: false
       add :target, :string, null: false
-      add :tags, {:array, :string}, null: false
+      add :environment_id, references("environments", on_delete: :delete_all), null: false
       add :created_at, :utc_datetime_usec, null: false
     end
 

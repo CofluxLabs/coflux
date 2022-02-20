@@ -4,43 +4,61 @@ defmodule Coflux.Project.Store do
 
   import Ecto.Query, only: [from: 2]
 
-  def list_repositories(project_id) do
-    # TODO: include/merge all recent manifests (based on agent connection)?
+  def list_manifests(project_id, environment_id) do
     query =
       from(
         m in Models.Manifest,
-        distinct: m.repository,
-        order_by: [desc: m.created_at]
-      )
-
-    repositories =
-      query
-      |> Repo.all(prefix: project_id)
-      |> Map.new(fn manifest ->
-        {manifest.repository, Map.take(manifest, [:version, :tasks, :sensors])}
-      end)
-
-    {:ok, repositories}
-  end
-
-  def list_task_runs(project_id, repository, target) do
-    query =
-      from(r in Models.Run,
-        join: s in Models.Step,
-        on: s.run_id == r.id,
-        where: is_nil(s.parent_attempt) and s.repository == ^repository and s.target == ^target
+        left_join: sm in Models.SessionManifest,
+        on: sm.manifest_id == m.id,
+        left_join: s in Models.Session,
+        on: s.id == sm.session_id,
+        where: s.environment_id == ^environment_id,
+        distinct: [m.id],
+        order_by: [m.id, desc: sm.created_at],
+        select: {m, sm}
       )
 
     {:ok, Repo.all(query, prefix: project_id)}
   end
 
-  def get_manifest(project_id, repository) do
-    # TODO: get manifest based on agent connection?
+  def list_task_runs(project_id, repository, target, environment_id) do
+    query =
+      from(r in Models.Run,
+        join: s in Models.Step,
+        on: s.run_id == r.id,
+        where: is_nil(s.parent_attempt) and s.repository == ^repository and s.target == ^target,
+        where: r.environment_id == ^environment_id,
+        order_by: [desc: r.created_at]
+      )
+
+    {:ok, Repo.all(query, prefix: project_id)}
+  end
+
+  def get_latest_task_run(project_id, repository, target, environment_id) do
+    query =
+      from(r in Models.Run,
+        join: s in Models.Step,
+        on: s.run_id == r.id,
+        where: is_nil(s.parent_attempt) and s.repository == ^repository and s.target == ^target,
+        where: r.environment_id == ^environment_id,
+        order_by: [desc: r.created_at],
+        limit: 1
+      )
+
+    {:ok, Repo.one(query, prefix: project_id)}
+  end
+
+  def get_manifest(project_id, repository, environment_id) do
     query =
       from(
         m in Models.Manifest,
+        left_join: sm in Models.SessionManifest,
+        on: sm.manifest_id == m.id,
+        left_join: s in Models.Session,
+        on: s.id == sm.session_id,
         where: m.repository == ^repository,
-        order_by: [desc: m.created_at],
+        where: s.environment_id == ^environment_id,
+        order_by: [desc: sm.created_at],
         limit: 1
       )
 
@@ -99,8 +117,8 @@ defmodule Coflux.Project.Store do
 
   def get_step_latest_attempt(project_id, run_id, step_id) do
     query =
-      from(e in Models.Attempt,
-        where: e.run_id == ^run_id and e.step_id == ^step_id,
+      from(a in Models.Attempt,
+        where: a.run_id == ^run_id and a.step_id == ^step_id,
         order_by: [desc: :number],
         limit: 1
       )
@@ -111,10 +129,48 @@ defmodule Coflux.Project.Store do
     end
   end
 
-  def create_session(project_id) do
-    case Repo.insert(%Models.Session{created_at: DateTime.utc_now()}, prefix: project_id) do
+  def create_session(project_id, environment_id) do
+    case Repo.insert(
+           %Models.Session{environment_id: environment_id, created_at: DateTime.utc_now()},
+           prefix: project_id
+         ) do
       {:ok, session} ->
         {:ok, session.id}
+    end
+  end
+
+  def get_session(project_id, session_id) do
+    {:ok, Repo.get!(Models.Session, session_id, prefix: project_id)}
+  end
+
+  def list_environments(project_id) do
+    # TODO: just list recently used?
+    {:ok, Repo.all(Models.Environment, prefix: project_id)}
+  end
+
+  def get_environment(project_id, environment_id) do
+    case Repo.get(Models.Environment, environment_id, prefix: project_id) do
+      nil -> {:error, :not_found}
+      environment -> {:ok, environment}
+    end
+  end
+
+  def get_environment_by_name(project_id, name, opts \\ []) do
+    case Repo.get_by(Models.Environment, [name: name], prefix: project_id) do
+      nil ->
+        if opts[:create] do
+          with {:error, _} <-
+                 Repo.insert(%Models.Environment{name: name, created_at: DateTime.utc_now()},
+                   prefix: project_id
+                 ) do
+            {:ok, Repo.get_by!(Models.Environment, [name: name], prefix: project_id)}
+          end
+        else
+          :error
+        end
+
+      environment ->
+        {:ok, environment}
     end
   end
 
@@ -171,9 +227,7 @@ defmodule Coflux.Project.Store do
     end)
   end
 
-  def schedule_task(project_id, repository, target, arguments, opts \\ []) do
-    run_tags = Keyword.get(opts, :run_tags, [])
-    step_tags = Keyword.get(opts, :step_tags, [])
+  def schedule_task(project_id, environment_id, repository, target, arguments, opts \\ []) do
     priority = Keyword.get(opts, :priority, 0)
     version = Keyword.get(opts, :version)
     execution_id = Keyword.get(opts, :execution_id)
@@ -194,7 +248,7 @@ defmodule Coflux.Project.Store do
           Repo.insert!(
             %Models.Run{
               id: Base.encode32(:rand.bytes(10)),
-              tags: run_tags,
+              environment_id: environment_id,
               execution_id: execution_id,
               idempotency_key: idempotency_key,
               created_at: now
@@ -204,7 +258,7 @@ defmodule Coflux.Project.Store do
 
         do_schedule_step(project_id, run, repository, target, arguments,
           now: now,
-          tags: step_tags,
+          environment_id: environment_id,
           priority: priority,
           version: version
         )
@@ -214,8 +268,15 @@ defmodule Coflux.Project.Store do
     end)
   end
 
-  def schedule_step(project_id, from_execution_id, repository, target, arguments, opts \\ []) do
-    tags = Keyword.get(opts, :tags, [])
+  def schedule_step(
+        project_id,
+        environment_id,
+        from_execution_id,
+        repository,
+        target,
+        arguments,
+        opts \\ []
+      ) do
     priority = Keyword.get(opts, :priority, 0)
     version = Keyword.get(opts, :version)
     cache_key = Keyword.get(opts, :cache_key)
@@ -230,7 +291,7 @@ defmodule Coflux.Project.Store do
       execution_id =
         do_schedule_step(project_id, run, repository, target, arguments,
           now: now,
-          tags: tags,
+          environment_id: environment_id,
           priority: priority,
           version: version,
           parent_step_id: from_attempt.step_id,
@@ -244,6 +305,7 @@ defmodule Coflux.Project.Store do
 
   def rerun_step(project_id, run_id, step_id, opts \\ []) do
     version = Keyword.get(opts, :version)
+    environment_id = Keyword.fetch!(opts, :environment_id)
     now = DateTime.utc_now()
     step = Repo.get_by!(Models.Step, [run_id: run_id, id: step_id], prefix: project_id)
     {:ok, last_attempt} = get_step_latest_attempt(project_id, run_id, step_id)
@@ -255,7 +317,7 @@ defmodule Coflux.Project.Store do
           repository: step.repository,
           target: step.target,
           arguments: step.arguments,
-          tags: step.tags,
+          environment_id: environment_id,
           priority: step.priority,
           version: version,
           created_at: now
@@ -388,16 +450,14 @@ defmodule Coflux.Project.Store do
     :ok
   end
 
-  def activate_sensor(project_id, repository, target, opts \\ []) do
-    tags = Keyword.get(opts, :tags, [])
-
+  def activate_sensor(project_id, environment_id, repository, target) do
     Repo.transaction(fn ->
       activation =
         Repo.insert!(
           %Models.SensorActivation{
             repository: repository,
             target: target,
-            tags: tags,
+            environment_id: environment_id,
             created_at: DateTime.utc_now()
           },
           prefix: project_id
@@ -547,7 +607,7 @@ defmodule Coflux.Project.Store do
             repository: activation.repository,
             target: activation.target,
             arguments: [argument],
-            tags: activation.tags,
+            environment_id: activation.environment_id,
             priority: 0,
             created_at: now
           },
@@ -624,7 +684,7 @@ defmodule Coflux.Project.Store do
 
   defp do_schedule_step(project_id, run, repository, target, arguments, opts) do
     now = Keyword.fetch!(opts, :now)
-    tags = Keyword.fetch!(opts, :tags)
+    environment_id = Keyword.fetch!(opts, :environment_id)
     priority = Keyword.fetch!(opts, :priority)
     version = Keyword.fetch!(opts, :version)
     parent_step_id = Keyword.get(opts, :parent_step_id)
@@ -655,7 +715,6 @@ defmodule Coflux.Project.Store do
           repository: repository,
           target: target,
           arguments: arguments,
-          tags: run.tags ++ tags,
           priority: priority,
           cache_key: unless(cached_step, do: cache_key),
           cached_run_id: if(cached_step, do: cached_step.run_id),
@@ -685,7 +744,7 @@ defmodule Coflux.Project.Store do
               repository: step.repository,
               target: step.target,
               arguments: step.arguments,
-              tags: step.tags,
+              environment_id: environment_id,
               priority: step.priority,
               version: version,
               created_at: now

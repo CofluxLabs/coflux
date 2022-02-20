@@ -3,6 +3,7 @@ defmodule Coflux.Project.Models.Session do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   schema "sessions" do
+    belongs_to :environment, Models.Environment
     field :created_at, :utc_datetime_usec
   end
 end

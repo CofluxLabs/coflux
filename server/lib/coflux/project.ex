@@ -21,25 +21,55 @@ defmodule Coflux.Project do
     File.write!(path, content)
   end
 
-  def create_session(project_id) do
-    Store.create_session(project_id)
+  def create_session(project_id, environment_id) do
+    Store.create_session(project_id, environment_id)
+  end
+
+  def get_environment(project_id, environment_id) do
+    Store.get_environment(project_id, environment_id)
+  end
+
+  def get_environment_by_name(project_id, environment_name, opts \\ []) do
+    Store.get_environment_by_name(project_id, environment_name, opts)
   end
 
   def register(project_id, session_id, repository, version, manifest, pid) do
     Store.register_targets(project_id, session_id, repository, version, manifest)
-    call_orchestrator(project_id, {:register_targets, repository, version, manifest, pid})
+    # TODO: of pass in environment_id?
+    {:ok, session} = Store.get_session(project_id, session_id)
+
+    call_orchestrator(
+      project_id,
+      {:register_targets, session.environment_id, repository, version, manifest, pid}
+    )
   end
 
-  def schedule_task(project_id, repository, target, arguments \\ [], opts \\ []) do
-    Store.schedule_task(project_id, repository, target, arguments, opts)
+  def schedule_task(project_id, environment_id, repository, target, arguments \\ [], opts \\ []) do
+    Store.schedule_task(project_id, environment_id, repository, target, arguments, opts)
   end
 
-  def schedule_step(project_id, parent_id, repository, target, arguments \\ [], opts \\ []) do
-    Store.schedule_step(project_id, parent_id, repository, target, arguments, opts)
+  def schedule_step(
+        project_id,
+        environment_id,
+        parent_id,
+        repository,
+        target,
+        arguments \\ [],
+        opts \\ []
+      ) do
+    Store.schedule_step(
+      project_id,
+      environment_id,
+      parent_id,
+      repository,
+      target,
+      arguments,
+      opts
+    )
   end
 
-  def rerun_step(project_id, run_id, step_id) do
-    Store.rerun_step(project_id, run_id, step_id)
+  def rerun_step(project_id, run_id, step_id, opts \\ []) do
+    Store.rerun_step(project_id, run_id, step_id, opts)
   end
 
   def record_heartbeats(project_id, executions) do
@@ -70,8 +100,8 @@ defmodule Coflux.Project do
     end
   end
 
-  def activate_sensor(project_id, sensor_id, opts \\ []) do
-    Store.activate_sensor(project_id, sensor_id, opts)
+  def activate_sensor(project_id, environment_id, repository, target) do
+    Store.activate_sensor(project_id, environment_id, repository, target)
   end
 
   def deactivate_sensor(project_id, activation_id) do

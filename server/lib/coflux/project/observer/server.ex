@@ -5,6 +5,7 @@ defmodule Coflux.Project.Observer.Server do
   alias Coflux.Project.Observer.Topics
 
   @topics %{
+    "environments" => Topics.Environments,
     "repositories" => Topics.Repositories,
     "run_logs" => Topics.RunLogs,
     "run" => Topics.Run,
@@ -19,21 +20,31 @@ defmodule Coflux.Project.Observer.Server do
   end
 
   def init({project_id, topic, arguments}) do
-    IO.puts("Observer started (#{project_id}, #{topic}) with arguments: #{inspect(arguments)}")
+    IO.puts("Starting observer (#{project_id}, #{topic}; #{inspect(arguments)})...")
 
-    module = Map.fetch!(@topics, topic)
-    :ok = Listener.subscribe(Coflux.ProjectsListener, project_id, self(), module.models())
-    {:ok, value, module_state} = module.load(project_id, arguments)
+    case Map.fetch(@topics, topic) do
+      {:ok, module} ->
+        :ok = Listener.subscribe(Coflux.ProjectsListener, project_id, self(), module.models())
 
-    # TODO: timeout
-    {:ok,
-     %{
-       project_id: project_id,
-       module: module,
-       subscribers: %{},
-       value: value,
-       module_state: module_state
-     }}
+        case module.load(project_id, arguments) do
+          {:ok, value, module_state} ->
+            # TODO: timeout
+            {:ok,
+             %{
+               project_id: project_id,
+               module: module,
+               subscribers: %{},
+               value: value,
+               module_state: module_state
+             }}
+
+          {:error, error} ->
+            {:stop, error}
+        end
+
+      :error ->
+        {:stop, :not_found}
+    end
   end
 
   def handle_call({:subscribe, pid}, _from, state) do

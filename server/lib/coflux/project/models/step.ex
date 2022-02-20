@@ -12,7 +12,6 @@ defmodule Coflux.Project.Models.Step do
     field :repository, :string
     field :target, :string
     field :arguments, {:array, Types.Argument}
-    field :tags, {:array, :string}
     field :priority, :integer
     field :cache_key, :string
     field :created_at, :utc_datetime_usec

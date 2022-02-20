@@ -14,6 +14,7 @@ defmodule Coflux.Project.Observer.Topics.Run do
 
   def load(project_id, [run_id]) do
     with {:ok, run} <- Store.get_run(project_id, run_id),
+         {:ok, environment} <- Store.get_environment(project_id, run.environment_id),
          {:ok, steps} <- Store.get_steps(project_id, run_id),
          {:ok, attempts} <- Store.get_attempts(project_id, run_id),
          execution_ids = Enum.map(attempts, & &1.execution_id),
@@ -43,6 +44,7 @@ defmodule Coflux.Project.Observer.Topics.Run do
       result =
         run
         |> Map.take([:id, :tags, :created_at])
+        |> Map.put(:environment, Map.take(environment, [:id, :name]))
         |> Map.put(
           :steps,
           Map.new(steps, fn step ->
