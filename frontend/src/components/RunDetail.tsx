@@ -9,6 +9,7 @@ import ProjectLayout from './ProjectLayout';
 import StepDetail from './StepDetail';
 import { useSubscription } from '../hooks/useSocket';
 import usePrevious from '../hooks/usePrevious';
+import RunSelector from './RunSelector';
 
 type TabProps = {
   href: string;
@@ -116,12 +117,18 @@ export default function RunDetail({ projectId, runId, environmentName, activeTab
         <p>Not found</p>
       ) : (
         <Fragment>
-          <Heading>
+          <Heading className="flex items-center">
             <Link href={`/projects/${projectId}/tasks/${taskId}?environment=${environmentName || run.environment.name}`}>
               <a><span className="font-mono">{initialStep.target}</span> <span className="text-gray-500">({initialStep.repository})</span></a>
             </Link>
             <span className="mx-3">&rarr;</span>
-            <span className="font-mono">{runId}</span>
+            <RunSelector
+              projectId={projectId}
+              repository={initialStep.repository}
+              target={initialStep.target}
+              runId={run.id}
+              environmentName={environmentName || run.environment.name}
+            />
             {environmentName && environmentName != run.environment.name && (
               <span className="rounded bg-gray-300 text-sm px-1 py-0.5 ml-2">{run.environment.name}</span>
             )}
