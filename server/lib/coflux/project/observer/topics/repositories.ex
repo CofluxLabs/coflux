@@ -3,17 +3,25 @@ defmodule Coflux.Project.Observer.Topics.Repositories do
   alias Coflux.Project.Models
 
   def models(),
-    do: [Models.SessionManifest]
+    do: [Models.Environment, Models.SessionManifest]
 
   def load(project_id, [environment_name]) do
-    with {:ok, environment} <- Store.get_environment_by_name(project_id, environment_name),
-         {:ok, manifests} <- Store.list_manifests(project_id, environment.id) do
-      repositories =
-        Map.new(manifests, fn {manifest, session_manifest} ->
-          {manifest.repository, get_value(manifest, session_manifest)}
-        end)
+    case Store.get_environment_by_name(project_id, environment_name) do
+      {:ok, environment} ->
+        load_repositories(project_id, environment)
 
-      {:ok, repositories, %{project_id: project_id, environment_id: environment.id}}
+      :error ->
+        {:ok, %{}, %{project_id: project_id, environment_name: environment_name}}
+    end
+  end
+
+  def handle_insert(%Models.Environment{} = environment, _value, state) do
+    if Map.has_key?(state, :environment_name) && environment.name == state.environment_name do
+      with {:ok, repositories, state} <- load_repositories(state.project_id, environment) do
+        {:ok, [{[], repositories}], state}
+      end
+    else
+      {:ok, [], state}
     end
   end
 
@@ -26,6 +34,17 @@ defmodule Coflux.Project.Observer.Topics.Repositories do
       else
         {:ok, [], state}
       end
+    end
+  end
+
+  defp load_repositories(project_id, environment) do
+    with {:ok, manifests} <- Store.list_manifests(project_id, environment.id) do
+      repositories =
+        Map.new(manifests, fn {manifest, session_manifest} ->
+          {manifest.repository, get_value(manifest, session_manifest)}
+        end)
+
+      {:ok, repositories, %{project_id: project_id, environment_id: environment.id}}
     end
   end
 

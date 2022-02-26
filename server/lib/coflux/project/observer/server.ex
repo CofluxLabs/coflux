@@ -65,11 +65,16 @@ defmodule Coflux.Project.Observer.Server do
 
     value =
       Enum.reduce(updates, state.value, fn {path, path_value}, value ->
-        if is_nil(path_value) do
-          {_, state} = pop_in(value, path)
-          state
-        else
-          put_in(value, path, path_value)
+        cond do
+          path == [] ->
+            nil
+
+          is_nil(path_value) ->
+            {_, value} = pop_in(value, path)
+            value
+
+          true ->
+            put_in(value, path, path_value)
         end
       end)
 
