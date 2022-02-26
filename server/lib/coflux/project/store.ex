@@ -7,14 +7,14 @@ defmodule Coflux.Project.Store do
   def list_manifests(project_id, environment_id) do
     query =
       from(
-        m in Models.Manifest,
-        left_join: sm in Models.SessionManifest,
+        sm in Models.SessionManifest,
+        join: m in Models.Manifest,
         on: sm.manifest_id == m.id,
-        left_join: s in Models.Session,
+        join: s in Models.Session,
         on: s.id == sm.session_id,
         where: s.environment_id == ^environment_id,
-        distinct: [m.id],
-        order_by: [m.id, desc: sm.created_at],
+        distinct: [m.repository],
+        order_by: [m.repository, desc: sm.created_at],
         select: {m, sm}
       )
 
