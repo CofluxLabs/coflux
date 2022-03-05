@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import dagre from 'dagre';
 import classNames from 'classnames';
-import Link from 'next/link';
+import { Link } from 'react-router-dom';
 
 import * as models from '../models';
+import { buildUrl } from '../utils';
 
-function buildGraph(run: models.Run, activeStepId: string | null, activeAttemptNumber: number | null) {
+function buildGraph(run: models.Run, activeStepId: string | undefined, activeAttemptNumber: number | undefined) {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: 'LR', ranksep: 40, nodesep: 40 });
   g.setDefaultEdgeLabel(function () { return {}; });
@@ -41,7 +42,7 @@ function buildGraph(run: models.Run, activeStepId: string | null, activeAttemptN
   return g;
 }
 
-function classNameForResult(result: models.Result | null, isCached: boolean) {
+function classNameForResult(result: models.Result | undefined, isCached: boolean) {
   if (isCached) {
     return 'border-gray-300 bg-gray-50';
   } else if (!result) {
@@ -59,31 +60,31 @@ type StepNodeProps = {
   node: dagre.Node;
   step: models.Step;
   attemptNumber: number;
+  projectId: string;
   runId: string;
-  environmentName: string | null | undefined;
+  environmentName: string | undefined;
   isActive: boolean;
 }
 
-function StepNode({ node, step, attemptNumber, runId, environmentName, isActive }: StepNodeProps) {
+function StepNode({ node, step, attemptNumber, projectId, runId, environmentName, isActive }: StepNodeProps) {
   const attempt = step.attempts[attemptNumber];
   return (
     <div
       className="absolute flex items-center"
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
-      <Link href={`/projects/project_1/runs/${runId}${environmentName ? `?environment=${environmentName}` : ''}${isActive ? '' : `#${step.id}/${attemptNumber}`}`}>
-        <a
-          className={
-            classNames(
-              'flex-1 items-center border block rounded p-2 truncate',
-              classNameForResult(attempt?.result || null, !!step.cached),
-              isActive && 'ring ring-offset-2',
-              { 'font-bold': !step.parent }
-            )
-          }
-        >
-          <span className="font-mono">{step.target}</span>
-        </a>
+      <Link
+        to={buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName, step: isActive ? undefined : step.id, attempt: isActive ? undefined : attemptNumber })}
+        className={
+          classNames(
+            'flex-1 items-center border block rounded p-2 truncate',
+            classNameForResult(attempt?.result || undefined, !!step.cached),
+            isActive && 'ring ring-offset-2',
+            { 'font-bold': !step.parent }
+          )
+        }
+      >
+        <span className="font-mono">{step.target}</span>
       </Link>
     </div>
   );
@@ -91,21 +92,21 @@ function StepNode({ node, step, attemptNumber, runId, environmentName, isActive 
 
 type RunNodeProps = {
   node: dagre.Node;
+  projectId: string;
   runId: string;
+  environmentName: string;
 }
 
-function RunNode({ node, runId }: RunNodeProps) {
+function RunNode({ node, projectId, runId, environmentName }: RunNodeProps) {
   return (
     <div
       className="absolute flex"
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
-      <Link href={`/projects/project_1/runs/${runId}`}>
-        <a className="flex-1 flex items-center border rounded p-2">
-          <div className="flex-1 truncate">
-            <span className="font-mono">{runId}</span>
-          </div>
-        </a>
+      <Link to={buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName })} className="flex-1 flex items-center border rounded p-2">
+        <div className="flex-1 truncate">
+          <span className="font-mono">{runId}</span>
+        </div>
       </Link>
     </div>
   );
@@ -129,12 +130,13 @@ function Edge({ edge }: EdgeProps) {
 
 type Props = {
   run: models.Run;
-  environmentName: string | null | undefined;
-  activeStepId: string | null;
-  activeAttemptNumber: number | null;
+  projectId: string;
+  environmentName: string | undefined;
+  activeStepId: string | undefined;
+  activeAttemptNumber: number | undefined;
 }
 
-export default function RunGraph({ run, environmentName, activeStepId, activeAttemptNumber }: Props) {
+export default function RunGraph({ run, projectId, environmentName, activeStepId, activeAttemptNumber }: Props) {
   const [graph, setGraph] = useState<dagre.graphlib.Graph>();
   useEffect(() => {
     const graph = buildGraph(run, activeStepId, activeAttemptNumber);
@@ -163,6 +165,7 @@ export default function RunGraph({ run, environmentName, activeStepId, activeAtt
                     node={node}
                     step={step}
                     attemptNumber={attemptNumber}
+                    projectId={projectId}
                     runId={run.id}
                     environmentName={environmentName}
                     isActive={nodeId == `${activeStepId}/${activeAttemptNumber}`}
@@ -170,7 +173,7 @@ export default function RunGraph({ run, environmentName, activeStepId, activeAtt
                 );
               } else {
                 return (
-                  <RunNode key={nodeId} node={node} runId={nodeId} />
+                  <RunNode key={nodeId} node={node} projectId={projectId} runId={nodeId} environmentName={environmentName} />
                 );
               }
             } else {

@@ -1,11 +1,12 @@
+import { Fragment } from 'react';
 import { DateTime } from 'luxon';
-import React, { Fragment } from 'react';
 import classNames from 'classnames';
 import { maxBy, sortBy } from 'lodash';
-import Link from 'next/link';
+import { Link } from 'react-router-dom';
 
 import * as models from '../models';
 import useNow from '../hooks/useNow';
+import { buildUrl } from '../utils';
 
 function loadExecutionTimes(run: models.Run): { [key: string]: [DateTime, DateTime | null, DateTime | null] } {
   return Object.values(run.steps).reduce((times, step) => {
@@ -70,19 +71,16 @@ function formatElapsed(millis: number) {
   }
 }
 
-function buildUrl(runId: string, environmentName: string | null | undefined, stepId: string | null, attempt: number | undefined) {
-  return `/projects/project_1/runs/${runId}/timeline${environmentName ? `?environment=${environmentName}` : ''}${stepId ? `#${stepId}${attempt ? `/${attempt}` : ''}` : ''}`;
-}
-
 type Props = {
   run: models.Run;
+  projectId: string;
   environmentName: string | null | undefined;
   activeStepId: string | null;
 }
 
-export default function RunTimeline({ run, environmentName, activeStepId }: Props) {
+export default function RunTimeline({ run, projectId, environmentName, activeStepId }: Props) {
   const running = isRunning(run);
-  const now = useNow(running ? 100 : 0);
+  const now = useNow(running ? 30 : 0);
   const stepTimes = loadStepTimes(run);
   const executionTimes = loadExecutionTimes(run);
   const times = [...(Object.values(stepTimes)), ...(Object.values(executionTimes).flat().filter((t): t is DateTime => t !== null))];
@@ -106,26 +104,28 @@ export default function RunTimeline({ run, environmentName, activeStepId }: Prop
         return (
           <div key={step.id} className="flex items-center border-r border-slate-200">
             <div className="w-40 mr-2 border-r border-slate-200">
-              <Link href={buildUrl(run.id, environmentName, isActive ? null : step.id, latestAttempt?.number)}>
-                <a className={classNames('inline-block px-1 max-w-full truncate', isActive && 'rounded ring ring-offset-2')}>
-                  <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
-                </a>
+              <Link
+                to={buildUrl(`/projects/${projectId}/runs/${run.id}/timeline`, { environment: environmentName, step: (isActive ? undefined : step.id), attempt: (isActive ? undefined : latestAttempt?.number) })}
+                className={classNames('inline-block px-1 max-w-full truncate', isActive && 'rounded ring ring-offset-2')}
+              >
+                <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
               </Link>
             </div>
             <div className="flex-1 relative">
-              <Link href={buildUrl(run.id, environmentName, isActive ? null : step.id, latestAttempt?.number)}>
-                <a className="block h-2">
-                  <Bar x1={stepTimes[step.id]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-100" />
-                  {Object.values(step.attempts).map((attempt) => {
-                    const [createdAt, assignedAt, resultAt] = executionTimes[`${step.id}:${attempt.number}`];
-                    return (
-                      <Fragment key={attempt.number}>
-                        <Bar x1={createdAt} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-200" />
-                        {assignedAt && <Bar x1={assignedAt} x2={resultAt || latestTime} x0={earliestTime} d={totalMillis} className={classNameForResult(attempt.result)} />}
-                      </Fragment>
-                    );
-                  })}
-                </a>
+              <Link
+                to={buildUrl(`/projects/${projectId}/runs/${run.id}/timeline`, { environment: environmentName, step: (isActive ? undefined : step.id), attempt: (isActive ? undefined : latestAttempt?.number) })}
+                className="block h-2"
+              >
+                <Bar x1={stepTimes[step.id]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-100" />
+                {Object.values(step.attempts).map((attempt) => {
+                  const [createdAt, assignedAt, resultAt] = executionTimes[`${step.id}:${attempt.number}`];
+                  return (
+                    <Fragment key={attempt.number}>
+                      <Bar x1={createdAt} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-200" />
+                      {assignedAt && <Bar x1={assignedAt} x2={resultAt || latestTime} x0={earliestTime} d={totalMillis} className={classNameForResult(attempt.result)} />}
+                    </Fragment>
+                  );
+                })}
               </Link>
             </div>
           </div>

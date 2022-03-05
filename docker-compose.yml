@@ -21,7 +21,7 @@ services:
   frontend:
     build: "frontend"
     ports:
-      - "7777:3000"
+      - "7777:7777"
     volumes:
       - "./frontend:/app"
     command: "yarn dev"

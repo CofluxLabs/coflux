@@ -1,10 +1,37 @@
-import { createContext, Dispatch, SetStateAction, useContext, useEffect, useState } from 'react';
+import { createContext, createElement, Dispatch, ReactNode, SetStateAction, useContext, useEffect, useState } from 'react';
 
-import Socket, { SocketStatus } from '../socket';
+import Socket from '../socket';
 
-export const SocketContext = createContext<{ socket?: Socket, status?: SocketStatus }>({});
+const SocketContext = createContext<{ socket?: Socket, status?: SocketStatus }>({});
 
-export default function useSocket() {
+type SocketStatus = 'connecting' | 'connected' | 'disconnected';
+
+type SocketProviderProps = {
+  projectId: string | undefined;
+  children: ReactNode;
+}
+
+export function SocketProvider({ projectId, children }: SocketProviderProps) {
+  const [status, setStatus] = useState<SocketStatus>();
+  const [socket, setSocket] = useState<Socket>();
+  useEffect(() => {
+    if (projectId) {
+      const socket = new Socket(projectId);
+      socket.addListener('connecting', () => setStatus('connecting'));
+      socket.addListener('connected', () => setStatus('connected'));
+      socket.addListener('disconnected', () => setStatus('disconnected'));
+      setStatus('connecting');
+      setSocket(socket);
+      return () => {
+        setSocket(undefined);
+        socket.close();
+      }
+    }
+  }, [projectId]);
+  return createElement(SocketContext.Provider, { value: { socket, status } }, children);
+}
+
+export function useSocket() {
   return useContext(SocketContext);
 }
 
@@ -42,11 +69,11 @@ function subscribe<T>(socket: Socket, topic: string, args: any[], subscriptionId
 
 let lastSubscriptionId = 0;
 
-export function useSubscription<T>(topic: string, ...args: any) {
+export default function useSubscription<T>(topic: string, ...args: any[]) {
   const { socket, status } = useSocket();
   const [state, setState] = useState<T>();
   useEffect(() => {
-    if (socket && status == 'connected') {
+    if (socket && status == 'connected' && !args.some((a) => a === undefined)) {
       const subscriptionId = ++lastSubscriptionId;
       return subscribe(socket, topic, args, subscriptionId.toString(), setState);
     }

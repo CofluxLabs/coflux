@@ -1,11 +1,10 @@
-import React from 'react';
 import { sortBy } from 'lodash';
 import classNames from 'classnames';
-import Link from 'next/link';
 import { DateTime } from 'luxon';
+import { Link } from 'react-router-dom';
 
 import * as models from '../models';
-import { useSubscription } from '../hooks/useSocket';
+import { buildUrl } from '../utils';
 
 const LOG_LEVELS = {
   0: ['Debug', 'text-gray-400'],
@@ -16,13 +15,14 @@ const LOG_LEVELS = {
 
 type Props = {
   run: models.Run;
+  logs: Record<string, models.LogMessage>;
+  projectId: string;
   environmentName: string | null | undefined;
   activeStepId: string | null;
   activeAttemptNumber: number | null;
 }
 
-export default function RunLogs({ run, environmentName, activeStepId, activeAttemptNumber }: Props) {
-  const logs = useSubscription<Record<string, models.LogMessage>>('run_logs', run.id);
+export default function RunLogs({ run, logs, projectId, environmentName, activeStepId, activeAttemptNumber }: Props) {
   const startTime = DateTime.fromISO(run.createdAt);
   return (
     <div>
@@ -49,10 +49,11 @@ export default function RunLogs({ run, environmentName, activeStepId, activeAtte
                   <td className="w-0">
                     <div className="w-40">
                       {step && attempt && (
-                        <Link href={`/projects/project_1/runs/${run.id}/logs${environmentName ? `?environment=${environmentName}` : ''}${isActive ? '' : `#${step.id}/${attempt.number}`}`}>
-                          <a className={classNames('inline-block whitespace-nowrap px-1 truncate max-w-full rounded', isActive && 'ring ring-offset-2')}>
-                            <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
-                          </a>
+                        <Link
+                          to={buildUrl(`/projects/${projectId}/runs/${run.id}/logs`, { environment: environmentName, step: isActive ? undefined : step.id, attempt: isActive ? undefined : attempt.number })}
+                          className={classNames('inline-block whitespace-nowrap px-1 truncate max-w-full rounded', isActive && 'ring ring-offset-2')}
+                        >
+                          <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
                         </Link>
                       )}
                     </div>
@@ -60,7 +61,7 @@ export default function RunLogs({ run, environmentName, activeStepId, activeAtte
                   <td className="w-0">
                     <span className={classNames('font-bold pr-1 inline-block', className)} title={name}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
-                        <circle cx="8" cy="8" r="8"/>
+                        <circle cx="8" cy="8" r="8" />
                       </svg>
                     </span>
                   </td>

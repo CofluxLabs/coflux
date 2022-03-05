@@ -1,9 +1,8 @@
-import React, { Fragment, useCallback, useState } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import classNames from 'classnames';
 
 import * as models from '../models';
-import { useSubscription } from '../hooks/useSocket';
 
 type ParameterProps = {
   parameter: models.Parameter;
@@ -34,22 +33,19 @@ function Parameter({ parameter, value, onChange }: ParameterProps) {
 }
 
 type Props = {
-  repository: string;
-  target: string;
-  environmentName: string;
+  parameters: models.Parameter[];
   open: boolean;
   starting: boolean;
   onRun: (parameters: [string, string][]) => void;
   onClose: () => void;
 }
 
-export default function RunDialog({ repository, target, environmentName, open, starting, onRun, onClose }: Props) {
-  const task = useSubscription<models.Task>('task', repository, target, environmentName);
+export default function RunDialog({ parameters, open, starting, onRun, onClose }: Props) {
   const [values, setValues] = useState<Record<string, string>>({});
   const handleValueChange = useCallback((name, value) => setValues(vs => ({ ...vs, [name]: value })), []);
   const handleRunClick = useCallback(() => {
-    onRun(task!.parameters.map((p) => ['json', values[p.name] || p.default]));
-  }, [task, values, onRun]);
+    onRun(parameters.map((p) => ['json', values[p.name] || p.default]));
+  }, [parameters, values, onRun]);
   return (
     <Transition appear show={open} as={Fragment}>
       <Dialog className="fixed inset-0 z-10 overflow-y-auto" onClose={onClose}>
@@ -78,42 +74,36 @@ export default function RunDialog({ repository, target, environmentName, open, s
               <Dialog.Title className="text-xl font-medium leading-6 text-gray-900">
                 Run task
               </Dialog.Title>
-              {!task ? (
-                <p>Loading...</p>
-              ) : (
-                <Fragment>
-                  {task.parameters.length > 0 && (
-                    <div className="mt-4">
-                      <h3 className="font-bold uppercase text-gray-400 text-sm">Arguments</h3>
-                      {task.parameters.map((parameter) => (
-                        <Parameter
-                          key={parameter.name}
-                          parameter={parameter}
-                          value={values[parameter.name]}
-                          onChange={handleValueChange}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      className={classNames("px-4 py-2 rounded text-white font-bold  mr-2", starting ? 'bg-blue-200' : 'bg-blue-400 hover:bg-blue-500')}
-                      disabled={starting}
-                      onClick={handleRunClick}
-                    >
-                      Run
-                    </button>
-                    <button
-                      type="button"
-                      className="px-4 py-2 border border-blue-400 rounded text-blue-400 font-bold hover:bg-blue-100"
-                      onClick={onClose}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </Fragment>
+              {parameters.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="font-bold uppercase text-gray-400 text-sm">Arguments</h3>
+                  {parameters.map((parameter) => (
+                    <Parameter
+                      key={parameter.name}
+                      parameter={parameter}
+                      value={values[parameter.name]}
+                      onChange={handleValueChange}
+                    />
+                  ))}
+                </div>
               )}
+              <div className="mt-4">
+                <button
+                  type="button"
+                  className={classNames("px-4 py-2 rounded text-white font-bold  mr-2", starting ? 'bg-blue-200' : 'bg-blue-400 hover:bg-blue-500')}
+                  disabled={starting}
+                  onClick={handleRunClick}
+                >
+                  Run
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 border border-blue-400 rounded text-blue-400 font-bold hover:bg-blue-100"
+                  onClick={onClose}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </Transition.Child>
         </div>

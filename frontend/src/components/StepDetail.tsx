@@ -1,13 +1,14 @@
-import React, { CSSProperties, Fragment, ReactNode, useCallback, useState } from 'react';
+import { CSSProperties, Fragment, ReactNode, useCallback, useState } from 'react';
 import classNames from 'classnames';
 import { filter, findKey, sortBy } from 'lodash';
 import { DateTime } from 'luxon';
-import Link from 'next/link';
 import { Listbox, Transition } from '@headlessui/react';
+import { Link, useNavigate } from 'react-router-dom';
 
 import * as models from '../models';
 import Badge from './Badge';
-import useSocket, { useSubscription } from '../hooks/useSocket';
+import useSubscription, { useSocket } from '../hooks/useSubscription';
+import { buildUrl } from '../utils';
 
 function findStepForExecution(run: models.Run, executionId: string) {
   return findKey(run.steps, (s) => Object.values(s.attempts).some((a) => a.executionId == executionId));
@@ -17,16 +18,9 @@ type ResultProps = {
   result: models.Result;
   run: models.Run;
   projectId: string;
-  onFrameUrlChange: (url: string | undefined) => void;
 }
 
-function Result({ result, run, projectId, onFrameUrlChange }: ResultProps) {
-  const handleBlobClick = useCallback((ev) => {
-    if (!ev.ctrlKey) {
-      ev.preventDefault();
-      onFrameUrlChange(ev.target.href);
-    }
-  }, [onFrameUrlChange]);
+function Result({ result, run, projectId }: ResultProps) {
   switch (result.type) {
     case 0:
       return (
@@ -39,7 +33,7 @@ function Result({ result, run, projectId, onFrameUrlChange }: ResultProps) {
         <a
           href={`http://localhost:7070/projects/${projectId}/blobs/${result.value}`}
           className="border border-blue-300 hover:border-blue-600 text-blue-600 text-sm rounded px-2 py-1 my-2 inline-block"
-          onClick={handleBlobClick}
+        // onClick={handleBlobClick}
         >
           Blob
         </a>
@@ -48,10 +42,11 @@ function Result({ result, run, projectId, onFrameUrlChange }: ResultProps) {
       const stepId = findStepForExecution(run, result.value);
       if (stepId) {
         return (
-          <Link href={`/projects/${projectId}/runs/${run.id}#${stepId}`}>
-            <a className="border border-blue-300 hover:border-blue-600 text-blue-600 text-sm rounded px-2 py-1 my-2 inline-block">
-              Result
-            </a>
+          <Link
+            to={`/projects/${projectId}/runs/${run.id}?step=${stepId}`}
+            className="border border-blue-300 hover:border-blue-600 text-blue-600 text-sm rounded px-2 py-1 my-2 inline-block"
+          >
+            Result
           </Link>
         );
       } else {
@@ -98,15 +93,15 @@ type AttemptProps = {
   attempt: models.Attempt;
   run: models.Run;
   projectId: string;
-  onFrameUrlChange: (url: string | undefined) => void;
 }
 
-function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
+function Attempt({ attempt, run, projectId }: AttemptProps) {
   const scheduledAt = DateTime.fromISO(attempt.createdAt);
   const assignedAt = attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null;
   const resultAt = attempt.result && DateTime.fromISO(attempt.result.createdAt);
+  // TODO: subscribe to execution logs
   const logs = useSubscription<Record<string, models.LogMessage>>('run_logs', run.id);
-  const attemptLogs = logs && attempt.executionId !== null && filter(logs, {executionId: attempt.executionId});
+  const attemptLogs = logs && attempt.executionId !== null && filter(logs, { executionId: attempt.executionId });
   return (
     <Fragment>
       <div className="p-4">
@@ -121,7 +116,7 @@ function Attempt({ attempt, run, projectId, onFrameUrlChange }: AttemptProps) {
       {attempt.result && (
         <div className="p-4">
           <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
-          <Result result={attempt.result} run={run} projectId={projectId} onFrameUrlChange={onFrameUrlChange} />
+          <Result result={attempt.result} run={run} projectId={projectId} />
         </div>
       )}
       <div className="p-4">
@@ -186,6 +181,22 @@ function AttemptSelector({ selectedNumber, attempts, onChange, children }: Attem
   );
 }
 
+type ArgumentProps = {
+  argument: string;
+}
+
+function Argument({ argument }: ArgumentProps) {
+  const [type, value] = argument.split(':', 2);
+  switch (type) {
+    case 'json':
+      return `${value}`;
+    case 'result':
+      return `${value} (result)`;
+    case 'blob':
+      return `${value} (blob)`;
+  }
+}
+
 type Props = {
   step: models.Step;
   attemptNumber: number;
@@ -194,20 +205,23 @@ type Props = {
   environmentName: string;
   className?: string;
   style?: CSSProperties;
-  onFrameUrlChange: (url: string | undefined) => void;
 }
 
-export default function StepDetail({ step, attemptNumber, run, projectId, environmentName, className, style, onFrameUrlChange }: Props) {
+export default function StepDetail({ step, attemptNumber, run, projectId, environmentName, className, style }: Props) {
   const { socket } = useSocket();
   const [rerunning, setRerunning] = useState(false);
-  const handleAttemptChange = useCallback((number) => { window.location.hash = `#${step.id}/${number}`; }, [step]);
+  const navigate = useNavigate();
+  const changeAttempt = useCallback((attempt) => {
+    // TODO: keep tab
+    navigate(buildUrl(`/projects/${projectId}/runs/${run.id}`, { environment: environmentName, step: step.id, attempt }));
+  }, [projectId, run, environmentName, step, navigate]);
   const handleRetryClick = useCallback(() => {
     setRerunning(true);
     socket?.request('rerun_step', [run.id, step.id, environmentName], (attempt) => {
       setRerunning(false);
-      handleAttemptChange(attempt);
+      changeAttempt(attempt);
     });
-  }, [socket, run, step, environmentName, handleAttemptChange]);
+  }, [socket, run, step, environmentName, changeAttempt]);
   const attempt = step.attempts[attemptNumber];
   return (
     <div className={classNames('divide-y divide-slate-200 overflow-hidden', className)} style={style}>
@@ -219,7 +233,7 @@ export default function StepDetail({ step, attemptNumber, run, projectId, enviro
           <Badge intent="info" label="Scheduling" />
         ) : (
           <div className="flex">
-            <AttemptSelector selectedNumber={attemptNumber} attempts={step.attempts} onChange={handleAttemptChange}>
+            <AttemptSelector selectedNumber={attemptNumber} attempts={step.attempts} onChange={changeAttempt}>
               {(attempt) => (
                 <div className="flex items-center">
                   <span className="mr-1 flex-1">
@@ -254,7 +268,11 @@ export default function StepDetail({ step, attemptNumber, run, projectId, enviro
           <h3 className="uppercase text-sm font-bold text-slate-400">Arguments</h3>
           <ol className="list-disc list-inside ml-1">
             {step.arguments.map((argument, index) => (
-              <li key={index}><span className="font-mono truncate">{argument}</span></li>
+              <li key={index}>
+                <span className="font-mono truncate">
+                  <Argument argument={argument} />
+                </span>
+              </li>
             ))}
           </ol>
         </div>
@@ -265,7 +283,6 @@ export default function StepDetail({ step, attemptNumber, run, projectId, enviro
           attempt={attempt}
           run={run}
           projectId={projectId}
-          onFrameUrlChange={onFrameUrlChange}
         />
       )}
     </div>

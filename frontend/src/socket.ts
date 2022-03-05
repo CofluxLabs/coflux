@@ -1,5 +1,3 @@
-export type SocketStatus = 'connecting' | 'connected' | 'disconnected';
-
 export default class Socket {
   private socket: WebSocket;
   private closed = false;

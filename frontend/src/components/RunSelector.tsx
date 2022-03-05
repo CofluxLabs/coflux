@@ -1,73 +1,67 @@
-import React, { Fragment } from 'react';
+import { Fragment } from 'react';
 import { Menu, Transition } from '@headlessui/react';
 import { sortBy } from 'lodash';
-import NextLink from 'next/link';
 import classNames from 'classnames';
+import { Link } from 'react-router-dom';
 
 import * as models from '../models';
-import { useSubscription } from '../hooks/useSocket';
-
-type OptionsState = models.Task & {
-  runs: Record<string, models.BaseRun>
-};
+import { buildUrl } from '../utils';
+import { DateTime } from 'luxon';
 
 type OptionsProps = {
+  runs: Record<string, models.BaseRun>;
   projectId: string | null;
-  repository: string;
-  target: string;
-  environmentName: string;
+  environmentName: string | undefined;
   selectedRunId: string;
 }
 
-type LinkProps = React.DetailedHTMLProps<React.AnchorHTMLAttributes<HTMLAnchorElement>, HTMLAnchorElement> & { href: string };
-
-function Link({ href, children, ...rest }: LinkProps) {
-  return (
-    <NextLink href={href}>
-      <a {...rest}>{children}</a>
-    </NextLink>
-  )
-}
-
-function Options({ projectId, repository, target, environmentName, selectedRunId }: OptionsProps) {
-  const task = useSubscription<OptionsState>('task', repository, target, environmentName);
-  if (!task) {
+function Options({ runs, projectId, environmentName, selectedRunId }: OptionsProps) {
+  if (!runs) {
     return <p>Loading...</p>;
-  } else if (!Object.keys(task.runs).length) {
+  } else if (!Object.keys(runs).length) {
     return <p>No runs for {environmentName}</p>;
   } else {
     return (
       <Fragment>
-        {sortBy(Object.values(task.runs), 'createdAt').map((run) => (
-          <Menu.Item key={run.id}>
-            {({ active }) => (
-              <Link
-                href={`/projects/${projectId}/runs/${run.id}`}
-                className={classNames('block p-2 font-mono', run.id == selectedRunId && 'font-bold', active && 'bg-slate-100')}
-              >
-                {run.id}
-              </Link>
-            )}
-          </Menu.Item>
-        ))}
+        {sortBy(Object.values(runs), 'createdAt').reverse().map((run) => {
+          const createdAt = DateTime.fromISO(run.createdAt);
+          return (
+            <Menu.Item key={run.id}>
+              {({ active }) => (
+                <Link
+                  to={buildUrl(`/projects/${projectId}/runs/${run.id}`, { environment: environmentName })}
+                  className={classNames('block p-2', active && 'bg-slate-100')}
+                >
+                  <h3 className={classNames('font-mono', run.id == selectedRunId && 'font-bold')}>{run.id}</h3>
+                  <p
+                    className="text-xs text-gray-500"
+                    title={createdAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)}
+                  >
+                    {createdAt.toRelative()} ago
+                  </p>
+                </Link>
+              )}
+            </Menu.Item>
+          );
+        })}
       </Fragment>
     );
   }
 }
 
 type Props = {
+  runs: Record<string, models.BaseRun>;
   projectId: string | null;
-  repository: string;
-  target: string;
   runId: string;
-  environmentName: string;
+  environmentName: string | undefined;
+  className?: string;
 }
 
-export default function RunSelector({ projectId, repository, target, runId, environmentName }: Props) {
+export default function RunSelector({ runs, projectId, runId, environmentName, className }: Props) {
   return (
     <Menu>
       {({ open }) => (
-        <div className="relative">
+        <div className={classNames(className, 'relative')}>
           <Menu.Button className="relative w-full p-1 pl-2 bg-white border border-gray-300 hover:border-gray-600 rounded">
             <span className="font-mono">{runId}</span>
             <span className="text-slate-400 text-xs mx-2">▼</span>
@@ -80,7 +74,7 @@ export default function RunSelector({ projectId, repository, target, runId, envi
           >
             <Menu.Items className="absolute z-10 py-1 mt-1 overflow-y-scroll text-base bg-white rounded shadow-lg max-h-60" static={true}>
               {open && (
-                <Options projectId={projectId} repository={repository} target={target} environmentName={environmentName} selectedRunId={runId} />
+                <Options runs={runs} projectId={projectId} environmentName={environmentName} selectedRunId={runId} />
               )}
             </Menu.Items>
           </Transition>

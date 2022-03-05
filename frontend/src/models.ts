@@ -11,13 +11,6 @@ export type Manifest = {
   sensors: string[];
 }
 
-export type Task = {
-  repository: string;
-  target: string;
-  version: string;
-  parameters: Parameter[];
-}
-
 export type Environment = {
   id: number;
   name: string;
@@ -27,6 +20,14 @@ export type BaseRun = {
   id: string;
   createdAt: string;
   // TODO: ?
+}
+
+export type Task = {
+  repository: string;
+  target: string;
+  version: string;
+  parameters: Parameter[];
+  runs: Record<string, BaseRun>;
 }
 
 export type Run = BaseRun & {
