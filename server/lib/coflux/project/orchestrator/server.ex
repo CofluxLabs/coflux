@@ -140,10 +140,7 @@ defmodule Coflux.Project.Orchestrator.Server do
     case Store.list_pending_executions(state.project_id) do
       {:ok, executions} ->
         Enum.reduce(executions, state, fn execution, state ->
-          target = {execution.repository, execution.target, execution.environment_id}
-
-          with {:ok, pid_map} <- Map.fetch(state.targets, target),
-               {:ok, pid} <- find_agent(pid_map),
+          with {:ok, pid} <- find_agent(state, execution),
                :ok <- Store.assign_execution(state.project_id, execution) do
             send(pid, {:execute, execution.id, execution.target, execution.arguments})
             put_in(state.executions[execution.id], pid)
@@ -155,11 +152,10 @@ defmodule Coflux.Project.Orchestrator.Server do
     end
   end
 
-  defp find_agent(pid_map) do
+  defp find_agent(state, execution) do
+    target = {execution.repository, execution.target, execution.environment_id}
     # TODO: filter against version
-    if Enum.empty?(pid_map) do
-      :error
-    else
+    with {:ok, pid_map} <- Map.fetch(state.targets, target) do
       {:ok, Enum.random(Map.keys(pid_map))}
     end
   end
