@@ -32,7 +32,7 @@ function Result({ result, run, projectId }: ResultProps) {
       return (
         <a
           href={`http://localhost:7070/projects/${projectId}/blobs/${result.value}`}
-          className="border border-blue-300 hover:border-blue-600 text-blue-600 text-sm rounded px-2 py-1 my-2 inline-block"
+          className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
         // onClick={handleBlobClick}
         >
           Blob
@@ -44,7 +44,7 @@ function Result({ result, run, projectId }: ResultProps) {
         return (
           <Link
             to={`/projects/${projectId}/runs/${run.id}?step=${stepId}`}
-            className="border border-blue-300 hover:border-blue-600 text-blue-600 text-sm rounded px-2 py-1 my-2 inline-block"
+            className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
           >
             Result
           </Link>
@@ -151,7 +151,7 @@ function AttemptSelector({ selectedNumber, attempts, onChange, children }: Attem
   return (
     <Listbox value={selectedNumber} onChange={onChange}>
       <div className="relative">
-        <Listbox.Button className="relative w-full p-1 pl-2 bg-white text-left border border-blue-300 text-blue-600 hover:border-blue-600 rounded">
+        <Listbox.Button className="relative w-full p-1 pl-2 bg-white text-left border border-slate-300 text-slate-600 hover:border-slate-600 rounded">
           {selectedAttempt && children(selectedAttempt, true, false)}
         </Listbox.Button>
         <Transition
@@ -254,7 +254,7 @@ export default function StepDetail({ step, attemptNumber, run, projectId, enviro
               )}
             </AttemptSelector>
             <button
-              className={classNames('ml-1 rounded border border-blue-300 text-blue-600 bg-white hover:border-blue-600 px-2 py-1 text-sm', rerunning && 'text-slate-500')}
+              className={classNames('ml-1 rounded border border-slate-300 text-slate-600 bg-white hover:border-slate-600 px-2 py-1 text-sm', rerunning && 'text-slate-500')}
               disabled={rerunning}
               onClick={handleRetryClick}
             >

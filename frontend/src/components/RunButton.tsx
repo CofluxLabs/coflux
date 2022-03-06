@@ -32,7 +32,7 @@ export default function RunButton({ task, projectId, environmentName }: Props) {
   return (
     <Fragment>
       <button
-        className="px-2 py-1 m-2 border border-blue-400 text-blue-500 rounded font-bold hover:bg-blue-100"
+        className="px-2 py-1 m-2 border border-slate-400 text-slate-500 rounded font-bold hover:bg-slate-100"
         onClick={handleRunClick}
       >
         Run...

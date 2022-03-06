@@ -90,7 +90,7 @@ export default function RunDialog({ parameters, open, starting, onRun, onClose }
               <div className="mt-4">
                 <button
                   type="button"
-                  className={classNames("px-4 py-2 rounded text-white font-bold  mr-2", starting ? 'bg-blue-200' : 'bg-blue-400 hover:bg-blue-500')}
+                  className={classNames("px-4 py-2 rounded text-white font-bold  mr-2", starting ? 'bg-slate-200' : 'bg-slate-400 hover:bg-slate-500')}
                   disabled={starting}
                   onClick={handleRunClick}
                 >
@@ -98,7 +98,7 @@ export default function RunDialog({ parameters, open, starting, onRun, onClose }
                 </button>
                 <button
                   type="button"
-                  className="px-4 py-2 border border-blue-400 rounded text-blue-400 font-bold hover:bg-blue-100"
+                  className="px-4 py-2 border border-slate-400 rounded text-slate-400 font-bold hover:bg-slate-100"
                   onClick={onClose}
                 >
                   Cancel
