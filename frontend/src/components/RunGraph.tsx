@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import dagre from 'dagre';
 import classNames from 'classnames';
 import { Link } from 'react-router-dom';
@@ -38,7 +38,7 @@ function buildGraph(run: models.Run, activeStepId: string | undefined, activeAtt
   };
 
   traverse(step.id);
-
+  dagre.layout(g);
   return g;
 }
 
@@ -137,12 +137,7 @@ type Props = {
 }
 
 export default function RunGraph({ run, projectId, environmentName, activeStepId, activeAttemptNumber }: Props) {
-  const [graph, setGraph] = useState<dagre.graphlib.Graph>();
-  useEffect(() => {
-    const graph = buildGraph(run, activeStepId, activeAttemptNumber);
-    dagre.layout(graph);
-    setGraph(graph);
-  }, [run, activeStepId, activeAttemptNumber]);
+  const graph = useMemo(() => buildGraph(run, activeStepId, activeAttemptNumber), [run, activeStepId, activeAttemptNumber]);
   if (graph) {
     return (
       <div className="relative">
