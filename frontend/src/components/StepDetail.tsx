@@ -9,6 +9,7 @@ import * as models from '../models';
 import Badge from './Badge';
 import useSubscription, { useSocket } from '../hooks/useSubscription';
 import { buildUrl } from '../utils';
+import Loading from './Loading';
 
 function findStepForExecution(run: models.Run, executionId: string) {
   return findKey(run.steps, (s) => Object.values(s.attempts).some((a) => a.executionId == executionId));
@@ -122,7 +123,7 @@ function Attempt({ attempt, run, projectId }: AttemptProps) {
       <div className="p-4">
         <h3 className="uppercase text-sm font-bold text-slate-400">Logs</h3>
         {attemptLogs === undefined ? (
-          <p><em>Loading...</em></p>
+          <Loading />
         ) : Object.keys(attemptLogs).length == 0 ? (
           <p><em>None</em></p>
         ) : (

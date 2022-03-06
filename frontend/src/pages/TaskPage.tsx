@@ -7,6 +7,7 @@ import * as models from '../models';
 import useSubscription from '../hooks/useSubscription';
 import { useSetActiveTask } from '../layouts/ProjectLayout';
 import { buildUrl } from '../utils';
+import Loading from '../components/Loading';
 
 export default function TaskPage() {
   const { project: projectId, repository, target } = useParams();
@@ -15,7 +16,7 @@ export default function TaskPage() {
   const task = useSubscription<models.Task>('task', repository, target, environmentName);
   useSetActiveTask(task);
   if (!task) {
-    return (<p>Loading...</p>);
+    return <Loading />;
   } else {
     const latestRun = maxBy(Object.values(task.runs), 'createdAt');
     if (latestRun) {

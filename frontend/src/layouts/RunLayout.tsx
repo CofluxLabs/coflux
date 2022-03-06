@@ -10,6 +10,7 @@ import { Transition } from '@headlessui/react';
 import StepDetail from '../components/StepDetail';
 import usePrevious from '../hooks/usePrevious';
 import { buildUrl } from '../utils';
+import Loading from '../components/Loading';
 
 type TabProps = {
   page: string | null;
@@ -86,7 +87,7 @@ export default function RunLayout() {
   const task = useSubscription<models.Task>('task', initialStep?.repository, initialStep?.target, environmentName);
   useSetActiveTask(task);
   if (!run || !task) {
-    return <p>Loading...</p>;
+    return <Loading />;
   } else {
     return (
       <Fragment>

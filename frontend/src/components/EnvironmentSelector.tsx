@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 
 import * as models from '../models';
 import useSubscription from '../hooks/useSubscription';
+import Loading from './Loading';
 
 type Props = {
   className?: string;
@@ -19,7 +20,7 @@ export default function EnvironmentSelector({ className }: Props) {
   return (
     <div className={className}>
       {environments === undefined ? (
-        <p>Loading...</p>
+        <Loading />
       ) : !Object.keys(environments).length ? (
         <p>No environments</p>
       ) : (

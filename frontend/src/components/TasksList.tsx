@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 
 import useSubscription from '../hooks/useSubscription';
 import { buildUrl } from '../utils';
+import Loading from './Loading';
 
 type TasksListProps = {
   projectId: string | undefined;
@@ -14,7 +15,7 @@ type TasksListProps = {
 export default function TasksList({ projectId, environmentName, activeTask }: TasksListProps) {
   const repositories = useSubscription('repositories', environmentName);
   if (!repositories) {
-    return (<p>Loading...</p>);
+    return <Loading />;
   } else if (!Object.keys(repositories).length) {
     return (
       <div className="p-2">
