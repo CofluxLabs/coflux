@@ -26,9 +26,7 @@ export default function RunLogs({ run, logs, projectId, environmentName, activeS
   const startTime = DateTime.fromISO(run.createdAt);
   return (
     <div>
-      {logs === undefined ? (
-        <p><em>Loading...</em></p>
-      ) : Object.keys(logs).length == 0 ? (
+      {Object.keys(logs).length == 0 ? (
         <p><em>None</em></p>
       ) : (
         <table className="w-full">

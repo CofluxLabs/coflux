@@ -16,9 +16,7 @@ type OptionsProps = {
 }
 
 function Options({ runs, projectId, environmentName, selectedRunId }: OptionsProps) {
-  if (!runs) {
-    return <p>Loading...</p>;
-  } else if (!Object.keys(runs).length) {
+  if (!Object.keys(runs).length) {
     return <p>No runs for {environmentName}</p>;
   } else {
     return (

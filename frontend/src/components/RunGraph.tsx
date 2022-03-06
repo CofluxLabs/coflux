@@ -138,47 +138,43 @@ type Props = {
 
 export default function RunGraph({ run, projectId, environmentName, activeStepId, activeAttemptNumber }: Props) {
   const graph = useMemo(() => buildGraph(run, activeStepId, activeAttemptNumber), [run, activeStepId, activeAttemptNumber]);
-  if (graph) {
-    return (
-      <div className="relative">
-        <svg width={graph.graph().width} height={graph.graph().height} className="absolute">
-          {graph.edges().flatMap((edge) => {
-            return <Edge key={`${edge.v}-${edge.w}`} edge={graph.edge(edge)} />
-          })}
-        </svg>
-        <div className="absolute">
-          {graph.nodes().map((nodeId) => {
-            const node = graph.node(nodeId);
-            if (node) {
-              const parts = nodeId.split('/', 2);
-              const step = run.steps[parts[0]];
-              if (step) {
-                const attemptNumber = parseInt(parts[1], 10);
-                return (
-                  <StepNode
-                    key={nodeId}
-                    node={node}
-                    step={step}
-                    attemptNumber={attemptNumber}
-                    projectId={projectId}
-                    runId={run.id}
-                    environmentName={environmentName}
-                    isActive={nodeId == `${activeStepId}/${activeAttemptNumber}`}
-                  />
-                );
-              } else {
-                return (
-                  <RunNode key={nodeId} node={node} projectId={projectId} runId={nodeId} environmentName={environmentName} />
-                );
-              }
+  return (
+    <div className="relative">
+      <svg width={graph.graph().width} height={graph.graph().height} className="absolute">
+        {graph.edges().flatMap((edge) => {
+          return <Edge key={`${edge.v}-${edge.w}`} edge={graph.edge(edge)} />
+        })}
+      </svg>
+      <div className="absolute">
+        {graph.nodes().map((nodeId) => {
+          const node = graph.node(nodeId);
+          if (node) {
+            const parts = nodeId.split('/', 2);
+            const step = run.steps[parts[0]];
+            if (step) {
+              const attemptNumber = parseInt(parts[1], 10);
+              return (
+                <StepNode
+                  key={nodeId}
+                  node={node}
+                  step={step}
+                  attemptNumber={attemptNumber}
+                  projectId={projectId}
+                  runId={run.id}
+                  environmentName={environmentName}
+                  isActive={nodeId == `${activeStepId}/${activeAttemptNumber}`}
+                />
+              );
             } else {
-              return null;
+              return (
+                <RunNode key={nodeId} node={node} projectId={projectId} runId={nodeId} environmentName={environmentName} />
+              );
             }
-          })}
-        </div>
+          } else {
+            return null;
+          }
+        })}
       </div>
-    );
-  } else {
-    return <p>Loading...</p>;
-  }
+    </div>
+  );
 }
