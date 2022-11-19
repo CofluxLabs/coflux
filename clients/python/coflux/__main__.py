@@ -2,19 +2,11 @@ import click
 import asyncio
 import watchfiles
 
-from . import Client
-
+from . import client
 
 def _callback(changes):
     print("Change detected. Restarting...")
 
-
-def _run(project, environment, module, version, host, concurrency):
-    try:
-        client = Client(project, environment, module, version, host, concurrency)
-        asyncio.run(client.run())
-    except KeyboardInterrupt:
-        pass
 
 
 @click.command()
@@ -28,9 +20,9 @@ def _run(project, environment, module, version, host, concurrency):
 def cli(project, environment, module, version, host, concurrency, reload):
     args = (project, environment, module, version, host, concurrency)
     if reload:
-        watchfiles.run_process('.', target=_run, args=args, callback=_callback)
+        watchfiles.run_process('.', target=client.run, args=args, callback=_callback)
     else:
-        _run(*args)
+        client.run(*args)
 
 
 cli()
