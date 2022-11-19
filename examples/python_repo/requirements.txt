@@ -1,5 +1,5 @@
 aiohttp
 click
-watchgod
+watchfiles
 
 requests

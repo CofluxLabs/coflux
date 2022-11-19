@@ -1,6 +1,6 @@
 import click
 import asyncio
-import watchgod
+import watchfiles
 
 from . import Client
 
@@ -28,7 +28,7 @@ def _run(project, environment, module, version, host, concurrency):
 def cli(project, environment, module, version, host, concurrency, reload):
     args = (project, environment, module, version, host, concurrency)
     if reload:
-        watchgod.run_process('.', _run, args=args, callback=_callback)
+        watchfiles.run_process('.', target=_run, args=args, callback=_callback)
     else:
         _run(*args)
 
