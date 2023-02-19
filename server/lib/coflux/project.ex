@@ -1,7 +1,6 @@
 defmodule Coflux.Project do
   alias Coflux.Project.Store
   alias Coflux.Project.Orchestrator.Supervisor, as: OrchestratorSupervisor
-  alias Coflux.Project.Observer.Supervisor, as: ObserverSupervisor
 
   def get_run(project_id, run_id) do
     Store.get_run(project_id, run_id)
@@ -112,22 +111,8 @@ defmodule Coflux.Project do
     Store.log_message(project_id, execution_id, level, message)
   end
 
-  def subscribe(project_id, topic, arguments, pid) do
-    call_observer(project_id, topic, arguments, {:subscribe, pid})
-  end
-
-  def unsubscribe(project_id, topic, arguments, ref) do
-    call_observer(project_id, topic, arguments, {:unsubscribe, ref})
-  end
-
   defp call_orchestrator(project_id, request) do
     with {:ok, pid} <- OrchestratorSupervisor.get_server(project_id) do
-      GenServer.call(pid, request, 10_000)
-    end
-  end
-
-  defp call_observer(project_id, topic, arguments, request) do
-    with {:ok, pid} <- ObserverSupervisor.get_server(project_id, topic, arguments) do
       GenServer.call(pid, request, 10_000)
     end
   end

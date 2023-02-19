@@ -35,8 +35,8 @@ export default function App() {
                 <Route path="timeline" element={<TimelinePage />} />
                 <Route path="logs" element={<LogsPage />} />
               </Route>
-              </Route>
             </Route>
+          </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>

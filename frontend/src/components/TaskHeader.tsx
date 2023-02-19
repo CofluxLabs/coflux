@@ -9,9 +9,10 @@ type Props = {
   projectId: string;
   runId?: string;
   environmentName: string | undefined;
+  onRun: (parameters: ['json', string][]) => Promise<void>;
 }
 
-export default function TaskHeader({ task, projectId, runId, environmentName }: Props) {
+export default function TaskHeader({ task, projectId, runId, environmentName, onRun }: Props) {
   return (
     <div className="p-4 flex">
       <h1 className="flex items-center flex-1">
@@ -25,7 +26,7 @@ export default function TaskHeader({ task, projectId, runId, environmentName }: 
         )}
       </h1>
       {environmentName && (
-        <RunButton task={task} projectId={projectId} environmentName={environmentName} />
+        <RunButton task={task} onRun={onRun} />
       )}
     </div>
   );

@@ -1,18 +1,19 @@
+import { useTopic } from '@topical/react';
 import { useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import * as models from '../models';
-import useSubscription from '../hooks/useSubscription';
 import Loading from './Loading';
 
 type Props = {
+  projectId: string;
   className?: string;
 }
 
-export default function EnvironmentSelector({ className }: Props) {
+export default function EnvironmentSelector({ projectId, className }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const selected = searchParams.get('environment');
-  const environments = useSubscription<Record<string, models.Environment>>('environments');
+  const [environments, _] = useTopic<Record<string, models.Environment>>("projects", projectId, "environments");
   const handleChange = useCallback((ev) => {
     // TODO: merge with existing params
     setSearchParams({ environment: ev.target.value })

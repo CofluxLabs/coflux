@@ -1,19 +1,25 @@
 import { maxBy } from 'lodash';
-import { Fragment } from 'react';
-import { Navigate, useParams, useSearchParams } from 'react-router-dom';
-import TaskHeader from '../components/TaskHeader';
+import { Fragment, useCallback } from 'react';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
-import * as models from '../models';
-import useSubscription from '../hooks/useSubscription';
 import { useSetActiveTask } from '../layouts/ProjectLayout';
 import { buildUrl } from '../utils';
 import Loading from '../components/Loading';
+import TaskHeader from '../components/TaskHeader';
+import { useTaskTopic } from '../topics';
 
 export default function TaskPage() {
   const { project: projectId, repository, target } = useParams();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get('environment') || undefined;
-  const task = useSubscription<models.Task>('task', repository, target, environmentName);
+  const [task, startRun] = useTaskTopic(projectId, environmentName, repository, target);
+  // TODO: remove duplication (RunLayout)
+  const navigate = useNavigate();
+  const handleRun = useCallback((parameters) => {
+    return startRun(parameters).then((runId) => {
+      navigate(buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName }));
+    });
+  }, [startRun]);
   useSetActiveTask(task);
   if (!task) {
     return <Loading />;
@@ -24,7 +30,7 @@ export default function TaskPage() {
     } else {
       return (
         <Fragment>
-          <TaskHeader task={task} projectId={projectId} environmentName={environmentName} />
+          <TaskHeader task={task} projectId={projectId!} environmentName={environmentName} onRun={handleRun} />
           <div className="p-4 flex-1">
             <h1 className="text-gray-400 text-xl text-center">This task hasn't been run yet</h1>
           </div>

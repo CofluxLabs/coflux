@@ -1,5 +1,6 @@
 defmodule Coflux.Api do
   alias Coflux.Handlers
+  alias Topical.Adapters.Cowboy.WebsocketHandler, as: TopicalHandler
 
   def child_spec(opts) do
     port = Keyword.fetch!(opts, :port)
@@ -13,9 +14,10 @@ defmodule Coflux.Api do
       {:_,
        [
          {"/", Handlers.Root, []},
+         # TODO: flatten?
          {"/projects/:project/blobs/:key", Handlers.Blobs, []},
          {"/projects/:project/agent", Handlers.Agent, []},
-         {"/projects/:project/events", Handlers.Events, []}
+         {"/topics", TopicalHandler, registry: Coflux.TopicalRegistry}
        ]}
     ])
   end

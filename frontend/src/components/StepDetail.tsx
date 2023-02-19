@@ -4,10 +4,10 @@ import { filter, findKey, sortBy } from 'lodash';
 import { DateTime } from 'luxon';
 import { Listbox, Transition } from '@headlessui/react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTopic } from '@topical/react';
 
 import * as models from '../models';
 import Badge from './Badge';
-import useSubscription, { useSocket } from '../hooks/useSubscription';
 import { buildUrl } from '../utils';
 import Loading from './Loading';
 
@@ -101,7 +101,7 @@ function Attempt({ attempt, run, projectId }: AttemptProps) {
   const assignedAt = attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null;
   const resultAt = attempt.result && DateTime.fromISO(attempt.result.createdAt);
   // TODO: subscribe to execution logs
-  const logs = useSubscription<Record<string, models.LogMessage>>('run_logs', run.id);
+  const logs = useTopic<Record<string, models.LogMessage>>("projects", projectId, "runs", run.id, "logs");
   const attemptLogs = logs && attempt.executionId !== null && filter(logs, { executionId: attempt.executionId });
   return (
     <Fragment>
@@ -206,10 +206,10 @@ type Props = {
   environmentName: string;
   className?: string;
   style?: CSSProperties;
+  onRerunStep: (stepId: string, environmentName: string) => Promise<number>;
 }
 
-export default function StepDetail({ step, attemptNumber, run, projectId, environmentName, className, style }: Props) {
-  const { socket } = useSocket();
+export default function StepDetail({ step, attemptNumber, run, projectId, environmentName, className, style, onRerunStep }: Props) {
   const [rerunning, setRerunning] = useState(false);
   const navigate = useNavigate();
   const changeAttempt = useCallback((attempt) => {
@@ -218,11 +218,11 @@ export default function StepDetail({ step, attemptNumber, run, projectId, enviro
   }, [projectId, run, environmentName, step, navigate]);
   const handleRetryClick = useCallback(() => {
     setRerunning(true);
-    socket?.request('rerun_step', [run.id, step.id, environmentName], (attempt) => {
+    onRerunStep(step.id, environmentName).then((attempt) => {
       setRerunning(false);
       changeAttempt(attempt);
     });
-  }, [socket, run, step, environmentName, changeAttempt]);
+  }, [onRerunStep, step, environmentName, changeAttempt]);
   const attempt = step.attempts[attemptNumber];
   return (
     <div className={classNames('divide-y divide-slate-200 overflow-hidden', className)} style={style}>

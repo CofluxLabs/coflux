@@ -1,16 +1,16 @@
 import classNames from 'classnames';
-import { Fragment, ReactNode } from 'react';
-import { NavLink, Outlet, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
+import { Fragment, ReactNode, useCallback } from 'react';
+import { NavLink, Outlet, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
 
 import * as models from '../models';
 import TaskHeader from '../components/TaskHeader';
-import useSubscription from '../hooks/useSubscription';
 import { useSetActiveTask } from './ProjectLayout';
 import { Transition } from '@headlessui/react';
 import StepDetail from '../components/StepDetail';
 import usePrevious from '../hooks/usePrevious';
 import { buildUrl } from '../utils';
 import Loading from '../components/Loading';
+import { useRunTopic, useTaskTopic } from '../topics';
 
 type TabProps = {
   page: string | null;
@@ -38,10 +38,10 @@ type DetailPanelProps = {
   attemptNumber: number | null;
   run: models.Run;
   projectId: string;
-  environmentName: string | null;
+  onRerunStep: (stepId: string, environmentName: string) => Promise<number>;
 }
 
-function DetailPanel({ stepId, attemptNumber, run, projectId, environmentName }: DetailPanelProps) {
+function DetailPanel({ stepId, attemptNumber, run, projectId, onRerunStep }: DetailPanelProps) {
   const step = stepId && run.steps[stepId];
   const previousStep = usePrevious(step);
   const stepOrPrevious = step || previousStep;
@@ -65,6 +65,7 @@ function DetailPanel({ stepId, attemptNumber, run, projectId, environmentName }:
             projectId={projectId}
             environmentName={run.environment.name}
             className="flex-1"
+            onRerunStep={onRerunStep}
           />
         )}
       </div>
@@ -82,16 +83,26 @@ export default function RunLayout() {
   const activeStepId = searchParams.get('step') || undefined;
   const activeAttemptNumber = searchParams.has('attempt') ? parseInt(searchParams.get('attempt'), 10) : undefined;
   const environmentName = searchParams.get('environment') || undefined;
-  const run = useSubscription<models.Run>('run', runId);
+  const [run, rerunStep] = useRunTopic(projectId, runId);
   const initialStep = run && Object.values(run.steps).find((s) => !s.parent);
-  const task = useSubscription<models.Task>('task', initialStep?.repository, initialStep?.target, environmentName);
+  const [task, startRun] = useTaskTopic(projectId, environmentName, initialStep?.repository, initialStep?.target);
+  const navigate = useNavigate();
+  // TODO: remove duplication (TaskPage)
+  const handleRun = useCallback((parameters) => {
+    return startRun(parameters).then((runId) => {
+      navigate(buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName }));
+    });
+  }, [startRun]);
+  const handleRerunStep = useCallback((stepId, environmentName) => {
+    return rerunStep(stepId, environmentName);
+  }, [rerunStep]);
   useSetActiveTask(task);
   if (!run || !task) {
     return <Loading />;
   } else {
     return (
       <Fragment>
-        <TaskHeader task={task} projectId={projectId} runId={run.id} environmentName={environmentName} />
+        <TaskHeader task={task} projectId={projectId!} runId={run.id} environmentName={environmentName} onRun={handleRun} />
         <div className="border-b px-4">
           <Tab page={null}>Graph</Tab>
           <Tab page="timeline">Timeline</Tab>
@@ -106,6 +117,7 @@ export default function RunLayout() {
           run={run}
           projectId={projectId!}
           environmentName={environmentName}
+          onRerunStep={handleRerunStep}
         />
       </Fragment>
     );

@@ -36,7 +36,7 @@ type Props = {
   parameters: models.Parameter[];
   open: boolean;
   starting: boolean;
-  onRun: (parameters: [string, string][]) => void;
+  onRun: (parameters: ['json', string][]) => void;
   onClose: () => void;
 }
 

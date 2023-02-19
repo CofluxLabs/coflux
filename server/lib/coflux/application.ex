@@ -1,6 +1,8 @@
 defmodule Coflux.Application do
   use Application
 
+  alias Coflux.Project.Topics
+
   @impl true
   def start(_type, _args) do
     port = String.to_integer(System.get_env("PORT", "7070"))
@@ -10,7 +12,7 @@ defmodule Coflux.Application do
       Coflux.Repo.Projects,
       {Coflux.Listener, repo: Coflux.Repo.Projects, name: Coflux.ProjectsListener},
       {Coflux.Project.Orchestrator.Supervisor, project_ids: project_ids},
-      Coflux.Project.Observer.Supervisor,
+      {Topical, name: Coflux.TopicalRegistry, topics: topics()},
       {Coflux.Api, port: port}
     ]
 
@@ -23,5 +25,17 @@ defmodule Coflux.Application do
       IO.puts("Server started. API running on port #{port}.")
       {:ok, pid}
     end
+  end
+
+  defp topics() do
+    [
+      Topics.Environments,
+      Topics.Repositories,
+      Topics.RunLogs,
+      Topics.Run,
+      Topics.SensorActivation,
+      Topics.Sensors,
+      Topics.Task
+    ]
   end
 end

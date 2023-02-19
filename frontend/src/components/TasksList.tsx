@@ -1,8 +1,9 @@
+import { useTopic } from '@topical/react';
 import classNames from 'classnames';
 import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 
-import useSubscription from '../hooks/useSubscription';
+import * as models from '../models';
 import { buildUrl } from '../utils';
 import Loading from './Loading';
 
@@ -13,7 +14,7 @@ type TasksListProps = {
 }
 
 export default function TasksList({ projectId, environmentName, activeTask }: TasksListProps) {
-  const repositories = useSubscription('repositories', environmentName);
+  const [repositories, _] = useTopic<Record<string, models.Manifest>>("projects", projectId, "environments", environmentName, "repositories");
   if (!repositories) {
     return <Loading />;
   } else if (!Object.keys(repositories).length) {

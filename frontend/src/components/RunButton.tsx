@@ -1,33 +1,26 @@
 import { Fragment, useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useSocket } from '../hooks/useSubscription';
 
 import * as models from '../models';
-import { buildUrl } from '../utils';
 import RunDialog from './RunDialog';
 
 type Props = {
   task: models.Task;
-  projectId: string;
-  environmentName: string;
+  onRun: (parameters: ['json', string][]) => Promise<void>;
 }
 
-export default function RunButton({ task, projectId, environmentName }: Props) {
-  const { socket } = useSocket();
+export default function RunButton({ task, onRun }: Props) {
   const [starting, setStarting] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
-  const navigate = useNavigate();
   const handleRunClick = useCallback(() => {
     setRunDialogOpen(true);
   }, []);
-  const handleStartRun = useCallback((args) => {
+  const handleRun = useCallback((parameters) => {
     setStarting(true);
-    socket?.request('start_run', [task.repository, task.target, environmentName, args], (runId) => {
+    onRun(parameters).then(() => {
       setStarting(false);
       setRunDialogOpen(false);
-      navigate(buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName }));
     });
-  }, [projectId, task, environmentName, socket, navigate]);
+  }, []);
   const handleRunDialogClose = useCallback(() => setRunDialogOpen(false), []);
   return (
     <Fragment>
@@ -41,7 +34,7 @@ export default function RunButton({ task, projectId, environmentName }: Props) {
         parameters={task.parameters}
         open={runDialogOpen}
         starting={starting}
-        onRun={handleStartRun}
+        onRun={handleRun}
         onClose={handleRunDialogClose}
       />
     </Fragment>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
 
-import { SocketProvider, useSocket } from '../hooks/useSubscription';
+import { SocketProvider, useSocket } from '@topical/react';
 import EnvironmentSelector from '../components/EnvironmentSelector';
 import TasksList from '../components/TasksList';
 import Logo from '../components/Logo';
@@ -10,7 +10,7 @@ import ProjectSelector from '../components/ProjectSelector';
 type TaskIdentifier = { repository: string, target: string };
 
 function SocketStatus() {
-  const { status } = useSocket();
+  const [_socket, status] = useSocket();
   return (
     <div className="p-3 flex items-center border-t border-slate-200">
       <span className="ml-1 text-slate-700">{status}</span>
@@ -28,11 +28,11 @@ export default function ProjectLayout() {
   const environmentName = searchParams.get('environment') || undefined;
   const [activeTask, setActiveTask] = useState<TaskIdentifier>();
   return (
-    <SocketProvider projectId={projectId}>
+    <SocketProvider url="ws://localhost:7070/topics">
       <div className="flex flex-col min-h-screen max-h-screen">
         <div className="flex bg-slate-700 px-3 items-center h-14 flex-none">
           <Logo />
-          <EnvironmentSelector />
+          <EnvironmentSelector projectId={projectId!} />
           <span className="flex-1"></span>
           <span className="text-slate-100 rounded px-3 py-1 mr-1">
             <ProjectSelector projectIds={["project_1", "project_2"]} />
