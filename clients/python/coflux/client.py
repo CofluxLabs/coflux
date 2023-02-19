@@ -226,6 +226,8 @@ class Client:
         elif result[0] == "failed":
             # TODO: reconstruct exception state
             raise Exception(result[1])
+        elif result[0] == "abandoned":
+            raise Exception("abandoned")
         else:
             raise Exception(f"unexeptected result tag ({result[0]})")
 

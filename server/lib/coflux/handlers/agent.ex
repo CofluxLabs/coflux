@@ -223,6 +223,7 @@ defmodule Coflux.Handlers.Agent do
       {:blob, key} -> ["blob", key]
       {:result, execution_id} -> ["result", execution_id]
       {:failed, error, extra} -> ["failed", error, extra]
+      :abandoned -> ["abandoned"]
     end
   end
 end
