@@ -15,17 +15,28 @@ defmodule Coflux.Project.Orchestrator.Server do
   end
 
   def init({project_id}) do
-    IO.puts("Orchestrator started (#{project_id}).")
+    {:ok, %State{project_id: project_id}, {:continue, nil}}
+  end
+
+  def handle_continue(nil, state) do
+    IO.puts("Orchestrator started (#{state.project_id}).")
+
+    Ecto.Migrator.run(Coflux.Repo.Projects, :up,
+      all: true,
+      prefix: state.project_id,
+      log: false
+    )
 
     :ok =
-      Listener.subscribe(Coflux.ProjectsListener, project_id, self(), [
+      Listener.subscribe(Coflux.ProjectsListener, state.project_id, self(), [
         Models.Execution,
         Models.Result
       ])
 
     send(self(), :check_abandoned)
     send(self(), :iterate_sensors)
-    {:ok, %State{project_id: project_id}}
+
+    {:noreply, state}
   end
 
   def handle_call(
