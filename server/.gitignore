@@ -29,4 +29,7 @@ coflux-*.tar
 /.elixir_ls/
 
 # Blobs
-/blobs
+/blobs/
+
+# Direnv
+/.direnv/

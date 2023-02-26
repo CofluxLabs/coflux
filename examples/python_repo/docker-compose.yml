@@ -9,10 +9,12 @@ services:
     environment:
       PROJECT: project_1
       ENVIRONMENT: dev/one
-      HOST: server:7070
+      HOST: host.docker.internal:7070
       MODULE: app.repo
       VERSION: 1
     init: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   repo_two:
     build: "."
@@ -22,11 +24,9 @@ services:
     environment:
       PROJECT: project_1
       ENVIRONMENT: dev/two
-      HOST: server:7070
+      HOST: host.docker.internal:7070
       MODULE: app.repo
       VERSION: 1
     init: true
-
-networks:
-  default:
-    name: coflux
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

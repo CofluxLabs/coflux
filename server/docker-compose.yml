@@ -1,0 +1,21 @@
+version: "3.7"
+
+services:
+  postgres:
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres
+
+  server:
+    build: .
+    ports:
+      - "7070:7070"
+    environment:
+      PROJECT_IDS: project_1,project_2
+    volumes:
+      - ".:/app"
+    init: true
+    depends_on:
+      - postgres
