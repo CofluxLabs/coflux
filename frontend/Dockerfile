@@ -1,7 +1,9 @@
 FROM node:16
 WORKDIR /app
 
-COPY package.json yarn.lock ./
-RUN yarn
+COPY package.json package-lock.json ./
+RUN npm install
 
-CMD yarn start
+COPY . .
+
+CMD npm run dev
