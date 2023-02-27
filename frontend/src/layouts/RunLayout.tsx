@@ -34,8 +34,8 @@ function Tab({ page, children }: TabProps) {
 }
 
 type DetailPanelProps = {
-  stepId: string | null;
-  attemptNumber: number | null;
+  stepId: string | undefined;
+  attemptNumber: number | undefined;
   run: models.Run;
   projectId: string;
   onRerunStep: (stepId: string, environmentName: string) => Promise<number>;
@@ -81,7 +81,7 @@ export default function RunLayout() {
   const { project: projectId, run: runId } = useParams();
   const [searchParams] = useSearchParams()
   const activeStepId = searchParams.get('step') || undefined;
-  const activeAttemptNumber = searchParams.has('attempt') ? parseInt(searchParams.get('attempt'), 10) : undefined;
+  const activeAttemptNumber = searchParams.has('attempt') ? parseInt(searchParams.get('attempt')!, 10) : undefined;
   const environmentName = searchParams.get('environment') || undefined;
   const [run, rerunStep] = useRunTopic(projectId, runId);
   const initialStep = run && Object.values(run.steps).find((s) => !s.parent);
@@ -116,7 +116,6 @@ export default function RunLayout() {
           attemptNumber={activeAttemptNumber}
           run={run}
           projectId={projectId!}
-          environmentName={environmentName}
           onRerunStep={handleRerunStep}
         />
       </Fragment>

@@ -190,11 +190,21 @@ function Argument({ argument }: ArgumentProps) {
   const [type, value] = argument.split(':', 2);
   switch (type) {
     case 'json':
-      return `${value}`;
+      return (
+        <span className="font-mono truncate">
+          {value}
+        </span>
+      );
     case 'result':
-      return `${value} (result)`;
+      return (
+        <span title={value}>{value} (result)</span>
+      );
     case 'blob':
-      return `${value} (blob)`;
+      return (
+        <span title={value}>{value} (blob)</span>
+      );
+    default:
+      throw new Error(`Unhandled argument type (${type})`);
   }
 }
 
@@ -270,9 +280,7 @@ export default function StepDetail({ step, attemptNumber, run, projectId, enviro
           <ol className="list-disc list-inside ml-1">
             {step.arguments.map((argument, index) => (
               <li key={index}>
-                <span className="font-mono truncate">
-                  <Argument argument={argument} />
-                </span>
+                <Argument argument={argument} />
               </li>
             ))}
           </ol>

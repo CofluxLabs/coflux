@@ -12,14 +12,14 @@ export default function LogsPage() {
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get('environment');
   const activeStepId = searchParams.get('step');
-  const activeAttemptNumber = searchParams.has('attempt') ? parseInt(searchParams.get('attempt')) : null;
+  const activeAttemptNumber = searchParams.has('attempt') ? parseInt(searchParams.get('attempt')!) : null;
   return (
     <div>
       {logs && (
         <RunLogs
           run={run}
           logs={logs}
-          projectId={projectId}
+          projectId={projectId!}
           environmentName={environmentName}
           activeStepId={activeStepId}
           activeAttemptNumber={activeAttemptNumber}

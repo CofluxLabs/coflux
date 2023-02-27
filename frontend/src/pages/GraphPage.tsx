@@ -9,12 +9,12 @@ export default function GraphPage() {
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get('environment') || undefined;
   const activeStepId = searchParams.get('step') || undefined;
-  const activeAttemptNumber = searchParams.has('attempt') ? parseInt(searchParams.get('attempt')) : undefined;
+  const activeAttemptNumber = searchParams.has('attempt') ? parseInt(searchParams.get('attempt')!) : undefined;
   return (
     <div>
       <RunGraph
         run={run}
-        projectId={projectId}
+        projectId={projectId!}
         environmentName={environmentName}
         activeStepId={activeStepId}
         activeAttemptNumber={activeAttemptNumber}

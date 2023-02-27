@@ -11,7 +11,7 @@ export default function TimelinePage() {
   const activeStepId = searchParams.get('step');
   return (
     <div>
-      <RunTimeline run={run} projectId={projectId} environmentName={environmentName} activeStepId={activeStepId} />
+      <RunTimeline run={run} projectId={projectId!} environmentName={environmentName} activeStepId={activeStepId} />
     </div>
   );
 }
