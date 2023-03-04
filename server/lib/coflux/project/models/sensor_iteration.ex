@@ -5,7 +5,7 @@ defmodule Coflux.Project.Models.SensorIteration do
   schema "sensor_iterations" do
     belongs_to :activation, Models.SensorActivation
     field :sequence, :integer
-    belongs_to :execution, Models.Execution
+    belongs_to :execution, Models.Execution, type: :binary_id
     field :created_at, :utc_datetime_usec
   end
 end
