@@ -1,6 +1,6 @@
 aiohttp
 click
-watchgod
+watchfiles
 
 requests
 beautifulsoup4
