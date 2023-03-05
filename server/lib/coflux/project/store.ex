@@ -598,10 +598,10 @@ defmodule Coflux.Project.Store do
           if cursor do
             compose_result(cursor)
           else
-            {:json, nil}
+            {:json, "null"}
           end
         else
-          {:json, nil}
+          {:json, "null"}
         end
 
       # TODO: support getting specific version from activation?
