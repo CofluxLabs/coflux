@@ -174,6 +174,7 @@ defmodule Coflux.Repo.Projects.Migrations.Setup do
     create table("sensor_activations") do
       add :repository, :string, null: false
       add :target, :string, null: false
+      # TODO: version?
       add :environment_id, references("environments", on_delete: :delete_all), null: false
       add :created_at, :utc_datetime_usec, null: false
     end
