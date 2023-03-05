@@ -11,17 +11,24 @@ import Badge from './Badge';
 import { buildUrl } from '../utils';
 import Loading from './Loading';
 
-function findStepForExecution(run: models.Run, executionId: string) {
-  return findKey(run.steps, (s) => Object.values(s.attempts).some((a) => a.executionId == executionId));
+function findExecution(run: models.Run, executionId: string) {
+  const stepId = findKey(run.steps, (s) => Object.values(s.attempts).some((a) => a.executionId == executionId));
+  if (stepId) {
+    const attempt = findKey(run.steps[stepId].attempts, (a) => a.executionId == executionId);
+    return [stepId, attempt];
+  } else {
+    return null;
+  }
 }
 
 type ResultProps = {
   result: models.Result;
   run: models.Run;
   projectId: string;
+  environmentName: string;
 }
 
-function Result({ result, run, projectId }: ResultProps) {
+function Result({ result, run, projectId, environmentName }: ResultProps) {
   switch (result.type) {
     case 0:
       return (
@@ -40,11 +47,12 @@ function Result({ result, run, projectId }: ResultProps) {
         </a>
       );
     case 2:
-      const stepId = findStepForExecution(run, result.value);
-      if (stepId) {
+      const stepAttempt = findExecution(run, result.value);
+      if (stepAttempt) {
+        const [stepId, attempt] = stepAttempt;
         return (
           <Link
-            to={`/projects/${projectId}/runs/${run.id}?step=${stepId}`}
+            to={buildUrl(`/projects/${projectId}/runs/${run.id}`, { environment: environmentName, step: stepId, attempt })}
             className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
           >
             Result
@@ -94,9 +102,10 @@ type AttemptProps = {
   attempt: models.Attempt;
   run: models.Run;
   projectId: string;
+  environmentName: string;
 }
 
-function Attempt({ attempt, run, projectId }: AttemptProps) {
+function Attempt({ attempt, run, projectId, environmentName }: AttemptProps) {
   const scheduledAt = DateTime.fromISO(attempt.createdAt);
   const assignedAt = attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null;
   const resultAt = attempt.result && DateTime.fromISO(attempt.result.createdAt);
@@ -117,7 +126,7 @@ function Attempt({ attempt, run, projectId }: AttemptProps) {
       {attempt.result && (
         <div className="p-4">
           <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
-          <Result result={attempt.result} run={run} projectId={projectId} />
+          <Result result={attempt.result} run={run} projectId={projectId} environmentName={environmentName} />
         </div>
       )}
       <div className="p-4">
@@ -222,7 +231,7 @@ type Props = {
 export default function StepDetail({ step, attemptNumber, run, projectId, environmentName, className, style, onRerunStep }: Props) {
   const [rerunning, setRerunning] = useState(false);
   const navigate = useNavigate();
-  const changeAttempt = useCallback((attempt) => {
+  const changeAttempt = useCallback((attempt: number) => {
     // TODO: keep tab
     navigate(buildUrl(`/projects/${projectId}/runs/${run.id}`, { environment: environmentName, step: step.id, attempt }));
   }, [projectId, run, environmentName, step, navigate]);
@@ -292,6 +301,7 @@ export default function StepDetail({ step, attemptNumber, run, projectId, enviro
           attempt={attempt}
           run={run}
           projectId={projectId}
+          environmentName={environmentName}
         />
       )}
     </div>
