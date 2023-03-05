@@ -33,8 +33,7 @@ defmodule Coflux.Application do
       Topics.Repositories,
       Topics.RunLogs,
       Topics.Run,
-      Topics.SensorActivation,
-      Topics.Sensors,
+      Topics.Sensor,
       Topics.Task
     ]
   end

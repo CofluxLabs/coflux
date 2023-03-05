@@ -520,30 +520,42 @@ defmodule Coflux.Project.Store do
     {:ok, Repo.all(query, prefix: project_id)}
   end
 
-  def get_sensor_activation(project_id, activation_id) do
-    case Repo.get(Models.SensorActivation, activation_id, prefix: project_id) do
-      nil -> {:error, :not_found}
-      activation -> {:ok, activation}
-    end
+  def get_sensor_activation(project_id, repository, target, environment_id) do
+    query =
+      from(sa in Models.SensorActivation,
+        left_join: sd in Models.SensorDeactivation,
+        on: sa.id == sd.activation_id,
+        left_join: si in Models.SensorIteration,
+        on: si.activation_id == sa.id,
+        where:
+          sa.repository == ^repository and sa.target == ^target and
+            sa.environment_id == ^environment_id and is_nil(sd.activation_id),
+        order_by: [desc: sa.created_at],
+        # TODO: remove?
+        limit: 1,
+        select: {sa, si}
+      )
+
+    {:ok, Repo.one(query, prefix: project_id)}
   end
 
-  def get_sensor_deactivation(project_id, activation_id) do
-    case Repo.get_by(Models.SensorDeactivation, [activation_id: activation_id], prefix: project_id) do
-      nil -> {:error, :not_found}
-      deactivation -> {:ok, deactivation}
-    end
-  end
-
-  def list_sensor_runs(project_id, activation_id) do
+  def list_sensor_runs(project_id, repository, target, environment_id) do
     query =
       from(r in Models.Run,
-        join: e in Models.Execution,
-        on: e.id == r.execution_id,
+        # join: e in Models.Execution,
+        # on: e.id == r.execution_id,
+        join: s in Models.Step,
+        on: s.run_id == r.id and is_nil(s.parent_step_id),
         join: si in Models.SensorIteration,
-        on: si.execution_id == e.id,
-        where: si.activation_id == ^activation_id,
-        order_by: [desc: e.created_at],
-        limit: 100
+        on: si.execution_id == r.execution_id,
+        join: sa in Models.SensorActivation,
+        on: sa.id == si.activation_id,
+        where:
+          sa.repository == ^repository and sa.target == ^target and
+            sa.environment_id == ^environment_id,
+        order_by: [desc: r.created_at],
+        limit: 100,
+        select: {r, s}
       )
 
     {:ok, Repo.all(query, prefix: project_id)}
