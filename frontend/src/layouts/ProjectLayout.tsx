@@ -3,7 +3,7 @@ import { Outlet, useOutletContext, useParams, useSearchParams } from 'react-rout
 
 import { SocketProvider, useSocket } from '@topical/react';
 import EnvironmentSelector from '../components/EnvironmentSelector';
-import TasksList from '../components/TasksList';
+import TargetsList from '../components/TargetsList';
 import Logo from '../components/Logo';
 import ProjectSelector from '../components/ProjectSelector';
 
@@ -41,7 +41,7 @@ export default function ProjectLayout() {
         <div className="flex-auto flex overflow-hidden">
           <div className="w-64 bg-slate-100 text-gray-100 border-r border-slate-200 overflow-auto flex-none flex flex-col">
             <div className="flex-1">
-              <TasksList projectId={projectId} environmentName={environmentName} activeTarget={activeTarget} />
+              <TargetsList projectId={projectId} environmentName={environmentName} activeTarget={activeTarget} />
             </div>
             <SocketStatus />
           </div>

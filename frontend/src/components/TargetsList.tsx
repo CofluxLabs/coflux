@@ -7,13 +7,13 @@ import * as models from '../models';
 import { buildUrl } from '../utils';
 import Loading from './Loading';
 
-type TasksListProps = {
+type TargetsListProps = {
   projectId: string | undefined;
   environmentName: string | undefined;
   activeTarget: { repository: string, target: string } | undefined;
 }
 
-export default function TasksList({ projectId, environmentName, activeTarget }: TasksListProps) {
+export default function TargetsList({ projectId, environmentName, activeTarget }: TargetsListProps) {
   const [repositories, _] = useTopic<Record<string, models.Manifest>>("projects", projectId, "environments", environmentName, "repositories");
   if (!repositories) {
     return <Loading />;
@@ -38,9 +38,9 @@ export default function TasksList({ projectId, environmentName, activeTarget }: 
                   <li key={target}>
                     <Link
                       to={buildUrl(`/projects/${projectId}/tasks/${manifest.repository}/${target}`, { environment: environmentName })}
-                      className={classNames('block px-2 py-0.5 my-0.5 rounded-md', isActive ? 'bg-slate-200' : 'hover:bg-slate-200/50')}
+                      className={classNames('block px-2 py-0.5 my-0.5 rounded-md text-slate-900', isActive ? 'bg-slate-200' : 'hover:bg-slate-200/50')}
                     >
-                      <div className={classNames('font-mono text-slate-900')}>{target}</div>
+                      <div className="font-mono">{target}</div>
                     </Link>
                   </li>
                 );
@@ -51,9 +51,9 @@ export default function TasksList({ projectId, environmentName, activeTarget }: 
                   <li key={target}>
                     <Link
                       to={buildUrl(`/projects/${projectId}/sensors/${manifest.repository}/${target}`, { environment: environmentName })}
-                      className={classNames('block px-2 py-0.5 my-0.5 rounded-md', isActive ? 'bg-slate-200' : 'hover:bg-slate-200/50')}
+                      className={classNames('block px-2 py-0.5 my-0.5 rounded-md text-slate-900', isActive ? 'bg-slate-200' : 'hover:bg-slate-200/50')}
                     >
-                      <div className={classNames('font-mono text-slate-900')}>{target}</div>
+                      <div className="font-mono">{target}</div>
                     </Link>
                   </li>
                 );
