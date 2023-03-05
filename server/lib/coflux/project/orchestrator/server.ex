@@ -167,7 +167,11 @@ defmodule Coflux.Project.Orchestrator.Server do
     target = {execution.repository, execution.target, execution.environment_id}
     # TODO: filter against version
     with {:ok, pid_map} <- Map.fetch(state.targets, target) do
-      {:ok, Enum.random(Map.keys(pid_map))}
+      if Enum.any?(pid_map) do
+        {:ok, Enum.random(Map.keys(pid_map))}
+      else
+        :error
+      end
     end
   end
 
