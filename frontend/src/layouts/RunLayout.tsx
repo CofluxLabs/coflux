@@ -4,7 +4,7 @@ import { NavLink, Outlet, useNavigate, useOutletContext, useParams, useSearchPar
 
 import * as models from '../models';
 import TaskHeader from '../components/TaskHeader';
-import { useSetActiveTask } from './ProjectLayout';
+import { useSetActiveTarget } from './ProjectLayout';
 import { Transition } from '@headlessui/react';
 import StepDetail from '../components/StepDetail';
 import usePrevious from '../hooks/usePrevious';
@@ -96,7 +96,7 @@ export default function RunLayout() {
   const handleRerunStep = useCallback((stepId, environmentName) => {
     return rerunStep(stepId, environmentName);
   }, [rerunStep]);
-  useSetActiveTask(task);
+  useSetActiveTarget(task);
   if (!run || !task) {
     return <Loading />;
   } else {

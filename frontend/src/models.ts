@@ -37,13 +37,13 @@ export type Run = BaseRun & {
 
 export type Step = {
   id: string;
-  parent: {stepId: string, attempt: number} | null;
+  parent: { stepId: string, attempt: number } | null;
   repository: string;
   target: string;
   createdAt: string;
   arguments: string[];
   attempts: Record<number, Attempt>;
-  cached: {runId: string, stepId: string} | null;
+  cached: { runId: string, stepId: string } | null;
 }
 
 export type Attempt = {
@@ -69,6 +69,22 @@ export type SensorActivation = {
   createdAt: string;
   deactivatedAt: string | null;
   runs: Record<string, BaseRun>;
+}
+
+export type Sensor = {
+  activation: {
+    id: string;
+    createdAt: string;
+  } | null;
+  repository: string;
+  target: string;
+  runs: {
+    id: string;
+    createdAt: string;
+    repository: string;
+    target: string;
+    executionId: string;
+  }[];
 }
 
 export type LogMessage = {

@@ -2,7 +2,7 @@ import { maxBy } from 'lodash';
 import { Fragment, useCallback } from 'react';
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
-import { useSetActiveTask } from '../layouts/ProjectLayout';
+import { useSetActiveTarget } from '../layouts/ProjectLayout';
 import { buildUrl } from '../utils';
 import Loading from '../components/Loading';
 import TaskHeader from '../components/TaskHeader';
@@ -20,7 +20,7 @@ export default function TaskPage() {
       navigate(buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName }));
     });
   }, [startRun]);
-  useSetActiveTask(task);
+  useSetActiveTarget(task);
   if (!task) {
     return <Loading />;
   } else {

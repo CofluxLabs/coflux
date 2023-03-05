@@ -12,6 +12,7 @@ const GraphPage = React.lazy(() => import('./pages/GraphPage'));
 const TimelinePage = React.lazy(() => import('./pages/TimelinePage'));
 const LogsPage = React.lazy(() => import('./pages/LogsPage'));
 const TaskPage = React.lazy(() => import('./pages/TaskPage'));
+const SensorPage = React.lazy(() => import('./pages/SensorPage'));
 
 function NotFound() {
   return <p>Not found</p>;
@@ -30,6 +31,7 @@ export default function App() {
             <Route path=":project" element={<ProjectLayout />}>
               <Route index={true} element={<ProjectPage />} />
               <Route path="tasks/:repository/:target" element={<TaskPage />} />
+              <Route path="sensors/:repository/:sensor" element={<SensorPage />} />
               <Route path="runs/:run" element={<RunLayout />}>
                 <Route index={true} element={<GraphPage />} />
                 <Route path="timeline" element={<TimelinePage />} />

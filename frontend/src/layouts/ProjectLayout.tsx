@@ -7,7 +7,7 @@ import TasksList from '../components/TasksList';
 import Logo from '../components/Logo';
 import ProjectSelector from '../components/ProjectSelector';
 
-type TaskIdentifier = { repository: string, target: string };
+type Target = { repository: string, target: string };
 
 function SocketStatus() {
   const [_socket, status] = useSocket();
@@ -19,14 +19,14 @@ function SocketStatus() {
 }
 
 type OutletContext = {
-  setActiveTask: (task: TaskIdentifier | undefined) => void;
+  setActiveTarget: (task: Target | undefined) => void;
 }
 
 export default function ProjectLayout() {
   const { project: projectId } = useParams();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get('environment') || undefined;
-  const [activeTask, setActiveTask] = useState<TaskIdentifier>();
+  const [activeTarget, setActiveTarget] = useState<Target>();
   return (
     <SocketProvider url="ws://localhost:7070/topics">
       <div className="flex flex-col min-h-screen max-h-screen">
@@ -41,12 +41,12 @@ export default function ProjectLayout() {
         <div className="flex-auto flex overflow-hidden">
           <div className="w-64 bg-slate-100 text-gray-100 border-r border-slate-200 overflow-auto flex-none flex flex-col">
             <div className="flex-1">
-              <TasksList projectId={projectId} environmentName={environmentName} activeTask={activeTask} />
+              <TasksList projectId={projectId} environmentName={environmentName} activeTarget={activeTarget} />
             </div>
             <SocketStatus />
           </div>
           <div className="flex-1 flex flex-col">
-            <Outlet context={{ setActiveTask }} />
+            <Outlet context={{ setActiveTarget }} />
           </div>
         </div>
       </div>
@@ -54,10 +54,10 @@ export default function ProjectLayout() {
   );
 }
 
-export function useSetActiveTask(task: TaskIdentifier | undefined) {
-  const { setActiveTask } = useOutletContext<OutletContext>();
+export function useSetActiveTarget(task: Target | undefined) {
+  const { setActiveTarget } = useOutletContext<OutletContext>();
   useEffect(() => {
-    setActiveTask(task);
-    return () => setActiveTask(undefined);
-  }, [setActiveTask, task]);
+    setActiveTarget(task);
+    return () => setActiveTarget(undefined);
+  }, [setActiveTarget, task]);
 }
