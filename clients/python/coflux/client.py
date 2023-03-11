@@ -8,10 +8,17 @@ import threading
 import os
 import inspect
 import urllib.parse
+import enum
 
 from . import annotations, channel, future, context
 
 BLOB_THRESHOLD = 100
+
+class ExecutionStatus(enum.Enum):
+    STARTING = 0
+    EXECUTING = 1
+    WAITING = 2
+    ABORTING = 3
 
 
 def _json_dumps(obj):
@@ -138,7 +145,7 @@ class Client:
                     if cursor is not None:
                         task = self._put_cursor(execution_id, cursor)
                         asyncio.run_coroutine_threadsafe(task, loop).result()
-                    if self._executions[execution_id][2] == 3:
+                    if self._executions[execution_id][2] == ExecutionStatus.ABORTING:
                         value.close()
             else:
                 task = self._put_result(execution_id, value)
@@ -154,12 +161,12 @@ class Client:
         loop = asyncio.get_running_loop()
         args = (execution_id, target_name, arguments, loop)
         thread = threading.Thread(target=self._execute_target, args=args, daemon=True)
-        self._executions[execution_id] = (thread, time.time(), 0)
+        self._executions[execution_id] = (thread, time.time(), ExecutionStatus.STARTING)
         thread.start()
 
     async def _handle_abort(self, execution_id):
         print(f"Aborting execution ({execution_id})...")
-        self._set_execution_status(execution_id, 3)
+        self._set_execution_status(execution_id, ExecutionStatus.ABORTING)
 
     def _should_send_heartbeat(self, executions, threshold_s, now):
         return executions or not self._last_heartbeat_sent or (now - self._last_heartbeat_sent) > threshold_s
@@ -167,7 +174,7 @@ class Client:
     async def _send_heartbeats(self, execution_threshold_s=1, agent_threshold_s=5):
         while True:
             now = time.time()
-            executions = {id: e[2] for id, e in self._executions.items() if now - e[1] > execution_threshold_s}
+            executions = {id: e[2].value for id, e in self._executions.items() if now - e[1] > execution_threshold_s}
             if self._should_send_heartbeat(executions, agent_threshold_s, now):
                 await self._channel.notify('record_heartbeats', executions)
                 self._last_heartbeat_sent = now
@@ -213,11 +220,11 @@ class Client:
     async def get_result(self, execution_id, from_execution_id):
         if execution_id not in self._results:
             self._semaphore.release()
-            self._set_execution_status(from_execution_id, 2)
+            self._set_execution_status(from_execution_id, ExecutionStatus.WAITING)
             self._results[execution_id] = await self._channel.request('get_result', execution_id, from_execution_id)
-            self._set_execution_status(from_execution_id, 0)
+            self._set_execution_status(from_execution_id, ExecutionStatus.STARTING)
             self._semaphore.acquire()
-            self._set_execution_status(from_execution_id, 1)
+            self._set_execution_status(from_execution_id, ExecutionStatus.EXECUTING)
         result = self._results[execution_id]
         if result[0] == "json":
             return json.loads(result[1])
