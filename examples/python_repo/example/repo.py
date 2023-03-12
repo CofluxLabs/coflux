@@ -3,47 +3,46 @@ import random
 import requests
 import typing as t
 
-from coflux import step, task, sensor, context
+from coflux import step, task, sensor, context, Future
 
 
 @step()
-def count(xs):
-    return len(xs.result())
+def count(xs: list[int]) -> int:
+    return len(xs)
 
 
 @step()
-def inc(x):
+def inc(x: Future[int]) -> int:
     return x.result() + 1
 
 
 @step()
-def add(x: int, y: int) -> int:
+def add(x: Future[int], y: Future[int]) -> int:
     context.log_debug("This is a debug message")
     return x.result() + y.result()
 
 
 @step()
-def foo(xs: t.List[int]):
+def foo(xs: t.List[int]) -> Future[int]:
     context.log_warning("This is a warning message")
     return inc(count(xs))
 
 
 @step()
-def maximum(xs: t.List[int]):
+def maximum(xs: t.List[int]) -> int:
     context.log_error("This is an error message")
-    return max(xs.result())
+    return max(xs)
 
 
 @task()
-def my_task(xs: t.Optional[t.List[int]] = None):
+def my_task(xs: t.Optional[t.List[int]] = None) -> Future[int]:
     xs = xs or [5, 2, 6]
     context.log_info("Task has started")
     return add(foo(xs), maximum(xs))
 
 
 @step(cache_key_fn=lambda n: f"app.repo:fib:{n}")
-def fib(n: int):
-    n = n.result()
+def fib(n: int) -> int:
     if n == 0 or n == 1:
         return n
     else:
@@ -52,7 +51,7 @@ def fib(n: int):
 
 @task()
 def fib_task(n: int):
-    return fib(n.result())
+    return fib(n)
 
 
 @step()
@@ -62,7 +61,7 @@ def do_raise():
 
 
 @step()
-def maybe_raise():
+def maybe_raise() -> int:
     if random.random() > 0.5:
         context.log_error("Raising exception...")
         raise Exception("some error")
@@ -78,8 +77,8 @@ def raise_task():
 
 
 @step()
-def sleep(seconds):
-    time.sleep(seconds.result())
+def sleep(seconds: float) -> None:
+    time.sleep(seconds)
 
 
 @task()
@@ -92,7 +91,7 @@ def slow_task():
 
 
 @step()
-def choose_random(i: int):
+def choose_random(i: int) -> None:
     choice = random.randint(0, 12)
     context.log_info(f"Choice: {choice}")
     if choice == 0:
@@ -105,7 +104,7 @@ def choose_random(i: int):
     elif choice <= 6:
         sleep(choice)
     elif choice == 7:
-        maximum(list(range(min(2, i.result()))))
+        maximum(list(range(min(2, i))))
     elif choice == 8:
         build_content()
     elif choice == 9:
@@ -115,20 +114,19 @@ def choose_random(i: int):
 
 
 @task()
-def random_task(n: int = 5):
-    n = n.result()
+def random_task(n: int = 5) -> None:
     for i in range(n):
         choose_random(i)
 
 
 @step()
-def build_content():
+def build_content() -> str:
     return '1234567890' * 10
 
 
 @task()
 def blob_task():
-    return count(build_content())
+    return count(build_content().result())
 
 
 @step()
@@ -147,7 +145,7 @@ def github_task():
 
 
 @sensor()
-def demo_sensor(cursor: t.Optional[int]):
+def demo_sensor(cursor: int | None):
     interval = 10
     cursor = (cursor.result() if cursor else None)
     cursor = cursor or time.time()

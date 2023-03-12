@@ -1,19 +1,23 @@
 import functools
+import typing as t
 
 from . import context, future
 
 TARGET_KEY = '_coflux_target'
 
+T = t.TypeVar("T")
+P = t.ParamSpec("P")
+
 def _run_local(fn, args):
     return fn(*[(future.Future(lambda: a) if not isinstance(a, future.Future) else a) for a in args])
 
-def step(*, name=None, cache_key_fn=None):
-    def decorate(fn):
+def step(*, name: str | None = None, cache_key_fn: t.Callable[P, str] | None = None) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
+    def decorate(fn: t.Callable[P, T]) -> t.Callable[P, future.Future[T]]:
         target = name or fn.__name__
         setattr(fn, TARGET_KEY, (target, ('step', fn)))
 
         @functools.wraps(fn)
-        def wrapper(*args):  # TODO: support kwargs?
+        def wrapper(*args) -> future.Future[T]:  # TODO: support kwargs?
             try:
                 # TODO: handle args being futures?
                 cache_key = cache_key_fn(*args) if cache_key_fn else None
@@ -28,13 +32,13 @@ def step(*, name=None, cache_key_fn=None):
     return decorate
 
 
-def task(*, name=None):
-    def decorate(fn):
+def task(*, name: str | None = None) -> t.Callable[[t.Callable[P, T]], t.Callable[P, None]]:
+    def decorate(fn: t.Callable[P, T]) -> t.Callable[P, None]:
         target = name or fn.__name__
         setattr(fn, TARGET_KEY, (target, ('task', fn)))
 
         @functools.wraps(fn)
-        def wrapper(*args):  # TODO: support kwargs?
+        def wrapper(*args) -> None:  # TODO: support kwargs?
             try:
                 context.schedule_task(target, args)
             except context.NotInContextException:
@@ -46,8 +50,8 @@ def task(*, name=None):
     return decorate
 
 
-def sensor(*, name=None):
-    def decorate(fn):
+def sensor(*, name=None) -> t.Callable[[t.Callable[[T | None], None]], t.Callable[[T | None], None]]:
+    def decorate(fn: t.Callable[[T | None], None]) -> t.Iterator[T]:
         setattr(fn, TARGET_KEY, (name or fn.__name__, ('sensor', fn)))
         return fn
 

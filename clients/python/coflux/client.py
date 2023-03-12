@@ -9,6 +9,7 @@ import os
 import inspect
 import urllib.parse
 import enum
+import types
 
 from . import annotations, channel, future, context
 
@@ -50,12 +51,13 @@ def _generate_manifest(targets):
 
 
 
-def _future_argument(argument, client, loop, execution_id):
+def _resolve_argument(argument, client, loop, execution_id):
     tag, value = argument
     if tag == 'json':
-        return future.Future(lambda: json.loads(value), argument)
+        return json.loads(value)
     elif tag == 'blob':
-        return future.Future(lambda: client._get_blob(value), argument, loop)
+        task = client._get_blob(value)
+        return asyncio.run_coroutine_threadsafe(task, loop).result()
     elif tag == 'result':
         return future.Future(lambda: client.get_result(value, execution_id), argument, loop)
     else:
@@ -64,7 +66,7 @@ def _future_argument(argument, client, loop, execution_id):
 
 
 class Client:
-    def __init__(self, project_id, environment_name, module, version, server_host, concurrency=None):
+    def __init__(self, project_id: str, environment_name: str, module: types.ModuleType, version: str, server_host: str, concurrency: int | None = None):
         self._project_id = project_id
         self._environment_name = environment_name
         self._module = module
@@ -128,10 +130,11 @@ class Client:
 
     # TODO: consider thread safety
     def _execute_target(self, execution_id, target_name, arguments, loop):
-        self._semaphore.acquire()
-        self._set_execution_status(execution_id, 1)
         target = self._targets[target_name][1]
-        arguments = [_future_argument(a, self, loop, execution_id) for a in arguments]
+        # TODO: fetch blobs in parallel
+        arguments = [_resolve_argument(a, self, loop, execution_id) for a in arguments]
+        self._semaphore.acquire()
+        self._set_execution_status(execution_id, ExecutionStatus.EXECUTING)
         token = context.set_execution(execution_id, self, loop)
         try:
             value = target(*arguments)
@@ -239,7 +242,7 @@ class Client:
             raise Exception(f"unexeptected result tag ({result[0]})")
 
 
-def run(project, environment, module, version, host, concurrency):
+def run(project: str, environment: str, module: types.ModuleType, version: str, host: str, concurrency: int | None = None):
     try:
         client = Client(project, environment, module, version, host, concurrency)
         asyncio.run(client.run())
