@@ -121,7 +121,7 @@ def random_task(n: int = 5) -> None:
 
 @step()
 def build_content() -> str:
-    return '1234567890' * 10
+    return "1234567890" * 10
 
 
 @task()
@@ -132,7 +132,7 @@ def blob_task():
 @step()
 def github_events():
     context.log_debug("Requesting events...")
-    r = requests.get('https://api.github.com/events')
+    r = requests.get("https://api.github.com/events")
     r.raise_for_status()
     context.log_debug(f"Elapsed: {r.elapsed}")
     return r.json()
@@ -147,7 +147,7 @@ def github_task():
 @sensor()
 def demo_sensor(cursor: int | None):
     interval = 10
-    cursor = (cursor.result() if cursor else None)
+    cursor = cursor.result() if cursor else None
     cursor = cursor or time.time()
     while True:
         remaining = max(0, cursor - time.time())
@@ -158,5 +158,5 @@ def demo_sensor(cursor: int | None):
         yield cursor
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print(my_task([1, 2, 3, 4]).result())

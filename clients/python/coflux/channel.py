@@ -4,6 +4,7 @@ import json
 import typing as t
 import aiohttp
 
+
 class Request:
     def __init__(self):
         self._event = asyncio.Event()
@@ -18,7 +19,7 @@ class Request:
 
     async def get(self) -> t.Any:
         await self._event.wait()
-        if hasattr(self, '_error'):
+        if hasattr(self, "_error"):
             raise Exception(self._error)
         else:
             return self._result
@@ -46,12 +47,12 @@ class Channel:
             task.cancel()
 
     async def _send(self, method: str, params: tuple, id: str | None = None) -> None:
-        data = {'method': method}
+        data = {"method": method}
         if params:
-            data['params'] = params
+            data["params"] = params
         if id:
-            data['id'] = id
-        await (self._queue.put(data))
+            data["id"] = id
+        await self._queue.put(data)
 
     @functools.cached_property
     def _queue(self) -> asyncio.Queue:
@@ -64,18 +65,18 @@ class Channel:
     async def _consume(self, websocket: aiohttp.ClientWebSocketResponse) -> None:
         async for message in websocket:
             data = json.loads(message.data)
-            if 'method' in data:
-                handler = self._handlers[data['method']]
-                params = data.get('params', [])
+            if "method" in data:
+                handler = self._handlers[data["method"]]
+                params = data.get("params", [])
                 await handler(*params)
             else:
-                request = self._requests[data['id']]
-                if 'result' in data:
-                    request.put_result(data['result'])
-                elif 'error' in data:
-                    request.put_error(data['error'])
+                request = self._requests[data["id"]]
+                if "result" in data:
+                    request.put_result(data["result"])
+                elif "error" in data:
+                    request.put_error(data["error"])
 
     async def _produce(self, websocket: aiohttp.ClientWebSocketResponse) -> t.NoReturn:
         while True:
-            data = await (self._queue.get())
+            data = await self._queue.get()
             await websocket.send_str(json.dumps(data))
