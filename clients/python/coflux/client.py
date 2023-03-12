@@ -25,8 +25,7 @@ def _json_dumps(obj):
     return json.dumps(obj, separators=(',', ':'))
 
 
-def _load_module(name):
-    module = importlib.import_module(name)
+def _load_module(module):
     attrs = (getattr(module, k) for k in dir(module))
     return dict(a._coflux_target for a in attrs if hasattr(a, annotations.TARGET_KEY))
 
@@ -65,13 +64,13 @@ def _future_argument(argument, client, loop, execution_id):
 
 
 class Client:
-    def __init__(self, project_id, environment_name, module_name, version, server_host, concurrency=None):
+    def __init__(self, project_id, environment_name, module, version, server_host, concurrency=None):
         self._project_id = project_id
         self._environment_name = environment_name
-        self._module_name = module_name
+        self._module = module
         self._version = version
         self._server_host = server_host
-        self._targets = _load_module(module_name)
+        self._targets = _load_module(module)
         self._channel = channel.Channel({'execute': self._handle_execute, 'abort': self._handle_abort})
         self._results = {}
         self._executions = {}
@@ -181,7 +180,8 @@ class Client:
             await asyncio.sleep(1)
 
     async def run(self):
-        print(f"Agent starting ({self._module_name}@{self._version})...")
+        module_name = self._module.__name__
+        print(f"Agent starting ({module_name}@{self._version})...")
         async with aiohttp.ClientSession() as self._session:
             # TODO: heartbeat (and timeout) value?
             async with self._session.ws_connect(
@@ -191,7 +191,7 @@ class Client:
                 print(f"Connected ({self._server_host}, {self._project_id}).")
                 # TODO: reset channel?
                 manifest = _generate_manifest(self._targets)
-                await self._channel.notify('register', self._module_name, self._version, manifest)
+                await self._channel.notify('register', module_name, self._version, manifest)
                 coros = [self._channel.run(websocket), self._send_heartbeats()]
                 done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
                 print("Disconnected.")
@@ -199,14 +199,14 @@ class Client:
                     task.cancel()
 
     async def schedule_step(self, execution_id, target, arguments, repository=None, cache_key=None):
-        repository = repository or self._module_name
+        repository = repository or self._module.__name__
         serialised_arguments = [await self._serialise_argument(a) for a in arguments]
         return await self._channel.request(
             'schedule_step', repository, target, serialised_arguments, execution_id, cache_key
         )
 
     async def schedule_task(self, execution_id, target, arguments, repository=None):
-        repository = repository or self._module_name
+        repository = repository or self._module.__name__
         serialised_arguments = [await self._serialise_argument(a) for a in arguments]
         return await self._channel.request('schedule_task', repository, target, serialised_arguments, execution_id)
 
