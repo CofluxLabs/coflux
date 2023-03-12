@@ -5,4 +5,4 @@
 Requires Nix.
 
 $ nix-shell
-$ docker compose up
+$ poetry run python -m example
