@@ -5,4 +5,4 @@
 Requires Nix.
 
 $ nix-shell
-$ npn run dev
+$ npm run dev
