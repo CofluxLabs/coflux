@@ -1,7 +1,6 @@
 import aiohttp
 import asyncio
 import hashlib
-import importlib
 import json
 import time
 import threading
@@ -10,6 +9,7 @@ import inspect
 import urllib.parse
 import enum
 import types
+import typing as t
 
 from . import annotations, channel, future, context
 
@@ -21,17 +21,23 @@ class ExecutionStatus(enum.Enum):
     WAITING = 2
     ABORTING = 3
 
+class LogLevel(enum.Enum):
+    DEBUG = 0
+    INFO = 1
+    WARNING = 2
+    ERROR = 3
 
-def _json_dumps(obj):
+
+def _json_dumps(obj: t.Any) -> str:
     return json.dumps(obj, separators=(',', ':'))
 
 
-def _load_module(module):
+def _load_module(module: types.ModuleType) -> dict:
     attrs = (getattr(module, k) for k in dir(module))
     return dict(a._coflux_target for a in attrs if hasattr(a, annotations.TARGET_KEY))
 
 
-def _manifest_parameter(parameter):
+def _manifest_parameter(parameter: inspect.Parameter) -> dict:
     result = {'name': parameter.name}
     if parameter.annotation != inspect.Parameter.empty:
         result['annotation'] = str(parameter.annotation)  # TODO: better way to serialise?
@@ -40,7 +46,7 @@ def _manifest_parameter(parameter):
     return result
 
 
-def _generate_manifest(targets):
+def _generate_manifest(targets: dict) -> dict:
     return {
         name: {
             'type': type,
@@ -51,7 +57,7 @@ def _generate_manifest(targets):
 
 
 
-def _resolve_argument(argument, client, loop, execution_id):
+def _resolve_argument(argument: list, client: "Client", loop: asyncio.AbstractEventLoop, execution_id: str) -> t.Any:
     tag, value = argument
     if tag == 'json':
         return json.loads(value)
@@ -79,17 +85,17 @@ class Client:
         self._semaphore = threading.Semaphore(concurrency or min(32, os.cpu_count() + 4))
         self._last_heartbeat_sent = None
 
-    def _url(self, scheme, path, **kwargs):
+    def _url(self, scheme: str, path: str, **kwargs) -> str:
         query_string = f'?{urllib.parse.urlencode(kwargs)}' if kwargs else ''
         return f'{scheme}://{self._server_host}/projects/{self._project_id}{path}{query_string}'
 
-    async def _get_blob(self, key):
+    async def _get_blob(self, key: str) -> t.Any:
         # TODO: make blob url configurable
         async with self._session.get(self._url('http', f'/blobs/{key}')) as resp:
             resp.raise_for_status()
             return await resp.json()
 
-    async def _put_blob(self, content):
+    async def _put_blob(self, content: str) -> str:
         key = hashlib.sha256(content.encode()).hexdigest()
         # TODO: make blob url configurable
         # TODO: check whether already uploaded (using head request)?
@@ -97,7 +103,7 @@ class Client:
             resp.raise_for_status()
         return key
 
-    async def _prepare_result(self, value):
+    async def _prepare_result(self, value: t.Any) -> t.Tuple[str, str]:
         if isinstance(value, future.Future):
             return value.serialise()
         json_value = _json_dumps(value)
@@ -107,7 +113,7 @@ class Client:
         return 'json', json_value
 
     # TODO: combine with above
-    async def _serialise_argument(self, value):
+    async def _serialise_argument(self, value: t.Any) -> t.Tuple[str, str]:
         if isinstance(value, future.Future):
             return value.serialise()
         json_value = _json_dumps(value)
@@ -116,20 +122,20 @@ class Client:
             return 'blob', key
         return 'json', json_value
 
-    async def _put_result(self, execution_id, value):
+    async def _put_result(self, execution_id: str, value: t.Any) -> None:
         type, value = await self._prepare_result(value)
         await self._channel.notify('put_result', execution_id, type, value)
 
-    async def _put_cursor(self, execution_id, value):
+    async def _put_cursor(self, execution_id: str, value: t.Any) -> None:
         type, value = await self._prepare_result(value)
         await self._channel.notify('put_cursor', execution_id, type, value)
 
-    async def _put_error(self, execution_id, exception):
+    async def _put_error(self, execution_id: str, exception: Exception) -> None:
         # TODO: include exception state
         await self._channel.notify('put_error', execution_id, str(exception)[:200], {})
 
     # TODO: consider thread safety
-    def _execute_target(self, execution_id, target_name, arguments, loop):
+    def _execute_target(self, execution_id: str, target_name: str, arguments: list[list[t.Any]], loop: asyncio.AbstractEventLoop) -> None:
         target = self._targets[target_name][1]
         # TODO: fetch blobs in parallel
         arguments = [_resolve_argument(a, self, loop, execution_id) for a in arguments]
@@ -157,7 +163,7 @@ class Client:
             context.reset_execution(token)
             self._semaphore.release()
 
-    async def _handle_execute(self, execution_id, target_name, arguments):
+    async def _handle_execute(self, execution_id: str, target_name: str, arguments: list[list[t.Any]]) -> None:
         # TODO: check execution isn't already running?
         print(f"Handling execute '{target_name}' ({execution_id})...")
         loop = asyncio.get_running_loop()
@@ -166,14 +172,14 @@ class Client:
         self._executions[execution_id] = (thread, time.time(), ExecutionStatus.STARTING)
         thread.start()
 
-    async def _handle_abort(self, execution_id):
+    async def _handle_abort(self, execution_id: str) -> None:
         print(f"Aborting execution ({execution_id})...")
         self._set_execution_status(execution_id, ExecutionStatus.ABORTING)
 
-    def _should_send_heartbeat(self, executions, threshold_s, now):
+    def _should_send_heartbeat(self, executions: dict, threshold_s: float, now: float) -> bool:
         return executions or not self._last_heartbeat_sent or (now - self._last_heartbeat_sent) > threshold_s
 
-    async def _send_heartbeats(self, execution_threshold_s=1, agent_threshold_s=5):
+    async def _send_heartbeats(self, execution_threshold_s: float = 1.0, agent_threshold_s: float = 5.0) -> t.NoReturn:
         while True:
             now = time.time()
             executions = {id: e[2].value for id, e in self._executions.items() if now - e[1] > execution_threshold_s}
@@ -182,7 +188,7 @@ class Client:
                 self._last_heartbeat_sent = now
             await asyncio.sleep(1)
 
-    async def run(self):
+    async def run(self) -> None:
         module_name = self._module.__name__
         print(f"Agent starting ({module_name}@{self._version})...")
         async with aiohttp.ClientSession() as self._session:
@@ -201,26 +207,26 @@ class Client:
                 for task in pending:
                     task.cancel()
 
-    async def schedule_step(self, execution_id, target, arguments, repository=None, cache_key=None):
+    async def schedule_step(self, execution_id: str, target: str, arguments: t.Tuple[t.Any, ...], repository: str | None = None, cache_key: str | None = None) -> str:
         repository = repository or self._module.__name__
         serialised_arguments = [await self._serialise_argument(a) for a in arguments]
         return await self._channel.request(
             'schedule_step', repository, target, serialised_arguments, execution_id, cache_key
         )
 
-    async def schedule_task(self, execution_id, target, arguments, repository=None):
+    async def schedule_task(self, execution_id: str, target: str, arguments: t.Tuple[t.Any, ...], repository: str | None = None) -> str:
         repository = repository or self._module.__name__
         serialised_arguments = [await self._serialise_argument(a) for a in arguments]
         return await self._channel.request('schedule_task', repository, target, serialised_arguments, execution_id)
 
-    async def log_message(self, execution_id, level, message):
-        return await self._channel.notify('log_message', execution_id, level, message)
+    async def log_message(self, execution_id: str, level: LogLevel, message: str) -> None:
+        await self._channel.notify('log_message', execution_id, level, message)
 
-    def _set_execution_status(self, execution_id, status):
+    def _set_execution_status(self, execution_id: str, status: ExecutionStatus) -> None:
         thread, start_time, _status = self._executions[execution_id]
         self._executions[execution_id] = (thread, start_time, status)
 
-    async def get_result(self, execution_id, from_execution_id):
+    async def get_result(self, execution_id: str, from_execution_id: str) -> t.Any:
         if execution_id not in self._results:
             self._semaphore.release()
             self._set_execution_status(from_execution_id, ExecutionStatus.WAITING)
@@ -242,7 +248,7 @@ class Client:
             raise Exception(f"unexeptected result tag ({result[0]})")
 
 
-def run(project: str, environment: str, module: types.ModuleType, version: str, host: str, concurrency: int | None = None):
+def run(project: str, environment: str, module: types.ModuleType, version: str, host: str, concurrency: int | None = None) -> None:
     try:
         client = Client(project, environment, module, version, host, concurrency)
         asyncio.run(client.run())
