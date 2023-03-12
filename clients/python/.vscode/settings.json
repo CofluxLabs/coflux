@@ -1,7 +1,9 @@
 {
   "python.formatting.provider": "black",
   "files.exclude": {
-    "**/__pycache__": true,
-    ".direnv": true
-  }
+    ".venv": true,
+    ".direnv": true,
+    "**/__pycache__": true
+  },
+  "python.defaultInterpreterPath": "./.venv/bin/python"
 }

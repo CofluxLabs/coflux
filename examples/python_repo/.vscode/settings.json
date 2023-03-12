@@ -5,4 +5,5 @@
     ".direnv": true,
     "**/__pycache__": true
   },
+  "python.defaultInterpreterPath": "./.venv/bin/python"
 }

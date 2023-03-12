@@ -1,5 +1,4 @@
 import click
-import asyncio
 import watchfiles
 import importlib
 
