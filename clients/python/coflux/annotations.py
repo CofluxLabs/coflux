@@ -8,9 +8,6 @@ TARGET_KEY = '_coflux_target'
 T = t.TypeVar("T")
 P = t.ParamSpec("P")
 
-def _run_local(fn, args):
-    return fn(*[(future.Future(lambda: a) if not isinstance(a, future.Future) else a) for a in args])
-
 def step(*, name: str | None = None, cache_key_fn: t.Callable[P, str] | None = None) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     def decorate(fn: t.Callable[P, T]) -> t.Callable[P, future.Future[T]]:
         target = name or fn.__name__
@@ -24,7 +21,7 @@ def step(*, name: str | None = None, cache_key_fn: t.Callable[P, str] | None = N
                 execution_id = context.schedule_step(target, args, cache_key=cache_key)
                 return context.get_result(execution_id)
             except context.NotInContextException:
-                result = _run_local(fn, args)
+                result = fn(*args)
                 return future.Future(lambda: result) if not isinstance(result, future.Future) else result
 
         return wrapper
@@ -43,7 +40,7 @@ def task(*, name: str | None = None) -> t.Callable[[t.Callable[P, T]], t.Callabl
                 context.schedule_task(target, args)
             except context.NotInContextException:
                 # TODO: execute in threadpool
-                _run_local(fn, args)
+                fn(*args)
 
         return wrapper
 
