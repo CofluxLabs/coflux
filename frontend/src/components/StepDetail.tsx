@@ -110,7 +110,7 @@ function Attempt({ attempt, run, projectId, environmentName }: AttemptProps) {
   const assignedAt = attempt.assignedAt ? DateTime.fromISO(attempt.assignedAt) : null;
   const resultAt = attempt.result && DateTime.fromISO(attempt.result.createdAt);
   // TODO: subscribe to execution logs
-  const logs = useTopic<Record<string, models.LogMessage>>("projects", projectId, "runs", run.id, "logs");
+  const [logs, _] = useTopic<Record<string, models.LogMessage>>("projects", projectId, "runs", run.id, "logs");
   const attemptLogs = logs && attempt.executionId !== null && filter(logs, { executionId: attempt.executionId });
   return (
     <Fragment>
