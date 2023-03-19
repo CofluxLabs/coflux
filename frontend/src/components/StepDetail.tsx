@@ -42,7 +42,6 @@ function Result({ result, run, projectId, environmentName }: ResultProps) {
         <a
           href={`http://localhost:7070/projects/${projectId}/blobs/${result.value}`}
           className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
-        // onClick={handleBlobClick}
         >
           Blob
         </a>
@@ -185,9 +184,12 @@ function AttemptSelector({ selectedNumber, attempts, onChange, children }: Attem
 
 type ArgumentProps = {
   argument: string;
+  run: models.Run;
+  projectId: string;
+  environmentName: string;
 }
 
-function Argument({ argument }: ArgumentProps) {
+function Argument({ argument, run, projectId, environmentName }: ArgumentProps) {
   const [type, value] = argument.split(':', 2);
   switch (type) {
     case 'json':
@@ -197,12 +199,30 @@ function Argument({ argument }: ArgumentProps) {
         </span>
       );
     case 'result':
-      return (
-        <span title={value}>{value} (result)</span>
-      );
+      const stepAttempt = findExecution(run, value);
+      if (stepAttempt) {
+        const [stepId, attempt] = stepAttempt;
+        return (
+          <Link
+            to={buildUrl(`/projects/${projectId}/runs/${run.id}`, { environment: environmentName, step: stepId, attempt })}
+            className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-1 py-0.5 my-0.5 inline-block"
+          >
+            Result
+          </Link>
+        );
+      } else {
+        return <em>Unrecognised execution</em>
+      }
     case 'blob':
       return (
-        <span title={value}>{value} (blob)</span>
+        <span>
+          <a
+            href={`http://localhost:7070/projects/${projectId}/blobs/${value}`}
+            className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-1 py-0.5 my-0.5 inline-block"
+          >
+            Blob
+          </a>
+        </span>
       );
     default:
       throw new Error(`Unhandled argument type (${type})`);
@@ -278,10 +298,10 @@ export default function StepDetail({ step, attemptNumber, run, projectId, enviro
       {step.arguments.length > 0 && (
         <div className="p-4">
           <h3 className="uppercase text-sm font-bold text-slate-400">Arguments</h3>
-          <ol className="list-disc list-inside ml-1">
+          <ol className="list-decimal list-inside ml-1 marker:text-gray-400 marker:text-xs">
             {step.arguments.map((argument, index) => (
               <li key={index}>
-                <Argument argument={argument} />
+                <Argument argument={argument} run={run} projectId={projectId} environmentName={environmentName} />
               </li>
             ))}
           </ol>
