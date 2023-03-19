@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 
 import * as models from '../models';
 import { buildUrl } from '../utils';
+import LogMessage from './LogMessage';
 
 const LOG_LEVELS = {
   0: ['Debug', 'text-gray-400'],
@@ -56,15 +57,8 @@ export default function RunLogs({ run, logs, projectId, environmentName, activeS
                       )}
                     </div>
                   </td>
-                  <td className="w-0">
-                    <span className={classNames('font-bold pr-1 inline-block', className)} title={name}>
-                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
-                        <circle cx="8" cy="8" r="8" />
-                      </svg>
-                    </span>
-                  </td>
-                  <td className="">
-                    {message.message}
+                  <td>
+                    <LogMessage message={message} />
                   </td>
                 </tr>
               );

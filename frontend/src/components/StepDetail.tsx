@@ -10,6 +10,7 @@ import * as models from '../models';
 import Badge from './Badge';
 import { buildUrl } from '../utils';
 import Loading from './Loading';
+import LogMessage from './LogMessage';
 
 function findExecution(run: models.Run, executionId: string) {
   const stepId = findKey(run.steps, (s) => Object.values(s.attempts).some((a) => a.executionId == executionId));
@@ -72,30 +73,23 @@ function Result({ result, run, projectId, environmentName }: ResultProps) {
   }
 }
 
-type LogMessageProps = {
+type LogMessageItemProps = {
   message: models.LogMessage;
+  startTime: DateTime;
 }
 
-const LOG_LEVELS = {
-  0: ['Debug', 'bg-gray-400'],
-  1: ['Info', 'bg-blue-400'],
-  2: ['Warning', 'bg-yellow-500'],
-  3: ['Error', 'bg-red-600']
-}
-
-function LogMessage({ message }: LogMessageProps) {
-  const [name, className] = LOG_LEVELS[message.level];
+function LogMessageItem({ message, startTime }: LogMessageItemProps) {
+  const createdAt = DateTime.fromISO(message.createdAt);
   return (
-    <div className="my-2">
-      <div className="my-1">
-        <span className={classNames('rounded p-1 text-xs uppercase text-white mr-1 font-bold', className)}>{name}</span>
+    <li>
+      <div className="my-2">
+        <LogMessage message={message} className="my-1" />
+        <div className="text-xs text-slate-500 my-1">
+          {createdAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)} (+{(createdAt.diff(startTime).toMillis())}ms)
+        </div>
       </div>
-      <div className="my-1">
-        {message.message}
-      </div>
-      <div className="text-xs text-slate-500 my-1">{message.createdAt}</div>
-    </div>
-  );
+    </li>
+  )
 }
 
 type AttemptProps = {
@@ -138,9 +132,7 @@ function Attempt({ attempt, run, projectId, environmentName }: AttemptProps) {
         ) : (
           <ol>
             {sortBy(Object.values(attemptLogs), 'createdAt').map((message, index) => (
-              <li key={index}>
-                <LogMessage message={message} />
-              </li>
+              <LogMessageItem key={index} message={message} startTime={scheduledAt} />
             ))}
           </ol>
         )}
