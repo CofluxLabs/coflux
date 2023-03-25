@@ -94,7 +94,7 @@ type RunNodeProps = {
   node: dagre.Node;
   projectId: string;
   runId: string;
-  environmentName: string;
+  environmentName: string | undefined;
 }
 
 function RunNode({ node, projectId, runId, environmentName }: RunNodeProps) {

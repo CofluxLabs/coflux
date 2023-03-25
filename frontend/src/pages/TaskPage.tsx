@@ -15,7 +15,7 @@ export default function TaskPage() {
   const [task, startRun] = useTaskTopic(projectId, environmentName, repository, target);
   // TODO: remove duplication (RunLayout)
   const navigate = useNavigate();
-  const handleRun = useCallback((parameters) => {
+  const handleRun = useCallback((parameters: ['json', string][]) => {
     return startRun(parameters).then((runId) => {
       navigate(buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName }));
     });

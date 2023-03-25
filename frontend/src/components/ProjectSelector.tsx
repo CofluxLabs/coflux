@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { ChangeEvent, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 type Props = {
@@ -8,7 +8,7 @@ type Props = {
 export default function ProjectSelector({ projectIds }: Props) {
   const { project: activeProjectId } = useParams();
   const navigate = useNavigate();
-  const handleChange = useCallback((ev) => navigate(`/projects/${ev.target.value}`), [navigate]);
+  const handleChange = useCallback((ev: ChangeEvent<HTMLSelectElement>) => navigate(`/projects/${ev.target.value}`), [navigate]);
   return (
     <div>
       <select

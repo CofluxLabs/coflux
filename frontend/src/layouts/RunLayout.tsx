@@ -88,14 +88,11 @@ export default function RunLayout() {
   const [task, startRun] = useTaskTopic(projectId, environmentName, initialStep?.repository, initialStep?.target);
   const navigate = useNavigate();
   // TODO: remove duplication (TaskPage)
-  const handleRun = useCallback((parameters) => {
+  const handleRun = useCallback((parameters: ['json', string][]) => {
     return startRun(parameters).then((runId) => {
       navigate(buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName }));
     });
   }, [startRun]);
-  const handleRerunStep = useCallback((stepId, environmentName) => {
-    return rerunStep(stepId, environmentName);
-  }, [rerunStep]);
   useSetActiveTarget(task);
   if (!run || !task) {
     return <Loading />;
@@ -116,7 +113,7 @@ export default function RunLayout() {
           attemptNumber={activeAttemptNumber}
           run={run}
           projectId={projectId!}
-          onRerunStep={handleRerunStep}
+          onRerunStep={rerunStep}
         />
       </Fragment>
     );

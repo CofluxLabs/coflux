@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useState } from 'react';
+import { ChangeEvent, Fragment, useCallback, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import classNames from 'classnames';
 
@@ -11,7 +11,7 @@ type ParameterProps = {
 }
 
 function Parameter({ parameter, value, onChange }: ParameterProps) {
-  const handleChange = useCallback((ev) => onChange(parameter.name, ev.target.value), [parameter, onChange]);
+  const handleChange = useCallback((ev: ChangeEvent<HTMLInputElement>) => onChange(parameter.name, ev.target.value), [parameter, onChange]);
   return (
     <div className="py-1">
       <label className="w-32">
@@ -42,7 +42,7 @@ type Props = {
 
 export default function RunDialog({ parameters, open, starting, onRun, onClose }: Props) {
   const [values, setValues] = useState<Record<string, string>>({});
-  const handleValueChange = useCallback((name, value) => setValues(vs => ({ ...vs, [name]: value })), []);
+  const handleValueChange = useCallback((name: string, value: string) => setValues(vs => ({ ...vs, [name]: value })), []);
   const handleRunClick = useCallback(() => {
     onRun(parameters.map((p) => ['json', values[p.name] || p.default]));
   }, [parameters, values, onRun]);

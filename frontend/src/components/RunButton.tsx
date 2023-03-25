@@ -14,7 +14,7 @@ export default function RunButton({ task, onRun }: Props) {
   const handleRunClick = useCallback(() => {
     setRunDialogOpen(true);
   }, []);
-  const handleRun = useCallback((parameters) => {
+  const handleRun = useCallback((parameters: ['json', string][]) => {
     setStarting(true);
     onRun(parameters).then(() => {
       setStarting(false);

@@ -56,13 +56,13 @@ export default function TargetsList({ projectId, environmentName, activeTarget }
             </div>
             <ul>
               {Object.keys(manifest.tasks).map((target) => {
-                const isActive = activeTarget && activeTarget.repository == manifest.repository && activeTarget.target == target;
+                const isActive = !!activeTarget && activeTarget.repository == manifest.repository && activeTarget.target == target;
                 return (
                   <Target key={target} target={target} icon={IconSubtask} url={buildUrl(`/projects/${projectId}/tasks/${manifest.repository}/${target}`, { environment: environmentName })} isActive={isActive} />
                 );
               })}
               {manifest.sensors.map((target) => {
-                const isActive = activeTarget && activeTarget.repository == manifest.repository && activeTarget.target == target;
+                const isActive = !!activeTarget && activeTarget.repository == manifest.repository && activeTarget.target == target;
                 return (
                   <Target key={target} target={target} icon={IconCpu} url={buildUrl(`/projects/${projectId}/sensors/${manifest.repository}/${target}`, { environment: environmentName })} isActive={isActive} />
                 );

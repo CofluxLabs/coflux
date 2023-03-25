@@ -21,7 +21,7 @@ export function useTaskTopic(
   target: string | undefined
 ): [models.Task | undefined, (parameters: ['json', string][]) => Promise<string>] {
   const [task, { execute }] = useTopic<models.Task>("projects", projectId, "environments", environmentName, "tasks", repository, target);
-  const startRun = useCallback((paremeters) => {
+  const startRun = useCallback((paremeters: ['json', string][]) => {
     return execute('start_run', paremeters);
   }, [execute]);
   return [task, startRun];
