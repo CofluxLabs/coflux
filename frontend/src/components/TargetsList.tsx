@@ -21,7 +21,7 @@ function Target({ url, icon: Icon, target, isActive }: TargetProps) {
     <li>
       <Link
         to={url}
-        className={classNames('block px-2 py-0.5 my-0.5 rounded-md text-slate-900 flex gap-1', isActive ? 'bg-slate-200' : 'hover:bg-slate-200/50')}
+        className={classNames('block px-2 py-0.5 my-0.5 rounded-md text-slate-900 flex gap-1 items-center', isActive ? 'bg-slate-200' : 'hover:bg-slate-200/50')}
       >
         <Icon size={20} strokeWidth={1} className="text-slate-500" />
         <div className="font-mono flex-1">{target}</div>
@@ -54,6 +54,7 @@ export default function TargetsList({ projectId, environmentName, activeTarget }
             <div className="flex items-center mt-4 py-1 px-2">
               <h2 className="flex-1 font-bold uppercase text-slate-400 text-sm">{manifest.repository}</h2>
             </div>
+              {Object.keys(manifest.tasks).length || manifest.sensors.length ? (
             <ul>
               {Object.keys(manifest.tasks).map((target) => {
                 const isActive = !!activeTarget && activeTarget.repository == manifest.repository && activeTarget.target == target;
@@ -68,6 +69,9 @@ export default function TargetsList({ projectId, environmentName, activeTarget }
                 );
               })}
             </ul>
+              ) : (
+                <p className="text-slate-300 italic px-2 text-sm">No targets</p>
+              )}
           </Fragment>
         ))}
       </div>

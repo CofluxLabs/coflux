@@ -39,8 +39,8 @@ export default function ProjectLayout() {
           </span>
         </div>
         <div className="flex-auto flex overflow-hidden">
-          <div className="w-64 bg-slate-100 text-gray-100 border-r border-slate-200 overflow-auto flex-none flex flex-col">
-            <div className="flex-1">
+          <div className="w-64 bg-slate-100 text-gray-100 border-r border-slate-200 flex-none flex flex-col">
+            <div className="flex-1 overflow-auto">
               <TargetsList projectId={projectId} environmentName={environmentName} activeTarget={activeTarget} />
             </div>
             <SocketStatus />
