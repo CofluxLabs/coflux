@@ -319,7 +319,7 @@ class Client:
             raise Exception(f"unexeptected result tag ({result[0]})")
 
 
-def run(
+def init(
     project: str,
     environment: str,
     module: types.ModuleType,
