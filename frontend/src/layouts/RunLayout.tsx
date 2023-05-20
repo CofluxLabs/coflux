@@ -38,10 +38,11 @@ type DetailPanelProps = {
   attemptNumber: number | undefined;
   run: models.Run;
   projectId: string;
+  className?: string;
   onRerunStep: (stepId: string, environmentName: string) => Promise<number>;
 }
 
-function DetailPanel({ stepId, attemptNumber, run, projectId, onRerunStep }: DetailPanelProps) {
+function DetailPanel({ stepId, attemptNumber, run, projectId, className, onRerunStep }: DetailPanelProps) {
   const step = stepId && run.steps[stepId];
   const previousStep = usePrevious(step);
   const stepOrPrevious = step || previousStep;
@@ -56,7 +57,7 @@ function DetailPanel({ stepId, attemptNumber, run, projectId, onRerunStep }: Det
       leaveFrom="translate-x-0"
       leaveTo="translate-x-full"
     >
-      <div className="fixed bottom-0 right-0 top-14 w-1/3 bg-slate-100 border-l border-slate-200 h-screen flex shadow-lg">
+      <div className={classNames(className, "bg-slate-100 border-l border-slate-200 flex shadow-lg")}>
         {stepOrPrevious && (
           <StepDetail
             step={stepOrPrevious}
@@ -98,24 +99,27 @@ export default function RunLayout() {
     return <Loading />;
   } else {
     return (
-      <Fragment>
-        <TaskHeader task={task} projectId={projectId!} runId={run.id} environmentName={environmentName} onRun={handleRun} />
-        <div className="border-b px-4">
-          <Tab page={null}>Graph</Tab>
-          <Tab page="timeline">Timeline</Tab>
-          <Tab page="logs">Logs</Tab>
-        </div>
-        <div className="p-4 flex-1 overflow-auto">
-          <Outlet context={{ run }} />
+      <div className="flex flex-1">
+        <div className="grow flex flex-col">
+          <TaskHeader task={task} projectId={projectId!} runId={run.id} environmentName={environmentName} onRun={handleRun} />
+          <div className="border-b px-4">
+            <Tab page={null}>Graph</Tab>
+            <Tab page="timeline">Timeline</Tab>
+            <Tab page="logs">Logs</Tab>
+          </div>
+          <div className="p-4 flex-1 overflow-auto">
+            <Outlet context={{ run }} />
+          </div>
         </div>
         <DetailPanel
           stepId={activeStepId}
           attemptNumber={activeAttemptNumber}
           run={run}
           projectId={projectId!}
+          className="w-1/3"
           onRerunStep={rerunStep}
         />
-      </Fragment>
+      </div>
     );
   }
 }
