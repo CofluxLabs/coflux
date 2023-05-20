@@ -1,19 +1,17 @@
-import { ComponentType } from 'react';
-import { IconAlertOctagonFilled, IconAlertTriangleFilled, IconInfoCircleFilled, IconSquareChevronRight, TablerIconsProps } from '@tabler/icons-react';
 import classNames from 'classnames';
 
 import * as models from '../models';
 
-function iconForLevel(level: 0 | 1 | 2 | 3): [ComponentType<TablerIconsProps>, string] {
+function classForLevel(level: 0 | 1 | 2 | 3): string {
   switch (level) {
     case 0:
-      return [IconSquareChevronRight, "text-gray-500"];
+      return "border-gray-200";
     case 1:
-      return [IconInfoCircleFilled, "text-blue-500"];
+      return "border-blue-300";
     case 2:
-      return [IconAlertTriangleFilled, "text-yellow-500"];
+      return "border-yellow-300";
     case 3:
-      return [IconAlertOctagonFilled, "text-red-600"];
+      return "border-red-400";
   }
 }
 
@@ -24,10 +22,8 @@ type Props = {
 }
 
 export default function LogMessage({ message, size = 16, className }: Props) {
-  const [Icon, color] = iconForLevel(message.level);
   return (
-    <div className={className}>
-      <Icon size={size} className={classNames("inline-block mr-1", color)} />
+    <div className={classNames(className, "border-l-4 pl-2", classForLevel(message.level))}>
       {message.message}
     </div>
   );
