@@ -5,39 +5,47 @@ import { Link } from 'react-router-dom';
 
 import * as models from '../models';
 import { buildUrl } from '../utils';
+import { max } from 'lodash';
 
 function buildGraph(run: models.Run, activeStepId: string | undefined, activeAttemptNumber: number | undefined) {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: 'LR', ranksep: 40, nodesep: 40 });
   g.setDefaultEdgeLabel(function () { return {}; });
 
-  const initialStep = Object.values(run.steps).find((s) => !s.parent)!;
-  let step = activeStepId && run.steps[activeStepId] || initialStep;
-  const stepAttempts = { [step.id]: activeStepId && activeAttemptNumber };
-  while (step.parent) {
-    stepAttempts[step.parent.stepId] = step.parent.attempt;
-    step = step.parent && run.steps[step.parent.stepId];
+  const initialStepId = Object.keys(run.steps).find((id) => !run.steps[id].parentId)!;
+  let stepId = activeStepId || initialStepId;
+  const stepAttempts = { [stepId]: activeStepId && activeAttemptNumber };
+  while (run.steps[stepId].parentId) {
+    const parentId = run.steps[stepId].parentId!;
+    stepId = Object.keys(run.steps).find((id) => parentId in run.steps[id].executions)!;
+    stepAttempts[stepId] = run.steps[stepId].executions[parentId].sequence;
   }
 
   const traverse = (stepId: string) => {
     const step = run.steps[stepId];
-    const attemptNumber = stepAttempts[stepId] || Object.keys(step.attempts).length;
-    const nodeId = `${step.id}/${attemptNumber}`;
+    const attemptNumber = stepAttempts[stepId] || max(Object.values(step.executions).map((e) => e.sequence));
+    const nodeId = attemptNumber ? `${stepId}/${attemptNumber}` : stepId;
     g.setNode(nodeId, { width: 160, height: 50 });
-    if (step.parent) {
-      const parentNodeId = `${step.parent.stepId}/${step.parent.attempt}`;
+    if (step.parentId) {
+      const parentId = step.parentId;
+      const parentStepId = Object.keys(run.steps).find((id) => parentId in run.steps[id].executions)!;
+      const parentSequence = run.steps[parentStepId].executions[parentId].sequence
+      const parentNodeId = `${parentStepId}/${parentSequence}`;
       g.setEdge(parentNodeId, nodeId);
     }
-    step.attempts[attemptNumber]?.runIds.forEach((runId) => {
-      g.setNode(runId, { width: 160, height: 50 });
-      g.setEdge(nodeId, runId);
-    });
-    Object.values(run.steps)
-      .filter((s) => s.parent?.stepId == step.id && s.parent?.attempt == attemptNumber)
-      .forEach((child) => traverse(child.id));
+    // step.attempts[attemptNumber]?.runIds.forEach((runId) => {
+    //   g.setNode(runId, { width: 160, height: 50 });
+    //   g.setEdge(nodeId, runId);
+    // });
+    const executionId = Object.keys(step.executions).find((id) => step.executions[id].sequence == attemptNumber);
+    if (executionId) {
+      Object.keys(run.steps)
+        .filter((stepId) => run.steps[stepId].parentId == executionId)
+        .forEach((stepId) => traverse(stepId));
+    }
   };
 
-  traverse(step.id);
+  traverse(stepId);
   dagre.layout(g);
   return g;
 }
@@ -47,9 +55,9 @@ function classNameForResult(result: models.Result | undefined, isCached: boolean
     return 'border-gray-300 bg-gray-50';
   } else if (!result) {
     return 'border-blue-400 bg-blue-100';
-  } else if (result.type == 3) {
+  } else if (result.type == "error") {
     return 'border-red-400 bg-red-100';
-  } else if (result.type == 4) {
+  } else if (result.type == "abandoned") {
     return 'border-yellow-400 bg-yellow-100'
   } else {
     return 'border-gray-400 bg-gray-100';
@@ -58,29 +66,30 @@ function classNameForResult(result: models.Result | undefined, isCached: boolean
 
 type StepNodeProps = {
   node: dagre.Node;
+  stepId: string;
   step: models.Step;
-  attemptNumber: number;
+  attemptNumber: number | undefined;
   projectId: string;
   runId: string;
   environmentName: string | undefined;
   isActive: boolean;
 }
 
-function StepNode({ node, step, attemptNumber, projectId, runId, environmentName, isActive }: StepNodeProps) {
-  const attempt = step.attempts[attemptNumber];
+function StepNode({ node, stepId, step, attemptNumber, projectId, runId, environmentName, isActive }: StepNodeProps) {
+  const attempt = Object.values(step.executions).find((e) => e.sequence == attemptNumber);
   return (
     <div
       className="absolute flex items-center"
       style={{ left: node.x - node.width / 2, top: node.y - node.height / 2, width: node.width, height: node.height }}
     >
       <Link
-        to={buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName, step: isActive ? undefined : step.id, attempt: isActive ? undefined : attemptNumber })}
+        to={buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName, step: isActive ? undefined : stepId, attempt: isActive ? undefined : attemptNumber })}
         className={
           classNames(
             'flex-1 items-center border block rounded p-2 truncate',
-            classNameForResult(attempt?.result || undefined, !!step.cached),
+            classNameForResult(attempt?.result || undefined, !!step.cachedExecutionId),
             isActive && 'ring ring-offset-2',
-            { 'font-bold': !step.parent }
+            { 'font-bold': !step.parentId }
           )
         }
       >
@@ -129,6 +138,7 @@ function Edge({ edge }: EdgeProps) {
 }
 
 type Props = {
+  runId: string;
   run: models.Run;
   projectId: string;
   environmentName: string | undefined;
@@ -136,7 +146,7 @@ type Props = {
   activeAttemptNumber: number | undefined;
 }
 
-export default function RunGraph({ run, projectId, environmentName, activeStepId, activeAttemptNumber }: Props) {
+export default function RunGraph({ runId, run, projectId, environmentName, activeStepId, activeAttemptNumber }: Props) {
   const graph = useMemo(() => buildGraph(run, activeStepId, activeAttemptNumber), [run, activeStepId, activeAttemptNumber]);
   return (
     <div className="relative">
@@ -150,19 +160,21 @@ export default function RunGraph({ run, projectId, environmentName, activeStepId
           const node = graph.node(nodeId);
           if (node) {
             const parts = nodeId.split('/', 2);
-            const step = run.steps[parts[0]];
+            const stepId = parts[0];
+            const step = run.steps[stepId];
             if (step) {
-              const attemptNumber = parseInt(parts[1], 10);
+              const attemptNumber = parts.length > 1 ? parseInt(parts[1], 10) : undefined;
               return (
                 <StepNode
                   key={nodeId}
                   node={node}
+                  stepId={stepId}
                   step={step}
                   attemptNumber={attemptNumber}
                   projectId={projectId}
-                  runId={run.id}
+                  runId={runId}
                   environmentName={environmentName}
-                  isActive={nodeId == `${activeStepId}/${activeAttemptNumber}`}
+                  isActive={nodeId == (activeAttemptNumber ? `${activeStepId}/${activeAttemptNumber}` : activeStepId)}
                 />
               );
             } else {

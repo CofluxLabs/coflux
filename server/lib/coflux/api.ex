@@ -14,9 +14,8 @@ defmodule Coflux.Api do
       {:_,
        [
          {"/", Handlers.Root, []},
-         # TODO: flatten?
-         {"/projects/:project/blobs/:key", Handlers.Blobs, []},
-         {"/projects/:project/agent", Handlers.Agent, []},
+         {"/blobs/:key", Handlers.Blobs, []},
+         {"/agent", Handlers.Agent, []},
          {"/topics", TopicalHandler, registry: Coflux.TopicalRegistry}
        ]}
     ])

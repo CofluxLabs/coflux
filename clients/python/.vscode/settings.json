@@ -1,10 +1,13 @@
 {
-  "python.formatting.provider": "black",
+  "python.formatting.provider": "none",
   "files.exclude": {
     ".venv": true,
     ".direnv": true,
     "**/__pycache__": true
   },
   "python.defaultInterpreterPath": "./.venv/bin/python",
-  "editor.formatOnSave": true
+  "editor.formatOnSave": true,
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  }
 }

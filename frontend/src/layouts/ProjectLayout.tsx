@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
+import { SocketProvider, useSocket, useTopic } from '@topical/react';
 
-import { SocketProvider, useSocket } from '@topical/react';
 import EnvironmentSelector from '../components/EnvironmentSelector';
 import TargetsList from '../components/TargetsList';
 import Logo from '../components/Logo';
 import ProjectSelector from '../components/ProjectSelector';
+import * as models from '../models';
 
 type Target = { repository: string, target: string };
 
@@ -14,6 +15,28 @@ function SocketStatus() {
   return (
     <div className="p-3 flex items-center border-t border-slate-200">
       <span className="ml-1 text-slate-700">{status}</span>
+    </div>
+  );
+}
+
+type HeaderProps = {
+  projectId: string | undefined;
+}
+
+function Header({ projectId }: HeaderProps) {
+  const [projects] = useTopic<Record<string, models.Project>>("projects");
+  return (
+    <div className="flex bg-slate-700 px-3 items-center h-14 flex-none">
+      <Logo />
+      {projects && projectId && projects[projectId] && (
+        <EnvironmentSelector environments={projects[projectId].environments} />
+      )}
+      <span className="flex-1"></span>
+      <span className="text-slate-100 rounded px-3 py-1 mr-1">
+        {projects && (
+          <ProjectSelector projectIds={Object.keys(projects)} />
+        )}
+      </span>
     </div>
   );
 }
@@ -30,14 +53,7 @@ export default function ProjectLayout() {
   return (
     <SocketProvider url="ws://localhost:7070/topics">
       <div className="flex flex-col min-h-screen max-h-screen">
-        <div className="flex bg-slate-700 px-3 items-center h-14 flex-none">
-          <Logo />
-          <EnvironmentSelector projectId={projectId!} />
-          <span className="flex-1"></span>
-          <span className="text-slate-100 rounded px-3 py-1 mr-1">
-            <ProjectSelector projectIds={["project_1", "project_2"]} />
-          </span>
-        </div>
+        <Header projectId={projectId} />
         <div className="flex-auto flex overflow-hidden">
           <div className="w-64 bg-slate-100 text-gray-100 border-r border-slate-200 flex-none flex flex-col">
             <div className="flex-1 overflow-auto">

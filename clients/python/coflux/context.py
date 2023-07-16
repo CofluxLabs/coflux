@@ -51,7 +51,7 @@ def get_result(target_execution_id: str) -> future.Future[t.Any]:
     execution_id, client, loop = _get()
     return future.Future(
         lambda: client.get_result(target_execution_id, execution_id),
-        ["result", target_execution_id],
+        ["reference", target_execution_id],
         loop,
     )
 

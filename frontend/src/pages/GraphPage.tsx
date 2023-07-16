@@ -5,7 +5,7 @@ import { useRun } from '../layouts/RunLayout';
 
 export default function GraphPage() {
   const run = useRun();
-  const { project: projectId } = useParams();
+  const { project: projectId, run: runId } = useParams();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get('environment') || undefined;
   const activeStepId = searchParams.get('step') || undefined;
@@ -14,6 +14,7 @@ export default function GraphPage() {
     <div>
       <RunGraph
         run={run}
+        runId={runId!}
         projectId={projectId!}
         environmentName={environmentName}
         activeStepId={activeStepId}

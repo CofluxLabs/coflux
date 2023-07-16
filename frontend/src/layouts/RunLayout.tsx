@@ -1,11 +1,11 @@
 import classNames from 'classnames';
 import { Fragment, ReactNode, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
+import { Transition } from '@headlessui/react';
 
 import * as models from '../models';
 import TaskHeader from '../components/TaskHeader';
 import { useSetActiveTarget } from './ProjectLayout';
-import { Transition } from '@headlessui/react';
 import StepDetail from '../components/StepDetail';
 import usePrevious from '../hooks/usePrevious';
 import { buildUrl } from '../utils';
@@ -34,22 +34,23 @@ function Tab({ page, children }: TabProps) {
 }
 
 type DetailPanelProps = {
+  runId: string;
   stepId: string | undefined;
   attemptNumber: number | undefined;
   run: models.Run;
   projectId: string;
+  environmentName: string;
   className?: string;
   onRerunStep: (stepId: string, environmentName: string) => Promise<number>;
 }
 
-function DetailPanel({ stepId, attemptNumber, run, projectId, className, onRerunStep }: DetailPanelProps) {
-  const step = stepId && run.steps[stepId];
-  const previousStep = usePrevious(step);
-  const stepOrPrevious = step || previousStep;
+function DetailPanel({ runId, stepId, attemptNumber, run, projectId, environmentName, className, onRerunStep }: DetailPanelProps) {
+  const previousStepId = usePrevious(stepId);
+  const stepIdOrPrevious = stepId || previousStepId;
   return (
     <Transition
       as={Fragment}
-      show={!!step}
+      show={!!stepId}
       enter="transform transition ease-in-out duration-150"
       enterFrom="translate-x-full"
       enterTo="translate-x-0"
@@ -58,13 +59,14 @@ function DetailPanel({ stepId, attemptNumber, run, projectId, className, onRerun
       leaveTo="translate-x-full"
     >
       <div className={classNames(className, "bg-slate-100 border-l border-slate-200 flex shadow-lg")}>
-        {stepOrPrevious && (
+        {stepIdOrPrevious && (
           <StepDetail
-            step={stepOrPrevious}
-            attemptNumber={attemptNumber || 1}
+            runId={runId}
+            stepId={stepIdOrPrevious}
+            sequence={attemptNumber || 0}
             run={run}
             projectId={projectId}
-            environmentName={run.environment.name}
+            environmentName={environmentName}
             className="flex-1"
             onRerunStep={onRerunStep}
           />
@@ -84,8 +86,8 @@ export default function RunLayout() {
   const activeStepId = searchParams.get('step') || undefined;
   const activeAttemptNumber = searchParams.has('attempt') ? parseInt(searchParams.get('attempt')!, 10) : undefined;
   const environmentName = searchParams.get('environment') || undefined;
-  const [run, rerunStep] = useRunTopic(projectId, runId);
-  const initialStep = run && Object.values(run.steps).find((s) => !s.parent);
+  const [run, rerunStep] = useRunTopic(projectId, environmentName, runId);
+  const initialStep = run && Object.values(run.steps).find((j) => !j.parentId);
   const [task, startRun] = useTaskTopic(projectId, environmentName, initialStep?.repository, initialStep?.target);
   const navigate = useNavigate();
   // TODO: remove duplication (TaskPage)
@@ -101,7 +103,7 @@ export default function RunLayout() {
     return (
       <div className="flex flex-1">
         <div className="grow flex flex-col">
-          <TaskHeader task={task} projectId={projectId!} runId={run.id} environmentName={environmentName} onRun={handleRun} />
+          <TaskHeader task={task} projectId={projectId!} runId={runId} environmentName={environmentName} onRun={handleRun} />
           <div className="border-b px-4">
             <Tab page={null}>Graph</Tab>
             <Tab page="timeline">Timeline</Tab>
@@ -112,10 +114,12 @@ export default function RunLayout() {
           </div>
         </div>
         <DetailPanel
+          runId={runId!}
           stepId={activeStepId}
           attemptNumber={activeAttemptNumber}
           run={run}
           projectId={projectId!}
+          environmentName={environmentName!}
           className="w-1/3"
           onRerunStep={rerunStep}
         />

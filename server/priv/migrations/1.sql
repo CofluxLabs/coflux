@@ -1,0 +1,135 @@
+CREATE TABLE sessions (
+  id INTEGER PRIMARY KEY,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE manifests (
+  id INTEGER PRIMARY KEY,
+  repository TEXT NOT NULL,
+  targets_hash INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (repository, targets_hash)
+);
+
+CREATE TABLE session_manifests (
+  session_id INTEGER NOT NULL,
+  manifest_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, manifest_id),
+  FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE
+  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
+);
+
+CREATE TABLE targets (
+  id INTEGER PRIMARY KEY,
+  manifest_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  type INTEGER NOT NULL,
+  UNIQUE (manifest_id, name),
+  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
+);
+
+CREATE TABLE parameters (
+  target_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  default_ TEXT,
+  annotation TEXT,
+  FOREIGN KEY (target_id) REFERENCES targets ON DELETE CASCADE
+);
+
+CREATE TABLE runs (
+  id INTEGER PRIMARY KEY,
+  parent_id INTEGER,
+  idempotency_key TEXT UNIQUE,
+  recurrent INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE
+);
+
+CREATE TABLE run_stops (
+  run_id INTEGER PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE
+);
+
+CREATE TABLE steps (
+  id INTEGER PRIMARY KEY,
+  run_id INTEGER NOT NULL,
+  parent_id INTEGER,
+  repository TEXT NOT NULL,
+  target TEXT NOT NULL,
+  priority INTEGER NOT NULL,
+  cache_key TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE
+);
+
+CREATE INDEX steps_repository_target ON steps (repository, target) WHERE parent_id IS NULL;
+CREATE INDEX steps_cache_key ON steps (cache_key);
+
+CREATE TABLE arguments (
+  step_id INTEGER NOT NULL,
+  position INTEGER NOT NULL,
+  type INTEGER NOT NULL,
+  format TEXT,
+  value BLOB NOT NULL,
+  PRIMARY KEY (step_id, position),
+  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
+);
+
+CREATE TABLE executions (
+  id INTEGER PRIMARY KEY,
+  step_id INTEGER NOT NULL,
+  sequence INTEGER NOT NULL,
+  execute_after INTEGER,
+  created_at INTEGER NOT NULL,
+  UNIQUE (step_id, sequence),
+  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
+);
+
+CREATE TABLE cached_executions (
+  step_id INTEGER PRIMARY KEY,
+  execution_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE,
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+);
+
+CREATE TABLE assignments (
+  execution_id INTEGER PRIMARY KEY,
+  session_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE
+);
+
+CREATE TABLE dependencies (
+  execution_id INTEGER NOT NULL,
+  dependency_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (execution_id, dependency_id),
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (dependency_id) REFERENCES executions ON DELETE CASCADE
+);
+
+CREATE TABLE heartbeats (
+  id INTEGER PRIMARY KEY,
+  execution_id INTEGER NOT NULL,
+  status INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+);
+
+CREATE TABLE results (
+  execution_id INTEGER NOT NULL,
+  sequence INTEGER NOT NULL,
+  type INTEGER NOT NULL,
+  format TEXT,
+  value BLOB,
+  -- TODO: metadata? (for serialising errors)
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (execution_id, sequence),
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+);

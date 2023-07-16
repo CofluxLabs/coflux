@@ -24,9 +24,9 @@ export default function TaskPage() {
   if (!task) {
     return <Loading />;
   } else {
-    const latestRun = maxBy(Object.values(task.runs), 'createdAt');
-    if (latestRun) {
-      return <Navigate replace to={buildUrl(`/projects/${projectId}/runs/${latestRun.id}`, { environment: environmentName })} />;
+    const latestRunId = maxBy(Object.keys(task.runs), (runId) => task.runs[runId].createdAt);
+    if (latestRunId) {
+      return <Navigate replace to={buildUrl(`/projects/${projectId}/runs/${latestRunId}`, { environment: environmentName })} />;
     } else {
       return (
         <Fragment>

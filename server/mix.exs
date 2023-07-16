@@ -5,7 +5,7 @@ defmodule Coflux.MixProject do
     [
       app: :coflux,
       version: "0.1.0",
-      elixir: "~> 1.13-rc",
+      elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -21,10 +21,8 @@ defmodule Coflux.MixProject do
   defp deps do
     [
       {:cowboy, "~> 2.9"},
-      {:ecto_sql, "~> 3.7"},
-      {:inflex, "~> 2.0"},
+      {:exqlite, "~> 0.13"},
       {:jason, "~> 1.4"},
-      {:postgrex, "~> 0.15"},
       {:topical, "~> 0.1"}
     ]
   end

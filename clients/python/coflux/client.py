@@ -64,20 +64,25 @@ def _generate_manifest(targets: dict) -> dict:
 
 
 def _resolve_argument(
-    argument: list, client: "Client", loop: asyncio.AbstractEventLoop, execution_id: str
+    argument: list,
+    client: "Client",
+    loop: asyncio.AbstractEventLoop,
+    from_execution_id: str,
 ) -> t.Any:
-    tag, value = argument
-    if tag == "json":
-        return json.loads(value)
-    elif tag == "blob":
-        task = client._get_blob(value)
-        return asyncio.run_coroutine_threadsafe(task, loop).result()
-    elif tag == "result":
-        return future.Future(
-            lambda: client.get_result(value, execution_id), argument, loop
-        )
-    else:
-        raise Exception(f"unrecognised tag ({tag})")
+    match argument:
+        case ["raw", "json", value]:
+            return json.loads(value)
+        case ["blob", "json", key]:
+            task = client._get_blob(key)
+            return asyncio.run_coroutine_threadsafe(task, loop).result()
+        case ["reference", execution_id]:
+            return future.Future(
+                lambda: client.get_result(execution_id, from_execution_id),
+                argument,
+                loop,
+            )
+        case _:
+            raise Exception(f"unrecognised argument ({argument})")
 
 
 class Client:
@@ -108,11 +113,11 @@ class Client:
 
     def _url(self, scheme: str, path: str, **kwargs) -> str:
         query_string = f"?{urllib.parse.urlencode(kwargs)}" if kwargs else ""
-        return f"{scheme}://{self._server_host}/projects/{self._project_id}{path}{query_string}"
+        return f"{scheme}://{self._server_host}/{path}{query_string}"
 
     async def _get_blob(self, key: str) -> t.Any:
         # TODO: make blob url configurable
-        async with self._session.get(self._url("http", f"/blobs/{key}")) as resp:
+        async with self._session.get(self._url("http", f"blobs/{key}")) as resp:
             resp.raise_for_status()
             return await resp.json()
 
@@ -121,37 +126,37 @@ class Client:
         # TODO: make blob url configurable
         # TODO: check whether already uploaded (using head request)?
         async with self._session.put(
-            self._url("http", f"/blobs/{key}"), data=content
+            self._url("http", f"blobs/{key}"), data=content
         ) as resp:
             resp.raise_for_status()
         return key
 
-    async def _prepare_result(self, value: t.Any) -> t.Tuple[str, str]:
+    async def _prepare_result(self, value: t.Any) -> t.Tuple[str, str, str]:
         if isinstance(value, future.Future):
             return value.serialise()
         json_value = _json_dumps(value)
         if len(json_value) >= BLOB_THRESHOLD:
             key = await self._put_blob(json_value)
-            return "blob", key
-        return "json", json_value
+            return ["blob", "json", key]
+        return ["raw", "json", json_value]
 
     # TODO: combine with above
-    async def _serialise_argument(self, value: t.Any) -> t.Tuple[str, str]:
+    async def _serialise_argument(self, value: t.Any) -> t.Tuple[str, str, str]:
         if isinstance(value, future.Future):
             return value.serialise()
         json_value = _json_dumps(value)
         if len(json_value) >= BLOB_THRESHOLD:
             key = await self._put_blob(json_value)
-            return "blob", key
-        return "json", json_value
+            return ["blob", "json", key]
+        return ["raw", "json", json_value]
 
     async def _put_result(self, execution_id: str, value: t.Any) -> None:
-        type, value = await self._prepare_result(value)
-        await self._channel.notify("put_result", execution_id, type, value)
+        result = await self._prepare_result(value)
+        await self._channel.notify("put_result", execution_id, result)
 
     async def _put_cursor(self, execution_id: str, value: t.Any) -> None:
-        type, value = await self._prepare_result(value)
-        await self._channel.notify("put_cursor", execution_id, type, value)
+        result = await self._prepare_result(value)
+        await self._channel.notify("put_cursor", execution_id, result)
 
     async def _put_error(self, execution_id: str, exception: Exception) -> None:
         # TODO: include exception state
@@ -193,8 +198,13 @@ class Client:
             self._semaphore.release()
 
     async def _handle_execute(
-        self, execution_id: str, target_name: str, arguments: list[list[t.Any]]
+        self,
+        execution_id: str,
+        repository: str,
+        target_name: str,
+        arguments: list[list[t.Any]],
     ) -> None:
+        # TODO: consider repository
         # TODO: check execution isn't already running?
         print(f"Handling execute '{target_name}' ({execution_id})...")
         loop = asyncio.get_running_loop()
@@ -237,7 +247,12 @@ class Client:
         async with aiohttp.ClientSession() as self._session:
             # TODO: heartbeat (and timeout) value?
             async with self._session.ws_connect(
-                self._url("ws", "/agent", environment=self._environment_name),
+                self._url(
+                    "ws",
+                    "agent",
+                    project=self._project_id,
+                    environment=self._environment_name,
+                ),
                 heartbeat=5,
             ) as websocket:
                 print(f"Connected ({self._server_host}, {self._project_id}).")
@@ -305,18 +320,18 @@ class Client:
             self._set_execution_status(from_execution_id, ExecutionStatus.STARTING)
             self._semaphore.acquire()
             self._set_execution_status(from_execution_id, ExecutionStatus.EXECUTING)
-        result = self._results[execution_id]
-        if result[0] == "json":
-            return json.loads(result[1])
-        elif result[0] == "blob":
-            return await self._get_blob(result[1])
-        elif result[0] == "failed":
-            # TODO: reconstruct exception state
-            raise Exception(result[1])
-        elif result[0] == "abandoned":
-            raise Exception("abandoned")
-        else:
-            raise Exception(f"unexeptected result tag ({result[0]})")
+        match self._results[execution_id]:
+            case ["raw", "json", value]:
+                return json.loads(value)
+            case ["blob", "json", key]:
+                return await self._get_blob(key)
+            case ["error", error]:
+                # TODO: reconstruct exception state
+                raise Exception(error)
+            case ["abandoned"]:
+                raise Exception("abandoned")
+            case result:
+                raise Exception(f"unexeptected result ({result})")
 
 
 def init(

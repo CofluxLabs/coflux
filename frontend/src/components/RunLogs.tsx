@@ -16,6 +16,7 @@ const LOG_LEVELS = {
 
 type Props = {
   run: models.Run;
+  runId: string;
   logs: Record<string, models.LogMessage>;
   projectId: string;
   environmentName: string | null | undefined;
@@ -23,8 +24,8 @@ type Props = {
   activeAttemptNumber: number | null;
 }
 
-export default function RunLogs({ run, logs, projectId, environmentName, activeStepId, activeAttemptNumber }: Props) {
-  const startTime = DateTime.fromISO(run.createdAt);
+export default function RunLogs({ run, runId, logs, projectId, environmentName, activeStepId, activeAttemptNumber }: Props) {
+  const startTime = DateTime.fromMillis(run.createdAt);
   return (
     <div>
       {Object.keys(logs).length == 0 ? (
@@ -34,10 +35,11 @@ export default function RunLogs({ run, logs, projectId, environmentName, activeS
           <tbody>
             {sortBy(Object.values(logs), 'createdAt').map((message, index) => {
               const [name, className] = LOG_LEVELS[message.level];
-              const step = Object.values(run.steps).find((s) => Object.values(s.attempts).some((a) => a.executionId == message.executionId));
-              const attempt = step && Object.values(step.attempts).find((a) => a.executionId == message.executionId);
-              const isActive = step && step.id == activeStepId && attempt && attempt.number == activeAttemptNumber;
-              const createdAt = DateTime.fromISO(message.createdAt);
+              const stepId = Object.keys(run.steps).find((id) => message.executionId in run.steps[id].executions);
+              const step = stepId && run.steps[stepId];
+              const attempt = stepId && run.steps[stepId].executions[message.executionId];
+              const isActive = stepId && stepId == activeStepId && attempt && attempt.sequence == activeAttemptNumber;
+              const createdAt = DateTime.fromMillis(message.createdAt);
               return (
                 <tr key={index}>
                   <td className="text-sm w-0">
@@ -49,7 +51,7 @@ export default function RunLogs({ run, logs, projectId, environmentName, activeS
                     <div className="w-40">
                       {step && attempt && (
                         <Link
-                          to={buildUrl(`/projects/${projectId}/runs/${run.id}/logs`, { environment: environmentName, step: isActive ? undefined : step.id, attempt: isActive ? undefined : attempt.number })}
+                          to={buildUrl(`/projects/${projectId}/runs/${runId}/logs`, { environment: environmentName, step: isActive ? undefined : stepId, attempt: isActive ? undefined : attempt.sequence })}
                           className={classNames('inline-block whitespace-nowrap px-1 truncate max-w-full rounded', isActive && 'ring ring-offset-2')}
                         >
                           <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>

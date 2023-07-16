@@ -6,14 +6,13 @@ import * as models from '../models';
 import Loading from './Loading';
 
 type Props = {
-  projectId: string;
+  environments: string[] | undefined;
   className?: string;
 }
 
-export default function EnvironmentSelector({ projectId, className }: Props) {
+export default function EnvironmentSelector({ environments, className }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const selected = searchParams.get('environment');
-  const [environments, _] = useTopic<Record<string, models.Environment>>("projects", projectId, "environments");
   const handleChange = useCallback((ev: ChangeEvent<HTMLSelectElement>) => {
     // TODO: merge with existing params
     setSearchParams({ environment: ev.target.value })
@@ -31,9 +30,9 @@ export default function EnvironmentSelector({ projectId, className }: Props) {
           className="text-slate-300 bg-slate-700 rounded p-2 w-full"
         >
           <option value="">Select...</option>
-          {Object.entries(environments).map(([environmentId, environment]) => (
-            <option value={environment.name} key={environmentId}>
-              {environment.name}
+          {environments.map((environmentName) => (
+            <option value={environmentName} key={environmentName}>
+              {environmentName}
             </option>
           ))}
         </select>

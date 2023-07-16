@@ -3,13 +3,13 @@ import { Menu, Transition } from '@headlessui/react';
 import { sortBy } from 'lodash';
 import classNames from 'classnames';
 import { Link } from 'react-router-dom';
+import { DateTime } from 'luxon';
 
 import * as models from '../models';
 import { buildUrl } from '../utils';
-import { DateTime } from 'luxon';
 
 type OptionsProps = {
-  runs: Record<string, models.BaseRun>;
+  runs: Record<string, Pick<models.Run, "createdAt">>;
   projectId: string | null;
   environmentName: string | undefined;
   selectedRunId: string;
@@ -21,16 +21,16 @@ function Options({ runs, projectId, environmentName, selectedRunId }: OptionsPro
   } else {
     return (
       <Fragment>
-        {sortBy(Object.values(runs), 'createdAt').reverse().map((run) => {
-          const createdAt = DateTime.fromISO(run.createdAt);
+        {sortBy(Object.keys(runs), (runId) => runs[runId].createdAt).reverse().map((runId) => {
+          const createdAt = DateTime.fromMillis(runs[runId].createdAt);
           return (
-            <Menu.Item key={run.id}>
+            <Menu.Item key={runId}>
               {({ active }) => (
                 <Link
-                  to={buildUrl(`/projects/${projectId}/runs/${run.id}`, { environment: environmentName })}
+                  to={buildUrl(`/projects/${projectId}/runs/${runId}`, { environment: environmentName })}
                   className={classNames('block p-2', active && 'bg-slate-100')}
                 >
-                  <h3 className={classNames('font-mono', run.id == selectedRunId && 'font-bold')}>{run.id}</h3>
+                  <h3 className={classNames('font-mono', runId == selectedRunId && 'font-bold')}>{runId}</h3>
                   <p
                     className="text-xs text-gray-500"
                     title={createdAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)}
@@ -48,7 +48,7 @@ function Options({ runs, projectId, environmentName, selectedRunId }: OptionsPro
 }
 
 type Props = {
-  runs: Record<string, models.BaseRun>;
+  runs: Record<string, Pick<models.Run, "createdAt">>;
   projectId: string | null;
   runId: string;
   environmentName: string | undefined;

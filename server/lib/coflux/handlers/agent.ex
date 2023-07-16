@@ -1,32 +1,28 @@
 defmodule Coflux.Handlers.Agent do
-  alias Coflux.Project
+  alias Coflux.Orchestration
 
   def init(req, _opts) do
-    project_id = req |> :cowboy_req.bindings() |> Map.fetch!(:project)
+    qs = :cowboy_req.parse_qs(req)
+    {"project", project_id} = List.keyfind!(qs, "project", 0)
+    {"environment", environment} = List.keyfind!(qs, "environment", 0)
 
-    {"environment", environment_name} =
-      req |> :cowboy_req.parse_qs() |> List.keyfind!("environment", 0)
-
-    {:cowboy_websocket, req, {project_id, environment_name}}
+    {:cowboy_websocket, req, {project_id, environment}}
   end
 
-  def websocket_init({project_id, environment_name}) do
+  def websocket_init({project_id, environment}) do
     # TODO: authenticate
-    # TODO: monitor project server?
+    # TODO: monitor server?
     # TODO: support resuming session
 
-    case Project.get_environment_by_name(project_id, environment_name, create: true) do
-      {:ok, environment} ->
-        case Project.create_session(project_id, environment.id) do
-          {:ok, session_id} ->
-            {[],
-             %{
-               project_id: project_id,
-               environment_id: environment.id,
-               session_id: session_id,
-               requests: %{}
-             }}
-        end
+    case Orchestration.start_session(project_id, environment, self()) do
+      {:ok, session_id} ->
+        {[],
+         %{
+           project_id: project_id,
+           environment: environment,
+           session_id: session_id,
+           requests: %{}
+         }}
     end
   end
 
@@ -35,16 +31,15 @@ defmodule Coflux.Handlers.Agent do
 
     case message["method"] do
       "register" ->
-        [repository, version, manifest] = message["params"]
-        manifest = parse_manifest(manifest)
+        [repository, _version, targets] = message["params"]
+        targets = parse_targets(targets)
 
-        case Project.register(
+        case Orchestration.register_targets(
                state.project_id,
+               state.environment,
                state.session_id,
                repository,
-               version,
-               manifest,
-               self()
+               targets
              ) do
           :ok ->
             {[], state}
@@ -55,15 +50,15 @@ defmodule Coflux.Handlers.Agent do
         arguments = Enum.map(arguments, &parse_argument/1)
 
         # TODO: prevent scheduling unrecognised tasks?
-        case Project.schedule_task(
+        case Orchestration.schedule_task(
                state.project_id,
-               state.environment_id,
+               state.environment,
                repository,
                target,
                arguments,
-               execution_id: parent_id
+               parent_id
              ) do
-          {:ok, run_id} ->
+          {:ok, run_id, _step_id, _execution_id} ->
             {[result_message(message["id"], run_id)], state}
         end
 
@@ -71,46 +66,72 @@ defmodule Coflux.Handlers.Agent do
         [repository, target, arguments, parent_id, cache_key] = message["params"]
         arguments = Enum.map(arguments, &parse_argument/1)
 
-        case Project.schedule_step(
+        case Orchestration.schedule_step(
                state.project_id,
-               state.environment_id,
-               parent_id,
+               state.environment,
                repository,
                target,
                arguments,
-               cache_key: cache_key
+               parent_id,
+               cache_key
              ) do
-          {:ok, execution_id} ->
+          {:ok, _step_id, execution_id} ->
             {[result_message(message["id"], execution_id)], state}
         end
 
       "record_heartbeats" ->
         [executions] = message["params"]
-        :ok = Project.record_heartbeats(state.project_id, executions)
+        executions = Map.new(executions, fn {k, v} -> {String.to_integer(k), v} end)
+        :ok = Orchestration.record_heartbeats(state.project_id, state.environment, executions)
         {[], state}
 
       "put_cursor" ->
-        [execution_id, type, value] = message["params"]
-        cursor = parse_cursor(type, value)
-        {:ok, _} = Project.put_cursor(state.project_id, execution_id, cursor)
+        [execution_id, result] = message["params"]
+        result = parse_result(result)
+
+        {:ok, _} =
+          Orchestration.record_cursor(
+            state.project_id,
+            state.environment,
+            execution_id,
+            result
+          )
+
         {[], state}
 
       "put_result" ->
-        [execution_id, type, value] = message["params"]
-        result = parse_result(type, value)
-        :ok = Project.put_result(state.project_id, execution_id, result)
+        [execution_id, result] = message["params"]
+        result = parse_result(result)
+
+        :ok =
+          Orchestration.record_result(
+            state.project_id,
+            state.environment,
+            execution_id,
+            result
+          )
+
         {[], state}
 
       "put_error" ->
         [execution_id, error, details] = message["params"]
-        :ok = Project.put_result(state.project_id, execution_id, {:failed, error, details})
+
+        :ok =
+          Orchestration.record_result(
+            state.project_id,
+            state.environment,
+            execution_id,
+            {:error, error, details}
+          )
+
         {[], state}
 
       "get_result" ->
         [execution_id, from_execution_id] = message["params"]
 
-        case Project.get_execution_result(
+        case Orchestration.get_result(
                state.project_id,
+               state.environment,
                execution_id,
                from_execution_id,
                self()
@@ -124,8 +145,9 @@ defmodule Coflux.Handlers.Agent do
         end
 
       "log_message" ->
-        [execution_id, level, log_message] = message["params"]
-        Project.log_message(state.project_id, execution_id, level, log_message)
+        # TODO
+        # [execution_id, level, log_message] = message["params"]
+        # Project.log_message(state.project_id, execution_id, level, log_message)
         {[], state}
     end
   end
@@ -134,9 +156,9 @@ defmodule Coflux.Handlers.Agent do
     {[], state}
   end
 
-  def websocket_info({:execute, execution_id, target, arguments}, state) do
+  def websocket_info({:execute, execution_id, repository, target, arguments}, state) do
     arguments = Enum.map(arguments, &compose_argument/1)
-    {[notify_message("execute", [execution_id, target, arguments])], state}
+    {[notify_message("execute", [execution_id, repository, target, arguments])], state}
   end
 
   def websocket_info({:result, ref, result}, state) do
@@ -148,9 +170,9 @@ defmodule Coflux.Handlers.Agent do
     {[notify_message("abort", [execution_id])], state}
   end
 
-  def websocket_info(_info, state) do
-    {[], state}
-  end
+  # def websocket_info(_info, state) do
+  #   {[], state}
+  # end
 
   defp notify_message(method, params) do
     {:text, Jason.encode!(%{"method" => method, "params" => params})}
@@ -160,8 +182,8 @@ defmodule Coflux.Handlers.Agent do
     {:text, Jason.encode!(%{"id" => id, "result" => result})}
   end
 
-  defp parse_manifest(manifest) do
-    Map.new(manifest, fn {key, value} ->
+  defp parse_targets(targets) do
+    Map.new(targets, fn {key, value} ->
       {key,
        %{
          type: parse_type(Map.fetch!(value, "type")),
@@ -179,50 +201,43 @@ defmodule Coflux.Handlers.Agent do
   end
 
   defp parse_parameter(parameters) do
-    %{
-      name: Map.fetch!(parameters, "name"),
-      annotation: Map.get(parameters, "annotation"),
-      default: Map.get(parameters, "default")
+    {
+      Map.fetch!(parameters, "name"),
+      Map.get(parameters, "default"),
+      Map.get(parameters, "annotation")
     }
   end
 
   defp parse_argument(argument) do
     case argument do
-      ["json", value] -> {:json, value}
-      ["blob", key] -> {:blob, key}
-      ["result", execution_id] -> {:result, execution_id}
+      ["raw", format, value] -> {:raw, format, value}
+      ["blob", format, key] -> {:blob, format, key}
+      ["reference", execution_id] -> {:reference, execution_id}
     end
   end
 
-  def compose_argument(result) do
+  defp compose_argument(result) do
     case result do
-      {:json, value} -> ["json", value]
-      {:blob, key} -> ["blob", key]
-      {:result, execution_id} -> ["result", execution_id]
+      {:raw, format, value} -> ["raw", format, value]
+      {:blob, format, key} -> ["blob", format, key]
+      {:reference, execution_id} -> ["reference", execution_id]
     end
   end
 
-  def parse_result(type, value) do
-    case type do
-      "json" -> {:json, value}
-      "blob" -> {:blob, value}
-      "result" when is_binary(value) -> {:result, value}
-    end
-  end
-
-  def parse_cursor(type, value) do
-    case type do
-      "json" -> {:json, value}
-      "blob" -> {:blob, value}
-    end
-  end
-
-  def compose_result(result) do
+  defp parse_result(result) do
     case result do
-      {:json, value} -> ["json", value]
-      {:blob, key} -> ["blob", key]
-      {:result, execution_id} -> ["result", execution_id]
-      {:failed, error, extra} -> ["failed", error, extra]
+      ["raw", format, value] -> {:raw, format, value}
+      ["blob", format, key] -> {:blob, format, key}
+      ["reference", execution_id] -> {:reference, execution_id}
+    end
+  end
+
+  defp compose_result(result) do
+    case result do
+      {:raw, format, value} -> ["raw", format, value]
+      {:blob, format, key} -> ["blob", format, key]
+      {:reference, execution_id} -> ["reference", execution_id]
+      {:error, error, _details} -> ["error", error]
       :abandoned -> ["abandoned"]
     end
   end
