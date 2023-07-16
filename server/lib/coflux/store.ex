@@ -151,9 +151,9 @@ defmodule Coflux.Store do
       query(
         db,
         """
-        SELECT j.run_id
-        FROM steps AS j
-        INNER JOIN executions AS e ON e.step_id = j.id
+        SELECT s.run_id
+        FROM steps AS s
+        INNER JOIN executions AS e ON e.step_id = s.id
         WHERE e.id = ?1
         """,
         {execution_id}
@@ -326,10 +326,10 @@ defmodule Coflux.Store do
     query(
       db,
       """
-      SELECT e.id, j.id, j.repository, j.target, j.run_id
+      SELECT e.id, s.id, s.repository, s.target, s.run_id
       FROM executions AS e
-      INNER JOIN steps AS j ON e.step_id = j.id
-      LEFT JOIN run_stops AS rs ON rs.run_id = j.run_id
+      INNER JOIN steps AS s ON e.step_id = s.id
+      LEFT JOIN run_stops AS rs ON rs.run_id = s.run_id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       WHERE a.created_at IS NULL
         AND rs.created_at IS NULL
@@ -441,10 +441,10 @@ defmodule Coflux.Store do
     query(
       db,
       """
-      SELECT j.id, j.parent_id, j.repository, j.target, j.created_at, ce.execution_id
-      FROM steps AS j
-      LEFT JOIN cached_executions AS ce ON ce.step_id = j.id
-      WHERE j.run_id = ?1
+      SELECT s.id, s.parent_id, s.repository, s.target, s.created_at, ce.execution_id
+      FROM steps AS s
+      LEFT JOIN cached_executions AS ce ON ce.step_id = s.id
+      WHERE s.run_id = ?1
       """,
       {run_id}
     )
@@ -503,10 +503,10 @@ defmodule Coflux.Store do
            db,
            """
            SELECT e.id
-           FROM steps AS j
-           INNER JOIN executions AS e ON e.step_id = j.id
+           FROM steps AS s
+           INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id AND r.sequence = 0
-           WHERE j.cache_key = ?1 AND (r.type IS NULL OR r.type IN (1, 2, 3))
+           WHERE s.cache_key = ?1 AND (r.type IS NULL OR r.type IN (1, 2, 3))
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
