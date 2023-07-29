@@ -4,5 +4,7 @@
 
 Requires Nix.
 
+```bash
 $ nix-shell
 $ poetry run python -m example
+```

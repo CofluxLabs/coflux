@@ -10,26 +10,42 @@ def _callback(_changes: set[tuple[watchfiles.Change, str]]) -> None:
 
 
 @click.command()
-@click.option("-p", "--project", required=True, help="Project ID")
 @click.option(
-    "environment_name", "-e", "--environment", required=True, help="Environment name"
+    "-p",
+    "--project",
+    help="Project ID",
 )
 @click.option(
-    "module_name", "-m", "--module", required=True, help="Python module to use"
+    "environment",
+    "-e",
+    "--environment",
+    help="Environment name",
 )
 @click.option(
-    "-v", "--version", required=True, help="Version identifier to report to the server"
-)
-@click.option("-h", "--host", required=True, help="Host to connect to")
-@click.option(
-    "--concurrency", type=int, help="Limit on number of executions to process at once"
+    "-v",
+    "--version",
+    help="Version identifier to report to the server",
 )
 @click.option(
-    "--reload", is_flag=True, default=False, help="Enable auto-reload when code changes"
+    "-h",
+    "--host",
+    help="Host to connect to",
 )
+@click.option(
+    "--concurrency",
+    type=int,
+    help="Limit on number of executions to process at once",
+)
+@click.option(
+    "--reload",
+    is_flag=True,
+    default=False,
+    help="Enable auto-reload when code changes",
+)
+@click.argument("module_name")
 def cli(
     project: str,
-    environment_name: str,
+    environment: str,
     module_name: str,
     version: str,
     host: str,
@@ -37,11 +53,24 @@ def cli(
     reload: bool,
 ) -> None:
     module = importlib.import_module(module_name)
-    args = (project, environment_name, module, version, host, concurrency)
+    args = (module,)
+    kwargs = {
+        "project": project,
+        "environment": environment,
+        "version": version,
+        "host": host,
+        "concurrency": concurrency,
+    }
     if reload:
-        watchfiles.run_process(".", target=client.run, args=args, callback=_callback)
+        watchfiles.run_process(
+            ".",
+            target=client.init,
+            args=args,
+            kwargs=kwargs,
+            callback=_callback,
+        )
     else:
-        client.run(*args)
+        client.init(*args, **kwargs)
 
 
 cli()

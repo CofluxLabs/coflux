@@ -335,13 +335,19 @@ class Client:
 
 
 def init(
-    project: str,
-    environment: str,
     module: types.ModuleType,
-    version: str,
-    host: str,
+    *,
+    project: str | None = None,
+    environment: str | None = None,
+    version: str | None = None,
+    host: str | None = None,
     concurrency: int | None = None,
 ) -> None:
+    project = project or os.environ.get("COFLUX_PROJECT")
+    environment = environment or os.environ.get("COFLUX_ENVIRONMENT") or "development"
+    version = version or os.environ.get("COFLUX_VERSION")
+    host = host or os.environ.get("COFLUX_HOST") or "localhost:7070"
+    concurrency = concurrency or os.environ.get("COFLUX_CONCURRENCY")
     try:
         client = Client(project, environment, module, version, host, concurrency)
         asyncio.run(client.run())
