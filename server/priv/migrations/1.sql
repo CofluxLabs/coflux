@@ -42,7 +42,6 @@ CREATE TABLE runs (
   id INTEGER PRIMARY KEY,
   parent_id INTEGER,
   idempotency_key TEXT UNIQUE,
-  recurrent INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE
 );
@@ -59,7 +58,7 @@ CREATE TABLE steps (
   parent_id INTEGER,
   repository TEXT NOT NULL,
   target TEXT NOT NULL,
-  priority INTEGER NOT NULL,
+  priority INTEGER NOT NULL, -- TODO: move to executions?
   cache_key TEXT,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE,
@@ -81,11 +80,16 @@ CREATE TABLE arguments (
 
 CREATE TABLE executions (
   id INTEGER PRIMARY KEY,
+  execute_after INTEGER,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE step_executions (
   step_id INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
-  execute_after INTEGER,
-  created_at INTEGER NOT NULL,
-  UNIQUE (step_id, sequence),
+  execution_id INTEGER UNIQUE,
+  PRIMARY KEY (step_id, sequence),
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
 );
 
@@ -132,4 +136,28 @@ CREATE TABLE results (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (execution_id, sequence),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+);
+
+CREATE TABLE sensor_activations (
+  id INTEGER PRIMARY KEY,
+  repository TEXT NOT NULL,
+  target TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX sensor_activations_repository_target ON sensor_activations (repository, target);
+
+CREATE TABLE sensor_deactivations (
+  sensor_activation_id INTEGER PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (sensor_activation_id) REFERENCES sensor_activations ON DELETE CASCADE
+);
+
+CREATE TABLE sensor_executions (
+  sensor_activation_id INTEGER NOT NULL,
+  sequence INTEGER NOT NULL,
+  execution_id INTEGER UNIQUE,
+  PRIMARY KEY (sensor_activation_id, sequence),
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (sensor_activation_id) REFERENCES sensor_activations ON DELETE CASCADE
 );

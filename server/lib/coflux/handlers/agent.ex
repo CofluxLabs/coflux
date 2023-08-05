@@ -89,7 +89,7 @@ defmodule Coflux.Handlers.Agent do
         [execution_id, result] = message["params"]
         result = parse_result(result)
 
-        {:ok, _} =
+        :ok =
           Orchestration.record_cursor(
             state.project_id,
             state.environment,

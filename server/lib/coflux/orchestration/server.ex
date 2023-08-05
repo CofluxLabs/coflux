@@ -29,7 +29,10 @@ defmodule Coflux.Orchestration.Server do
               waiting: %{},
 
               # execution_id -> timestamp
-              running: %{}
+              running: %{},
+
+              # sensor_activation_id -> execution_id
+              sensors: %{}
   end
 
   def start_link(opts) do
@@ -48,15 +51,26 @@ defmodule Coflux.Orchestration.Server do
             {execution_id, heartbeat_at || assigned_at}
           end)
 
+        {:ok, sensors} = Store.get_activated_sensors(db)
+
         state = %State{
           project_id: project_id,
           environment: environment,
           db: db,
-          running: running
+          running: running,
+          sensors: Map.new(sensors)
         }
 
         send(self(), :check_abandoned)
-        # send(self(), :iterate_recurrent)
+
+        #  TODO: move to continue?
+        state =
+          state.sensors
+          |> Map.filter(fn {_, execution_id} -> is_nil(execution_id) end)
+          |> Map.keys()
+          |> Enum.reduce(state, fn sensor_activation_id, state ->
+            iterate_sensor(state, sensor_activation_id)
+          end)
 
         {:ok, state}
     end
@@ -94,10 +108,29 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:schedule_task, repository, target, arguments, parent_id}, _from, state) do
-    case Store.start_run(state.db, repository, target, arguments, parent_id: parent_id) do
+  def handle_call({:schedule_task, repository, target_name, arguments, parent_id}, _from, state) do
+    case Store.start_run(state.db, repository, target_name, arguments, parent_id: parent_id) do
       {:ok, run_id, step_id, execution_id, _sequence, created_at} ->
-        notify_listeners(state, {:task, repository, target}, {:run, run_id, created_at})
+        if parent_id do
+          case Store.get_sensor_activation_for_execution_id(state.db, parent_id) do
+            {:ok, {sensor_repository, sensor_target}} ->
+              target = get_target(state.db, sensor_repository, sensor_target)
+
+              if target.type == :sensor do
+                notify_listeners(
+                  state,
+                  {:sensor, sensor_repository, sensor_target},
+                  {:run, run_id, created_at, repository, target_name}
+                )
+              end
+
+            {:ok, nil} ->
+              nil
+          end
+        end
+
+        notify_listeners(state, {:task, repository, target_name}, {:run, run_id, created_at})
+
         state = assign_executions(state)
         {:reply, {:ok, run_id, step_id, execution_id}, state}
     end
@@ -108,7 +141,7 @@ defmodule Coflux.Orchestration.Server do
         _from,
         state
       ) do
-    {:ok, run_id} = Store.get_run_id_for_execution(state.db, parent_id)
+    {:ok, run_id} = Store.get_run_id_for_step_execution(state.db, parent_id)
 
     case Store.schedule_step(state.db, run_id, parent_id, repository, target, arguments,
            cache_key: cache_key
@@ -150,6 +183,29 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
+  def handle_call({:activate_sensor, repository, target}, _from, state) do
+    case Store.activate_sensor(state.db, repository, target) do
+      {:ok, sensor_activation_id, _sequence, execution_id} ->
+        notify_listeners(state, {:sensor, repository, target}, {:activated, true})
+
+        state =
+          state
+          |> Map.update!(:sensors, &Map.put(&1, sensor_activation_id, execution_id))
+          |> assign_executions()
+
+        {:reply, :ok, state}
+    end
+  end
+
+  def handle_call({:deactivate_sensor, repository, target}, _from, state) do
+    case Store.deactivate_sensor(state.db, repository, target) do
+      :ok ->
+        notify_listeners(state, {:sensor, repository, target}, {:activated, false})
+        # TODO: stop run (cancel running executions?)
+        {:reply, :ok, state}
+    end
+  end
+
   def handle_call({:record_heartbeats, execution_ids}, _from, state) do
     case Store.record_hearbeats(state.db, execution_ids) do
       {:ok, created_at} ->
@@ -181,7 +237,7 @@ defmodule Coflux.Orchestration.Server do
   def handle_call({:get_result, execution_id, from_execution_id, pid}, _from, state) do
     if from_execution_id do
       :ok = Store.record_dependency(state.db, from_execution_id, execution_id)
-      {:ok, run_id} = Store.get_run_id_for_execution(state.db, execution_id)
+      {:ok, run_id} = Store.get_run_id_for_step_execution(state.db, execution_id)
       notify_listeners(state, {:run, run_id}, {:dependency, from_execution_id, execution_id})
     end
 
@@ -210,9 +266,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:subscribe_task, repository, target_name, pid}, _from, state) do
-    # TODO: just query specific target
-    {:ok, targets} = Store.get_latest_targets(state.db)
-    target = targets |> Map.get(repository, %{}) |> Map.get(target_name)
+    target = get_target(state.db, repository, target_name)
 
     if target && target.type == :task do
       {:ok, runs} = Store.get_task_runs(state.db, repository, target_name)
@@ -223,7 +277,24 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  # TODO: subscribe_sensor
+  def handle_call({:subscribe_sensor, repository, target_name, pid}, _from, state) do
+    target = get_target(state.db, repository, target_name)
+
+    if target && target.type == :sensor do
+      activated =
+        case Store.get_sensor_activation(state.db, repository, target_name) do
+          {:ok, {_}} -> true
+          {:ok, nil} -> false
+        end
+
+      {:ok, executions} = Store.get_sensor_executions(state.db, repository, target_name)
+      {:ok, runs} = Store.get_sensor_runs(state.db, repository, target_name)
+      {:ok, ref, state} = add_listener(state, {:sensor, repository, target_name}, pid)
+      {:reply, {:ok, activated, executions, runs, ref}, state}
+    else
+      {:reply, {:error, :not_found}, state}
+    end
+  end
 
   def handle_call({:subscribe_run, run_id, pid}, _from, state) do
     {:ok, run} = Store.get_run(state.db, run_id)
@@ -306,11 +377,29 @@ defmodule Coflux.Orchestration.Server do
   defp record_result(state, execution_id, result) do
     case Store.record_result(state.db, execution_id, result) do
       {:ok, created_at} ->
-        state = notify_waiting(state, execution_id)
-        {:ok, run_id} = Store.get_run_id_for_execution(state.db, execution_id)
-        notify_listeners(state, {:run, run_id}, {:result, execution_id, 0, result, created_at})
         state = Map.update!(state, :running, &Map.delete(&1, execution_id))
-        {:ok, state}
+
+        case find_sensor(state, execution_id) do
+          nil ->
+            state = notify_waiting(state, execution_id)
+            {:ok, run_id} = Store.get_run_id_for_step_execution(state.db, execution_id)
+
+            notify_listeners(
+              state,
+              {:run, run_id},
+              {:result, execution_id, 0, result, created_at}
+            )
+
+            {:ok, state}
+
+          sensor_activation_id ->
+            state =
+              state
+              |> Map.update!(:sensors, &Map.put(&1, sensor_activation_id, nil))
+              |> iterate_sensor(sensor_activation_id)
+
+            {:ok, state}
+        end
     end
   end
 
@@ -404,33 +493,102 @@ defmodule Coflux.Orchestration.Server do
     end)
   end
 
+  defp get_target(db, repository, target_name) do
+    # TODO: just query specific target
+    {:ok, targets} = Store.get_latest_targets(db)
+    targets |> Map.get(repository, %{}) |> Map.get(target_name)
+  end
+
+  defp find_sensor(state, execution_id) do
+    Enum.find_value(state.sensors, fn {sensor_activation_id, e_id} ->
+      if e_id == execution_id, do: sensor_activation_id
+    end)
+  end
+
+  defp iterate_sensor(state, sensor_activation_id) do
+    case Store.iterate_sensor(state.db, sensor_activation_id) do
+      {:ok, execution_id, _sequence, _created_at} ->
+        state = Map.update!(state, :sensors, &Map.put(&1, sensor_activation_id, execution_id))
+        assign_executions(state)
+    end
+  end
+
+  defp assign_execution(state, execution_id, repository, target, arguments_fun) do
+    session_ids = Map.get(state.targets, {repository, target}, [])
+
+    if Enum.any?(session_ids) do
+      session_id = Enum.random(session_ids)
+      session = state.sessions[session_id]
+
+      case arguments_fun.() do
+        {:ok, arguments} ->
+          {:ok, assigned_at} = Store.assign_execution(state.db, execution_id, session_id)
+          state = put_in(state, [Access.key(:running), execution_id], assigned_at)
+          send(session.pid, {:execute, execution_id, repository, target, arguments})
+          {:ok, state, {session_id, assigned_at}}
+      end
+    else
+      {:ok, state, nil}
+    end
+  end
+
   defp assign_executions(state) do
     {:ok, executions} = Store.get_unassigned_executions(state.db)
 
-    # TODO: limit number of assignments?
-    Enum.each(executions, fn {execution_id, step_id, repository, target, run_id} ->
-      session_ids = Map.get(state.targets, {repository, target}, [])
+    Enum.reduce(
+      executions,
+      state,
+      fn
+        {execution_id, step_id, nil}, state ->
+          {:ok, {run_id, repository, target}} = Store.get_step(state.db, step_id)
 
-      if Enum.any?(session_ids) do
-        session_id = Enum.random(session_ids)
-        session = state.sessions[session_id]
-        {:ok, assigned_at} = Store.assign_execution(state.db, execution_id, session_id)
-        {:ok, arguments} = Store.get_step_arguments(state.db, step_id)
-        state = put_in(state, [Access.key(:running), execution_id], assigned_at)
-        send(session.pid, {:execute, execution_id, repository, target, arguments})
+          case assign_execution(state, execution_id, repository, target, fn ->
+                 Store.get_step_arguments(state.db, step_id)
+               end) do
+            {:ok, state, nil} ->
+              state
 
-        # TODO: defer notify?
-        notify_listeners(
-          state,
-          {:run, run_id},
-          {:assignment, execution_id, session_id, assigned_at}
-        )
+            {:ok, state, {session_id, assigned_at}} ->
+              # TODO: defer notify?
+              notify_listeners(
+                state,
+                {:run, run_id},
+                {:assignment, execution_id, session_id, assigned_at}
+              )
+
+              state
+          end
+
+        {execution_id, nil, sensor_activation_id}, state ->
+          {:ok, {repository, target, deactivated_at}} =
+            Store.get_sensor_activation_by_id(state.db, sensor_activation_id)
+
+          if deactivated_at do
+            # TODO: set result (abandoned? cancelled?)
+            state
+          else
+            case assign_execution(state, execution_id, repository, target, fn ->
+                   # TODO: get arguments (from cursor)
+                   {:ok, [{:raw, "json", "null"}]}
+                 end) do
+              {:ok, state, nil} ->
+                state
+
+              {:ok, state, {session_id, assigned_at}} ->
+                # TODO: defer notify?
+                notify_listeners(
+                  state,
+                  {:sensor, repository, target},
+                  {:assignment, execution_id, session_id, assigned_at}
+                )
+
+                state
+            end
+          end
       end
-    end)
+    )
 
     # TODO: setup timer for next future execution
-
-    state
   end
 
   defp notify_waiting(state, execution_id) do

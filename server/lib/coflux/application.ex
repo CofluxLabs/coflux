@@ -27,7 +27,8 @@ defmodule Coflux.Application do
       Topics.Projects,
       Topics.Repositories,
       Topics.Task,
-      Topics.Run
+      Topics.Run,
+      Topics.Sensor
     ]
   end
 end
