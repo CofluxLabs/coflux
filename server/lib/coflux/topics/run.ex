@@ -209,6 +209,9 @@ defmodule Coflux.Topics.Run do
       :abandoned ->
         %{type: "abandoned"}
 
+      :aborted ->
+        %{type: "aborted"}
+
       nil ->
         nil
     end

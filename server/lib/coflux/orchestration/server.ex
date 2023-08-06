@@ -13,7 +13,7 @@ defmodule Coflux.Orchestration.Server do
               # ref -> session id
               agents: %{},
 
-              # session id -> %{pid, target}
+              # session id -> %{pid, targets}
               sessions: %{},
 
               # {repository, target} -> [session id]
@@ -62,15 +62,6 @@ defmodule Coflux.Orchestration.Server do
         }
 
         send(self(), :check_abandoned)
-
-        #  TODO: move to continue?
-        state =
-          state.sensors
-          |> Map.filter(fn {_, execution_id} -> is_nil(execution_id) end)
-          |> Map.keys()
-          |> Enum.reduce(state, fn sensor_activation_id, state ->
-            iterate_sensor(state, sensor_activation_id)
-          end)
 
         {:ok, state}
     end
@@ -199,14 +190,27 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_call({:deactivate_sensor, repository, target}, _from, state) do
     case Store.deactivate_sensor(state.db, repository, target) do
-      :ok ->
+      {:ok, sensor_activation_ids} ->
         notify_listeners(state, {:sensor, repository, target}, {:activated, false})
-        # TODO: stop run (cancel running executions?)
+
+        sensor_activation_ids
+        |> Enum.map(&Map.get(state.sensors, &1))
+        |> Enum.reject(&is_nil/1)
+        |> Enum.each(fn execution_id ->
+          # TODO: only send to agent that has execution?
+          state.sessions
+          |> Map.values()
+          |> Enum.each(fn session ->
+            send(session.pid, {:abort, execution_id})
+          end)
+        end)
+
         {:reply, :ok, state}
     end
   end
 
   def handle_call({:record_heartbeats, execution_ids}, _from, state) do
+    # TODO: check whether any executions have been aborted/abandoned?
     case Store.record_hearbeats(state.db, execution_ids) do
       {:ok, created_at} ->
         state =
@@ -393,12 +397,21 @@ defmodule Coflux.Orchestration.Server do
             {:ok, state}
 
           sensor_activation_id ->
-            state =
-              state
-              |> Map.update!(:sensors, &Map.put(&1, sensor_activation_id, nil))
-              |> iterate_sensor(sensor_activation_id)
+            # TODO: better way to determine whether to iterate?
+            if result == :aborted do
+              state = Map.update!(state, :sensors, &Map.delete(&1, sensor_activation_id))
+              {:ok, state}
+            else
+              case Store.iterate_sensor(state.db, sensor_activation_id) do
+                {:ok, execution_id, _sequence, _created_at} ->
+                  state =
+                    state
+                    |> Map.update!(:sensors, &Map.put(&1, sensor_activation_id, execution_id))
+                    |> assign_executions()
 
-            {:ok, state}
+                  {:ok, state}
+              end
+            end
         end
     end
   end
@@ -505,14 +518,6 @@ defmodule Coflux.Orchestration.Server do
     end)
   end
 
-  defp iterate_sensor(state, sensor_activation_id) do
-    case Store.iterate_sensor(state.db, sensor_activation_id) do
-      {:ok, execution_id, _sequence, _created_at} ->
-        state = Map.update!(state, :sensors, &Map.put(&1, sensor_activation_id, execution_id))
-        assign_executions(state)
-    end
-  end
-
   defp assign_execution(state, execution_id, repository, target, arguments_fun) do
     session_ids = Map.get(state.targets, {repository, target}, [])
 
@@ -564,7 +569,7 @@ defmodule Coflux.Orchestration.Server do
             Store.get_sensor_activation_by_id(state.db, sensor_activation_id)
 
           if deactivated_at do
-            # TODO: set result (abandoned? cancelled?)
+            {:ok, state} = record_result(state, execution_id, :aborted)
             state
           else
             case assign_execution(state, execution_id, repository, target, fn ->

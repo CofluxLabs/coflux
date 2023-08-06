@@ -292,6 +292,7 @@ defmodule Coflux.Store do
             2 -> {:raw, format, value}
             3 -> {:blob, format, value}
             4 -> :abandoned
+            5 -> :aborted
           end
 
         {:ok, {result, created_at}}
@@ -339,7 +340,10 @@ defmodule Coflux.Store do
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN step_executions AS ste ON ste.execution_id = e.id
       LEFT JOIN sensor_executions AS sne ON sne.execution_id = e.id
-      WHERE a.created_at IS NULL AND (e.execute_after IS NULL OR e.execute_after >= ?1)
+      LEFT JOIN results AS r ON r.execution_id = e.id AND r.sequence = 0
+      WHERE a.created_at IS NULL
+        AND r.created_at IS NULL
+        AND (e.execute_after IS NULL OR e.execute_after >= ?1)
       """,
       {current_timestamp()}
     )
@@ -370,7 +374,7 @@ defmodule Coflux.Store do
 
       sequence = 1
       {:ok, execution_id} = insert_execution(db, nil, now)
-      insert_sensor_execution(db, sensor_activation_id, sequence, execution_id)
+      {:ok, _} = insert_sensor_execution(db, sensor_activation_id, sequence, execution_id)
       {:ok, sensor_activation_id, sequence, execution_id}
     end)
   end
@@ -386,19 +390,22 @@ defmodule Coflux.Store do
           SELECT sa.id
           FROM sensor_activations AS sa
           LEFT JOIN sensor_deactivations AS sd ON sd.sensor_activation_id = sa.id
-          WHERE sa.repository = ?1 AND sa.target = ?2 AND sd.created_at IS NOT NULL
+          WHERE sa.repository = ?1 AND sa.target = ?2 AND sd.created_at IS NULL
           """,
           {repository, target}
         )
+
+      sensor_activation_ids =
+        Enum.map(rows, fn {sensor_activation_id} -> sensor_activation_id end)
 
       case insert_many(
              db,
              :sensor_deactivations,
              {:sensor_activation_id, :created_at},
-             Enum.map(rows, fn {sensor_activation_id} -> {sensor_activation_id, now} end)
+             Enum.map(sensor_activation_ids, &{&1, now})
            ) do
         {:ok, _} ->
-          :ok
+          {:ok, sensor_activation_ids}
       end
     end)
   end
@@ -806,6 +813,7 @@ defmodule Coflux.Store do
         {:raw, format, data} -> {2, format, data}
         {:blob, format, hash} -> {3, format, hash}
         :abandoned -> {4, nil, nil}
+        :aborted -> {5, nil, nil}
       end
 
     insert_one(

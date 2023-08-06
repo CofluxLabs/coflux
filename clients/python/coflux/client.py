@@ -214,8 +214,11 @@ class Client:
         thread.start()
 
     async def _handle_abort(self, execution_id: str) -> None:
-        print(f"Aborting execution ({execution_id})...")
-        self._set_execution_status(execution_id, ExecutionStatus.ABORTING)
+        if execution_id in self._executions:
+            print(f"Aborting execution ({execution_id})...")
+            self._set_execution_status(execution_id, ExecutionStatus.ABORTING)
+        else:
+            print(f"Ignored abort for unrecognised execution ({execution_id}).")
 
     def _should_send_heartbeat(
         self, executions: dict, threshold_s: float, now: float
@@ -330,6 +333,8 @@ class Client:
                 raise Exception(error)
             case ["abandoned"]:
                 raise Exception("abandoned")
+            case ["aborted"]:
+                raise Exception("aborted")
             case result:
                 raise Exception(f"unexeptected result ({result})")
 
