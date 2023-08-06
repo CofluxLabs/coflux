@@ -839,27 +839,31 @@ defmodule Coflux.Store do
   end
 
   defp insert_many(db, table, fields, values) do
-    {fields, indexes} =
-      fields
-      |> Tuple.to_list()
-      |> Enum.with_index(1)
-      |> Enum.unzip()
+    if Enum.any?(values) do
+      {fields, indexes} =
+        fields
+        |> Tuple.to_list()
+        |> Enum.with_index(1)
+        |> Enum.unzip()
 
-    fields = Enum.join(fields, ", ")
-    placeholders = Enum.map_join(indexes, ", ", fn index -> "?#{index}" end)
-    sql = "INSERT INTO #{table} (#{fields}) VALUES (#{placeholders})"
+      fields = Enum.join(fields, ", ")
+      placeholders = Enum.map_join(indexes, ", ", fn index -> "?#{index}" end)
+      sql = "INSERT INTO #{table} (#{fields}) VALUES (#{placeholders})"
 
-    with_prepare(db, sql, fn statement ->
-      ids =
-        Enum.map(values, fn row ->
-          :ok = Sqlite3.bind(db, statement, Tuple.to_list(row))
-          :done = Sqlite3.step(db, statement)
-          {:ok, id} = Sqlite3.last_insert_rowid(db)
-          id
-        end)
+      with_prepare(db, sql, fn statement ->
+        ids =
+          Enum.map(values, fn row ->
+            :ok = Sqlite3.bind(db, statement, Tuple.to_list(row))
+            :done = Sqlite3.step(db, statement)
+            {:ok, id} = Sqlite3.last_insert_rowid(db)
+            id
+          end)
 
-      {:ok, ids}
-    end)
+        {:ok, ids}
+      end)
+    else
+      {:ok, []}
+    end
   end
 
   defp query(db, sql, args \\ {}) do
