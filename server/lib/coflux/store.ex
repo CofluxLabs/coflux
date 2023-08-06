@@ -655,20 +655,26 @@ defmodule Coflux.Store do
   end
 
   defp find_cached_execution(db, cache_key) do
-    query_one(
-      db,
-      """
-      SELECT e.id
-      FROM steps AS s
-      INNER JOIN step_executions AS se ON se.step_id = s.id
-      INNER JOIN executions AS e ON e.id = se.execution_id
-      LEFT JOIN results AS r ON r.execution_id = e.id AND r.sequence = 0
-      WHERE s.cache_key = ?1 AND (r.type IS NULL OR r.type IN (1, 2, 3))
-      ORDER BY e.created_at DESC
-      LIMIT 1
-      """,
-      {cache_key}
-    )
+    case query(
+           db,
+           """
+           SELECT e.id
+           FROM steps AS s
+           INNER JOIN step_executions AS se ON se.step_id = s.id
+           INNER JOIN executions AS e ON e.id = se.execution_id
+           LEFT JOIN results AS r ON r.execution_id = e.id AND r.sequence = 0
+           WHERE s.cache_key = ?1 AND (r.type IS NULL OR r.type IN (1, 2, 3))
+           ORDER BY e.created_at DESC
+           LIMIT 1
+           """,
+           {cache_key}
+         ) do
+      {:ok, [{execution_id}]} ->
+        {:ok, execution_id}
+
+      {:ok, []} ->
+        {:ok, nil}
+    end
   end
 
   defp insert_run(db, parent_id, idempotency_key, created_at) do
