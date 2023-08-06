@@ -1,14 +1,19 @@
-import { useEffect, useState } from 'react';
-import { Outlet, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
-import { SocketProvider, useSocket, useTopic } from '@topical/react';
+import { Fragment, useEffect, useState } from "react";
+import {
+  Outlet,
+  useOutletContext,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import { SocketProvider, useSocket, useTopic } from "@topical/react";
 
-import EnvironmentSelector from '../components/EnvironmentSelector';
-import TargetsList from '../components/TargetsList';
-import Logo from '../components/Logo';
-import ProjectSelector from '../components/ProjectSelector';
-import * as models from '../models';
+import EnvironmentSelector from "../components/EnvironmentSelector";
+import TargetsList from "../components/TargetsList";
+import Logo from "../components/Logo";
+import ProjectSelector from "../components/ProjectSelector";
+import * as models from "../models";
 
-type Target = { repository: string, target: string };
+type Target = { repository: string; target: string };
 
 function SocketStatus() {
   const [_socket, status] = useSocket();
@@ -21,34 +26,39 @@ function SocketStatus() {
 
 type HeaderProps = {
   projectId: string | undefined;
-}
+};
 
 function Header({ projectId }: HeaderProps) {
   const [projects] = useTopic<Record<string, models.Project>>("projects");
   return (
     <div className="flex bg-slate-700 px-3 items-center h-14 flex-none">
       <Logo />
-      {projects && projectId && projects[projectId] && (
-        <EnvironmentSelector environments={projects[projectId].environments} />
+      {projects && (
+        <Fragment>
+          <ProjectSelector projectIds={Object.keys(projects)} />
+          {projectId && projects[projectId] && (
+            <Fragment>
+              <span className="text-slate-500 px-1">/</span>
+              <EnvironmentSelector
+                environments={projects[projectId].environments}
+              />
+            </Fragment>
+          )}
+        </Fragment>
       )}
       <span className="flex-1"></span>
-      <span className="text-slate-100 rounded px-3 py-1 mr-1">
-        {projects && (
-          <ProjectSelector projectIds={Object.keys(projects)} />
-        )}
-      </span>
     </div>
   );
 }
 
 type OutletContext = {
   setActiveTarget: (task: Target | undefined) => void;
-}
+};
 
 export default function ProjectLayout() {
   const { project: projectId } = useParams();
   const [searchParams] = useSearchParams();
-  const environmentName = searchParams.get('environment') || undefined;
+  const environmentName = searchParams.get("environment") || undefined;
   const [activeTarget, setActiveTarget] = useState<Target>();
   return (
     <SocketProvider url="ws://localhost:7070/topics">
@@ -57,7 +67,11 @@ export default function ProjectLayout() {
         <div className="flex-auto flex overflow-hidden">
           <div className="w-64 bg-slate-100 text-gray-100 border-r border-slate-200 flex-none flex flex-col">
             <div className="flex-1 overflow-auto">
-              <TargetsList projectId={projectId} environmentName={environmentName} activeTarget={activeTarget} />
+              <TargetsList
+                projectId={projectId}
+                environmentName={environmentName}
+                activeTarget={activeTarget}
+              />
             </div>
             <SocketStatus />
           </div>

@@ -1,20 +1,24 @@
-import { ChangeEvent, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { ChangeEvent, useCallback } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 type Props = {
   projectIds: string[];
-}
+};
 
 export default function ProjectSelector({ projectIds }: Props) {
   const { project: activeProjectId } = useParams();
   const navigate = useNavigate();
-  const handleChange = useCallback((ev: ChangeEvent<HTMLSelectElement>) => navigate(`/projects/${ev.target.value}`), [navigate]);
+  const handleChange = useCallback(
+    (ev: ChangeEvent<HTMLSelectElement>) =>
+      navigate(`/projects/${ev.target.value}`),
+    [navigate]
+  );
   return (
     <div>
       <select
-        value={activeProjectId || ''}
+        value={activeProjectId || ""}
         onChange={handleChange}
-        className="text-slate-300 bg-slate-700 rounded p-2 w-full"
+        className="text-slate-300 bg-transparent rounded px-1 w-full"
       >
         <option value="">Select...</option>
         {projectIds.map((projectId) => (

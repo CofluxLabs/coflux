@@ -1,22 +1,28 @@
-import { useTopic } from '@topical/react';
-import { ChangeEvent, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useTopic } from "@topical/react";
+import { ChangeEvent, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 
-import * as models from '../models';
-import Loading from './Loading';
+import * as models from "../models";
+import Loading from "./Loading";
 
 type Props = {
   environments: string[] | undefined;
   className?: string;
-}
+};
 
-export default function EnvironmentSelector({ environments, className }: Props) {
+export default function EnvironmentSelector({
+  environments,
+  className,
+}: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const selected = searchParams.get('environment');
-  const handleChange = useCallback((ev: ChangeEvent<HTMLSelectElement>) => {
-    // TODO: merge with existing params
-    setSearchParams({ environment: ev.target.value })
-  }, [setSearchParams]);
+  const selected = searchParams.get("environment");
+  const handleChange = useCallback(
+    (ev: ChangeEvent<HTMLSelectElement>) => {
+      // TODO: merge with existing params
+      setSearchParams({ environment: ev.target.value });
+    },
+    [setSearchParams]
+  );
   return (
     <div className={className}>
       {environments === undefined ? (
@@ -27,7 +33,7 @@ export default function EnvironmentSelector({ environments, className }: Props) 
         <select
           value={selected || ""}
           onChange={handleChange}
-          className="text-slate-300 bg-slate-700 rounded p-2 w-full"
+          className="text-slate-300 bg-transparent rounded px-1 w-full"
         >
           <option value="">Select...</option>
           {environments.map((environmentName) => (
