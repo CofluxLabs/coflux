@@ -145,9 +145,8 @@ def github_task():
 
 
 @sensor()
-def demo_sensor(cursor: int | None):
+def demo_sensor(cursor: int | None = None):
     interval = 10
-    cursor = cursor.result() if cursor else None
     cursor = cursor or time.time()
     while True:
         remaining = max(0, cursor - time.time())

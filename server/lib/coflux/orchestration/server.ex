@@ -573,8 +573,10 @@ defmodule Coflux.Orchestration.Server do
             state
           else
             case assign_execution(state, execution_id, repository, target, fn ->
-                   # TODO: get arguments (from cursor)
-                   {:ok, [{:raw, "json", "null"}]}
+                   case Store.get_latest_sensor_activation_cursor(state.db, sensor_activation_id) do
+                     {:ok, nil} -> {:ok, []}
+                     {:ok, cursor} -> {:ok, [cursor]}
+                   end
                  end) do
               {:ok, state, nil} ->
                 state

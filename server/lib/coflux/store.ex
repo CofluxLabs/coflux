@@ -268,7 +268,7 @@ defmodule Coflux.Store do
   def record_result(db, execution_id, result) do
     now = current_timestamp()
 
-    case insert_result(db, execution_id, 0, result, now) do
+    case insert_result(db, execution_id, result, now) do
       {:ok, _} ->
         {:ok, now}
     end
@@ -280,21 +280,12 @@ defmodule Coflux.Store do
            """
            SELECT type, format, value, created_at
            FROM results
-           WHERE execution_id = ?1 AND sequence = 0
+           WHERE execution_id = ?1
            """,
            {execution_id}
          ) do
       {:ok, {type, format, value, created_at}} ->
-        result =
-          case type do
-            0 -> {:error, value, nil}
-            1 -> {:reference, value}
-            2 -> {:raw, format, value}
-            3 -> {:blob, format, value}
-            4 -> :abandoned
-            5 -> :aborted
-          end
-
+        result = build_result(type, format, value)
         {:ok, {result, created_at}}
 
       {:ok, nil} ->
@@ -309,8 +300,8 @@ defmodule Coflux.Store do
                db,
                """
                SELECT MAX(sequence)
-               FROM results
-               WHERE execution_id = ?1 AND sequence != 0
+               FROM cursors
+               WHERE execution_id = ?1
                """,
                {execution_id}
              ) do
@@ -323,11 +314,33 @@ defmodule Coflux.Store do
 
       now = current_timestamp()
 
-      case insert_result(db, execution_id, sequence, result, now) do
+      case insert_cursor(db, execution_id, sequence, result, now) do
         {:ok, _} ->
           {:ok, now}
       end
     end)
+  end
+
+  def get_latest_sensor_activation_cursor(db, sensor_activation_id) do
+    case query(
+           db,
+           """
+           SELECT type, format, value
+           FROM cursors AS c
+           INNER JOIN sensor_executions AS se ON se.execution_id = c.execution_id
+           WHERE se.sensor_activation_id = ?1
+           ORDER BY se.sequence DESC, c.sequence DESC
+           LIMIT 1
+           """,
+           {sensor_activation_id}
+         ) do
+      {:ok, [{type, format, value}]} ->
+        result = build_result(type, format, value)
+        {:ok, result}
+
+      {:ok, []} ->
+        {:ok, nil}
+    end
   end
 
   def get_unassigned_executions(db) do
@@ -340,7 +353,7 @@ defmodule Coflux.Store do
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN step_executions AS ste ON ste.execution_id = e.id
       LEFT JOIN sensor_executions AS sne ON sne.execution_id = e.id
-      LEFT JOIN results AS r ON r.execution_id = e.id AND r.sequence = 0
+      LEFT JOIN results AS r ON r.execution_id = e.id
       WHERE a.created_at IS NULL
         AND r.created_at IS NULL
         AND (e.execute_after IS NULL OR e.execute_after >= ?1)
@@ -355,7 +368,7 @@ defmodule Coflux.Store do
       """
       SELECT a.execution_id, a.created_at, (SELECT MAX(created_at) FROM heartbeats WHERE execution_id = a.execution_id)
       FROM assignments AS a
-      LEFT JOIN results AS r ON r.execution_id = a.execution_id AND r.sequence = 0
+      LEFT JOIN results AS r ON r.execution_id = a.execution_id
       WHERE r.created_at IS NULL
       """
     )
@@ -418,8 +431,8 @@ defmodule Coflux.Store do
         SELECT se.execution_id
         FROM sensor_executions AS se
         INNER JOIN executions AS e ON se.execution_id = e.id
-        LEFT JOIN results AS re ON re.execution_id = se.execution_id AND re.sequence = 0
-        WHERE se.sensor_activation_id = sa.id AND re.created_at IS NULL
+        LEFT JOIN results AS r ON r.execution_id = se.execution_id
+        WHERE se.sensor_activation_id = sa.id AND r.created_at IS NULL
         ORDER BY e.created_at DESC
         LIMIT 1
       )
@@ -669,7 +682,7 @@ defmodule Coflux.Store do
            FROM steps AS s
            INNER JOIN step_executions AS se ON se.step_id = s.id
            INNER JOIN executions AS e ON e.id = se.execution_id
-           LEFT JOIN results AS r ON r.execution_id = e.id AND r.sequence = 0
+           LEFT JOIN results AS r ON r.execution_id = e.id
            WHERE s.cache_key = ?1 AND (r.type IS NULL OR r.type IN (1, 2, 3))
            ORDER BY e.created_at DESC
            LIMIT 1
@@ -804,21 +817,50 @@ defmodule Coflux.Store do
     )
   end
 
-  defp insert_result(db, execution_id, sequence, result, created_at) do
-    {type, format, value} =
-      case result do
-        # TODO: handle details
-        {:error, error, _details} -> {0, nil, error}
-        {:reference, execution_id} -> {1, nil, execution_id}
-        {:raw, format, data} -> {2, format, data}
-        {:blob, format, hash} -> {3, format, hash}
-        :abandoned -> {4, nil, nil}
-        :aborted -> {5, nil, nil}
-      end
+  defp parse_result(result) do
+    case result do
+      # TODO: handle details
+      {:error, error, _details} -> {0, nil, error}
+      {:reference, execution_id} -> {1, nil, execution_id}
+      {:raw, format, data} -> {2, format, data}
+      {:blob, format, hash} -> {3, format, hash}
+      :abandoned -> {4, nil, nil}
+      :aborted -> {5, nil, nil}
+    end
+  end
+
+  defp build_result(type, format, value) do
+    case type do
+      0 -> {:error, value, nil}
+      1 -> {:reference, value}
+      2 -> {:raw, format, value}
+      3 -> {:blob, format, value}
+      4 -> :abandoned
+      5 -> :aborted
+    end
+  end
+
+  defp insert_result(db, execution_id, result, created_at) do
+    {type, format, value} = parse_result(result)
 
     insert_one(
       db,
       :results,
+      execution_id: execution_id,
+      type: type,
+      format: format,
+      value: value,
+      created_at: created_at
+    )
+  end
+
+  defp insert_cursor(db, execution_id, sequence, result, created_at) do
+    # TODO: check result isn't error/abandoned/aborted?
+    {type, format, value} = parse_result(result)
+
+    insert_one(
+      db,
+      :cursors,
       execution_id: execution_id,
       sequence: sequence,
       type: type,

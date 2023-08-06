@@ -127,12 +127,21 @@ CREATE TABLE heartbeats (
 );
 
 CREATE TABLE results (
+  execution_id INTEGER PRIMARY KEY,
+  type INTEGER NOT NULL,
+  format TEXT,
+  value BLOB,
+  -- TODO: metadata? (for serialising errors)
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+);
+
+CREATE TABLE cursors (
   execution_id INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
   type INTEGER NOT NULL,
   format TEXT,
   value BLOB,
-  -- TODO: metadata? (for serialising errors)
   created_at INTEGER NOT NULL,
   PRIMARY KEY (execution_id, sequence),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
