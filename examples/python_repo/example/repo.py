@@ -3,7 +3,7 @@ import random
 import requests
 import typing as t
 
-from coflux import step, task, sensor, context, Future
+from coflux import step, task, stub, sensor, context, Future
 
 
 @step()
@@ -155,6 +155,16 @@ def demo_sensor(cursor: int | None = None):
         my_task()
         cursor += interval
         yield cursor
+
+
+@stub("example2.repo2")
+def random_int(max: int):
+    return 42
+
+
+@task()
+def another_task():
+    return random_int(10).result() + 1
 
 
 if __name__ == "__main__":

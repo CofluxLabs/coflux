@@ -45,11 +45,40 @@ def task(
 
         @functools.wraps(fn)
         def wrapper(*args) -> None:  # TODO: support kwargs?
+            # TODO: return future?
             try:
                 context.schedule_task(target, args)
             except context.NotInContextException:
                 # TODO: execute in threadpool
                 fn(*args)
+
+        return wrapper
+
+    return decorate
+
+
+# TODO: cache_key (etc?)
+# TODO: support stubbing tasks?
+def stub(
+    repository: str, *, target: str | None = None
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
+    def decorate(fn: t.Callable[P, T]) -> t.Callable[P, future.Future[T]]:
+        @functools.wraps(fn)
+        def wrapper(*args) -> future.Future[T]:  # TODO: support kwargs?
+            try:
+                execution_id = context.schedule_step(
+                    target or fn.__name__,
+                    args,
+                    repository=repository,
+                )
+                return context.get_result(execution_id)
+            except context.NotInContextException:
+                result = fn(*args)
+                return (
+                    future.Future(lambda: result)
+                    if not isinstance(result, future.Future)
+                    else result
+                )
 
         return wrapper
 
