@@ -490,9 +490,12 @@ defmodule Coflux.Store do
         db,
         """
         SELECT id, repository
-        FROM manifests
+        FROM (
+          SELECT id, repository
+          FROM manifests
+          ORDER BY repository, created_at DESC
+        )
         GROUP BY repository
-        ORDER BY repository, created_at DESC
         """
       )
 
