@@ -10,6 +10,7 @@ import urllib.parse
 import enum
 import types
 import typing as t
+import importlib
 
 from . import annotations, channel, future, context
 
@@ -340,7 +341,7 @@ class Client:
 
 
 def init(
-    module: types.ModuleType,
+    module: types.ModuleType | str,
     *,
     project: str | None = None,
     environment: str | None = None,
@@ -354,6 +355,7 @@ def init(
     host = host or os.environ.get("COFLUX_HOST") or "localhost:7070"
     concurrency = concurrency or os.environ.get("COFLUX_CONCURRENCY")
     try:
+        module = importlib.import_module(module) if isinstance(module, str) else module
         client = Client(project, environment, module, version, host, concurrency)
         asyncio.run(client.run())
     except KeyboardInterrupt:

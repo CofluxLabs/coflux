@@ -1,6 +1,5 @@
 import click
 import watchfiles
-import importlib
 
 from . import client
 
@@ -52,8 +51,7 @@ def cli(
     concurrency: int,
     reload: bool,
 ) -> None:
-    module = importlib.import_module(module_name)
-    args = (module,)
+    args = (module_name,)
     kwargs = {
         "project": project,
         "environment": environment,
