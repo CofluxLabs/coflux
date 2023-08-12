@@ -19,9 +19,12 @@ def step(
         @functools.wraps(fn)
         def wrapper(*args) -> future.Future[T]:  # TODO: support kwargs?
             try:
-                # TODO: handle args being futures?
+                repository = fn.__module__
                 cache_key = cache_key_fn(*args) if cache_key_fn else None
-                execution_id = context.schedule_step(target, args, cache_key=cache_key)
+                # TODO: handle args being futures?
+                execution_id = context.schedule_step(
+                    repository, target, args, cache_key=cache_key
+                )
                 return context.get_result(execution_id)
             except context.NotInContextException:
                 result = fn(*args)
@@ -47,7 +50,8 @@ def task(
         def wrapper(*args) -> None:  # TODO: support kwargs?
             # TODO: return future?
             try:
-                context.schedule_task(target, args)
+                repository = fn.__module__
+                context.schedule_task(repository, target, args)
             except context.NotInContextException:
                 # TODO: execute in threadpool
                 fn(*args)
@@ -67,9 +71,7 @@ def stub(
         def wrapper(*args) -> future.Future[T]:  # TODO: support kwargs?
             try:
                 execution_id = context.schedule_step(
-                    target or fn.__name__,
-                    args,
-                    repository=repository,
+                    repository, target or fn.__name__, args
                 )
                 return context.get_result(execution_id)
             except context.NotInContextException:

@@ -3,26 +3,31 @@ defmodule Coflux.Handlers.Agent do
 
   def init(req, _opts) do
     qs = :cowboy_req.parse_qs(req)
-    {"project", project_id} = List.keyfind!(qs, "project", 0)
-    {"environment", environment} = List.keyfind!(qs, "environment", 0)
+    # TODO: validate
+    project_id = get_query_param(qs, "project")
+    environment = get_query_param(qs, "environment")
+    session_id = get_query_param(qs, "session")
 
-    {:cowboy_websocket, req, {project_id, environment}}
+    {:cowboy_websocket, req, {project_id, environment, session_id}}
   end
 
-  def websocket_init({project_id, environment}) do
+  def websocket_init({project_id, environment, session_id}) do
     # TODO: authenticate
     # TODO: monitor server?
-    # TODO: support resuming session
+    session_id = if session_id, do: String.to_integer(session_id)
 
-    case Orchestration.start_session(project_id, environment, self()) do
+    case Orchestration.connect(project_id, environment, session_id, self()) do
       {:ok, session_id} ->
-        {[],
+        {[session_message(session_id)],
          %{
            project_id: project_id,
            environment: environment,
            session_id: session_id,
            requests: %{}
          }}
+
+      {:error, :no_session} ->
+        {[{:close, 4001, "no_session"}], nil}
     end
   end
 
@@ -170,16 +175,23 @@ defmodule Coflux.Handlers.Agent do
     {[command_message("abort", [execution_id])], state}
   end
 
-  # def websocket_info(_info, state) do
-  #   {[], state}
-  # end
+  defp session_message(session_id) do
+    {:text, Jason.encode!([0, session_id])}
+  end
 
   defp command_message(command, params) do
-    {:text, Jason.encode!(%{"command" => command, "params" => params})}
+    {:text, Jason.encode!([1, %{"command" => command, "params" => params}])}
   end
 
   defp result_message(id, result) do
-    {:text, Jason.encode!(%{"id" => id, "result" => result})}
+    {:text, Jason.encode!([2, %{"id" => id, "result" => result}])}
+  end
+
+  defp get_query_param(qs, key) do
+    case List.keyfind(qs, key, 0) do
+      {^key, value} -> value
+      nil -> nil
+    end
   end
 
   defp parse_targets(targets) do

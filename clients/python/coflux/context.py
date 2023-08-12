@@ -28,22 +28,21 @@ def _get() -> t.Tuple[str, client.Client, asyncio.AbstractEventLoop]:
     return execution
 
 
-def schedule_task(
-    target: str, args: t.Tuple[t.Any, ...], repository: str | None = None
-) -> str:
+def schedule_task(repository: str, target: str, args: t.Tuple[t.Any, ...]) -> str:
     execution_id, client, loop = _get()
-    task = client.schedule_task(execution_id, target, args, repository)
+    task = client.schedule_task(repository, target, args, execution_id)
     return asyncio.run_coroutine_threadsafe(task, loop).result()
 
 
 def schedule_step(
+    repository: str,
     target: str,
     args: t.Tuple[t.Any, ...],
-    repository: str | None = None,
+    *,
     cache_key: str | None = None,
 ) -> str:
     execution_id, client, loop = _get()
-    task = client.schedule_step(execution_id, target, args, repository, cache_key)
+    task = client.schedule_step(repository, target, args, execution_id, cache_key)
     return asyncio.run_coroutine_threadsafe(task, loop).result()
 
 

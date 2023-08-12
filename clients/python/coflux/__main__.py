@@ -41,17 +41,17 @@ def _callback(_changes: set[tuple[watchfiles.Change, str]]) -> None:
     default=False,
     help="Enable auto-reload when code changes",
 )
-@click.argument("module_name")
+@click.argument("module_name", nargs=-1)
 def cli(
     project: str,
     environment: str,
-    module_name: str,
     version: str,
     host: str,
     concurrency: int,
     reload: bool,
+    module_name: tuple[str],
 ) -> None:
-    args = (module_name,)
+    args = (list(module_name),)
     kwargs = {
         "project": project,
         "environment": environment,

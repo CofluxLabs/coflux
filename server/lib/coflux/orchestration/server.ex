@@ -4,16 +4,17 @@ defmodule Coflux.Orchestration.Server do
   alias Coflux.Store
 
   @abandon_timeout_ms 5_000
+  @session_timeout_ms 5_000
 
   defmodule State do
     defstruct project_id: nil,
               environment: nil,
               db: nil,
 
-              # ref -> session id
+              # ref -> {pid, session_id}
               agents: %{},
 
-              # session id -> %{pid, targets}
+              # session id -> %{agent, targets, queue, expire_timer}
               sessions: %{},
 
               # {repository, target} -> [session id]
@@ -67,17 +68,60 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:start_session, pid}, _from, state) do
-    case Store.start_session(state.db) do
-      {:ok, session_id} ->
-        ref = Process.monitor(pid)
+  def handle_call({:connect, session_id, pid}, _from, state) do
+    if session_id do
+      case Map.fetch(state.sessions, session_id) do
+        {:ok, session} ->
+          if session.expire_timer do
+            Process.cancel_timer(session.expire_timer)
+          end
 
-        state =
-          state
-          |> put_in([Access.key(:agents), ref], session_id)
-          |> put_in([Access.key(:sessions), session_id], %{pid: pid, targets: MapSet.new()})
+          state =
+            if session.agent do
+              {{pid, ^session_id}, state} = pop_in(state.agents[session.agent])
+              # TODO: better reason?
+              Process.exit(pid, :kill)
+              state
+            else
+              state
+            end
 
-        {:reply, {:ok, session_id}, state}
+          ref = Process.monitor(pid)
+
+          state.sessions[session_id].queue
+          |> Enum.reverse()
+          |> Enum.each(&send(pid, &1))
+
+          state =
+            state
+            |> put_in([Access.key(:agents), ref], {pid, session_id})
+            |> update_in(
+              [Access.key(:sessions), session_id],
+              &Map.merge(&1, %{agent: ref, queue: []})
+            )
+
+          {:reply, {:ok, session_id}, state}
+
+        :error ->
+          {:reply, {:error, :no_session}, state}
+      end
+    else
+      case Store.start_session(state.db) do
+        {:ok, session_id} ->
+          ref = Process.monitor(pid)
+
+          state =
+            state
+            |> put_in([Access.key(:agents), ref], {pid, session_id})
+            |> put_in([Access.key(:sessions), session_id], %{
+              agent: ref,
+              targets: MapSet.new(),
+              queue: [],
+              expire_timer: nil
+            })
+
+          {:reply, {:ok, session_id}, state}
+      end
     end
   end
 
@@ -193,17 +237,18 @@ defmodule Coflux.Orchestration.Server do
       {:ok, sensor_activation_ids} ->
         notify_listeners(state, {:sensor, repository, target}, {:activated, false})
 
-        sensor_activation_ids
-        |> Enum.map(&Map.get(state.sensors, &1))
-        |> Enum.reject(&is_nil/1)
-        |> Enum.each(fn execution_id ->
-          # TODO: only send to agent that has execution?
-          state.sessions
-          |> Map.values()
-          |> Enum.each(fn session ->
-            send(session.pid, {:abort, execution_id})
+        state =
+          sensor_activation_ids
+          |> Enum.map(&Map.get(state.sensors, &1))
+          |> Enum.reject(&is_nil/1)
+          |> Enum.reduce(state, fn execution_id, state ->
+            # TODO: only send to agent that has execution?
+            state.sessions
+            |> Map.keys()
+            |> Enum.reduce(state, fn session_id, state ->
+              send_session(state, session_id, {:abort, execution_id})
+            end)
           end)
-        end)
 
         {:reply, :ok, state}
     end
@@ -362,14 +407,54 @@ defmodule Coflux.Orchestration.Server do
     {:noreply, state}
   end
 
-  def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
+  def handle_info({:expire_session, session_id}, state) do
+    if state.sessions[session_id].agent do
+      IO.puts("Ignoring session expire (#{inspect(session_id)})")
+      {:noreply, state}
+    else
+      {session, state} = pop_in(state.sessions[session_id])
+
+      state =
+        Map.update!(state, :targets, fn targets ->
+          Enum.reduce(session.targets, targets, fn target, targets ->
+            updated =
+              targets
+              |> Map.fetch!(target)
+              |> MapSet.delete(session_id)
+
+            if Enum.empty?(updated) do
+              Map.delete(targets, target)
+            else
+              Map.put(targets, target, updated)
+            end
+          end)
+        end)
+
+      {:noreply, state}
+    end
+  end
+
+  def handle_info({:DOWN, ref, :process, pid, _reason}, state) do
     cond do
       Map.has_key?(state.agents, ref) ->
-        state = unregister_targets(state, ref)
+        {{^pid, session_id}, state} = pop_in(state.agents[ref])
+
+        expire_timer =
+          Process.send_after(self(), {:expire_session, session_id}, @session_timeout_ms)
+
+        state =
+          update_in(
+            state.sessions[session_id],
+            &Map.merge(&1, %{agent: nil, expire_timer: expire_timer})
+          )
+
         {:noreply, state}
 
       Map.has_key?(state.listeners, ref) ->
         state = remove_listener(state, ref)
+        {:noreply, state}
+
+      true ->
         {:noreply, state}
     end
   end
@@ -440,31 +525,6 @@ defmodule Coflux.Orchestration.Server do
     end)
   end
 
-  defp unregister_targets(state, ref) do
-    case Map.fetch(state.agents, ref) do
-      {:ok, session_id} ->
-        session = state.sessions[session_id]
-
-        state
-        |> Map.update!(:agents, &Map.delete(&1, ref))
-        |> Map.update!(:sessions, &Map.delete(&1, session_id))
-        |> Map.update!(:targets, fn targets ->
-          Enum.reduce(session.targets, targets, fn target, targets ->
-            updated =
-              targets
-              |> Map.fetch!(target)
-              |> MapSet.delete(session_id)
-
-            if Enum.empty?(updated) do
-              Map.delete(targets, target)
-            else
-              Map.put(targets, target, updated)
-            end
-          end)
-        end)
-    end
-  end
-
   defp add_listener(state, topic, pid) do
     ref = Process.monitor(pid)
 
@@ -491,6 +551,18 @@ defmodule Coflux.Orchestration.Server do
     |> Enum.each(fn {ref, pid} ->
       send(pid, {:topic, ref, payload})
     end)
+  end
+
+  defp send_session(state, session_id, message) do
+    session = state.sessions[session_id]
+
+    if session.agent do
+      {pid, ^session_id} = state.agents[session.agent]
+      send(pid, message)
+      state
+    else
+      update_in(state.sessions[session_id].queue, &[message | &1])
+    end
   end
 
   defp check_abandoned(state) do
@@ -523,13 +595,19 @@ defmodule Coflux.Orchestration.Server do
 
     if Enum.any?(session_ids) do
       session_id = Enum.random(session_ids)
-      session = state.sessions[session_id]
 
       case arguments_fun.() do
         {:ok, arguments} ->
           {:ok, assigned_at} = Store.assign_execution(state.db, execution_id, session_id)
-          state = put_in(state, [Access.key(:running), execution_id], assigned_at)
-          send(session.pid, {:execute, execution_id, repository, target, arguments})
+
+          state =
+            state
+            |> put_in([Access.key(:running), execution_id], assigned_at)
+            |> send_session(
+              session_id,
+              {:execute, execution_id, repository, target, arguments}
+            )
+
           {:ok, state, {session_id, assigned_at}}
       end
     else
