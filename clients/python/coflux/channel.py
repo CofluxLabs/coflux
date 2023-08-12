@@ -31,13 +31,13 @@ class Channel:
         self._last_id = 0
         self._requests = {}
 
-    async def notify(self, method: str, *params) -> None:
-        await self._send(method, params)
+    async def notify(self, request: str, *params) -> None:
+        await self._send(request, params)
 
-    async def request(self, method: str, *params) -> t.Any:
+    async def request(self, request: str, *params) -> t.Any:
         id = self._next_id()
         self._requests[id] = Request()
-        await self._send(method, params, id)
+        await self._send(request, params, id)
         return await self._requests[id].get()
 
     async def run(self, websocket: aiohttp.ClientWebSocketResponse) -> None:
@@ -46,8 +46,8 @@ class Channel:
         for task in pending:
             task.cancel()
 
-    async def _send(self, method: str, params: tuple, id: str | None = None) -> None:
-        data = {"method": method}
+    async def _send(self, request: str, params: tuple, id: str | None = None) -> None:
+        data = {"request": request}
         if params:
             data["params"] = params
         if id:
@@ -65,8 +65,8 @@ class Channel:
     async def _consume(self, websocket: aiohttp.ClientWebSocketResponse) -> None:
         async for message in websocket:
             data = json.loads(message.data)
-            if "method" in data:
-                handler = self._handlers[data["method"]]
+            if "command" in data:
+                handler = self._handlers[data["command"]]
                 params = data.get("params", [])
                 await handler(*params)
             else:

@@ -29,7 +29,7 @@ defmodule Coflux.Handlers.Agent do
   def websocket_handle({:text, text}, state) do
     message = Jason.decode!(text)
 
-    case message["method"] do
+    case message["request"] do
       "register" ->
         [repository, _version, targets] = message["params"]
         targets = parse_targets(targets)
@@ -158,7 +158,7 @@ defmodule Coflux.Handlers.Agent do
 
   def websocket_info({:execute, execution_id, repository, target, arguments}, state) do
     arguments = Enum.map(arguments, &compose_argument/1)
-    {[notify_message("execute", [execution_id, repository, target, arguments])], state}
+    {[command_message("execute", [execution_id, repository, target, arguments])], state}
   end
 
   def websocket_info({:result, ref, result}, state) do
@@ -167,15 +167,15 @@ defmodule Coflux.Handlers.Agent do
   end
 
   def websocket_info({:abort, execution_id}, state) do
-    {[notify_message("abort", [execution_id])], state}
+    {[command_message("abort", [execution_id])], state}
   end
 
   # def websocket_info(_info, state) do
   #   {[], state}
   # end
 
-  defp notify_message(method, params) do
-    {:text, Jason.encode!(%{"method" => method, "params" => params})}
+  defp command_message(command, params) do
+    {:text, Jason.encode!(%{"command" => command, "params" => params})}
   end
 
   defp result_message(id, result) do
