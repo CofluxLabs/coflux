@@ -1,30 +1,39 @@
-import { Fragment } from 'react';
-import { DateTime } from 'luxon';
-import classNames from 'classnames';
-import { maxBy, sortBy } from 'lodash';
-import { Link } from 'react-router-dom';
+import { Fragment } from "react";
+import { DateTime } from "luxon";
+import classNames from "classnames";
+import { maxBy, sortBy } from "lodash";
+import { Link } from "react-router-dom";
 
-import * as models from '../models';
-import useNow from '../hooks/useNow';
-import { buildUrl } from '../utils';
+import * as models from "../models";
+import useNow from "../hooks/useNow";
+import { buildUrl } from "../utils";
 
-function loadExecutionTimes(run: models.Run): { [key: string]: [DateTime, DateTime | null, DateTime | null] } {
+function loadExecutionTimes(run: models.Run): {
+  [key: string]: [DateTime, DateTime | null, DateTime | null];
+} {
   return Object.keys(run.steps).reduce((times, stepId) => {
     const step = run.steps[stepId];
     return Object.values(step.executions).reduce((times, attempt) => {
       return {
-        ...times, [`${stepId}:${attempt.sequence}`]: [
+        ...times,
+        [`${stepId}:${attempt.sequence}`]: [
           DateTime.fromMillis(attempt.createdAt),
           attempt.assignedAt ? DateTime.fromMillis(attempt.assignedAt) : null,
-          attempt.completedAt ? DateTime.fromMillis(attempt.completedAt) : null
-        ]
+          attempt.completedAt ? DateTime.fromMillis(attempt.completedAt) : null,
+        ],
       };
     }, times);
   }, {});
 }
 
 function loadStepTimes(run: models.Run): { [key: string]: DateTime } {
-  return Object.keys(run.steps).reduce((times, stepId) => ({ ...times, [stepId]: DateTime.fromMillis(run.steps[stepId].createdAt) }), {});
+  return Object.keys(run.steps).reduce(
+    (times, stepId) => ({
+      ...times,
+      [stepId]: DateTime.fromMillis(run.steps[stepId].createdAt),
+    }),
+    {}
+  );
 }
 
 function percentage(value: number) {
@@ -37,31 +46,36 @@ type BarProps = {
   x2: DateTime;
   d: number;
   className: string;
-}
+};
 
 function Bar({ x1, x2, x0, d, className }: BarProps) {
   const left = x1.diff(x0).toMillis() / d;
   const width = Math.max(0.001, x2.diff(x1).toMillis() / d);
   const style = { left: percentage(left), width: percentage(width) };
   return (
-    <div className={classNames('absolute h-2 rounded', className)} style={style}></div>
+    <div
+      className={classNames("absolute h-2 rounded", className)}
+      style={style}
+    ></div>
   );
 }
 
 function classNameForResult(result: models.Result | null) {
   if (!result) {
-    return 'bg-blue-300';
+    return "bg-blue-300";
   } else if (["reference", "raw", "blob"].includes(result.type)) {
-    return 'bg-green-300';
+    return "bg-green-300";
   } else if (result.type == "error") {
-    return 'bg-red-300';
+    return "bg-red-300";
   } else {
-    return 'bg-yellow-300';
+    return "bg-yellow-300";
   }
 }
 
 function isRunning(run: models.Run) {
-  return Object.values(run.steps).some((step) => Object.values(step.executions).some((a) => !a.result));
+  return Object.values(run.steps).some((step) =>
+    Object.values(step.executions).some((a) => !a.result)
+  );
 }
 
 function formatElapsed(millis: number) {
@@ -78,54 +92,110 @@ type Props = {
   projectId: string;
   environmentName: string | null | undefined;
   activeStepId: string | null;
-}
+};
 
-export default function RunTimeline({ run, runId, projectId, environmentName, activeStepId }: Props) {
+export default function RunTimeline({
+  run,
+  runId,
+  projectId,
+  environmentName,
+  activeStepId,
+}: Props) {
   const running = isRunning(run);
   const now = useNow(running ? 30 : 0);
   const stepTimes = loadStepTimes(run);
   const executionTimes = loadExecutionTimes(run);
-  const times = [...(Object.values(stepTimes)), ...(Object.values(executionTimes).flat().filter((t): t is DateTime => t !== null))];
+  const times = [
+    ...Object.values(stepTimes),
+    ...Object.values(executionTimes)
+      .flat()
+      .filter((t): t is DateTime => t !== null),
+  ];
   const earliestTime = DateTime.min(...times);
-  const latestTime = running ? DateTime.fromJSDate(now) : DateTime.max(...times);
+  const latestTime = running
+    ? DateTime.fromJSDate(now)
+    : DateTime.max(...times);
   const totalMillis = latestTime.diff(earliestTime).toMillis();
-  const stepIds = sortBy(Object.keys(run.steps).filter(id => !run.steps[id].cachedExecutionId), id => run.steps[id].createdAt);
+  const stepIds = sortBy(
+    Object.keys(run.steps).filter((id) => !run.steps[id].cachedExecutionId),
+    (id) => run.steps[id].createdAt
+  );
   return (
     <div className="">
       <div className="flex">
-        <div className="w-40 truncate self-center mr-2">
-        </div>
+        <div className="w-40 truncate self-center mr-2"></div>
         <div className="flex-1 text-right text-slate-400">
           {formatElapsed(totalMillis)}
         </div>
       </div>
       {stepIds.map((stepId) => {
         const step = run.steps[stepId];
-        const latestAttempt = maxBy(Object.values(step.executions), 'sequence');
-        const stepFinishedAt = (latestAttempt ? executionTimes[`${stepId}:${latestAttempt.sequence}`][2] : null) || latestTime;
+        const latestAttempt = maxBy(Object.values(step.executions), "sequence");
+        const stepFinishedAt =
+          (latestAttempt
+            ? executionTimes[`${stepId}:${latestAttempt.sequence}`][2]
+            : null) || latestTime;
         const isActive = stepId == activeStepId;
         return (
-          <div key={stepId} className="flex items-center border-r border-slate-200">
+          <div
+            key={stepId}
+            className="flex items-center border-r border-slate-200"
+          >
             <div className="w-40 mr-2 border-r border-slate-200">
               <Link
-                to={buildUrl(`/projects/${projectId}/runs/${runId}/timeline`, { environment: environmentName, step: (isActive ? undefined : stepId), attempt: (isActive ? undefined : latestAttempt?.sequence) })}
-                className={classNames('inline-block px-1 max-w-full truncate', isActive && 'rounded ring ring-offset-2')}
+                to={buildUrl(`/projects/${projectId}/runs/${runId}/timeline`, {
+                  environment: environmentName,
+                  step: isActive ? undefined : stepId,
+                  attempt: isActive ? undefined : latestAttempt?.sequence,
+                })}
+                className={classNames(
+                  "inline-block px-1 max-w-full truncate",
+                  isActive && "rounded ring ring-offset-2"
+                )}
               >
-                <span className="font-mono">{step.target}</span> <span className="text-gray-500 text-sm">({step.repository})</span>
+                <span className="font-mono">{step.target}</span>{" "}
+                <span className="text-gray-500 text-sm">
+                  ({step.repository})
+                </span>
               </Link>
             </div>
             <div className="flex-1 relative">
               <Link
-                to={buildUrl(`/projects/${projectId}/runs/${runId}/timeline`, { environment: environmentName, step: (isActive ? undefined : stepId), attempt: (isActive ? undefined : latestAttempt?.sequence) })}
+                to={buildUrl(`/projects/${projectId}/runs/${runId}/timeline`, {
+                  environment: environmentName,
+                  step: isActive ? undefined : stepId,
+                  attempt: isActive ? undefined : latestAttempt?.sequence,
+                })}
                 className="block h-2"
               >
-                <Bar x1={stepTimes[stepId]} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-100" />
+                <Bar
+                  x1={stepTimes[stepId]}
+                  x2={stepFinishedAt}
+                  x0={earliestTime}
+                  d={totalMillis}
+                  className="bg-gray-100"
+                />
                 {Object.values(step.executions).map((attempt) => {
-                  const [createdAt, assignedAt, resultAt] = executionTimes[`${stepId}:${attempt.sequence}`];
+                  const [createdAt, assignedAt, resultAt] =
+                    executionTimes[`${stepId}:${attempt.sequence}`];
                   return (
                     <Fragment key={attempt.sequence}>
-                      <Bar x1={createdAt} x2={stepFinishedAt} x0={earliestTime} d={totalMillis} className="bg-gray-200" />
-                      {assignedAt && <Bar x1={assignedAt} x2={resultAt || latestTime} x0={earliestTime} d={totalMillis} className={classNameForResult(attempt.result)} />}
+                      <Bar
+                        x1={createdAt}
+                        x2={stepFinishedAt}
+                        x0={earliestTime}
+                        d={totalMillis}
+                        className="bg-gray-200"
+                      />
+                      {assignedAt && (
+                        <Bar
+                          x1={assignedAt}
+                          x2={resultAt || latestTime}
+                          x0={earliestTime}
+                          d={totalMillis}
+                          className={classNameForResult(attempt.result)}
+                        />
+                      )}
                     </Fragment>
                   );
                 })}

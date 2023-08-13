@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
 type Props = {
   delayMs?: number;
-}
+};
 
 export default function Loading({ delayMs }: Props) {
   const [show, setShow] = useState(false);

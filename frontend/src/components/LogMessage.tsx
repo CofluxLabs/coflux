@@ -1,6 +1,6 @@
-import classNames from 'classnames';
+import classNames from "classnames";
 
-import * as models from '../models';
+import * as models from "../models";
 
 function classForLevel(level: 0 | 1 | 2 | 3): string {
   switch (level) {
@@ -19,11 +19,17 @@ type Props = {
   message: models.LogMessage;
   size?: number;
   className?: string;
-}
+};
 
 export default function LogMessage({ message, size = 16, className }: Props) {
   return (
-    <div className={classNames(className, "border-l-4 pl-2", classForLevel(message.level))}>
+    <div
+      className={classNames(
+        className,
+        "border-l-4 pl-2",
+        classForLevel(message.level)
+      )}
+    >
       {message.message}
     </div>
   );

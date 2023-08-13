@@ -1,8 +1,6 @@
-import { useTopic } from "@topical/react";
 import { ChangeEvent, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import * as models from "../models";
 import Loading from "./Loading";
 
 type Props = {

@@ -1,12 +1,12 @@
-import { Fragment, useCallback, useState } from 'react';
+import { Fragment, useCallback, useState } from "react";
 
-import * as models from '../models';
-import RunDialog from './RunDialog';
+import * as models from "../models";
+import RunDialog from "./RunDialog";
 
 type Props = {
   task: models.Task;
-  onRun: (parameters: ['json', string][]) => Promise<void>;
-}
+  onRun: (parameters: ["json", string][]) => Promise<void>;
+};
 
 export default function RunButton({ task, onRun }: Props) {
   const [starting, setStarting] = useState(false);
@@ -14,7 +14,7 @@ export default function RunButton({ task, onRun }: Props) {
   const handleRunClick = useCallback(() => {
     setRunDialogOpen(true);
   }, []);
-  const handleRun = useCallback((parameters: ['json', string][]) => {
+  const handleRun = useCallback((parameters: ["json", string][]) => {
     setStarting(true);
     onRun(parameters).then(() => {
       setStarting(false);

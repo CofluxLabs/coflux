@@ -1,10 +1,10 @@
-import { ReactNode } from 'react';
+import { ReactNode } from "react";
 
 type Props = {
   repository: string;
   target: string;
   children?: ReactNode;
-}
+};
 
 export default function TargetHeader({ repository, target, children }: Props) {
   return (
@@ -17,4 +17,3 @@ export default function TargetHeader({ repository, target, children }: Props) {
     </div>
   );
 }
-

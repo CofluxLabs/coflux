@@ -1,17 +1,21 @@
-import { ChangeEvent, Fragment, useCallback, useState } from 'react';
-import { Dialog, Transition } from '@headlessui/react';
-import classNames from 'classnames';
+import { ChangeEvent, Fragment, useCallback, useState } from "react";
+import { Dialog, Transition } from "@headlessui/react";
+import classNames from "classnames";
 
-import * as models from '../models';
+import * as models from "../models";
 
 type ParameterProps = {
   parameter: models.Parameter;
   value: string | undefined;
   onChange: (name: string, value: string) => void;
-}
+};
 
 function Parameter({ parameter, value, onChange }: ParameterProps) {
-  const handleChange = useCallback((ev: ChangeEvent<HTMLInputElement>) => onChange(parameter.name, ev.target.value), [parameter, onChange]);
+  const handleChange = useCallback(
+    (ev: ChangeEvent<HTMLInputElement>) =>
+      onChange(parameter.name, ev.target.value),
+    [parameter, onChange]
+  );
   return (
     <div className="py-1">
       <label className="w-32">
@@ -24,8 +28,9 @@ function Parameter({ parameter, value, onChange }: ParameterProps) {
       </label>
       <input
         type="text"
-        className="border border-gray-400 rounded px-2 py-1 w-full" placeholder={parameter.default}
-        value={value == undefined ? '' : value}
+        className="border border-gray-400 rounded px-2 py-1 w-full"
+        placeholder={parameter.default}
+        value={value == undefined ? "" : value}
         onChange={handleChange}
       />
     </div>
@@ -36,15 +41,25 @@ type Props = {
   parameters: models.Parameter[];
   open: boolean;
   starting: boolean;
-  onRun: (parameters: ['json', string][]) => void;
+  onRun: (parameters: ["json", string][]) => void;
   onClose: () => void;
-}
+};
 
-export default function RunDialog({ parameters, open, starting, onRun, onClose }: Props) {
+export default function RunDialog({
+  parameters,
+  open,
+  starting,
+  onRun,
+  onClose,
+}: Props) {
   const [values, setValues] = useState<Record<string, string>>({});
-  const handleValueChange = useCallback((name: string, value: string) => setValues(vs => ({ ...vs, [name]: value })), []);
+  const handleValueChange = useCallback(
+    (name: string, value: string) =>
+      setValues((vs) => ({ ...vs, [name]: value })),
+    []
+  );
   const handleRunClick = useCallback(() => {
-    onRun(parameters.map((p) => ['json', values[p.name] || p.default]));
+    onRun(parameters.map((p) => ["json", values[p.name] || p.default]));
   }, [parameters, values, onRun]);
   return (
     <Transition appear show={open} as={Fragment}>
@@ -60,7 +75,12 @@ export default function RunDialog({ parameters, open, starting, onRun, onClose }
           >
             <Dialog.Overlay className="fixed inset-0 bg-black opacity-30" />
           </Transition.Child>
-          <span className="inline-block h-screen align-middle" aria-hidden="true">&#8203;</span>
+          <span
+            className="inline-block h-screen align-middle"
+            aria-hidden="true"
+          >
+            &#8203;
+          </span>
           <Transition.Child
             as={Fragment}
             enter="ease-out duration-300"
@@ -76,7 +96,9 @@ export default function RunDialog({ parameters, open, starting, onRun, onClose }
               </Dialog.Title>
               {parameters.length > 0 && (
                 <div className="mt-4">
-                  <h3 className="font-bold uppercase text-gray-400 text-sm">Arguments</h3>
+                  <h3 className="font-bold uppercase text-gray-400 text-sm">
+                    Arguments
+                  </h3>
                   {parameters.map((parameter) => (
                     <Parameter
                       key={parameter.name}
@@ -90,7 +112,12 @@ export default function RunDialog({ parameters, open, starting, onRun, onClose }
               <div className="mt-4">
                 <button
                   type="button"
-                  className={classNames("px-4 py-2 rounded text-white font-bold  mr-2", starting ? 'bg-slate-200' : 'bg-slate-400 hover:bg-slate-500')}
+                  className={classNames(
+                    "px-4 py-2 rounded text-white font-bold  mr-2",
+                    starting
+                      ? "bg-slate-200"
+                      : "bg-slate-400 hover:bg-slate-500"
+                  )}
                   disabled={starting}
                   onClick={handleRunClick}
                 >
