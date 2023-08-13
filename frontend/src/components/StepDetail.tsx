@@ -366,9 +366,6 @@ export default function StepDetail({
       )}
       style={style}
     >
-      <p>
-        Rn: {runId}, St: {stepId}, Ex: {executionId}
-      </p>
       <div className="p-4 pt-5 flex items-center">
         <h2 className="flex-1">
           <span className="font-mono text-xl">{step.target}</span>{" "}
