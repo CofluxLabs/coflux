@@ -11,7 +11,7 @@ defmodule Coflux.Topics.Run do
     case Orchestration.subscribe_run(
            project_id,
            environment_name,
-           String.to_integer(run_id),
+           run_id,
            self()
          ) do
       {:ok, nil, _, _} ->
@@ -33,7 +33,7 @@ defmodule Coflux.Topics.Run do
         topic
       ) do
     topic =
-      Topic.set(topic, [:steps, Integer.to_string(step_id)], %{
+      Topic.set(topic, [:steps, step_id], %{
         repository: repository,
         target: target,
         parentId: parent_id,
@@ -53,7 +53,7 @@ defmodule Coflux.Topics.Run do
     topic =
       Topic.set(
         topic,
-        [:steps, Integer.to_string(step_id), :executions, Integer.to_string(execution_id)],
+        [:steps, step_id, :executions, Integer.to_string(execution_id)],
         %{
           sequence: sequence,
           createdAt: created_at,
@@ -67,7 +67,7 @@ defmodule Coflux.Topics.Run do
     {:ok, topic}
   end
 
-  def handle_info({:topic, _ref, {:assignment, execution_id, _session_id, created_at}}, topic) do
+  def handle_info({:topic, _ref, {:assignment, execution_id, created_at}}, topic) do
     step_id = find_step_id_for_execution(topic, execution_id)
 
     topic =
@@ -75,7 +75,7 @@ defmodule Coflux.Topics.Run do
         topic,
         [
           :steps,
-          Integer.to_string(step_id),
+          step_id,
           :executions,
           Integer.to_string(execution_id),
           :assignedAt
@@ -94,7 +94,7 @@ defmodule Coflux.Topics.Run do
         topic,
         [
           :steps,
-          Integer.to_string(step_id),
+          step_id,
           :executions,
           Integer.to_string(execution_id),
           :dependencies
@@ -113,7 +113,7 @@ defmodule Coflux.Topics.Run do
       |> Topic.set(
         [
           :steps,
-          Integer.to_string(step_id),
+          step_id,
           :executions,
           Integer.to_string(execution_id),
           :result
@@ -124,7 +124,7 @@ defmodule Coflux.Topics.Run do
         # TODO
         [
           :steps,
-          Integer.to_string(step_id),
+          step_id,
           :executions,
           Integer.to_string(execution_id),
           :completedAt
@@ -139,7 +139,7 @@ defmodule Coflux.Topics.Run do
     case Orchestration.rerun_step(
            topic.state.project_id,
            topic.state.environment_name,
-           String.to_integer(step_id)
+           step_id
          ) do
       {:ok, _execution_id, sequence} ->
         {:ok, sequence, topic}
@@ -152,7 +152,7 @@ defmodule Coflux.Topics.Run do
       createdAt: created_at,
       steps:
         Map.new(steps, fn {step_id, step} ->
-          {Integer.to_string(step_id),
+          {step_id,
            %{
              repository: step.repository,
              target: step.target,
@@ -223,7 +223,7 @@ defmodule Coflux.Topics.Run do
     case Enum.find(topic.value.steps, fn {_, step} ->
            Map.has_key?(step.executions, execution_id_s)
          end) do
-      {step_id, _} -> String.to_integer(step_id)
+      {step_id, _} -> step_id
     end
   end
 end

@@ -50,7 +50,7 @@ defmodule Coflux.Topics.Task do
     topic =
       Topic.set(
         topic,
-        [:runs, Integer.to_string(run_id)],
+        [:runs, run_id],
         %{id: run_id, createdAt: created_at}
       )
 

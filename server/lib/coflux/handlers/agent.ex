@@ -14,8 +14,6 @@ defmodule Coflux.Handlers.Agent do
   def websocket_init({project_id, environment, session_id}) do
     # TODO: authenticate
     # TODO: monitor server?
-    session_id = if session_id, do: String.to_integer(session_id)
-
     case Orchestration.connect(project_id, environment, session_id, self()) do
       {:ok, session_id} ->
         {[session_message(session_id)],

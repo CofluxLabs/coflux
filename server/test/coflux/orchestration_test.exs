@@ -149,7 +149,7 @@ defmodule Coflux.OrchestrationTest do
       })
 
     assert_receive({:execute, ^execution_id, "myrepo", "foo", []})
-    assert_receive({:topic, ^ref, {:assignment, ^execution_id, ^session_id, _assigned_at}})
+    assert_receive({:topic, ^ref, {:assignment, ^execution_id, _assigned_at}})
 
     {:ok, _step_id, execution_id_2} =
       schedule_step(project_id, "test", "myrepo", "bar", [], execution_id)

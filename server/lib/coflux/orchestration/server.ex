@@ -14,10 +14,13 @@ defmodule Coflux.Orchestration.Server do
               # ref -> {pid, session_id}
               agents: %{},
 
-              # session id -> %{agent, targets, queue, expire_timer}
+              # session_id -> %{external_id, agent, targets, queue, expire_timer}
               sessions: %{},
 
-              # {repository, target} -> [session id]
+              # external_id -> session_id
+              session_ids: %{},
+
+              # {repository, target} -> [session_id]
               targets: %{},
 
               # ref -> topic
@@ -68,10 +71,12 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:connect, session_id, pid}, _from, state) do
-    if session_id do
-      case Map.fetch(state.sessions, session_id) do
-        {:ok, session} ->
+  def handle_call({:connect, external_id, pid}, _from, state) do
+    if external_id do
+      case Map.fetch(state.session_ids, external_id) do
+        {:ok, session_id} ->
+          session = Map.fetch!(state.sessions, session_id)
+
           if session.expire_timer do
             Process.cancel_timer(session.expire_timer)
           end
@@ -100,32 +105,36 @@ defmodule Coflux.Orchestration.Server do
               &Map.merge(&1, %{agent: ref, queue: []})
             )
 
-          {:reply, {:ok, session_id}, state}
+          {:reply, {:ok, external_id}, state}
 
         :error ->
           {:reply, {:error, :no_session}, state}
       end
     else
       case Store.start_session(state.db) do
-        {:ok, session_id} ->
+        {:ok, session_id, external_id} ->
           ref = Process.monitor(pid)
 
           state =
             state
             |> put_in([Access.key(:agents), ref], {pid, session_id})
             |> put_in([Access.key(:sessions), session_id], %{
+              external_id: external_id,
               agent: ref,
               targets: MapSet.new(),
               queue: [],
               expire_timer: nil
             })
+            |> put_in([Access.key(:session_ids), external_id], session_id)
 
-          {:reply, {:ok, session_id}, state}
+          {:reply, {:ok, external_id}, state}
       end
     end
   end
 
-  def handle_call({:register_targets, session_id, repository, targets}, _from, state) do
+  def handle_call({:register_targets, external_session_id, repository, targets}, _from, state) do
+    session_id = Map.fetch!(state.session_ids, external_session_id)
+
     case Store.get_or_create_manifest(state.db, repository, targets) do
       {:ok, manifest_id} ->
         :ok = Store.record_session_manifest(state.db, session_id, manifest_id)
@@ -145,7 +154,8 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_call({:schedule_task, repository, target_name, arguments, parent_id}, _from, state) do
     case Store.start_run(state.db, repository, target_name, arguments, parent_id: parent_id) do
-      {:ok, run_id, step_id, execution_id, _sequence, created_at} ->
+      {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, _sequence,
+       created_at} ->
         if parent_id do
           case Store.get_sensor_activation_for_execution_id(state.db, parent_id) do
             {:ok, {sensor_repository, sensor_target}} ->
@@ -155,7 +165,7 @@ defmodule Coflux.Orchestration.Server do
                 notify_listeners(
                   state,
                   {:sensor, sensor_repository, sensor_target},
-                  {:run, run_id, created_at, repository, target_name}
+                  {:run, external_run_id, created_at, repository, target_name}
                 )
               end
 
@@ -164,10 +174,14 @@ defmodule Coflux.Orchestration.Server do
           end
         end
 
-        notify_listeners(state, {:task, repository, target_name}, {:run, run_id, created_at})
+        notify_listeners(
+          state,
+          {:task, repository, target_name},
+          {:run, external_run_id, created_at}
+        )
 
         state = assign_executions(state)
-        {:reply, {:ok, run_id, step_id, execution_id}, state}
+        {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
     end
   end
 
@@ -181,11 +195,11 @@ defmodule Coflux.Orchestration.Server do
     case Store.schedule_step(state.db, run_id, parent_id, repository, target, arguments,
            cache_key: cache_key
          ) do
-      {:ok, step_id, execution_id, sequence, created_at, cached_execution_id} ->
+      {:ok, _step_id, external_step_id, execution_id, sequence, created_at, cached_execution_id} ->
         notify_listeners(
           state,
           {:run, run_id},
-          {:step, step_id, parent_id, repository, target, created_at, arguments,
+          {:step, external_step_id, parent_id, repository, target, created_at, arguments,
            cached_execution_id}
         )
 
@@ -193,24 +207,24 @@ defmodule Coflux.Orchestration.Server do
           notify_listeners(
             state,
             {:run, run_id},
-            {:execution, execution_id, step_id, sequence, created_at}
+            {:execution, execution_id, external_step_id, sequence, created_at}
           )
         end
 
         state = assign_executions(state)
-        {:reply, {:ok, step_id, execution_id || cached_execution_id}, state}
+        {:reply, {:ok, external_step_id, execution_id || cached_execution_id}, state}
     end
   end
 
-  def handle_call({:rerun_step, step_id}, _from, state) do
-    {:ok, run_id} = Store.get_run_id_for_step(state.db, step_id)
+  def handle_call({:rerun_step, external_step_id}, _from, state) do
+    {:ok, {step_id, run_id}} = Store.get_step_by_external_id(state.db, external_step_id)
 
     case Store.rerun_step(state.db, step_id) do
       {:ok, execution_id, sequence, created_at} ->
         notify_listeners(
           state,
           {:run, run_id},
-          {:execution, execution_id, step_id, sequence, created_at}
+          {:execution, execution_id, external_step_id, sequence, created_at}
         )
 
         state = assign_executions(state)
@@ -287,7 +301,12 @@ defmodule Coflux.Orchestration.Server do
     if from_execution_id do
       :ok = Store.record_dependency(state.db, from_execution_id, execution_id)
       {:ok, run_id} = Store.get_run_id_for_step_execution(state.db, execution_id)
-      notify_listeners(state, {:run, run_id}, {:dependency, from_execution_id, execution_id})
+
+      notify_listeners(
+        state,
+        {:run, run_id},
+        {:dependency, from_execution_id, execution_id}
+      )
     end
 
     case resolve_result(execution_id, state.db) do
@@ -345,17 +364,20 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:subscribe_run, run_id, pid}, _from, state) do
-    {:ok, run} = Store.get_run(state.db, run_id)
+  def handle_call({:subscribe_run, external_run_id, pid}, _from, state) do
+    {:ok, {run_id, run_parent_id, run_created_at}} =
+      Store.get_run_by_external_id(state.db, external_run_id)
+
     {:ok, steps} = Store.get_run_steps(state.db, run_id)
 
     steps =
-      Map.new(steps, fn {step_id, parent_id, repository, target, created_at, cached_execution_id} ->
+      Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, created_at,
+                         cached_execution_id} ->
         # TODO: skip if cached
         {:ok, executions} = Store.get_step_executions(state.db, step_id)
         {:ok, arguments} = Store.get_step_arguments(state.db, step_id)
 
-        {step_id,
+        {step_external_id,
          %{
            repository: repository,
            target: target,
@@ -391,7 +413,7 @@ defmodule Coflux.Orchestration.Server do
       end)
 
     {:ok, ref, state} = add_listener(state, {:run, run_id}, pid)
-    {:reply, {:ok, run, steps, ref}, state}
+    {:reply, {:ok, {run_parent_id, run_created_at}, steps, ref}, state}
   end
 
   def handle_cast({:unsubscribe, ref}, state) do
@@ -415,7 +437,8 @@ defmodule Coflux.Orchestration.Server do
       {session, state} = pop_in(state.sessions[session_id])
 
       state =
-        Map.update!(state, :targets, fn targets ->
+        state
+        |> Map.update!(:targets, fn targets ->
           Enum.reduce(session.targets, targets, fn target, targets ->
             updated =
               targets
@@ -429,6 +452,7 @@ defmodule Coflux.Orchestration.Server do
             end
           end)
         end)
+        |> Map.update!(:session_ids, &Map.delete(&1, session.external_id))
 
       {:noreply, state}
     end
@@ -642,12 +666,12 @@ defmodule Coflux.Orchestration.Server do
             {:ok, state, nil} ->
               state
 
-            {:ok, state, {session_id, assigned_at}} ->
+            {:ok, state, {_session_id, assigned_at}} ->
               # TODO: defer notify?
               notify_listeners(
                 state,
                 {:run, run_id},
-                {:assignment, execution_id, session_id, assigned_at}
+                {:assignment, execution_id, assigned_at}
               )
 
               state
@@ -670,12 +694,12 @@ defmodule Coflux.Orchestration.Server do
               {:ok, state, nil} ->
                 state
 
-              {:ok, state, {session_id, assigned_at}} ->
+              {:ok, state, {_session_id, assigned_at}} ->
                 # TODO: defer notify?
                 notify_listeners(
                   state,
                   {:sensor, repository, target},
-                  {:assignment, execution_id, session_id, assigned_at}
+                  {:assignment, execution_id, assigned_at}
                 )
 
                 state

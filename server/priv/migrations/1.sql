@@ -1,5 +1,6 @@
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
+  external_id TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL
 );
 
@@ -40,6 +41,7 @@ CREATE TABLE parameters (
 
 CREATE TABLE runs (
   id INTEGER PRIMARY KEY,
+  external_id TEXT NOT NULL UNIQUE,
   parent_id INTEGER,
   idempotency_key TEXT UNIQUE,
   created_at INTEGER NOT NULL,
@@ -54,6 +56,7 @@ CREATE TABLE run_stops (
 
 CREATE TABLE steps (
   id INTEGER PRIMARY KEY,
+  external_id TEXT NOT NULL UNIQUE,
   run_id INTEGER NOT NULL,
   parent_id INTEGER,
   repository TEXT NOT NULL,
@@ -87,7 +90,7 @@ CREATE TABLE executions (
 CREATE TABLE step_executions (
   step_id INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
-  execution_id INTEGER UNIQUE,
+  execution_id INTEGER NOT NULL UNIQUE,
   PRIMARY KEY (step_id, sequence),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
@@ -165,7 +168,7 @@ CREATE TABLE sensor_deactivations (
 CREATE TABLE sensor_executions (
   sensor_activation_id INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
-  execution_id INTEGER UNIQUE,
+  execution_id INTEGER NOT NULL UNIQUE,
   PRIMARY KEY (sensor_activation_id, sequence),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
   FOREIGN KEY (sensor_activation_id) REFERENCES sensor_activations ON DELETE CASCADE

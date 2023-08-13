@@ -70,7 +70,7 @@ defmodule Coflux.Topics.Sensor do
     topic =
       Topic.set(
         topic,
-        [:runs, Integer.to_string(run_id)],
+        [:runs, run_id],
         %{createdAt: created_at, repository: repository, target: target}
       )
 
@@ -82,7 +82,7 @@ defmodule Coflux.Topics.Sensor do
     {:ok, topic}
   end
 
-  def handle_info({:topic, _ref, {:assignment, _execution_id, _session_id, _assigned_at}}, topic) do
+  def handle_info({:topic, _ref, {:assignment, _execution_id, _assigned_at}}, topic) do
     # TODO: update execution?
     {:ok, topic}
   end

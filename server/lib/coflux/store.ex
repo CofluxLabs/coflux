@@ -2,6 +2,8 @@ defmodule Coflux.Store do
   alias Exqlite.Sqlite3
   alias Coflux.Store.Migrations
 
+  @id_chars String.codepoints("bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ23456789")
+
   def open(project_id, environment) do
     dir = "data/#{project_id}/#{environment}"
     File.mkdir_p!(dir)
@@ -15,7 +17,22 @@ defmodule Coflux.Store do
   end
 
   def start_session(db) do
-    insert_one(db, :sessions, created_at: current_timestamp())
+    case generate_external_id(db, :sessions, 30) do
+      {:ok, external_id} ->
+        case insert_one(db, :sessions, external_id: external_id, created_at: current_timestamp()) do
+          {:ok, session_id} ->
+            {:ok, session_id, external_id}
+        end
+    end
+  end
+
+  defp generate_external_id(db, table, length, prefix \\ "") do
+    id = prefix <> Enum.map_join(0..length, fn _ -> Enum.random(@id_chars) end)
+
+    case query(db, "SELECT id FROM #{table} WHERE external_id = ?1", {id}) do
+      {:ok, []} -> {:ok, id}
+      {:ok, _} -> generate_external_id(db, table, length + 1, prefix)
+    end
   end
 
   defp hash_targets(targets) do
@@ -114,29 +131,29 @@ defmodule Coflux.Store do
     now = current_timestamp()
 
     with_transaction(db, fn ->
-      {:ok, run_id} = insert_run(db, parent_id, idempotency_key, now)
-      {:ok, step_id} = insert_step(db, run_id, nil, repository, target, priority, nil, now)
+      {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, now)
+
+      {:ok, step_id, external_step_id} =
+        insert_step(db, run_id, nil, repository, target, priority, nil, now)
+
       :ok = insert_arguments(db, step_id, arguments)
       sequence = 1
       {:ok, execution_id} = insert_execution(db, execute_after, now)
       {:ok, _} = insert_step_execution(db, step_id, sequence, execution_id)
-      {:ok, run_id, step_id, execution_id, sequence, now}
+      {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, sequence, now}
     end)
   end
 
-  def get_run_id_for_step(db, step_id) do
-    {:ok, [{run_id}]} =
-      query(
-        db,
-        """
-        SELECT run_id
-        FROM steps
-        WHERE id = ?1
-        """,
-        {step_id}
-      )
-
-    {:ok, run_id}
+  def get_step_by_external_id(db, external_id) do
+    query_one(
+      db,
+      """
+      SELECT id, run_id
+      FROM steps
+      WHERE external_id = ?1
+      """,
+      {external_id}
+    )
   end
 
   def get_run_id_for_step_execution(db, execution_id) do
@@ -171,7 +188,7 @@ defmodule Coflux.Store do
         end
 
       # TODO: validate parent belongs to run?
-      {:ok, step_id} =
+      {:ok, step_id, external_step_id} =
         insert_step(
           db,
           run_id,
@@ -196,7 +213,7 @@ defmodule Coflux.Store do
           {execution_id, sequence}
         end
 
-      {:ok, step_id, execution_id, sequence, now, cached_execution_id}
+      {:ok, step_id, external_step_id, execution_id, sequence, now, cached_execution_id}
     end)
   end
 
@@ -544,7 +561,7 @@ defmodule Coflux.Store do
     query(
       db,
       """
-      SELECT r.id, r.created_at
+      SELECT r.external_id, r.created_at
       FROM runs as r
       INNER JOIN steps AS s ON s.run_id = r.id
       WHERE s.repository = ?1
@@ -591,15 +608,15 @@ defmodule Coflux.Store do
     )
   end
 
-  def get_run(db, run_id) do
+  def get_run_by_external_id(db, external_id) do
     query_one(
       db,
       """
-      SELECT parent_id, created_at
+      SELECT id, parent_id, created_at
       FROM runs
-      WHERE id = ?1
+      WHERE external_id = ?1
       """,
-      {run_id}
+      {external_id}
     )
   end
 
@@ -607,7 +624,7 @@ defmodule Coflux.Store do
     query(
       db,
       """
-      SELECT s.id, s.parent_id, s.repository, s.target, s.created_at, ce.execution_id
+      SELECT s.id, s.external_id, s.parent_id, s.repository, s.target, s.created_at, ce.execution_id
       FROM steps AS s
       LEFT JOIN cached_executions AS ce ON ce.step_id = s.id
       WHERE s.run_id = ?1
@@ -701,11 +718,18 @@ defmodule Coflux.Store do
   end
 
   defp insert_run(db, parent_id, idempotency_key, created_at) do
-    insert_one(db, :runs,
-      parent_id: parent_id,
-      idempotency_key: idempotency_key,
-      created_at: created_at
-    )
+    case generate_external_id(db, :runs, 2, "R_") do
+      {:ok, external_id} ->
+        case insert_one(db, :runs,
+               external_id: external_id,
+               parent_id: parent_id,
+               idempotency_key: idempotency_key,
+               created_at: created_at
+             ) do
+          {:ok, run_id} ->
+            {:ok, run_id, external_id}
+        end
+    end
   end
 
   defp insert_step(
@@ -718,17 +742,24 @@ defmodule Coflux.Store do
          cache_key,
          now
        ) do
-    insert_one(
-      db,
-      :steps,
-      run_id: run_id,
-      parent_id: parent_id,
-      repository: repository,
-      target: target,
-      priority: priority,
-      cache_key: cache_key,
-      created_at: now
-    )
+    case generate_external_id(db, :runs, 3, "S_") do
+      {:ok, external_id} ->
+        case insert_one(
+               db,
+               :steps,
+               external_id: external_id,
+               run_id: run_id,
+               parent_id: parent_id,
+               repository: repository,
+               target: target,
+               priority: priority,
+               cache_key: cache_key,
+               created_at: now
+             ) do
+          {:ok, step_id} ->
+            {:ok, step_id, external_id}
+        end
+    end
   end
 
   defp insert_arguments(db, step_id, arguments) do
