@@ -6,20 +6,69 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { SocketProvider, useSocket, useTopic } from "@topical/react";
+import {
+  IconAlertCircle,
+  IconAlertTriangle,
+  IconCircle,
+  IconCircleCheck,
+} from "@tabler/icons-react";
 
 import EnvironmentSelector from "../components/EnvironmentSelector";
 import TargetsList from "../components/TargetsList";
 import Logo from "../components/Logo";
 import ProjectSelector from "../components/ProjectSelector";
 import * as models from "../models";
+import { pluralise } from "../utils";
 
 type Target = { repository: string; target: string };
 
-function SocketStatus() {
+type ConnectionStatusProps = {
+  projectId: string | undefined;
+  environmentName: string | undefined;
+};
+
+function ConnectionStatus({
+  projectId,
+  environmentName,
+}: ConnectionStatusProps) {
   const [_socket, status] = useSocket();
+  const [agents] = useTopic<Record<string, Record<string, string[]>>>(
+    "projects",
+    projectId,
+    "environments",
+    environmentName,
+    "agents"
+  );
+  const count = agents && Object.keys(agents).length;
   return (
     <div className="p-3 flex items-center border-t border-slate-200">
-      <span className="ml-1 text-slate-700">{status}</span>
+      <span className="ml-1 text-slate-700 flex flex items-center gap-1">
+        {status == "connecting" ? (
+          <Fragment>Connecting...</Fragment>
+        ) : status == "connected" ? (
+          count ? (
+            <Fragment>
+              <IconCircleCheck size={20} className="text-green-500" />
+              {pluralise(count, "agent")} online
+            </Fragment>
+          ) : agents ? (
+            <Fragment>
+              <IconAlertCircle size={20} className="text-slate-500" />
+              No agents online
+            </Fragment>
+          ) : (
+            <Fragment>
+              <IconCircle size={20} className="text-slate-500" />
+              Connected
+            </Fragment>
+          )
+        ) : (
+          <Fragment>
+            <IconAlertTriangle size={20} className="text-yellow-500" />
+            Disconnected
+          </Fragment>
+        )}
+      </span>
     </div>
   );
 }
@@ -73,7 +122,10 @@ export default function ProjectLayout() {
                 activeTarget={activeTarget}
               />
             </div>
-            <SocketStatus />
+            <ConnectionStatus
+              projectId={projectId}
+              environmentName={environmentName}
+            />
           </div>
           <div className="flex-1 flex flex-col">
             <Outlet context={{ setActiveTarget }} />

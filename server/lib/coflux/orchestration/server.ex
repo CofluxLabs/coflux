@@ -106,6 +106,8 @@ defmodule Coflux.Orchestration.Server do
               &Map.merge(&1, %{agent: ref, queue: []})
             )
 
+          notify_agent(state, session_id)
+
           {:reply, {:ok, external_id}, state}
 
         :error ->
@@ -128,6 +130,8 @@ defmodule Coflux.Orchestration.Server do
             })
             |> put_in([Access.key(:session_ids), external_id], session_id)
 
+          notify_agent(state, session_id)
+
           {:reply, {:ok, external_id}, state}
       end
     end
@@ -146,6 +150,7 @@ defmodule Coflux.Orchestration.Server do
           |> assign_executions()
 
         notify_listeners(state, :repositories, {:targets, repository, targets})
+        notify_agent(state, session_id)
 
         # TODO: notify task listeners ({:task, repository, target_name})
 
@@ -334,6 +339,17 @@ defmodule Coflux.Orchestration.Server do
     {:reply, {:ok, targets, ref}, state}
   end
 
+  def handle_call({:subscribe_agents, pid}, _from, state) do
+    agents =
+      Map.new(state.agents, fn {_, {_, session_id}} ->
+        session = Map.fetch!(state.sessions, session_id)
+        {session_id, session.targets}
+      end)
+
+    {:ok, ref, state} = add_listener(state, :agents, pid)
+    {:reply, {:ok, agents, ref}, state}
+  end
+
   def handle_call({:subscribe_task, repository, target_name, pid}, _from, state) do
     target = get_target(state.db, repository, target_name)
 
@@ -470,6 +486,8 @@ defmodule Coflux.Orchestration.Server do
             &Map.merge(&1, %{agent: nil, expire_timer: expire_timer})
           )
 
+        notify_agent(state, session_id)
+
         {:noreply, state}
 
       Map.has_key?(state.listeners, ref) ->
@@ -575,6 +593,12 @@ defmodule Coflux.Orchestration.Server do
     |> Enum.each(fn {ref, pid} ->
       send(pid, {:topic, ref, payload})
     end)
+  end
+
+  defp notify_agent(state, session_id) do
+    session = Map.fetch!(state.sessions, session_id)
+    targets = if session.agent, do: session.targets
+    notify_listeners(state, :agents, {:agent, session_id, targets})
   end
 
   defp send_session(state, session_id, message) do

@@ -69,6 +69,10 @@ defmodule Coflux.Orchestration do
     call_server(project_id, environment, {:subscribe_repositories, pid})
   end
 
+  def subscribe_agents(project_id, environment, pid) do
+    call_server(project_id, environment, {:subscribe_agents, pid})
+  end
+
   def subscribe_task(project_id, environment, repository, target, pid) do
     call_server(project_id, environment, {:subscribe_task, repository, target, pid})
   end

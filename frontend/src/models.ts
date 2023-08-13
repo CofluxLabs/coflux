@@ -9,19 +9,19 @@ export type Parameter = {
 };
 
 export type Target = {
-  type: "task" | "sensor";
-};
-
-export type Task = {
+  type: "task" | "step" | "sensor";
   repository: string;
   target: string;
+};
+
+export type Task = Target & {
+  type: "task";
   parameters: Parameter[];
   runs: Record<string, Pick<Run, "createdAt">>;
 };
 
-export type Sensor = {
-  repository: string;
-  target: string;
+export type Sensor = Target & {
+  type: "task";
   activated: boolean;
   executions: Record<string, Pick<Execution, "createdAt">>;
   runs: Record<

@@ -8,20 +8,33 @@ import * as models from "../models";
 import { buildUrl } from "../utils";
 import Loading from "./Loading";
 
+function isTargetOnline(
+  agents: Record<string, Record<string, string[]>> | undefined,
+  repository: string,
+  target: string
+) {
+  return (
+    agents !== undefined &&
+    Object.values(agents).some((a) => a[repository]?.includes(target))
+  );
+}
+
 type TargetProps = {
   url: string;
   icon: ComponentType<TablerIconsProps>;
   name: string;
   isActive: boolean;
+  isOnline: boolean;
 };
 
-function Target({ url, icon: Icon, name, isActive }: TargetProps) {
+function Target({ url, icon: Icon, name, isActive, isOnline }: TargetProps) {
   return (
     <li>
       <Link
         to={url}
         className={classNames(
-          "block px-2 py-0.5 my-0.5 rounded-md text-slate-900 flex gap-1 items-center",
+          "block px-2 py-0.5 my-0.5 rounded-md flex gap-1 items-center",
+          isOnline ? "text-slate-900" : "text-slate-400",
           isActive ? "bg-slate-200" : "hover:bg-slate-200/50"
         )}
       >
@@ -43,9 +56,16 @@ export default function TargetsList({
   environmentName,
   activeTarget,
 }: Props) {
-  const [repositories, _] = useTopic<
+  const [repositories] = useTopic<
     Record<string, Record<string, models.Target>>
   >("projects", projectId, "environments", environmentName, "repositories");
+  const [agents] = useTopic<Record<string, Record<string, string[]>>>(
+    "projects",
+    projectId,
+    "environments",
+    environmentName,
+    "agents"
+  );
   if (!repositories) {
     return <Loading />;
   } else if (!Object.keys(repositories).length) {
@@ -83,6 +103,7 @@ export default function TargetsList({
                             { environment: environmentName }
                           )}
                           isActive={isActive}
+                          isOnline={isTargetOnline(agents, repository, name)}
                         />
                       );
                     case "sensor":
@@ -96,6 +117,7 @@ export default function TargetsList({
                             { environment: environmentName }
                           )}
                           isActive={isActive}
+                          isOnline={isTargetOnline(agents, repository, name)}
                         />
                       );
                   }

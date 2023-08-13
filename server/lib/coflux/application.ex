@@ -24,11 +24,12 @@ defmodule Coflux.Application do
 
   defp topics() do
     [
+      Topics.Agents,
       Topics.Projects,
       Topics.Repositories,
-      Topics.Task,
       Topics.Run,
-      Topics.Sensor
+      Topics.Sensor,
+      Topics.Task
     ]
   end
 end
