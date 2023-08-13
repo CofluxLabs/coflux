@@ -1,4 +1,3 @@
-import aiohttp
 import asyncio
 import hashlib
 import json
@@ -10,6 +9,8 @@ import enum
 import typing as t
 import random
 import traceback
+import websockets
+import httpx
 
 from . import context
 from .channel import Channel
@@ -116,21 +117,21 @@ class Session:
 
     async def _get_blob(self, key: str) -> t.Any:
         # TODO: make blob url configurable
-        async with aiohttp.ClientSession() as session:
-            async with session.get(self._url("http", f"blobs/{key}")) as resp:
-                resp.raise_for_status()
-                return await resp.json()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(self._url("http", f"blobs/{key}"))
+            response.raise_for_status()
+            return response.json()
 
     async def _put_blob(self, content: str) -> str:
         key = hashlib.sha256(content.encode()).hexdigest()
         # TODO: make blob url configurable
         # TODO: check whether already uploaded (using head request)?
-        async with aiohttp.ClientSession() as session:
-            async with session.put(
-                self._url("http", f"blobs/{key}"), data=content
-            ) as resp:
-                resp.raise_for_status()
-            return key
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                self._url("http", f"blobs/{key}"), content=content
+            )
+            response.raise_for_status()
+        return key
 
     async def _prepare_result(self, value: t.Any) -> t.Tuple[str, str, str]:
         if isinstance(value, Future):
@@ -254,30 +255,28 @@ class Session:
 
     async def run(self) -> None:
         while True:
+            print(
+                f"Connecting ({self._server_host}, {self._project_id}/{self._environment_name})..."
+            )
+            url = self._url(
+                "ws",
+                "agent",
+                project=self._project_id,
+                environment=self._environment_name,
+                session=self._channel.session_id,
+            )
             try:
-                print(
-                    f"Connecting ({self._server_host}, {self._project_id}/{self._environment_name})..."
-                )
-                async with aiohttp.ClientSession() as session:
-                    # TODO: heartbeat (and timeout) value?
-                    url = self._url(
-                        "ws",
-                        "agent",
-                        project=self._project_id,
-                        environment=self._environment_name,
-                        session=self._channel.session_id,
+                async with websockets.connect(url) as websocket:
+                    print("Connected.")
+                    coros = [self._channel.run(websocket), self._send_heartbeats()]
+                    _, pending = await asyncio.wait(
+                        coros, return_when=asyncio.FIRST_COMPLETED
                     )
-                    async with session.ws_connect(url, heartbeat=5) as websocket:
-                        print("Connected.")
-                        coros = [self._channel.run(websocket), self._send_heartbeats()]
-                        _, pending = await asyncio.wait(
-                            coros, return_when=asyncio.FIRST_COMPLETED
-                        )
-                        for task in pending:
-                            task.cancel()
-                        if websocket.close_code == 4001:
-                            raise SessionExpired()
-            except aiohttp.ClientError:
+                    for task in pending:
+                        task.cancel()
+                    if websocket.close_code == 4001:
+                        raise SessionExpired()
+            except OSError:
                 pass
             delay = 1 + 3 * random.random()  # TODO: exponential backoff
             print(f"Disconnected (reconnecting in {delay:.1f} seconds).")

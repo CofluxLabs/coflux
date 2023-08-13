@@ -1,7 +1,8 @@
 import asyncio
 import typing as t
-import aiohttp
+import websockets
 import collections
+import json
 
 
 class Request:
@@ -42,7 +43,7 @@ class Channel:
         await self._enqueue(request, params, id)
         return await self._requests[id].get()
 
-    async def run(self, websocket: aiohttp.ClientWebSocketResponse) -> None:
+    async def run(self, websocket) -> None:
         coros = [self._receive(websocket), self._send(websocket)]
         _, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
@@ -68,9 +69,9 @@ class Channel:
         self._last_id += 1
         return self._last_id
 
-    async def _receive(self, websocket: aiohttp.ClientWebSocketResponse) -> None:
+    async def _receive(self, websocket) -> None:
         async for message in websocket:
-            match message.json():
+            match json.loads(message):
                 case [0, session_id]:
                     self._session_id = session_id
                 case [1, data]:
@@ -84,14 +85,14 @@ class Channel:
                     elif "error" in data:
                         request.put_error(data["error"])
 
-    async def _send(self, websocket: aiohttp.ClientWebSocketResponse) -> t.NoReturn:
+    async def _send(self, websocket) -> t.NoReturn:
         while True:
             async with self._cond:
                 await self._cond.wait_for(lambda: self._queue)
                 while self._queue:
                     data = self._queue.popleft()
                     try:
-                        await websocket.send_json(data)
+                        await websocket.send(json.dumps(data))
                     except Exception as e:
                         self._queue.appendleft(data)
                         raise
