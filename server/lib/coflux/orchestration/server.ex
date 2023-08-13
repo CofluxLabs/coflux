@@ -541,7 +541,18 @@ defmodule Coflux.Orchestration.Server do
       {:ok, topic} ->
         state
         |> Map.update!(:listeners, &Map.delete(&1, ref))
-        |> update_in([Access.key(:topics), topic], &Map.delete(&1, ref))
+        |> Map.update!(:topics, fn topics ->
+          topic_ =
+            topics
+            |> Map.fetch!(topic)
+            |> Map.delete(ref)
+
+          if Enum.empty?(topic_) do
+            Map.delete(topics, topic)
+          else
+            Map.put(topics, topic, topic_)
+          end
+        end)
     end
   end
 
