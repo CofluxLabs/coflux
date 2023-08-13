@@ -2,6 +2,7 @@ defmodule Coflux.Orchestration.Server do
   use GenServer, restart: :transient
 
   alias Coflux.Store
+  alias Coflux.MapUtils
 
   @abandon_timeout_ms 5_000
   @session_timeout_ms 5_000
@@ -121,7 +122,7 @@ defmodule Coflux.Orchestration.Server do
             |> put_in([Access.key(:sessions), session_id], %{
               external_id: external_id,
               agent: ref,
-              targets: MapSet.new(),
+              targets: %{},
               queue: [],
               expire_timer: nil
             })
@@ -438,19 +439,16 @@ defmodule Coflux.Orchestration.Server do
 
       state =
         state
-        |> Map.update!(:targets, fn targets ->
-          Enum.reduce(session.targets, targets, fn target, targets ->
-            updated =
-              targets
-              |> Map.fetch!(target)
-              |> MapSet.delete(session_id)
-
-            if Enum.empty?(updated) do
-              Map.delete(targets, target)
-            else
-              Map.put(targets, target, updated)
+        |> Map.update!(:targets, fn all_targets ->
+          Enum.reduce(
+            session.targets,
+            all_targets,
+            fn {repository, repository_targets}, all_targets ->
+              Enum.reduce(repository_targets, all_targets, fn target, all_targets ->
+                MapUtils.delete_in(all_targets, [repository, target, session_id])
+              end)
             end
-          end)
+          )
         end)
         |> Map.update!(:session_ids, &Map.delete(&1, session.external_id))
 
@@ -539,12 +537,12 @@ defmodule Coflux.Orchestration.Server do
     |> Enum.reduce(state, fn target, state ->
       state
       |> update_in(
-        [Access.key(:targets), Access.key({repository, target}, MapSet.new())],
+        [Access.key(:targets), Access.key(repository, %{}), Access.key(target, MapSet.new())],
         &MapSet.put(&1, session_id)
       )
       |> update_in(
-        [Access.key(:sessions), session_id, :targets],
-        &MapSet.put(&1, {repository, target})
+        [Access.key(:sessions), session_id, :targets, Access.key(repository, MapSet.new())],
+        &MapSet.put(&1, target)
       )
     end)
   end
@@ -566,16 +564,7 @@ defmodule Coflux.Orchestration.Server do
         state
         |> Map.update!(:listeners, &Map.delete(&1, ref))
         |> Map.update!(:topics, fn topics ->
-          topic_ =
-            topics
-            |> Map.fetch!(topic)
-            |> Map.delete(ref)
-
-          if Enum.empty?(topic_) do
-            Map.delete(topics, topic)
-          else
-            Map.put(topics, topic, topic_)
-          end
+          MapUtils.delete_in(topics, [topic, ref])
         end)
     end
   end
@@ -626,7 +615,10 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp assign_execution(state, execution_id, repository, target, arguments_fun) do
-    session_ids = Map.get(state.targets, {repository, target}, [])
+    session_ids =
+      state.targets
+      |> Map.get(repository, %{})
+      |> Map.get(target, MapSet.new())
 
     if Enum.any?(session_ids) do
       session_id = Enum.random(session_ids)
