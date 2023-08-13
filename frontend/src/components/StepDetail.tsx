@@ -9,7 +9,7 @@ import classNames from "classnames";
 import { findKey, sortBy } from "lodash";
 import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import * as models from "../models";
 import Badge from "./Badge";
@@ -334,18 +334,18 @@ export default function StepDetail({
   const step = run.steps[stepId];
   const [rerunning, setRerunning] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const changeAttempt = useCallback(
     (attempt: number) => {
-      // TODO: keep tab
       navigate(
-        buildUrl(`/projects/${projectId}/runs/${runId}`, {
+        buildUrl(location.pathname, {
           environment: environmentName,
           step: stepId,
           attempt,
         })
       );
     },
-    [projectId, run, environmentName, step, navigate]
+    [projectId, run, environmentName, step, navigate, location]
   );
   const handleRetryClick = useCallback(() => {
     setRerunning(true);
