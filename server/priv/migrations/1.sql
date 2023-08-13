@@ -8,7 +8,6 @@ CREATE TABLE manifests (
   id INTEGER PRIMARY KEY,
   repository TEXT NOT NULL,
   targets_hash INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
   UNIQUE (repository, targets_hash)
 );
 

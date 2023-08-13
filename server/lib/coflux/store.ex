@@ -41,14 +41,13 @@ defmodule Coflux.Store do
     |> :erlang.phash2()
   end
 
-  defp insert_manifest(db, repository, targets, targets_hash, now) do
+  defp insert_manifest(db, repository, targets, targets_hash) do
     {:ok, manifest_id} =
       insert_one(
         db,
         :manifests,
         repository: repository,
-        targets_hash: targets_hash,
-        created_at: now
+        targets_hash: targets_hash
       )
 
     {:ok, target_ids} =
@@ -88,7 +87,6 @@ defmodule Coflux.Store do
   end
 
   def get_or_create_manifest(db, repository, targets) do
-    now = current_timestamp()
     targets_hash = hash_targets(targets)
 
     with_transaction(db, fn ->
@@ -102,7 +100,7 @@ defmodule Coflux.Store do
              {repository, targets_hash}
            ) do
         {:ok, nil} ->
-          insert_manifest(db, repository, targets, targets_hash, now)
+          insert_manifest(db, repository, targets, targets_hash)
 
         {:ok, {manifest_id}} ->
           {:ok, manifest_id}
@@ -508,9 +506,10 @@ defmodule Coflux.Store do
         """
         SELECT id, repository
         FROM (
-          SELECT id, repository
-          FROM manifests
-          ORDER BY repository, created_at DESC
+          SELECT m.id, m.repository
+          FROM manifests AS m
+          INNER JOIN session_manifests AS sm ON sm.manifest_id = m.id
+          ORDER BY m.repository, sm.created_at DESC
         )
         GROUP BY repository
         """
