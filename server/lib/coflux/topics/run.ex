@@ -14,12 +14,12 @@ defmodule Coflux.Topics.Run do
            run_id,
            self()
          ) do
-      {:ok, nil, _, _} ->
+      {:error, :not_found} ->
         {:error, :not_found}
 
-      {:ok, run, steps, _ref} ->
+      {:ok, run, parent, steps, _ref} ->
         {:ok,
-         Topic.new(build_run(run, steps), %{
+         Topic.new(build_run(run, parent, steps), %{
            project_id: project_id,
            environment_name: environment_name
          })}
@@ -60,6 +60,7 @@ defmodule Coflux.Topics.Run do
           assignedAt: nil,
           completedAt: nil,
           dependencies: [],
+          children: %{},
           result: nil
         }
       )
@@ -100,6 +101,19 @@ defmodule Coflux.Topics.Run do
           :dependencies
         ],
         dependency_id
+      )
+
+    {:ok, topic}
+  end
+
+  def handle_info({:topic, _ref, {:child, parent_id, external_run_id, repository, target}}, topic) do
+    step_id = find_step_id_for_execution(topic, parent_id)
+
+    topic =
+      Topic.set(
+        topic,
+        [:steps, step_id, :executions, Integer.to_string(parent_id), :children, external_run_id],
+        %{repository: repository, target: target}
       )
 
     {:ok, topic}
@@ -146,10 +160,25 @@ defmodule Coflux.Topics.Run do
     end
   end
 
-  defp build_run({parent_id, created_at}, steps) do
+  defp build_run({created_at}, parent, steps) do
+    parent =
+      case parent do
+        {run_external_id, step_external_id, sequence, repository, target} ->
+          %{
+            runId: run_external_id,
+            stepId: step_external_id,
+            sequence: sequence,
+            repository: repository,
+            target: target
+          }
+
+        nil ->
+          nil
+      end
+
     %{
-      parentId: parent_id,
       createdAt: created_at,
+      parent: parent,
       steps:
         Map.new(steps, fn {step_id, step} ->
           {step_id,
@@ -170,6 +199,10 @@ defmodule Coflux.Topics.Run do
                      assignedAt: execution.assigned_at,
                      completedAt: execution.completed_at,
                      dependencies: execution.dependencies,
+                     children:
+                       Map.new(execution.children, fn {external_run_id, repository, target} ->
+                         {external_run_id, %{repository: repository, target: target}}
+                       end),
                      result: build_result(execution.result)
                    }
                  }

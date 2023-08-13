@@ -619,6 +619,34 @@ defmodule Coflux.Store do
     )
   end
 
+  def get_run_by_execution(db, execution_id) do
+    query_one(
+      db,
+      """
+      SELECT r.external_id, s1.external_id, se.sequence, s2.repository, s2.target
+      FROM step_executions AS se
+      INNER JOIN steps AS s1 ON s1.id = se.step_id
+      INNER JOIN steps AS s2 ON s2.run_id = s1.run_id AND s2.parent_id IS NULL
+      INNER JOIN runs AS r ON r.id = s1.run_id
+      WHERE se.execution_id = ?1
+      """,
+      {execution_id}
+    )
+  end
+
+  def get_runs_by_parent(db, execution_id) do
+    query(
+      db,
+      """
+      SELECT r.external_id, s.repository, s.target
+      FROM runs AS r
+      INNER JOIN steps AS s ON s.run_id = r.id AND s.parent_id IS NULL
+      WHERE r.parent_id = ?1
+      """,
+      {execution_id}
+    )
+  end
+
   def get_run_steps(db, run_id) do
     query(
       db,

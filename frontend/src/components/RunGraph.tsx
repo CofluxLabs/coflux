@@ -31,6 +31,17 @@ function buildGraph(
     stepAttempts[stepId] = run.steps[stepId].executions[parentId].sequence;
   }
 
+  if (run.parent) {
+    const step = run.steps[stepId];
+    const attemptNumber =
+      stepAttempts[stepId] ||
+      max(Object.values(step.executions).map((e) => e.sequence));
+    const nodeId = attemptNumber ? `${stepId}/${attemptNumber}` : stepId;
+
+    g.setNode(run.parent.runId, { width: 160, height: 50 });
+    g.setEdge(run.parent.runId, nodeId);
+  }
+
   const traverse = (stepId: string) => {
     const step = run.steps[stepId];
     const attemptNumber =
@@ -48,14 +59,17 @@ function buildGraph(
       const parentNodeId = `${parentStepId}/${parentSequence}`;
       g.setEdge(parentNodeId, nodeId);
     }
-    // step.attempts[attemptNumber]?.runIds.forEach((runId) => {
-    //   g.setNode(runId, { width: 160, height: 50 });
-    //   g.setEdge(nodeId, runId);
-    // });
     const executionId = Object.keys(step.executions).find(
       (id) => step.executions[id].sequence == attemptNumber
     );
     if (executionId) {
+      const children = step.executions[executionId].children;
+      if (children && Object.keys(children).length) {
+        Object.entries(children).forEach(([runId, target]) => {
+          g.setNode(runId, { width: 160, height: 50 });
+          g.setEdge(nodeId, runId);
+        });
+      }
       Object.keys(run.steps)
         .filter((stepId) => run.steps[stepId].parentId == executionId)
         .forEach((stepId) => traverse(stepId));

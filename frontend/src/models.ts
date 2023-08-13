@@ -76,6 +76,7 @@ export type Execution = {
   completedAt: number | null;
   dependencies: string[];
   result: Result;
+  children: Record<string, Target>;
 };
 
 export type Step = {
@@ -88,9 +89,15 @@ export type Step = {
   cachedExecutionId: string | null;
 };
 
+export type Parent = Target & {
+  runId: string;
+  stepId: string;
+  sequence: number;
+};
+
 export type Run = {
   createdAt: number;
-  parentId: string;
+  parent: Parent | null;
   steps: Record<string, Step>;
 };
 

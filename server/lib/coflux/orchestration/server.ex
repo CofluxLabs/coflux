@@ -176,7 +176,13 @@ defmodule Coflux.Orchestration.Server do
               end
 
             {:ok, nil} ->
-              nil
+              {:ok, run_id} = Store.get_run_id_for_step_execution(state.db, parent_id)
+
+              notify_listeners(
+                state,
+                {:run, run_id},
+                {:child, parent_id, external_run_id, repository, target_name}
+              )
           end
         end
 
@@ -382,55 +388,69 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:subscribe_run, external_run_id, pid}, _from, state) do
-    {:ok, {run_id, run_parent_id, run_created_at}} =
-      Store.get_run_by_external_id(state.db, external_run_id)
+    case Store.get_run_by_external_id(state.db, external_run_id) do
+      {:ok, nil} ->
+        {:reply, {:error, :not_found}, state}
 
-    {:ok, steps} = Store.get_run_steps(state.db, run_id)
+      {:ok, {run_id, run_parent_id, run_created_at}} ->
+        {:ok, parent} =
+          if run_parent_id do
+            Store.get_run_by_execution(state.db, run_parent_id)
+          else
+            {:ok, nil}
+          end
 
-    steps =
-      Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, created_at,
-                         cached_execution_id} ->
-        # TODO: skip if cached
-        {:ok, executions} = Store.get_step_executions(state.db, step_id)
-        {:ok, arguments} = Store.get_step_arguments(state.db, step_id)
+        {:ok, steps} = Store.get_run_steps(state.db, run_id)
 
-        {step_external_id,
-         %{
-           repository: repository,
-           target: target,
-           parent_id: parent_id,
-           created_at: created_at,
-           cached_execution_id: cached_execution_id,
-           arguments: arguments,
-           executions:
-             Map.new(executions, fn {execution_id, sequence, _execute_after, created_at,
-                                     _session_id, assigned_at} ->
-               {:ok, dependencies} = Store.get_execution_dependencies(state.db, execution_id)
+        steps =
+          Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, created_at,
+                             cached_execution_id} ->
+            # TODO: skip if cached
+            {:ok, executions} = Store.get_step_executions(state.db, step_id)
+            {:ok, arguments} = Store.get_step_arguments(state.db, step_id)
 
-               {result, completed_at} =
-                 case Store.get_execution_result(state.db, execution_id) do
-                   {:ok, {result, completed_at}} ->
-                     {result, completed_at}
+            {step_external_id,
+             %{
+               repository: repository,
+               target: target,
+               parent_id: parent_id,
+               created_at: created_at,
+               cached_execution_id: cached_execution_id,
+               arguments: arguments,
+               executions:
+                 Map.new(executions, fn {execution_id, sequence, _execute_after, created_at,
+                                         _session_id, assigned_at} ->
+                   {:ok, dependencies} = Store.get_execution_dependencies(state.db, execution_id)
 
-                   {:ok, nil} ->
-                     {nil, nil}
-                 end
+                   {result, completed_at} =
+                     case Store.get_execution_result(state.db, execution_id) do
+                       {:ok, {result, completed_at}} ->
+                         {result, completed_at}
 
-               {execution_id,
-                %{
-                  sequence: sequence,
-                  created_at: created_at,
-                  assigned_at: assigned_at,
-                  completed_at: completed_at,
-                  dependencies: Enum.map(dependencies, fn {dependency_id} -> dependency_id end),
-                  result: result
-                }}
-             end)
-         }}
-      end)
+                       {:ok, nil} ->
+                         {nil, nil}
+                     end
 
-    {:ok, ref, state} = add_listener(state, {:run, run_id}, pid)
-    {:reply, {:ok, {run_parent_id, run_created_at}, steps, ref}, state}
+                   {:ok, children} = Store.get_runs_by_parent(state.db, execution_id)
+
+                   {execution_id,
+                    %{
+                      sequence: sequence,
+                      created_at: created_at,
+                      assigned_at: assigned_at,
+                      completed_at: completed_at,
+                      dependencies:
+                        Enum.map(dependencies, fn {dependency_id} -> dependency_id end),
+                      result: result,
+                      children: children
+                    }}
+                 end)
+             }}
+          end)
+
+        {:ok, ref, state} = add_listener(state, {:run, run_id}, pid)
+        {:reply, {:ok, {run_created_at}, parent, steps, ref}, state}
+    end
   end
 
   def handle_cast({:unsubscribe, ref}, state) do
