@@ -99,8 +99,7 @@ async def _run(client: Client, modules: list[types.ModuleType | str]) -> None:
 
 
 def init(
-    modules: list[types.ModuleType | str],
-    *,
+    *modules: types.ModuleType | str,
     project: str | None = None,
     environment: str | None = None,
     version: str | None = None,
