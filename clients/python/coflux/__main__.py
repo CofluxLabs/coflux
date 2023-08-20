@@ -51,7 +51,7 @@ def cli(
     reload: bool,
     module_name: tuple[str],
 ) -> None:
-    args = (list(module_name),)
+    args = (*module_name,)
     kwargs = {
         "project": project,
         "environment": environment,
