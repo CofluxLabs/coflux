@@ -12,7 +12,7 @@ defmodule Coflux.Handlers.Blobs do
   defp handle(req, "GET", key, opts) do
     case get_blob(key) do
       {:ok, content} ->
-        req = :cowboy_req.reply(200, %{"content-type" => "application/json"}, content, req)
+        req = :cowboy_req.reply(200, %{}, content, req)
         {:ok, req, opts}
     end
   end

@@ -11,6 +11,7 @@ import random
 import traceback
 import websockets
 import httpx
+import pickle
 
 from . import context
 from .channel import Channel
@@ -76,7 +77,12 @@ def _resolve_argument(
             return json.loads(value)
         case ["blob", "json", key]:
             task = session._get_blob(key)
-            return asyncio.run_coroutine_threadsafe(task, loop).result()
+            content = asyncio.run_coroutine_threadsafe(task, loop).result()
+            return json.loads(content)
+        case ["blob", "pickle", key]:
+            task = session._get_blob(key)
+            content = asyncio.run_coroutine_threadsafe(task, loop).result()
+            return pickle.loads(content)
         case ["reference", execution_id]:
             return Future(
                 lambda: session.get_result(execution_id, from_execution_id),
@@ -115,15 +121,15 @@ class Session:
         query_string = f"?{urllib.parse.urlencode(params)}" if params else ""
         return f"{scheme}://{self._server_host}/{path}{query_string}"
 
-    async def _get_blob(self, key: str) -> t.Any:
+    async def _get_blob(self, key: str) -> bytes:
         # TODO: make blob url configurable
         async with httpx.AsyncClient() as client:
             response = await client.get(self._url("http", f"blobs/{key}"))
             response.raise_for_status()
-            return response.json()
+            return response.content
 
-    async def _put_blob(self, content: str) -> str:
-        key = hashlib.sha256(content.encode()).hexdigest()
+    async def _put_blob(self, content: bytes) -> str:
+        key = hashlib.sha256(content).hexdigest()
         # TODO: make blob url configurable
         # TODO: check whether already uploaded (using head request)?
         async with httpx.AsyncClient() as client:
@@ -133,31 +139,28 @@ class Session:
             response.raise_for_status()
         return key
 
-    async def _prepare_result(self, value: t.Any) -> t.Tuple[str, str, str]:
+    async def _serialise_value(self, value: t.Any) -> t.Tuple[str, str, str]:
         if isinstance(value, Future):
             return value.serialise()
-        json_value = _json_dumps(value)
-        if len(json_value) >= _BLOB_THRESHOLD:
-            key = await self._put_blob(json_value)
-            return ["blob", "json", key]
-        return ["raw", "json", json_value]
-
-    # TODO: combine with above
-    async def _serialise_argument(self, value: t.Any) -> t.Tuple[str, str, str]:
-        if isinstance(value, Future):
-            return value.serialise()
-        json_value = _json_dumps(value)
-        if len(json_value) >= _BLOB_THRESHOLD:
-            key = await self._put_blob(json_value)
-            return ["blob", "json", key]
-        return ["raw", "json", json_value]
+        try:
+            json_value = _json_dumps(value)
+        except TypeError:
+            pass
+        else:
+            if len(json_value) >= _BLOB_THRESHOLD:
+                key = await self._put_blob(json_value.encode())
+                return ["blob", "json", key]
+            return ["raw", "json", json_value]
+        pickle_value = pickle.dumps(value)
+        key = await self._put_blob(pickle_value)
+        return ["blob", "pickle", key]
 
     async def _put_result(self, execution_id: str, value: t.Any) -> None:
-        result = await self._prepare_result(value)
+        result = await self._serialise_value(value)
         await self._channel.notify("put_result", execution_id, result)
 
     async def _put_cursor(self, execution_id: str, value: t.Any) -> None:
-        result = await self._prepare_result(value)
+        result = await self._serialise_value(value)
         await self._channel.notify("put_cursor", execution_id, result)
 
     async def _put_error(self, execution_id: str, exception: Exception) -> None:
@@ -290,7 +293,7 @@ class Session:
         execution_id: str,
         cache_key: str | None = None,
     ) -> str:
-        serialised_arguments = [await self._serialise_argument(a) for a in arguments]
+        serialised_arguments = [await self._serialise_value(a) for a in arguments]
         return await self._channel.request(
             "schedule_step",
             repository,
@@ -307,7 +310,7 @@ class Session:
         arguments: t.Tuple[t.Any, ...],
         execution_id: str,
     ) -> str:
-        serialised_arguments = [await self._serialise_argument(a) for a in arguments]
+        serialised_arguments = [await self._serialise_value(a) for a in arguments]
         return await self._channel.request(
             "schedule_task", repository, target, serialised_arguments, execution_id
         )
@@ -335,7 +338,11 @@ class Session:
             case ["raw", "json", value]:
                 return json.loads(value)
             case ["blob", "json", key]:
-                return await self._get_blob(key)
+                content = await self._get_blob(key)
+                return json.loads(content)
+            case ["blob", "pickle", key]:
+                content = await self._get_blob(key)
+                return pickle.loads(content)
             case ["error", error]:
                 # TODO: reconstruct exception state
                 raise Exception(error)
