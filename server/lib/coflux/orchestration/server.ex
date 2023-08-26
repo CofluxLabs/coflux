@@ -158,73 +158,122 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:schedule_task, repository, target_name, arguments, parent_id}, _from, state) do
-    case Store.start_run(state.db, repository, target_name, arguments, parent_id: parent_id) do
-      {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, _sequence,
-       created_at} ->
-        if parent_id do
-          case Store.get_sensor_activation_for_execution_id(state.db, parent_id) do
-            {:ok, {sensor_repository, sensor_target}} ->
-              target = get_target(state.db, sensor_repository, sensor_target)
+  def handle_call(
+        {:schedule, repository, target_name, arguments, parent_id, cache_key},
+        _from,
+        state
+      ) do
+    target = get_target(state.db, repository, target_name)
 
-              if target.type == :sensor do
+    if parent_id do
+      case Store.get_sensor_activation_for_execution_id(state.db, parent_id) do
+        {:ok, {sensor_repository, sensor_target}} ->
+          if target.type == :task do
+            case Store.start_run(state.db, repository, target_name, arguments,
+                   parent_id: parent_id
+                 ) do
+              {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, _sequence,
+               created_at} ->
                 notify_listeners(
                   state,
                   {:sensor, sensor_repository, sensor_target},
                   {:run, external_run_id, created_at, repository, target_name}
                 )
+
+                notify_listeners(
+                  state,
+                  {:task, repository, target_name},
+                  {:run, external_run_id, created_at}
+                )
+
+                state = assign_executions(state)
+                {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
+            end
+          else
+            {:reply, {:error, :invalid_target}, state}
+          end
+
+        {:ok, nil} ->
+          {:ok, run_id} = Store.get_run_id_for_step_execution(state.db, parent_id)
+
+          case target.type do
+            :task ->
+              case Store.start_run(state.db, repository, target_name, arguments,
+                     parent_id: parent_id
+                   ) do
+                {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id,
+                 _sequence, created_at} ->
+                  notify_listeners(
+                    state,
+                    {:run, run_id},
+                    {:child, parent_id, external_run_id, repository, target_name}
+                  )
+
+                  notify_listeners(
+                    state,
+                    {:task, repository, target_name},
+                    {:run, external_run_id, created_at}
+                  )
+
+                  state = assign_executions(state)
+                  {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
               end
 
-            {:ok, nil} ->
-              {:ok, run_id} = Store.get_run_id_for_step_execution(state.db, parent_id)
+            :step ->
+              case Store.schedule_step(
+                     state.db,
+                     run_id,
+                     parent_id,
+                     repository,
+                     target_name,
+                     arguments,
+                     cache_key: cache_key
+                   ) do
+                {:ok, _step_id, external_step_id, execution_id, sequence, created_at,
+                 cached_execution_id} ->
+                  notify_listeners(
+                    state,
+                    {:run, run_id},
+                    {:step, external_step_id, parent_id, repository, target_name, created_at,
+                     arguments, cached_execution_id}
+                  )
 
-              notify_listeners(
-                state,
-                {:run, run_id},
-                {:child, parent_id, external_run_id, repository, target_name}
-              )
+                  unless cached_execution_id do
+                    notify_listeners(
+                      state,
+                      {:run, run_id},
+                      {:execution, execution_id, external_step_id, sequence, created_at}
+                    )
+                  end
+
+                  state = assign_executions(state)
+
+                  # TODO: return (external) run id?
+                  {:reply, {:ok, nil, external_step_id, execution_id || cached_execution_id},
+                   state}
+              end
+
+            _ ->
+              {:reply, {:error, :invalid_target}, state}
           end
+      end
+    else
+      if target.type == :task do
+        case Store.start_run(state.db, repository, target_name, arguments, parent_id: parent_id) do
+          {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, _sequence,
+           created_at} ->
+            notify_listeners(
+              state,
+              {:task, repository, target_name},
+              {:run, external_run_id, created_at}
+            )
+
+            state = assign_executions(state)
+            {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
         end
-
-        notify_listeners(
-          state,
-          {:task, repository, target_name},
-          {:run, external_run_id, created_at}
-        )
-
-        state = assign_executions(state)
-        {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
-    end
-  end
-
-  def handle_call(
-        {:schedule_step, repository, target, arguments, parent_id, cache_key},
-        _from,
-        state
-      ) do
-    {:ok, run_id} = Store.get_run_id_for_step_execution(state.db, parent_id)
-
-    case Store.schedule_step(state.db, run_id, parent_id, repository, target, arguments,
-           cache_key: cache_key
-         ) do
-      {:ok, _step_id, external_step_id, execution_id, sequence, created_at, cached_execution_id} ->
-        notify_listeners(
-          state,
-          {:run, run_id},
-          {:step, external_step_id, parent_id, repository, target, created_at, arguments,
-           cached_execution_id}
-        )
-
-        unless cached_execution_id do
-          notify_listeners(
-            state,
-            {:run, run_id},
-            {:execution, execution_id, external_step_id, sequence, created_at}
-          )
-        end
-
-        state = assign_executions(state)
-        {:reply, {:ok, external_step_id, execution_id || cached_execution_id}, state}
+      else
+        {:reply, {:error, :invalid_target}, state}
+      end
     end
   end
 

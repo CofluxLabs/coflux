@@ -285,7 +285,7 @@ class Session:
             print(f"Disconnected (reconnecting in {delay:.1f} seconds).")
             await asyncio.sleep(delay)
 
-    async def schedule_step(
+    async def schedule(
         self,
         repository: str,
         target: str,
@@ -295,24 +295,12 @@ class Session:
     ) -> str:
         serialised_arguments = [await self._serialise_value(a) for a in arguments]
         return await self._channel.request(
-            "schedule_step",
+            "schedule",
             repository,
             target,
             serialised_arguments,
             execution_id,
             cache_key,
-        )
-
-    async def schedule_task(
-        self,
-        repository: str,
-        target: str,
-        arguments: t.Tuple[t.Any, ...],
-        execution_id: str,
-    ) -> str:
-        serialised_arguments = [await self._serialise_value(a) for a in arguments]
-        return await self._channel.request(
-            "schedule_task", repository, target, serialised_arguments, execution_id
         )
 
     async def log_message(

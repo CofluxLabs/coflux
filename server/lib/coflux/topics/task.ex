@@ -67,7 +67,7 @@ defmodule Coflux.Topics.Task do
 
     arguments = Enum.map(arguments, &parse_argument/1)
 
-    case Orchestration.schedule_task(project_id, environment_name, repository, target, arguments) do
+    case Orchestration.schedule(project_id, environment_name, repository, target, arguments) do
       {:ok, run_id, _step_id, _execution_id} ->
         {:ok, run_id, topic}
     end

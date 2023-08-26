@@ -60,7 +60,7 @@ class Client:
         if self._session:
             await self._session.register_module(module_name, targets)
 
-    async def schedule_step(
+    async def schedule(
         self,
         repository: str,
         target: str,
@@ -68,18 +68,9 @@ class Client:
         execution_id: str,
         cache_key: str | None = None,
     ) -> str:
-        return self._session.schedule_step(
+        return self._session.schedule(
             execution_id, repository, target, arguments, cache_key
         )
-
-    async def schedule_task(
-        self,
-        repository: str,
-        target: str,
-        arguments: t.Tuple[t.Any, ...],
-        execution_id: str,
-    ) -> str:
-        return self._session.schedule_task(execution_id, repository, target, arguments)
 
     async def log_message(
         self, execution_id: str, level: session.LogLevel, message: str

@@ -48,28 +48,11 @@ defmodule Coflux.Handlers.Agent do
             {[], state}
         end
 
-      "schedule_task" ->
-        [repository, target, arguments, parent_id] = message["params"]
-        arguments = Enum.map(arguments, &parse_argument/1)
-
-        # TODO: prevent scheduling unrecognised tasks?
-        case Orchestration.schedule_task(
-               state.project_id,
-               state.environment,
-               repository,
-               target,
-               arguments,
-               parent_id
-             ) do
-          {:ok, run_id, _step_id, _execution_id} ->
-            {[result_message(message["id"], run_id)], state}
-        end
-
-      "schedule_step" ->
+      "schedule" ->
         [repository, target, arguments, parent_id, cache_key] = message["params"]
         arguments = Enum.map(arguments, &parse_argument/1)
 
-        case Orchestration.schedule_step(
+        case Orchestration.schedule(
                state.project_id,
                state.environment,
                repository,
@@ -78,7 +61,7 @@ defmodule Coflux.Handlers.Agent do
                parent_id,
                cache_key
              ) do
-          {:ok, _step_id, execution_id} ->
+          {:ok, _run_id, _step_id, execution_id} ->
             {[result_message(message["id"], execution_id)], state}
         end
 

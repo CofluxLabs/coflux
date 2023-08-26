@@ -9,27 +9,19 @@ defmodule Coflux.Orchestration do
     call_server(project_id, environment, {:register_targets, session_id, repository, targets})
   end
 
-  def schedule_task(project_id, environment, repository, target, arguments, parent_id \\ nil) do
-    call_server(
-      project_id,
-      environment,
-      {:schedule_task, repository, target, arguments, parent_id}
-    )
-  end
-
-  def schedule_step(
+  def schedule(
         project_id,
         environment,
         repository,
         target,
         arguments,
-        parent_id,
+        parent_id \\ nil,
         cache_key \\ nil
       ) do
     call_server(
       project_id,
       environment,
-      {:schedule_step, repository, target, arguments, parent_id, cache_key}
+      {:schedule, repository, target, arguments, parent_id, cache_key}
     )
   end
 
