@@ -13,13 +13,13 @@ def count(xs: list[int]) -> int:
 
 @step()
 def inc(x: Future[int]) -> int:
-    return x.result() + 1
+    return x + 1
 
 
 @step()
 def add(x: Future[int], y: Future[int]) -> int:
     context.log_debug("This is a debug message")
-    return x.result() + y.result()
+    return x + y
 
 
 @step()
@@ -46,7 +46,7 @@ def fib(n: int) -> int:
     if n == 0 or n == 1:
         return n
     else:
-        return fib(n - 1).result() + fib(n - 2).result()
+        return fib(n - 1) + fib(n - 2)
 
 
 @task()
@@ -72,8 +72,8 @@ def maybe_raise() -> int:
 
 @task()
 def raise_task():
-    do_raise()
-    return maybe_raise().result()
+    do_raise.submit()
+    maybe_raise.submit()
 
 
 @step()
@@ -83,11 +83,11 @@ def sleep(seconds: float) -> None:
 
 @task()
 def slow_task():
-    sleep(0.5)
-    sleep(1)
-    sleep(5)
-    sleep(2).result()
-    sleep(10)
+    sleep.submit(0.5)
+    sleep.submit(1)
+    sleep.submit(5)
+    sleep(2)
+    sleep.submit(10)
 
 
 @step()
@@ -102,7 +102,7 @@ def choose_random(i: int) -> None:
         for j in range(choice):
             choose_random(j)
     elif choice <= 6:
-        sleep(choice)
+        sleep.submit(choice)
     elif choice == 7:
         maximum(list(range(min(2, i))))
     elif choice == 8:
@@ -126,7 +126,7 @@ def build_content() -> str:
 
 @task()
 def blob_task():
-    return count(build_content().result())
+    return count(build_content())
 
 
 @step()
@@ -140,7 +140,7 @@ def github_events():
 
 @task()
 def github_task():
-    events = github_events().result()
+    events = github_events()
     return len(events)
 
 
@@ -164,8 +164,8 @@ def random_int(max: int):
 
 @task()
 def another_task():
-    return random_int(10).result() + 1
+    return random_int(10) + 1
 
 
 if __name__ == "__main__":
-    print(my_task([1, 2, 3, 4]).result())
+    print(my_task([1, 2, 3, 4]))

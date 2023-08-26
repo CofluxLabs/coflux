@@ -9,21 +9,25 @@ T = t.TypeVar("T")
 P = t.ParamSpec("P")
 
 
-def step(
-    *, name: str | None = None, cache_key_fn: t.Callable[P, str] | None = None
+def _decorate(
+    type: t.Literal["step", "task", None] = None,
+    *,
+    repository: str | None = None,
+    name: str | None = None,
+    cache_key_fn: t.Callable[P, str] | None = None,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
-    def decorate(fn: t.Callable[P, T]) -> t.Callable[P, future.Future[T]]:
-        target = name or fn.__name__
-        setattr(fn, TARGET_KEY, (target, ("step", fn)))
+    def decorator(fn: t.Callable[P, T]) -> t.Callable[P, future.Future[T]]:
+        name_ = name or fn.__name__
+        repository_ = repository or fn.__module__
 
-        @functools.wraps(fn)
-        def wrapper(*args) -> future.Future[T]:  # TODO: support kwargs?
+        # TODO: better name?
+        # TODO: type?
+        def submit(*args):
             try:
-                repository = fn.__module__
                 cache_key = cache_key_fn(*args) if cache_key_fn else None
                 # TODO: handle args being futures?
                 execution_id = context.schedule(
-                    repository, target, args, cache_key=cache_key
+                    repository_, name_, args, cache_key=cache_key
                 )
                 return context.get_result(execution_id)
             except context.NotInContextException:
@@ -34,55 +38,39 @@ def step(
                     else result
                 )
 
+        if type:
+            setattr(fn, TARGET_KEY, (name_, (type, fn)))
+
+        setattr(fn, "submit", submit)
+
+        @functools.wraps(fn)
+        def wrapper(*args) -> future.Future[T]:  # TODO: support kwargs?
+            return submit(*args).result()
+
         return wrapper
 
-    return decorate
+    return decorator
+
+
+def step(
+    *, name: str | None = None, cache_key_fn: t.Callable[P, str] | None = None
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
+    return _decorate("step", name=name, cache_key_fn=cache_key_fn)
 
 
 def task(
-    *, name: str | None = None
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, None]]:
-    def decorate(fn: t.Callable[P, T]) -> t.Callable[P, None]:
-        target = name or fn.__name__
-        setattr(fn, TARGET_KEY, (target, ("task", fn)))
-
-        @functools.wraps(fn)
-        def wrapper(*args) -> None:  # TODO: support kwargs?
-            # TODO: return future?
-            try:
-                repository = fn.__module__
-                context.schedule(repository, target, args)
-            except context.NotInContextException:
-                # TODO: execute in threadpool
-                fn(*args)
-
-        return wrapper
-
-    return decorate
-
-
-# TODO: cache_key (etc?)
-# TODO: support stubbing tasks?
-def stub(
-    repository: str, *, target: str | None = None
+    *, name: str | None = None, cache_key_fn: t.Callable[P, str] | None = None
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
-    def decorate(fn: t.Callable[P, T]) -> t.Callable[P, future.Future[T]]:
-        @functools.wraps(fn)
-        def wrapper(*args) -> future.Future[T]:  # TODO: support kwargs?
-            try:
-                execution_id = context.schedule(repository, target or fn.__name__, args)
-                return context.get_result(execution_id)
-            except context.NotInContextException:
-                result = fn(*args)
-                return (
-                    future.Future(lambda: result)
-                    if not isinstance(result, future.Future)
-                    else result
-                )
+    return _decorate("task", name=name, cache_key_fn=cache_key_fn)
 
-        return wrapper
 
-    return decorate
+def stub(
+    repository: str,
+    *,
+    name: str | None = None,
+    cache_key_fn: t.Callable[P, str] | None = None,
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
+    return _decorate(repository=repository, name=name, cache_key_fn=cache_key_fn)
 
 
 def sensor(
