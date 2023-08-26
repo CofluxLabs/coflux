@@ -86,7 +86,7 @@ function classNameForResult(
   isCached: boolean
 ) {
   if (isCached) {
-    return "border-gray-300 bg-gray-50";
+    return "border-slate-300 bg-slate-50";
   } else if (!result) {
     return "border-blue-400 bg-blue-100";
   } else if (result.type == "error") {
@@ -94,12 +94,13 @@ function classNameForResult(
   } else if (result.type == "abandoned") {
     return "border-yellow-400 bg-yellow-100";
   } else {
-    return "border-gray-400 bg-gray-100";
+    return "border-slate-400 bg-slate-100";
   }
 }
 
 type StepNodeProps = {
   node: dagre.Node;
+  offset: number;
   stepId: string;
   step: models.Step;
   attemptNumber: number | undefined;
@@ -111,6 +112,7 @@ type StepNodeProps = {
 
 function StepNode({
   node,
+  offset,
   stepId,
   step,
   attemptNumber,
@@ -126,8 +128,8 @@ function StepNode({
     <div
       className="absolute flex items-center"
       style={{
-        left: node.x - node.width / 2,
-        top: node.y - node.height / 2,
+        left: node.x - node.width / 2 + offset,
+        top: node.y - node.height / 2 + offset,
         width: node.width,
         height: node.height,
       }}
@@ -156,18 +158,25 @@ function StepNode({
 
 type RunNodeProps = {
   node: dagre.Node;
+  offset: number;
   projectId: string;
   runId: string;
   environmentName: string | undefined;
 };
 
-function RunNode({ node, projectId, runId, environmentName }: RunNodeProps) {
+function RunNode({
+  node,
+  offset,
+  projectId,
+  runId,
+  environmentName,
+}: RunNodeProps) {
   return (
     <div
       className="absolute flex"
       style={{
-        left: node.x - node.width / 2,
-        top: node.y - node.height / 2,
+        left: node.x - node.width / 2 + offset,
+        top: node.y - node.height / 2 + offset,
         width: node.width,
         height: node.height,
       }}
@@ -176,7 +185,7 @@ function RunNode({ node, projectId, runId, environmentName }: RunNodeProps) {
         to={buildUrl(`/projects/${projectId}/runs/${runId}`, {
           environment: environmentName,
         })}
-        className="flex-1 flex items-center border rounded p-2"
+        className="flex-1 flex items-center border rounded p-2 bg-white"
       >
         <div className="flex-1 truncate">
           <span className="font-mono">{runId}</span>
@@ -188,18 +197,21 @@ function RunNode({ node, projectId, runId, environmentName }: RunNodeProps) {
 
 type EdgeProps = {
   edge: dagre.GraphEdge;
+  offset: number;
 };
 
-function Edge({ edge }: EdgeProps) {
+function Edge({ edge, offset: o }: EdgeProps) {
   const {
     points: [a, b, c],
   } = edge;
   return (
     <path
-      className="stroke-current text-gray-200"
+      className="stroke-slate-200"
       fill="none"
       strokeWidth={5}
-      d={`M ${a.x} ${a.y} Q ${b.x} ${b.y} ${c.x} ${c.y}`}
+      d={`M ${a.x + o} ${a.y + o} Q ${b.x + o} ${b.y + o} ${c.x + o} ${
+        c.y + o
+      }`}
     />
   );
 }
@@ -207,19 +219,25 @@ function Edge({ edge }: EdgeProps) {
 type Props = {
   runId: string;
   run: models.Run;
+  width: number | undefined;
+  height: number | undefined;
   projectId: string;
   environmentName: string | undefined;
   activeStepId: string | undefined;
   activeAttemptNumber: number | undefined;
+  offset?: number;
 };
 
 export default function RunGraph({
   runId,
   run,
+  width,
+  height,
   projectId,
   environmentName,
   activeStepId,
   activeAttemptNumber,
+  offset = 20,
 }: Props) {
   const graph = useMemo(
     () => buildGraph(run, activeStepId, activeAttemptNumber),
@@ -228,12 +246,29 @@ export default function RunGraph({
   return (
     <div className="relative">
       <svg
-        width={graph.graph().width}
-        height={graph.graph().height}
+        width={Math.max(graph.graph().width! + 2 * offset, width || 0)}
+        height={Math.max(graph.graph().height! + 2 * offset, height || 0)}
         className="absolute"
       >
+        <defs>
+          <pattern
+            id="grid"
+            width={16}
+            height={16}
+            patternUnits="userSpaceOnUse"
+          >
+            <circle cx={10} cy={10} r={0.5} className="fill-slate-400" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid)" />
         {graph.edges().flatMap((edge) => {
-          return <Edge key={`${edge.v}-${edge.w}`} edge={graph.edge(edge)} />;
+          return (
+            <Edge
+              key={`${edge.v}-${edge.w}`}
+              edge={graph.edge(edge)}
+              offset={offset}
+            />
+          );
         })}
       </svg>
       <div className="absolute">
@@ -250,6 +285,7 @@ export default function RunGraph({
                 <StepNode
                   key={nodeId}
                   node={node}
+                  offset={offset}
                   stepId={stepId}
                   step={step}
                   attemptNumber={attemptNumber}
@@ -269,6 +305,7 @@ export default function RunGraph({
                 <RunNode
                   key={nodeId}
                   node={node}
+                  offset={offset}
                   projectId={projectId}
                   runId={nodeId}
                   environmentName={environmentName}

@@ -9,6 +9,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { Transition } from "@headlessui/react";
+import useResizeObserver from "use-resize-observer";
 
 import * as models from "../models";
 import TaskHeader from "../components/TaskHeader";
@@ -111,6 +112,8 @@ function DetailPanel({
 
 type OutletContext = {
   run: models.Run;
+  width: number | undefined;
+  height: number | undefined;
 };
 
 export default function RunLayout() {
@@ -144,6 +147,7 @@ export default function RunLayout() {
     [startRun]
   );
   useSetActiveTarget(task);
+  const { ref, width, height } = useResizeObserver<HTMLDivElement>();
   if (!run || !task) {
     return <Loading />;
   } else {
@@ -162,8 +166,8 @@ export default function RunLayout() {
             <Tab page="timeline">Timeline</Tab>
             <Tab page="logs">Logs</Tab>
           </div>
-          <div className="p-4 flex-1 overflow-auto">
-            <Outlet context={{ run }} />
+          <div className="flex-1 basis-0 overflow-auto" ref={ref}>
+            <Outlet context={{ run, width, height }} />
           </div>
         </div>
         <DetailPanel
@@ -181,6 +185,4 @@ export default function RunLayout() {
   }
 }
 
-export function useRun() {
-  return useOutletContext<OutletContext>().run;
-}
+export const useContext = useOutletContext<OutletContext>;

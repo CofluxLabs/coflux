@@ -121,8 +121,8 @@ export default function RunTimeline({
     (id) => run.steps[id].createdAt
   );
   return (
-    <div className="">
-      <div className="flex">
+    <div className="p-4">
+      <div className="flex relative">
         <div className="w-40 truncate self-center mr-2"></div>
         <div className="flex-1 text-right text-slate-400">
           {formatElapsed(totalMillis)}

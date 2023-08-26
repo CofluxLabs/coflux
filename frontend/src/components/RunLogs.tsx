@@ -35,7 +35,7 @@ export default function RunLogs({
 }: Props) {
   const startTime = DateTime.fromMillis(run.createdAt);
   return (
-    <div>
+    <div className="p-4">
       {Object.keys(logs).length == 0 ? (
         <p>
           <em>None</em>
