@@ -291,9 +291,11 @@ class Session:
         target: str,
         arguments: t.Tuple[t.Any, ...],
         execution_id: str,
-        cache_key: str | None = None,
+        cache_key: str | None,
+        retries: tuple[int, int, int],
     ) -> str:
         serialised_arguments = [await self._serialise_value(a) for a in arguments]
+        retry_count, retry_delay_min, retry_delay_max = retries
         return await self._channel.request(
             "schedule",
             repository,
@@ -301,6 +303,9 @@ class Session:
             serialised_arguments,
             execution_id,
             cache_key,
+            retry_count,
+            retry_delay_min,
+            retry_delay_max,
         )
 
     async def log_message(

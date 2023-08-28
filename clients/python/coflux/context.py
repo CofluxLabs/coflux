@@ -34,9 +34,10 @@ def schedule(
     args: t.Tuple[t.Any, ...],
     *,
     cache_key: str | None = None,
+    retries: tuple[int, int, int],
 ) -> str:
     execution_id, client, loop = _get()
-    task = client.schedule(repository, target, args, execution_id, cache_key)
+    task = client.schedule(repository, target, args, execution_id, cache_key, retries)
     return asyncio.run_coroutine_threadsafe(task, loop).result()
 
 

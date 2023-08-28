@@ -62,6 +62,9 @@ CREATE TABLE steps (
   target TEXT NOT NULL,
   priority INTEGER NOT NULL, -- TODO: move to executions?
   cache_key TEXT,
+  retry_count INTEGER NOT NULL,
+  retry_delay_min INTEGER NOT NULL,
+  retry_delay_max INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE,
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE

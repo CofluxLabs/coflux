@@ -1,6 +1,6 @@
 defmodule Coflux.Store do
   alias Exqlite.Sqlite3
-  alias Coflux.Store.Migrations
+  alias Coflux.Store.{Migrations, Models}
 
   @id_chars String.codepoints("bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ23456789")
 
@@ -126,13 +126,28 @@ defmodule Coflux.Store do
     parent_id = Keyword.get(opts, :parent_id)
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
+    retry_count = Keyword.get(opts, :retry_count, 0)
+    retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
+    retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
     now = current_timestamp()
 
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, now)
 
       {:ok, step_id, external_step_id} =
-        insert_step(db, run_id, nil, repository, target, priority, nil, now)
+        insert_step(
+          db,
+          run_id,
+          nil,
+          repository,
+          target,
+          priority,
+          nil,
+          retry_count,
+          retry_delay_min,
+          retry_delay_max,
+          now
+        )
 
       :ok = insert_arguments(db, step_id, arguments)
       sequence = 1
@@ -146,34 +161,60 @@ defmodule Coflux.Store do
     query_one(
       db,
       """
-      SELECT id, run_id
-      FROM steps
+      SELECT
+        s.id,
+        s.external_id,
+        s.run_id,
+        s.parent_id,
+        s.repository,
+        s.target,
+        s.priority,
+        s.cache_key,
+        s.retry_count,
+        s.retry_delay_min,
+        s.retry_delay_max,
+        s.created_at
+      FROM steps as s
       WHERE external_id = ?1
       """,
-      {external_id}
+      {external_id},
+      Models.Step
     )
   end
 
-  def get_run_id_for_step_execution(db, execution_id) do
-    {:ok, [{run_id}]} =
-      query(
-        db,
-        """
-        SELECT s.run_id
-        FROM steps AS s
-        INNER JOIN step_executions AS se ON se.step_id = s.id
-        WHERE se.execution_id = ?1
-        """,
-        {execution_id}
-      )
-
-    {:ok, run_id}
+  def get_step_for_execution(db, execution_id) do
+    query_one!(
+      db,
+      """
+      SELECT
+        s.id,
+        s.external_id,
+        s.run_id,
+        s.parent_id,
+        s.repository,
+        s.target,
+        s.priority,
+        s.cache_key,
+        s.retry_count,
+        s.retry_delay_min,
+        s.retry_delay_max,
+        s.created_at
+      FROM steps AS s
+      INNER JOIN step_executions AS se ON se.step_id = s.id
+      WHERE se.execution_id = ?1
+      """,
+      {execution_id},
+      Models.Step
+    )
   end
 
   def schedule_step(db, run_id, parent_id, repository, target, arguments, opts \\ []) do
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
     cache_key = Keyword.get(opts, :cache_key)
+    retry_count = Keyword.get(opts, :retry_count, 0)
+    retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
+    retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
     now = current_timestamp()
 
     with_transaction(db, fn ->
@@ -195,6 +236,9 @@ defmodule Coflux.Store do
           target,
           priority,
           unless(cached_execution_id, do: cache_key),
+          retry_count,
+          retry_delay_min,
+          retry_delay_max,
           now
         )
 
@@ -215,11 +259,12 @@ defmodule Coflux.Store do
     end)
   end
 
-  def rerun_step(db, step_id) do
+  def rerun_step(db, step_id, execute_after \\ nil) do
     with_transaction(db, fn ->
       now = current_timestamp()
+      # TODO: cancel pending executions for step?
       {:ok, sequence} = get_next_step_execution_sequence(db, step_id)
-      {:ok, execution_id} = insert_execution(db, nil, now)
+      {:ok, execution_id} = insert_execution(db, execute_after, now)
       {:ok, _} = insert_step_execution(db, step_id, sequence, execution_id)
       {:ok, execution_id, sequence, now}
     end)
@@ -359,21 +404,17 @@ defmodule Coflux.Store do
   end
 
   def get_unassigned_executions(db) do
-    # TODO: order by priority?
     query(
       db,
       """
-      SELECT e.id, ste.step_id, sne.sensor_activation_id
+      SELECT e.id, ste.step_id, sne.sensor_activation_id, e.execute_after
       FROM executions AS e
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN step_executions AS ste ON ste.execution_id = e.id
       LEFT JOIN sensor_executions AS sne ON sne.execution_id = e.id
       LEFT JOIN results AS r ON r.execution_id = e.id
-      WHERE a.created_at IS NULL
-        AND r.created_at IS NULL
-        AND (e.execute_after IS NULL OR e.execute_after >= ?1)
-      """,
-      {current_timestamp()}
+      WHERE a.created_at IS NULL AND r.created_at IS NULL
+      """
     )
   end
 
@@ -767,6 +808,9 @@ defmodule Coflux.Store do
          target,
          priority,
          cache_key,
+         retry_count,
+         retry_delay_min,
+         retry_delay_max,
          now
        ) do
     case generate_external_id(db, :runs, 3, "S_") do
@@ -781,6 +825,9 @@ defmodule Coflux.Store do
                target: target,
                priority: priority,
                cache_key: cache_key,
+               retry_count: retry_count,
+               retry_delay_min: retry_delay_min,
+               retry_delay_max: retry_delay_max,
                created_at: now
              ) do
           {:ok, step_id} ->
@@ -810,18 +857,21 @@ defmodule Coflux.Store do
   end
 
   defp get_next_step_execution_sequence(db, step_id) do
-    {:ok, [{last_sequence}]} =
-      query(
-        db,
-        """
-        SELECT MAX(sequence)
-        FROM step_executions
-        WHERE step_id = ?1
-        """,
-        {step_id}
-      )
+    case query(
+           db,
+           """
+           SELECT MAX(sequence)
+           FROM step_executions
+           WHERE step_id = ?1
+           """,
+           {step_id}
+         ) do
+      {:ok, [{nil}]} ->
+        {:ok, 1}
 
-    {:ok, last_sequence + 1}
+      {:ok, [{last_sequence}]} ->
+        {:ok, last_sequence + 1}
+    end
   end
 
   def get_next_sensor_execution_sequence(db, sensor_activation_id) do
@@ -983,21 +1033,38 @@ defmodule Coflux.Store do
     end
   end
 
-  defp query(db, sql, args \\ {}) do
+  defp build(row, model, columns) do
+    if model do
+      keys = Enum.map(columns, &String.to_existing_atom/1)
+      struct(model, Enum.zip(keys, row))
+    else
+      List.to_tuple(row)
+    end
+  end
+
+  defp query(db, sql, args \\ {}, model \\ nil) do
     with_prepare(db, sql, fn statement ->
       :ok = Sqlite3.bind(db, statement, Tuple.to_list(args))
+      {:ok, columns} = Sqlite3.columns(db, statement)
       {:ok, rows} = Sqlite3.fetch_all(db, statement)
-      {:ok, Enum.map(rows, &List.to_tuple/1)}
+      {:ok, Enum.map(rows, &build(&1, model, columns))}
     end)
   end
 
-  defp query_one(db, sql, args) do
-    case query(db, sql, args) do
+  defp query_one(db, sql, args, model \\ nil) do
+    case query(db, sql, args, model) do
       {:ok, [row]} ->
         {:ok, row}
 
       {:ok, []} ->
         {:ok, nil}
+    end
+  end
+
+  defp query_one!(db, sql, args, model) do
+    case query(db, sql, args, model) do
+      {:ok, [row]} ->
+        {:ok, row}
     end
   end
 end

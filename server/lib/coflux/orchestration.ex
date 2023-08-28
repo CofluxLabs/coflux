@@ -15,13 +15,12 @@ defmodule Coflux.Orchestration do
         repository,
         target,
         arguments,
-        parent_id \\ nil,
-        cache_key \\ nil
+        opts \\ []
       ) do
     call_server(
       project_id,
       environment,
-      {:schedule, repository, target, arguments, parent_id, cache_key}
+      {:schedule, repository, target, arguments, opts}
     )
   end
 

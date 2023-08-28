@@ -49,7 +49,17 @@ defmodule Coflux.Handlers.Agent do
         end
 
       "schedule" ->
-        [repository, target, arguments, parent_id, cache_key] = message["params"]
+        [
+          repository,
+          target,
+          arguments,
+          parent_id,
+          cache_key,
+          retry_count,
+          retry_delay_min,
+          retry_delay_max
+        ] = message["params"]
+
         arguments = Enum.map(arguments, &parse_argument/1)
 
         case Orchestration.schedule(
@@ -58,8 +68,11 @@ defmodule Coflux.Handlers.Agent do
                repository,
                target,
                arguments,
-               parent_id,
-               cache_key
+               parent_id: parent_id,
+               cache_key: cache_key,
+               retry_count: retry_count,
+               retry_delay_min: retry_delay_min,
+               retry_delay_max: retry_delay_max
              ) do
           {:ok, _run_id, _step_id, execution_id} ->
             {[result_message(message["id"], execution_id)], state}

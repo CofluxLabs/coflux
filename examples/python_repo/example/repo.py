@@ -54,13 +54,13 @@ def fib_task(n: int):
     return fib(n)
 
 
-@step()
+@step(retries=(3, 1, 3))
 def do_raise():
     context.log_warning("Raising...")
     raise Exception("some error")
 
 
-@step()
+@step(retries=(3, 1, 3))
 def maybe_raise() -> int:
     if random.random() > 0.5:
         context.log_error("Raising exception...")
