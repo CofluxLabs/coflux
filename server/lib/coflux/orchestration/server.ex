@@ -144,17 +144,11 @@ defmodule Coflux.Orchestration.Server do
     case Store.get_or_create_manifest(state.db, repository, targets) do
       {:ok, manifest_id} ->
         :ok = Store.record_session_manifest(state.db, session_id, manifest_id)
-
-        state =
-          state
-          |> register_targets(repository, targets, session_id)
-          |> assign_executions()
-
+        state = register_targets(state, repository, targets, session_id)
         notify_listeners(state, :repositories, {:targets, repository, targets})
         notify_agent(state, session_id)
-
         # TODO: notify task listeners ({:task, repository, target_name})
-
+        send(self(), :execute)
         {:reply, :ok, state}
     end
   end
@@ -186,7 +180,7 @@ defmodule Coflux.Orchestration.Server do
                   {:run, external_run_id, created_at}
                 )
 
-                state = assign_executions(state)
+                send(self(), :execute)
                 {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
             end
           else
@@ -213,7 +207,7 @@ defmodule Coflux.Orchestration.Server do
                     {:run, external_run_id, created_at}
                   )
 
-                  state = assign_executions(state)
+                  send(self(), :execute)
                   {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
               end
 
@@ -244,7 +238,7 @@ defmodule Coflux.Orchestration.Server do
                     )
                   end
 
-                  state = assign_executions(state)
+                  send(self(), :execute)
 
                   # TODO: return (external) run id?
                   {:reply, {:ok, nil, external_step_id, execution_id || cached_execution_id},
@@ -266,7 +260,7 @@ defmodule Coflux.Orchestration.Server do
               {:run, external_run_id, created_at}
             )
 
-            state = assign_executions(state)
+            send(self(), :execute)
             {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
         end
       else
@@ -286,10 +280,9 @@ defmodule Coflux.Orchestration.Server do
       {:ok, sensor_activation_id, _sequence, execution_id} ->
         notify_listeners(state, {:sensor, repository, target}, {:activated, true})
 
-        state =
-          state
-          |> Map.update!(:sensors, &Map.put(&1, sensor_activation_id, execution_id))
-          |> assign_executions()
+        state = Map.update!(state, :sensors, &Map.put(&1, sensor_activation_id, execution_id))
+
+        send(self(), :execute)
 
         {:reply, :ok, state}
     end
@@ -530,7 +523,97 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_info(:execute, state) do
-    state = assign_executions(state)
+    state =
+      if state.execute_timer do
+        Process.cancel_timer(state.execute_timer)
+        Map.put(state, :execute_timer, nil)
+      else
+        state
+      end
+
+    {:ok, executions} = Store.get_unassigned_executions(state.db)
+
+    now = System.os_time(:millisecond)
+
+    {executions_due, executions_future} =
+      Enum.split_with(executions, fn {_, _, _, execute_after} ->
+        is_nil(execute_after) || execute_after <= now
+      end)
+
+    # TODO: order by priority/execute_after
+    state =
+      Enum.reduce(
+        executions_due,
+        state,
+        fn
+          {execution_id, step_id, nil, _}, state ->
+            {:ok, {run_id, repository, target}} = Store.get_step(state.db, step_id)
+
+            case assign_execution(state, execution_id, repository, target, fn ->
+                   Store.get_step_arguments(state.db, step_id)
+                 end) do
+              {:ok, state, nil} ->
+                state
+
+              {:ok, state, {_session_id, assigned_at}} ->
+                # TODO: defer notify?
+                notify_listeners(
+                  state,
+                  {:run, run_id},
+                  {:assignment, execution_id, assigned_at}
+                )
+
+                state
+            end
+
+          {execution_id, nil, sensor_activation_id, _}, state ->
+            {:ok, {repository, target, deactivated_at}} =
+              Store.get_sensor_activation_by_id(state.db, sensor_activation_id)
+
+            if deactivated_at do
+              {:ok, state} = record_result(state, execution_id, :aborted)
+              state
+            else
+              case assign_execution(state, execution_id, repository, target, fn ->
+                     case Store.get_latest_sensor_activation_cursor(
+                            state.db,
+                            sensor_activation_id
+                          ) do
+                       {:ok, nil} -> {:ok, []}
+                       {:ok, cursor} -> {:ok, [cursor]}
+                     end
+                   end) do
+                {:ok, state, nil} ->
+                  state
+
+                {:ok, state, {_session_id, assigned_at}} ->
+                  # TODO: defer notify?
+                  notify_listeners(
+                    state,
+                    {:sensor, repository, target},
+                    {:assignment, execution_id, assigned_at}
+                  )
+
+                  state
+              end
+            end
+        end
+      )
+
+    state =
+      if Enum.any?(executions_future) do
+        next_execute_after =
+          executions_future
+          |> Enum.map(fn {_, _, _, execute_after} -> execute_after end)
+          |> Enum.max()
+
+        delay_ms = next_execute_after - System.os_time(:millisecond)
+        timer = Process.send_after(self(), :execute, delay_ms)
+        Map.put(state, :execute_timer, timer)
+      else
+        state
+      end
+
     {:noreply, state}
   end
 
@@ -574,7 +657,7 @@ defmodule Coflux.Orchestration.Server do
           {:execution, execution_id, step.external_id, sequence, created_at}
         )
 
-        state = assign_executions(state)
+        send(self(), :execute)
         {:ok, execution_id, sequence, state}
     end
   end
@@ -637,10 +720,9 @@ defmodule Coflux.Orchestration.Server do
               case Store.iterate_sensor(state.db, sensor_activation_id) do
                 {:ok, execution_id, _sequence, _created_at} ->
                   state =
-                    state
-                    |> Map.update!(:sensors, &Map.put(&1, sensor_activation_id, execution_id))
-                    |> assign_executions()
+                    Map.update!(state, :sensors, &Map.put(&1, sensor_activation_id, execution_id))
 
+                  send(self(), :execute)
                   {:ok, state}
               end
             end
@@ -772,101 +854,6 @@ defmodule Coflux.Orchestration.Server do
     else
       {:ok, state, nil}
     end
-  end
-
-  defp assign_executions(state) do
-    state =
-      if state.execute_timer do
-        Process.cancel_timer(state.execute_timer)
-        Map.put(state, :execute_timer, nil)
-      else
-        state
-      end
-
-    {:ok, executions} = Store.get_unassigned_executions(state.db)
-
-    now = System.os_time(:millisecond)
-
-    {executions_due, executions_future} =
-      Enum.split_with(executions, fn {_, _, _, execute_after} ->
-        is_nil(execute_after) || execute_after <= now
-      end)
-
-    # TODO: order by priority/execute_after
-    state =
-      Enum.reduce(
-        executions_due,
-        state,
-        fn
-          {execution_id, step_id, nil, _}, state ->
-            {:ok, {run_id, repository, target}} = Store.get_step(state.db, step_id)
-
-            case assign_execution(state, execution_id, repository, target, fn ->
-                   Store.get_step_arguments(state.db, step_id)
-                 end) do
-              {:ok, state, nil} ->
-                state
-
-              {:ok, state, {_session_id, assigned_at}} ->
-                # TODO: defer notify?
-                notify_listeners(
-                  state,
-                  {:run, run_id},
-                  {:assignment, execution_id, assigned_at}
-                )
-
-                state
-            end
-
-          {execution_id, nil, sensor_activation_id, _}, state ->
-            {:ok, {repository, target, deactivated_at}} =
-              Store.get_sensor_activation_by_id(state.db, sensor_activation_id)
-
-            if deactivated_at do
-              {:ok, state} = record_result(state, execution_id, :aborted)
-              state
-            else
-              case assign_execution(state, execution_id, repository, target, fn ->
-                     case Store.get_latest_sensor_activation_cursor(
-                            state.db,
-                            sensor_activation_id
-                          ) do
-                       {:ok, nil} -> {:ok, []}
-                       {:ok, cursor} -> {:ok, [cursor]}
-                     end
-                   end) do
-                {:ok, state, nil} ->
-                  state
-
-                {:ok, state, {_session_id, assigned_at}} ->
-                  # TODO: defer notify?
-                  notify_listeners(
-                    state,
-                    {:sensor, repository, target},
-                    {:assignment, execution_id, assigned_at}
-                  )
-
-                  state
-              end
-            end
-        end
-      )
-
-    state =
-      if Enum.any?(executions_future) do
-        next_execute_after =
-          executions_future
-          |> Enum.map(fn {_, _, _, execute_after} -> execute_after end)
-          |> Enum.max()
-
-        delay_ms = next_execute_after - System.os_time(:millisecond)
-        timer = Process.send_after(self(), :execute, delay_ms)
-        Map.put(state, :execute_timer, timer)
-      else
-        state
-      end
-
-    state
   end
 
   defp notify_waiting(state, execution_id) do
