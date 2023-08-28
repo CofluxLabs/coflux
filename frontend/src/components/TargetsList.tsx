@@ -38,8 +38,10 @@ function Target({ url, icon: Icon, name, isActive, isOnline }: TargetProps) {
           isActive ? "bg-slate-200" : "hover:bg-slate-200/50"
         )}
       >
-        <Icon size={20} strokeWidth={1} className="text-slate-500" />
-        <div className="font-mono flex-1">{name}</div>
+        <Icon size={20} strokeWidth={1} className="text-slate-500 shrink-0" />
+        <div className="font-mono flex-1 overflow-hidden text-ellipsis">
+          {name}
+        </div>
       </Link>
     </li>
   );
