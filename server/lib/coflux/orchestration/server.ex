@@ -271,6 +271,7 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_call({:rerun_step, external_step_id}, _from, state) do
     {:ok, step} = Store.get_step_by_external_id(state.db, external_step_id)
+    # TODO: abort/cancel any scheduled retry? (and reference?)
     {:ok, execution_id, sequence, state} = rerun_step(state, step)
     {:reply, {:ok, execution_id, sequence}, state}
   end
@@ -311,7 +312,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:record_heartbeats, execution_ids}, _from, state) do
-    # TODO: check whether any executions have been aborted/abandoned?
+    # TODO: check whether any executions have been cancelled/abandoned?
     case Store.record_hearbeats(state.db, execution_ids) do
       {:ok, created_at} ->
         state =
@@ -571,7 +572,7 @@ defmodule Coflux.Orchestration.Server do
               Store.get_sensor_activation_by_id(state.db, sensor_activation_id)
 
             if deactivated_at do
-              {:ok, state} = record_result(state, execution_id, :aborted)
+              {:ok, state} = record_result(state, execution_id, :cancelled)
               state
             else
               case assign_execution(state, execution_id, repository, target, fn ->
@@ -713,7 +714,7 @@ defmodule Coflux.Orchestration.Server do
 
           sensor_activation_id ->
             # TODO: better way to determine whether to iterate?
-            if result == :aborted do
+            if result == :cancelled do
               state = Map.update!(state, :sensors, &Map.delete(&1, sensor_activation_id))
               {:ok, state}
             else

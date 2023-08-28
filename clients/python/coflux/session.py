@@ -341,7 +341,7 @@ class Session:
                 raise Exception(error)
             case ["abandoned"]:
                 raise Exception("abandoned")
-            case ["aborted"]:
-                raise Exception("aborted")
+            case ["cancelled"]:
+                raise Exception("cancelled")
             case result:
                 raise Exception(f"unexeptected result ({result})")

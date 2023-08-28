@@ -242,8 +242,8 @@ defmodule Coflux.Topics.Run do
       :abandoned ->
         %{type: "abandoned"}
 
-      :aborted ->
-        %{type: "aborted"}
+      :cancelled ->
+        %{type: "cancelled"}
 
       nil ->
         nil

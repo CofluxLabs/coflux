@@ -245,7 +245,7 @@ defmodule Coflux.Handlers.Agent do
       {:reference, execution_id} -> ["reference", execution_id]
       {:error, error, _details} -> ["error", error]
       :abandoned -> ["abandoned"]
-      :aborted -> ["aborted"]
+      :cancelled -> ["cancelled"]
     end
   end
 end

@@ -936,7 +936,7 @@ defmodule Coflux.Store do
       {:raw, format, data} -> {2, format, data}
       {:blob, format, hash} -> {3, format, hash}
       :abandoned -> {4, nil, nil}
-      :aborted -> {5, nil, nil}
+      :cancelled -> {5, nil, nil}
     end
   end
 
@@ -947,7 +947,7 @@ defmodule Coflux.Store do
       2 -> {:raw, format, value}
       3 -> {:blob, format, value}
       4 -> :abandoned
-      5 -> :aborted
+      5 -> :cancelled
     end
   end
 
@@ -966,7 +966,7 @@ defmodule Coflux.Store do
   end
 
   defp insert_cursor(db, execution_id, sequence, result, created_at) do
-    # TODO: check result isn't error/abandoned/aborted?
+    # TODO: check result isn't error/abandoned/cancelled?
     {type, format, value} = parse_result(result)
 
     insert_one(
