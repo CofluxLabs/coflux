@@ -136,9 +136,11 @@ CREATE TABLE results (
   type INTEGER NOT NULL,
   format TEXT,
   value BLOB,
+  retry_id INTEGER,
   -- TODO: metadata? (for serialising errors)
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (retry_id) REFERENCES executions ON DELETE CASCADE
 );
 
 CREATE TABLE cursors (

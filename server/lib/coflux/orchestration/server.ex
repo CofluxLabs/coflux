@@ -455,7 +455,7 @@ defmodule Coflux.Orchestration.Server do
 
                    {result, completed_at} =
                      case Store.get_execution_result(state.db, execution_id) do
-                       {:ok, {result, completed_at}} ->
+                       {:ok, {result, _retry_id, completed_at}} ->
                          {result, completed_at}
 
                        {:ok, nil} ->
@@ -672,14 +672,38 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp record_result(state, execution_id, result) do
-    case Store.record_result(state.db, execution_id, result) do
-      {:ok, created_at} ->
-        state = Map.update!(state, :running, &Map.delete(&1, execution_id))
+    state = Map.update!(state, :running, &Map.delete(&1, execution_id))
 
-        case find_sensor(state, execution_id) do
-          nil ->
+    case find_sensor(state, execution_id) do
+      nil ->
+        {:ok, step} = Store.get_step_for_execution(state.db, execution_id)
+
+        {retry_id, state} =
+          if result_retryable?(result) && step.retry_count > 0 do
+            {:ok, executions} = Store.get_step_executions(state.db, step.id)
+
+            attempts = Enum.count(executions)
+
+            if attempts <= step.retry_count do
+              # TODO: add jitter (within min/max delay)
+              delay_s =
+                step.retry_delay_min +
+                  (attempts - 1) / (step.retry_count - 1) *
+                    (step.retry_delay_max - step.retry_delay_min)
+
+              execute_after = System.os_time(:millisecond) + delay_s * 1000
+              {:ok, retry_id, _, state} = rerun_step(state, step, execute_after)
+              {retry_id, state}
+            else
+              {nil, state}
+            end
+          else
+            {nil, state}
+          end
+
+        case Store.record_result(state.db, execution_id, result, retry_id) do
+          {:ok, created_at} ->
             state = notify_waiting(state, execution_id)
-            {:ok, step} = Store.get_step_for_execution(state.db, execution_id)
 
             notify_listeners(
               state,
@@ -687,45 +711,31 @@ defmodule Coflux.Orchestration.Server do
               {:result, execution_id, 0, result, created_at}
             )
 
-            state =
-              if result_retryable?(result) && step.retry_count > 0 do
-                {:ok, executions} = Store.get_step_executions(state.db, step.id)
-
-                attempts = Enum.count(executions)
-
-                if attempts <= step.retry_count do
-                  # TODO: add jitter (within min/max delay)
-                  delay_s =
-                    step.retry_delay_min +
-                      (attempts - 1) / (step.retry_count - 1) *
-                        (step.retry_delay_max - step.retry_delay_min)
-
-                  execute_after = System.os_time(:millisecond) + delay_s * 1000
-                  {:ok, _, _, state} = rerun_step(state, step, execute_after)
-                  state
-                else
-                  state
-                end
-              else
-                state
-              end
-
             {:ok, state}
+        end
 
-          sensor_activation_id ->
+      sensor_activation_id ->
+        case Store.record_result(state.db, execution_id, result) do
+          {:ok, _created_at} ->
             # TODO: better way to determine whether to iterate?
-            if result == :cancelled do
-              state = Map.update!(state, :sensors, &Map.delete(&1, sensor_activation_id))
-              {:ok, state}
-            else
-              case Store.iterate_sensor(state.db, sensor_activation_id) do
-                {:ok, execution_id, _sequence, _created_at} ->
-                  state =
-                    Map.update!(state, :sensors, &Map.put(&1, sensor_activation_id, execution_id))
+            case result do
+              :cancelled ->
+                state = Map.update!(state, :sensors, &Map.delete(&1, sensor_activation_id))
+                {:ok, state}
 
-                  send(self(), :execute)
-                  {:ok, state}
-              end
+              _ ->
+                case Store.iterate_sensor(state.db, sensor_activation_id) do
+                  {:ok, execution_id, _sequence, _created_at} ->
+                    state =
+                      Map.update!(
+                        state,
+                        :sensors,
+                        &Map.put(&1, sensor_activation_id, execution_id)
+                      )
+
+                    send(self(), :execute)
+                    {:ok, state}
+                end
             end
         end
     end
@@ -733,9 +743,17 @@ defmodule Coflux.Orchestration.Server do
 
   defp resolve_result(execution_id, db) do
     case Store.get_execution_result(db, execution_id) do
-      {:ok, nil} -> {:pending, execution_id}
-      {:ok, {{:reference, execution_id}, _}} -> resolve_result(execution_id, db)
-      {:ok, {other, _}} -> {:ok, other}
+      {:ok, nil} ->
+        {:pending, execution_id}
+
+      {:ok, {_, retry_id, _}} when not is_nil(retry_id) ->
+        resolve_result(retry_id, db)
+
+      {:ok, {{:reference, execution_id}, nil, _}} ->
+        resolve_result(execution_id, db)
+
+      {:ok, {other, nil, _}} ->
+        {:ok, other}
     end
   end
 

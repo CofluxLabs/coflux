@@ -325,10 +325,10 @@ defmodule Coflux.Store do
     end)
   end
 
-  def record_result(db, execution_id, result) do
+  def record_result(db, execution_id, result, retry_id \\ nil) do
     now = current_timestamp()
 
-    case insert_result(db, execution_id, result, now) do
+    case insert_result(db, execution_id, result, retry_id, now) do
       {:ok, _} ->
         {:ok, now}
     end
@@ -338,15 +338,15 @@ defmodule Coflux.Store do
     case query_one(
            db,
            """
-           SELECT type, format, value, created_at
+           SELECT type, format, value, retry_id, created_at
            FROM results
            WHERE execution_id = ?1
            """,
            {execution_id}
          ) do
-      {:ok, {type, format, value, created_at}} ->
+      {:ok, {type, format, value, retry_id, created_at}} ->
         result = build_result(type, format, value)
-        {:ok, {result, created_at}}
+        {:ok, {result, retry_id, created_at}}
 
       {:ok, nil} ->
         {:ok, nil}
@@ -786,7 +786,7 @@ defmodule Coflux.Store do
   end
 
   defp insert_run(db, parent_id, idempotency_key, created_at) do
-    case generate_external_id(db, :runs, 2, "R_") do
+    case generate_external_id(db, :runs, 2, "R") do
       {:ok, external_id} ->
         case insert_one(db, :runs,
                external_id: external_id,
@@ -813,7 +813,7 @@ defmodule Coflux.Store do
          retry_delay_max,
          now
        ) do
-    case generate_external_id(db, :runs, 3, "S_") do
+    case generate_external_id(db, :runs, 3, "S") do
       {:ok, external_id} ->
         case insert_one(
                db,
@@ -951,7 +951,7 @@ defmodule Coflux.Store do
     end
   end
 
-  defp insert_result(db, execution_id, result, created_at) do
+  defp insert_result(db, execution_id, result, retry_id, created_at) do
     {type, format, value} = parse_result(result)
 
     insert_one(
@@ -961,6 +961,7 @@ defmodule Coflux.Store do
       type: type,
       format: format,
       value: value,
+      retry_id: retry_id,
       created_at: created_at
     )
   end
