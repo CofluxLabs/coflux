@@ -9,26 +9,13 @@ T = t.TypeVar("T")
 P = t.ParamSpec("P")
 
 
-def _parse_retries(
-    retries: int | tuple[int, int] | tuple[int, int, int]
-) -> tuple[int, int, int]:
-    if isinstance(retries, int):
-        return (retries, 0, 0)
-    assert isinstance(retries, tuple)
-    assert isinstance(retries[0], int)
-    # TODO: parse string (e.g., '1h')
-    if len(retries) == 3:
-        return retries
-    if len(retries) == 2:
-        return (retries[0], retries[1], retries[1])
-
-
 def _decorate(
     type: t.Literal["step", "task", None] = None,
     *,
     repository: str | None = None,
     name: str | None = None,
-    cache_key_fn: t.Callable[P, str] | None = None,
+    cache: bool | t.Callable[P, str] = False,
+    cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     def decorator(fn: t.Callable[P, T]) -> t.Callable[P, future.Future[T]]:
@@ -39,14 +26,14 @@ def _decorate(
         # TODO: type?
         def submit(*args):
             try:
-                cache_key = cache_key_fn(*args) if cache_key_fn else None
                 # TODO: handle args being futures?
                 execution_id = context.schedule(
                     repository_,
                     name_,
                     args,
-                    cache_key=cache_key,
-                    retries=_parse_retries(retries),
+                    cache=cache,
+                    cache_namespace=cache_namespace,
+                    retries=retries,
                 )
                 return context.get_result(execution_id)
             except context.NotInContextException:
@@ -74,30 +61,41 @@ def _decorate(
 def step(
     *,
     name: str | None = None,
-    cache_key_fn: t.Callable[P, str] | None = None,
+    cache: bool | t.Callable[P, str] = False,
+    cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
-    return _decorate("step", name=name, cache_key_fn=cache_key_fn, retries=retries)
+    return _decorate(
+        "step", name=name, cache=cache, cache_namespace=cache_namespace, retries=retries
+    )
 
 
 def task(
     *,
     name: str | None = None,
-    cache_key_fn: t.Callable[P, str] | None = None,
+    cache: bool | t.Callable[P, str] = False,
+    cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
-    return _decorate("task", name=name, cache_key_fn=cache_key_fn, retries=retries)
+    return _decorate(
+        "task", name=name, cache=cache, cache_namespace=cache_namespace, retries=retries
+    )
 
 
 def stub(
     repository: str,
     *,
     name: str | None = None,
-    cache_key_fn: t.Callable[P, str] | None = None,
+    cache: bool | t.Callable[P, str] = False,
+    cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     return _decorate(
-        repository=repository, name=name, cache_key_fn=cache_key_fn, retries=retries
+        repository=repository,
+        name=name,
+        cache=cache,
+        cache_namespace=cache_namespace,
+        retries=retries,
     )
 
 

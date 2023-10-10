@@ -66,6 +66,36 @@ def _build_manifest(targets: dict) -> dict:
     }
 
 
+def _parse_retries(
+    retries: int | tuple[int, int] | tuple[int, int, int]
+) -> tuple[int, int, int]:
+    if isinstance(retries, int):
+        return (retries, 0, 0)
+    assert isinstance(retries, tuple)
+    assert isinstance(retries[0], int)
+    # TODO: parse string (e.g., '1h')
+    if len(retries) == 3:
+        return retries
+    if len(retries) == 2:
+        return (retries[0], retries[1], retries[1])
+
+
+def _get_cache_key(
+    cache: bool | t.Callable[[t.Tuple[t.Any, ...]], str],
+    cache_namespace: str,
+    arguments: t.Tuple[t.Any, ...],
+    serialised_arguments: list[t.Tuple[str, str, str]],
+) -> str | None:
+    if not cache:
+        return None
+    cache_key = (
+        cache(*arguments)
+        if callable(cache)
+        else "\0".join(x for a in serialised_arguments for x in a)
+    )
+    return hashlib.sha256(f"{cache_namespace}\0{cache_key}".encode()).hexdigest()
+
+
 def _resolve_argument(
     argument: list,
     session: "Session",
@@ -291,11 +321,18 @@ class Session:
         target: str,
         arguments: t.Tuple[t.Any, ...],
         execution_id: str,
-        cache_key: str | None,
-        retries: tuple[int, int, int],
+        cache: bool | t.Callable[[t.Tuple[t.Any, ...]], str],
+        cache_namespace: str | None,
+        retries: int | tuple[int, int] | tuple[int, int, int],
     ) -> str:
         serialised_arguments = [await self._serialise_value(a) for a in arguments]
-        retry_count, retry_delay_min, retry_delay_max = retries
+        cache_key = _get_cache_key(
+            cache,
+            cache_namespace or f"{repository}:{target}",
+            arguments,
+            serialised_arguments,
+        )
+        retry_count, retry_delay_min, retry_delay_max = _parse_retries(retries)
         return await self._channel.request(
             "schedule",
             repository,

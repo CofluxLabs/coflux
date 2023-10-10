@@ -41,7 +41,7 @@ def my_task(xs: t.Optional[t.List[int]] = None) -> Future[int]:
     return add(foo(xs), maximum(xs))
 
 
-@step(cache_key_fn=lambda n: f"app.repo:fib:{n}")
+@step(cache=True)
 def fib(n: int) -> int:
     if n == 0 or n == 1:
         return n

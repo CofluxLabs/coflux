@@ -66,11 +66,19 @@ class Client:
         target: str,
         arguments: t.Tuple[t.Any, ...],
         execution_id: str,
-        cache_key: str | None,
-        retries: tuple[int, int, int],
+        *,
+        cache: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
+        cache_namespace: str | None = None,
+        retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     ) -> str:
         return self._session.schedule(
-            execution_id, repository, target, arguments, cache_key, retries
+            execution_id,
+            repository,
+            target,
+            arguments,
+            cache,
+            cache_namespace,
+            retries,
         )
 
     async def log_message(
