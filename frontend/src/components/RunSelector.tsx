@@ -2,11 +2,28 @@ import { Fragment } from "react";
 import { Menu, Transition } from "@headlessui/react";
 import { sortBy } from "lodash";
 import classNames from "classnames";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { DateTime } from "luxon";
 
 import * as models from "../models";
 import { buildUrl } from "../utils";
+
+function getRunUrl(
+  projectId: string,
+  runId: string,
+  environmentName: string | undefined,
+  pathname: string
+) {
+  // TODO: better way to determine page
+  const parts = pathname.split("/");
+  const page = parts.length == 6 ? parts[5] : undefined;
+  return buildUrl(
+    `/projects/${projectId}/runs/${runId}${page ? "/" + page : ""}`,
+    {
+      environment: environmentName,
+    }
+  );
+}
 
 type OptionsProps = {
   runs: Record<string, Pick<models.Run, "createdAt">>;
@@ -21,6 +38,7 @@ function Options({
   environmentName,
   selectedRunId,
 }: OptionsProps) {
+  const location = useLocation();
   if (!Object.keys(runs).length) {
     return <p>No runs for {environmentName}</p>;
   } else {
@@ -34,9 +52,12 @@ function Options({
               <Menu.Item key={runId}>
                 {({ active }) => (
                   <Link
-                    to={buildUrl(`/projects/${projectId}/runs/${runId}`, {
-                      environment: environmentName,
-                    })}
+                    to={getRunUrl(
+                      projectId!,
+                      runId,
+                      environmentName,
+                      location.pathname
+                    )}
                     className={classNames(
                       "block p-2",
                       active && "bg-slate-100"
