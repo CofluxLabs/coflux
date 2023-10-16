@@ -348,7 +348,11 @@ class Session:
     async def log_message(
         self, execution_id: str, level: LogLevel, message: str
     ) -> None:
-        await self._channel.notify("log_message", execution_id, level, message)
+        timestamp = time.time() * 1000
+        # TODO: batch messages
+        await self._channel.notify(
+            "log_messages", [execution_id, timestamp, level, message]
+        )
 
     def _set_execution_status(self, execution_id: str, status: ExecutionStatus) -> None:
         thread, start_time, _status = self._executions[execution_id]

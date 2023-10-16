@@ -1,6 +1,6 @@
-defmodule Coflux.Store do
+defmodule Coflux.Orchestration.Store do
   alias Exqlite.Sqlite3
-  alias Coflux.Store.{Migrations, Models}
+  alias Coflux.Orchestration.Store.{Migrations, Models}
 
   @id_chars String.codepoints("bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ23456789")
 
@@ -669,6 +669,20 @@ defmodule Coflux.Store do
       INNER JOIN steps AS s1 ON s1.id = se.step_id
       INNER JOIN steps AS s2 ON s2.run_id = s1.run_id AND s2.parent_id IS NULL
       INNER JOIN runs AS r ON r.id = s1.run_id
+      WHERE se.execution_id = ?1
+      """,
+      {execution_id}
+    )
+  end
+
+  def get_external_run_id_for_execution(db, execution_id) do
+    query_one(
+      db,
+      """
+      SELECT r.external_id
+      FROM step_executions AS se
+      INNER JOIN steps AS s ON s.id = se.step_id
+      INNER JOIN runs AS r ON r.id = s.run_id
       WHERE se.execution_id = ?1
       """,
       {execution_id}

@@ -1,8 +1,7 @@
 defmodule Coflux.Application do
   use Application
 
-  alias Coflux.Orchestration
-  alias Coflux.Topics
+  alias Coflux.{Orchestration, Logging, Topics}
 
   @impl true
   def start(_type, _args) do
@@ -10,6 +9,7 @@ defmodule Coflux.Application do
 
     children = [
       Orchestration.Supervisor,
+      Logging.Supervisor,
       {Topical, name: Coflux.TopicalRegistry, topics: topics()},
       {Coflux.Api, port: port}
     ]
@@ -29,7 +29,8 @@ defmodule Coflux.Application do
       Topics.Repositories,
       Topics.Run,
       Topics.Sensor,
-      Topics.Task
+      Topics.Task,
+      Topics.Logs
     ]
   end
 end

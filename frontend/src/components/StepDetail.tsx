@@ -6,10 +6,11 @@ import {
   useState,
 } from "react";
 import classNames from "classnames";
-import { findKey, sortBy } from "lodash";
+import { filter, findKey, sortBy } from "lodash";
 import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useTopic } from "@topical/react";
 
 import * as models from "../models";
 import Badge from "./Badge";
@@ -97,14 +98,14 @@ type LogMessageItemProps = {
 };
 
 function LogMessageItem({ message, startTime }: LogMessageItemProps) {
-  const createdAt = DateTime.fromMillis(message.createdAt);
+  const createdAt = DateTime.fromMillis(message[1]);
   return (
     <li>
       <div className="my-2">
         <LogMessage message={message} className="my-1" />
         <div className="text-xs text-slate-500 my-1">
           {createdAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)} (+
-          {createdAt.diff(startTime).toMillis()}ms)
+          {Math.floor(createdAt.diff(startTime).toMillis())}ms)
         </div>
       </div>
     </li>
@@ -113,6 +114,7 @@ function LogMessageItem({ message, startTime }: LogMessageItemProps) {
 
 type AttemptProps = {
   attempt: models.Execution;
+  executionId: string;
   runId: string;
   run: models.Run;
   projectId: string;
@@ -121,6 +123,7 @@ type AttemptProps = {
 
 function Attempt({
   attempt,
+  executionId,
   runId,
   run,
   projectId,
@@ -132,10 +135,16 @@ function Attempt({
     : null;
   const completedAt =
     attempt.completedAt && DateTime.fromMillis(attempt.completedAt);
-  // TODO: subscribe to execution logs
-  // const [logs, _] = useTopic<Record<string, models.LogMessage>>("projects", projectId, "runs", runId, "logs");
-  // const attemptLogs = logs && attempt.executionId !== null && filter(logs, { executionId: attempt.executionId });
-  const attemptLogs: models.LogMessage[] = [];
+  const [logs, _] = useTopic<models.LogMessage[]>(
+    "projects",
+    projectId,
+    "environments",
+    environmentName,
+    "runs",
+    runId,
+    "logs"
+  );
+  const attemptLogs = logs && logs.filter((l) => l[0] == executionId);
   return (
     <Fragment>
       <div className="p-4">
@@ -173,21 +182,19 @@ function Attempt({
         <h3 className="uppercase text-sm font-bold text-slate-400">Logs</h3>
         {attemptLogs === undefined ? (
           <Loading />
-        ) : Object.keys(attemptLogs).length == 0 ? (
+        ) : attemptLogs.length == 0 ? (
           <p>
             <em>None</em>
           </p>
         ) : (
           <ol>
-            {sortBy(Object.values(attemptLogs), "createdAt").map(
-              (message, index) => (
-                <LogMessageItem
-                  key={index}
-                  message={message}
-                  startTime={scheduledAt}
-                />
-              )
-            )}
+            {sortBy(attemptLogs, (l) => l[1]).map((message, index) => (
+              <LogMessageItem
+                key={index}
+                message={message}
+                startTime={scheduledAt}
+              />
+            ))}
           </ol>
         )}
       </div>
@@ -438,6 +445,7 @@ export default function StepDetail({
         <Attempt
           key={attempt.sequence}
           attempt={attempt}
+          executionId={executionId}
           runId={runId}
           run={run}
           projectId={projectId}

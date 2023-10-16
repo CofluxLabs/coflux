@@ -1,7 +1,7 @@
 defmodule Coflux.Orchestration.Server do
   use GenServer, restart: :transient
 
-  alias Coflux.Store
+  alias Coflux.Orchestration.Store
   alias Coflux.MapUtils
 
   @abandon_timeout_ms 5_000
@@ -482,6 +482,16 @@ defmodule Coflux.Orchestration.Server do
         {:ok, ref, state} = add_listener(state, {:run, run_id}, pid)
         {:reply, {:ok, {run_created_at}, parent, steps, ref}, state}
     end
+  end
+
+  def handle_call({:lookup_runs, execution_ids}, _from, state) do
+    result =
+      Map.new(execution_ids, fn execution_id ->
+        {:ok, {external_id}} = Store.get_external_run_id_for_execution(state.db, execution_id)
+        {execution_id, external_id}
+      end)
+
+    {:reply, result, state}
   end
 
   def handle_cast({:unsubscribe, ref}, state) do

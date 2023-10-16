@@ -60,35 +60,6 @@ class Client:
         if self._session:
             await self._session.register_module(module_name, targets)
 
-    async def schedule(
-        self,
-        repository: str,
-        target: str,
-        arguments: t.Tuple[t.Any, ...],
-        execution_id: str,
-        *,
-        cache: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
-        cache_namespace: str | None = None,
-        retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    ) -> str:
-        return self._session.schedule(
-            execution_id,
-            repository,
-            target,
-            arguments,
-            cache,
-            cache_namespace,
-            retries,
-        )
-
-    async def log_message(
-        self, execution_id: str, level: session.LogLevel, message: str
-    ) -> None:
-        await self._session.log_message(execution_id, level, message)
-
-    async def get_result(self, execution_id: str, from_execution_id: str) -> t.Any:
-        return self._session.get_result(execution_id, from_execution_id)
-
 
 async def _run(client: Client, modules: list[types.ModuleType | str]) -> None:
     for module in modules:

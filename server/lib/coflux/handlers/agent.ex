@@ -1,5 +1,5 @@
 defmodule Coflux.Handlers.Agent do
-  alias Coflux.Orchestration
+  alias Coflux.{Orchestration, Logging}
 
   def init(req, _opts) do
     qs = :cowboy_req.parse_qs(req)
@@ -143,10 +143,21 @@ defmodule Coflux.Handlers.Agent do
             {[], state}
         end
 
-      "log_message" ->
-        # TODO
-        # [execution_id, level, log_message] = message["params"]
-        # Project.log_message(state.project_id, execution_id, level, log_message)
+      "log_messages" ->
+        messages =
+          Enum.map(message["params"], fn [execution_id, timestamp, level, message] ->
+            {execution_id, timestamp, parse_level(level), message}
+          end)
+
+        execution_ids = Enum.map(messages, fn {execution_id, _, _, _} -> execution_id end)
+        run_ids = Orchestration.lookup_runs(state.project_id, state.environment, execution_ids)
+
+        messages
+        |> Enum.group_by(fn {execution_id, _, _, _} -> Map.fetch!(run_ids, execution_id) end)
+        |> Enum.each(fn {run_id, messages} ->
+          Logging.write(state.project_id, state.environment, run_id, messages)
+        end)
+
         {[], state}
     end
   end
@@ -246,6 +257,17 @@ defmodule Coflux.Handlers.Agent do
       {:error, error, _details} -> ["error", error]
       :abandoned -> ["abandoned"]
       :cancelled -> ["cancelled"]
+    end
+  end
+
+  def parse_level(level) do
+    case level do
+      0 -> :stdout
+      1 -> :stderr
+      2 -> :debug
+      3 -> :info
+      4 -> :warning
+      5 -> :error
     end
   end
 end

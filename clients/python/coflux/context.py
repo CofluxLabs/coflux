@@ -55,23 +55,23 @@ def get_result(target_execution_id: str) -> future.Future[t.Any]:
 
 def log_debug(message: str) -> None:
     execution_id, session, loop = _get()
-    task = session.log_message(execution_id, 0, message)
+    task = session.log_message(execution_id, 2, message)
     asyncio.run_coroutine_threadsafe(task, loop).result()
 
 
 def log_info(message: str) -> None:
     execution_id, session, loop = _get()
-    task = session.log_message(execution_id, 1, message)
+    task = session.log_message(execution_id, 3, message)
     asyncio.run_coroutine_threadsafe(task, loop).result()
 
 
 def log_warning(message: str) -> None:
     execution_id, session, loop = _get()
-    task = session.log_message(execution_id, 2, message)
+    task = session.log_message(execution_id, 4, message)
     asyncio.run_coroutine_threadsafe(task, loop).result()
 
 
 def log_error(message: str) -> None:
     execution_id, session, loop = _get()
-    task = session.log_message(execution_id, 3, message)
+    task = session.log_message(execution_id, 5, message)
     asyncio.run_coroutine_threadsafe(task, loop).result()

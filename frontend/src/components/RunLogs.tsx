@@ -7,17 +7,10 @@ import * as models from "../models";
 import { buildUrl } from "../utils";
 import LogMessage from "./LogMessage";
 
-const LOG_LEVELS = {
-  0: ["Debug", "text-gray-400"],
-  1: ["Info", "text-blue-400"],
-  2: ["Warning", "text-yellow-500"],
-  3: ["Error", "text-red-600"],
-};
-
 type Props = {
   run: models.Run;
   runId: string;
-  logs: Record<string, models.LogMessage>;
+  logs: models.LogMessage[];
   projectId: string;
   environmentName: string | null | undefined;
   activeStepId: string | null;
@@ -36,27 +29,26 @@ export default function RunLogs({
   const startTime = DateTime.fromMillis(run.createdAt);
   return (
     <div className="p-4">
-      {Object.keys(logs).length == 0 ? (
+      {logs.length == 0 ? (
         <p>
           <em>None</em>
         </p>
       ) : (
         <table className="w-full">
           <tbody>
-            {sortBy(Object.values(logs), "createdAt").map((message, index) => {
-              const [name, className] = LOG_LEVELS[message.level];
+            {sortBy(logs, (l) => l[1]).map((message, index) => {
               const stepId = Object.keys(run.steps).find(
-                (id) => message.executionId in run.steps[id].executions
+                (id) => message[0] in run.steps[id].executions
               );
               const step = stepId && run.steps[stepId];
               const attempt =
-                stepId && run.steps[stepId].executions[message.executionId];
+                stepId && run.steps[stepId].executions[message[0]];
               const isActive =
                 stepId &&
                 stepId == activeStepId &&
                 attempt &&
                 attempt.sequence == activeAttemptNumber;
-              const createdAt = DateTime.fromMillis(message.createdAt);
+              const createdAt = DateTime.fromMillis(message[1]);
               return (
                 <tr key={index}>
                   <td className="text-sm w-0">
@@ -65,7 +57,7 @@ export default function RunLogs({
                         DateTime.DATETIME_SHORT_WITH_SECONDS
                       )}
                     >
-                      +{createdAt.diff(startTime).toMillis()}ms
+                      +{Math.floor(createdAt.diff(startTime).toMillis())}ms
                     </span>
                   </td>
                   <td className="w-0">

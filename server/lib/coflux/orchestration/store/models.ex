@@ -1,4 +1,4 @@
-defmodule Coflux.Store.Models do
+defmodule Coflux.Orchestration.Store.Models do
   defmodule Step do
     defstruct [
       :id,

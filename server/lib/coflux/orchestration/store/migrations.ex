@@ -1,4 +1,4 @@
-defmodule Coflux.Store.Migrations do
+defmodule Coflux.Orchestration.Store.Migrations do
   alias Exqlite.Sqlite3
 
   @otp_app Mix.Project.config()[:app]
