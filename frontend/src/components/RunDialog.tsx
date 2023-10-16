@@ -1,4 +1,4 @@
-import { ChangeEvent, Fragment, useCallback, useState } from "react";
+import { ChangeEvent, FormEvent, Fragment, useCallback, useState } from "react";
 import { Dialog, Transition } from "@headlessui/react";
 import classNames from "classnames";
 
@@ -58,9 +58,13 @@ export default function RunDialog({
       setValues((vs) => ({ ...vs, [name]: value })),
     []
   );
-  const handleRunClick = useCallback(() => {
-    onRun(parameters.map((p) => ["json", values[p.name] || p.default]));
-  }, [parameters, values, onRun]);
+  const handleSubmit = useCallback(
+    (ev: FormEvent) => {
+      ev.preventDefault();
+      onRun(parameters.map((p) => ["json", values[p.name] || p.default]));
+    },
+    [parameters, values, onRun]
+  );
   return (
     <Transition appear show={open} as={Fragment}>
       <Dialog className="fixed inset-0 z-10 overflow-y-auto" onClose={onClose}>
@@ -90,7 +94,10 @@ export default function RunDialog({
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
+            <form
+              className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg"
+              onSubmit={handleSubmit}
+            >
               <Dialog.Title className="text-xl font-medium leading-6 text-gray-900">
                 Run task
               </Dialog.Title>
@@ -111,7 +118,7 @@ export default function RunDialog({
               )}
               <div className="mt-4">
                 <button
-                  type="button"
+                  type="submit"
                   className={classNames(
                     "px-4 py-2 rounded text-white font-bold  mr-2",
                     starting
@@ -119,7 +126,6 @@ export default function RunDialog({
                       : "bg-slate-400 hover:bg-slate-500"
                   )}
                   disabled={starting}
-                  onClick={handleRunClick}
                 >
                   Run
                 </button>
@@ -131,7 +137,7 @@ export default function RunDialog({
                   Cancel
                 </button>
               </div>
-            </div>
+            </form>
           </Transition.Child>
         </div>
       </Dialog>
