@@ -11,7 +11,7 @@ defmodule Coflux.Topics.Agents do
 
     agents =
       Map.new(agents, fn {session_id, targets} ->
-        {session_id, build_targets(targets)}
+        {Integer.to_string(session_id), build_targets(targets)}
       end)
 
     {:ok, Topic.new(agents, %{ref: ref})}
