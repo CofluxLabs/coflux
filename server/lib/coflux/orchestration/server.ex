@@ -453,13 +453,18 @@ defmodule Coflux.Orchestration.Server do
                                          _session_id, assigned_at} ->
                    {:ok, dependencies} = Store.get_execution_dependencies(state.db, execution_id)
 
-                   {result, completed_at} =
+                   {result, retry_id, completed_at} =
                      case Store.get_execution_result(state.db, execution_id) do
-                       {:ok, {result, _retry_id, completed_at}} ->
-                         {result, completed_at}
+                       {:ok, {result, retry_id, completed_at}} ->
+                         {result, retry_id, completed_at}
 
                        {:ok, nil} ->
-                         {nil, nil}
+                         {nil, nil, nil}
+                     end
+
+                   retry =
+                     if retry_id do
+                       resolve_retry(state.db, retry_id)
                      end
 
                    {:ok, children} = Store.get_runs_by_parent(state.db, execution_id)
@@ -473,7 +478,8 @@ defmodule Coflux.Orchestration.Server do
                       dependencies:
                         Enum.map(dependencies, fn {dependency_id} -> dependency_id end),
                       result: result,
-                      children: children
+                      children: children,
+                      retry: retry
                     }}
                  end)
              }}
@@ -546,20 +552,53 @@ defmodule Coflux.Orchestration.Server do
 
     now = System.os_time(:millisecond)
 
-    {executions_due, executions_future} =
-      Enum.split_with(executions, fn {_, _, _, execute_after} ->
-        is_nil(execute_after) || execute_after <= now
+    {executions_due, executions_future, executions_duplicated, _} =
+      executions
+      |> Enum.reverse()
+      |> Enum.reduce(
+        {[], [], [], %{}},
+        fn execution, {due, future, duplicated, duplications} ->
+          # TODO: ignore de-duplication for sensor executions?
+          {execution_id, _, run_id, repository, target, duplication_key, _, execute_after} =
+            execution
+
+          duplication_key = duplication_key && {repository, target, duplication_key}
+          duplication_id = duplication_key && Map.get(duplications, duplication_key)
+
+          if duplication_id do
+            {due, future, [{execution_id, duplication_id, run_id} | duplicated], duplications}
+          else
+            duplications =
+              if duplication_key do
+                Map.put(duplications, duplication_key, execution_id)
+              else
+                duplications
+              end
+
+            if is_nil(execute_after) || execute_after <= now do
+              {[execution | due], future, duplicated, duplications}
+            else
+              {due, [execution | future], duplicated, duplications}
+            end
+          end
+        end
+      )
+
+    state =
+      executions_duplicated
+      |> Enum.reverse()
+      |> Enum.reduce(state, fn {execution_id, duplication_id, run_id}, state ->
+        record_and_notify_result(state, execution_id, :duplicated, run_id, duplication_id)
       end)
 
-    # TODO: order by priority/execute_after
+    # TODO: order by priority?
     state =
-      Enum.reduce(
-        executions_due,
+      executions_due
+      |> Enum.reverse()
+      |> Enum.reduce(
         state,
         fn
-          {execution_id, step_id, nil, _}, state ->
-            {:ok, {run_id, repository, target}} = Store.get_step(state.db, step_id)
-
+          {execution_id, step_id, run_id, repository, target, _, nil, _}, state ->
             case assign_execution(state, execution_id, repository, target, fn ->
                    Store.get_step_arguments(state.db, step_id)
                  end) do
@@ -577,7 +616,7 @@ defmodule Coflux.Orchestration.Server do
                 state
             end
 
-          {execution_id, nil, sensor_activation_id, _}, state ->
+          {execution_id, nil, _, _, _, sensor_activation_id, _}, state ->
             {:ok, {repository, target, deactivated_at}} =
               Store.get_sensor_activation_by_id(state.db, sensor_activation_id)
 
@@ -611,14 +650,12 @@ defmodule Coflux.Orchestration.Server do
         end
       )
 
-    state =
-      if Enum.any?(executions_future) do
-        next_execute_after =
-          executions_future
-          |> Enum.map(fn {_, _, _, execute_after} -> execute_after end)
-          |> Enum.max()
+    next_execution = List.last(executions_future)
 
-        delay_ms = next_execute_after - System.os_time(:millisecond)
+    state =
+      if next_execution do
+        next_execute_after = elem(next_execution, 7)
+        delay_ms = trunc(next_execute_after) - System.os_time(:millisecond)
         timer = Process.send_after(self(), :execute, delay_ms)
         Map.put(state, :execute_timer, timer)
       else
@@ -681,6 +718,37 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
+  defp resolve_retry(db, retry_id) do
+    {:ok, {external_run_id, external_step_id, step_sequence, _, _}} =
+      Store.get_run_by_execution(db, retry_id)
+
+    %{
+      run_id: external_run_id,
+      step_id: external_step_id,
+      sequence: step_sequence
+    }
+  end
+
+  defp record_and_notify_result(state, execution_id, result, run_id, retry_id) do
+    case Store.record_result(state.db, execution_id, result, retry_id) do
+      {:ok, created_at} ->
+        state = notify_waiting(state, execution_id)
+
+        retry =
+          if retry_id do
+            resolve_retry(state.db, retry_id)
+          end
+
+        notify_listeners(
+          state,
+          {:run, run_id},
+          {:result, execution_id, result, retry, created_at}
+        )
+
+        state
+    end
+  end
+
   defp record_result(state, execution_id, result) do
     state = Map.update!(state, :running, &Map.delete(&1, execution_id))
 
@@ -711,18 +779,8 @@ defmodule Coflux.Orchestration.Server do
             {nil, state}
           end
 
-        case Store.record_result(state.db, execution_id, result, retry_id) do
-          {:ok, created_at} ->
-            state = notify_waiting(state, execution_id)
-
-            notify_listeners(
-              state,
-              {:run, step.run_id},
-              {:result, execution_id, 0, result, created_at}
-            )
-
-            {:ok, state}
-        end
+        state = record_and_notify_result(state, execution_id, result, step.run_id, retry_id)
+        {:ok, state}
 
       sensor_activation_id ->
         case Store.record_result(state.db, execution_id, result) do

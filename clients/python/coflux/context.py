@@ -1,6 +1,7 @@
 import asyncio
 import contextvars
 import typing as t
+import datetime as dt
 
 from . import future, session
 
@@ -36,10 +37,26 @@ def schedule(
     cache: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
     cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
+    deduplicate: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
+    execute_after: dt.datetime | None = None,
+    delay: int | float | dt.timedelta = 0
 ) -> str:
     execution_id, session, loop = _get()
+    if delay:
+        delay = (
+            dt.timedelta(seconds=delay) if isinstance(delay, (int, float)) else delay
+        )
+        execute_after = (execute_after or dt.datetime.now()) + delay
     task = session.schedule(
-        repository, target, args, execution_id, cache, cache_namespace, retries
+        repository,
+        target,
+        args,
+        execution_id,
+        cache,
+        cache_namespace,
+        retries,
+        deduplicate,
+        execute_after,
     )
     return asyncio.run_coroutine_threadsafe(task, loop).result()
 

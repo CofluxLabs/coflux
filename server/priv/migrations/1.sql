@@ -62,6 +62,7 @@ CREATE TABLE steps (
   target TEXT NOT NULL,
   priority INTEGER NOT NULL, -- TODO: move to executions?
   cache_key TEXT,
+  deduplicate_key TEXT,
   retry_count INTEGER NOT NULL,
   retry_delay_min INTEGER NOT NULL,
   retry_delay_max INTEGER NOT NULL,
@@ -136,7 +137,7 @@ CREATE TABLE results (
   type INTEGER NOT NULL,
   format TEXT,
   value BLOB,
-  retry_id INTEGER,
+  retry_id INTEGER, -- TODO: rename to support de-duplication? successor_id? defer_id?
   -- TODO: metadata? (for serialising errors)
   created_at INTEGER NOT NULL,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,

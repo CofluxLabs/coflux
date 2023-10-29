@@ -54,7 +54,9 @@ defmodule Coflux.Handlers.Agent do
           target,
           arguments,
           parent_id,
+          execute_after,
           cache_key,
+          deduplicate_key,
           retry_count,
           retry_delay_min,
           retry_delay_max
@@ -72,7 +74,9 @@ defmodule Coflux.Handlers.Agent do
                cache_key: cache_key,
                retry_count: retry_count,
                retry_delay_min: retry_delay_min,
-               retry_delay_max: retry_delay_max
+               retry_delay_max: retry_delay_max,
+               deduplicate_key: deduplicate_key,
+               execute_after: execute_after
              ) do
           {:ok, _run_id, _step_id, execution_id} ->
             {[result_message(message["id"], execution_id)], state}
@@ -257,6 +261,7 @@ defmodule Coflux.Handlers.Agent do
       {:error, error, _details} -> ["error", error]
       :abandoned -> ["abandoned"]
       :cancelled -> ["cancelled"]
+      :duplicated -> ["duplicated"]
     end
   end
 

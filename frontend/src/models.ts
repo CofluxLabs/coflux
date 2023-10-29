@@ -49,9 +49,8 @@ export type Result =
       format: string;
       key: string;
     }
-  | {
-      type: "abandoned";
-    };
+  | { type: "abandoned" }
+  | { type: "duplicated" };
 
 export type Argument =
   | {
@@ -77,6 +76,7 @@ export type Execution = {
   dependencies: string[];
   result: Result;
   children: Record<string, Target>;
+  retry: { runId: string; stepId: string; sequence: number } | null;
 };
 
 export type Step = {

@@ -86,7 +86,9 @@ function classNameForResult(
   isCached: boolean
 ) {
   if (isCached) {
-    return "border-slate-300 bg-slate-50";
+    return "border-slate-200 bg-slate-50";
+  } else if (result?.type == "duplicated") {
+    return "border-slate-200 bg-slate-50";
   } else if (!result) {
     return "border-blue-400 bg-blue-100";
   } else if (result.type == "error") {

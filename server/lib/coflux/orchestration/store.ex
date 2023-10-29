@@ -126,6 +126,7 @@ defmodule Coflux.Orchestration.Store do
     parent_id = Keyword.get(opts, :parent_id)
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
+    deduplicate_key = Keyword.get(opts, :deduplicate_key)
     retry_count = Keyword.get(opts, :retry_count, 0)
     retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
     retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
@@ -143,6 +144,7 @@ defmodule Coflux.Orchestration.Store do
           target,
           priority,
           nil,
+          deduplicate_key,
           retry_count,
           retry_delay_min,
           retry_delay_max,
@@ -212,6 +214,7 @@ defmodule Coflux.Orchestration.Store do
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
     cache_key = Keyword.get(opts, :cache_key)
+    deduplicate_key = Keyword.get(opts, :deduplicate_key)
     retry_count = Keyword.get(opts, :retry_count, 0)
     retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
     retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
@@ -236,6 +239,7 @@ defmodule Coflux.Orchestration.Store do
           target,
           priority,
           unless(cached_execution_id, do: cache_key),
+          deduplicate_key,
           retry_count,
           retry_delay_min,
           retry_delay_max,
@@ -407,13 +411,23 @@ defmodule Coflux.Orchestration.Store do
     query(
       db,
       """
-      SELECT e.id, ste.step_id, sne.sensor_activation_id, e.execute_after
+      SELECT
+        e.id,
+        s.id,
+        s.run_id,
+        s.repository,
+        s.target,
+        s.deduplicate_key,
+        sne.sensor_activation_id,
+        e.execute_after
       FROM executions AS e
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN step_executions AS ste ON ste.execution_id = e.id
+      LEFT JOIN steps AS s ON s.id = ste.step_id
       LEFT JOIN sensor_executions AS sne ON sne.execution_id = e.id
       LEFT JOIN results AS r ON r.execution_id = e.id
       WHERE a.created_at IS NULL AND r.created_at IS NULL
+      ORDER BY e.execute_after, e.created_at
       """
     )
   end
@@ -715,18 +729,6 @@ defmodule Coflux.Orchestration.Store do
     )
   end
 
-  def get_step(db, step_id) do
-    query_one(
-      db,
-      """
-      SELECT run_id, repository, target
-      FROM steps
-      WHERE id = ?1
-      """,
-      {step_id}
-    )
-  end
-
   def get_step_executions(db, step_id) do
     query(
       db,
@@ -822,6 +824,7 @@ defmodule Coflux.Orchestration.Store do
          target,
          priority,
          cache_key,
+         deduplicate_key,
          retry_count,
          retry_delay_min,
          retry_delay_max,
@@ -839,6 +842,7 @@ defmodule Coflux.Orchestration.Store do
                target: target,
                priority: priority,
                cache_key: cache_key,
+               deduplicate_key: deduplicate_key,
                retry_count: retry_count,
                retry_delay_min: retry_delay_min,
                retry_delay_max: retry_delay_max,
@@ -951,6 +955,7 @@ defmodule Coflux.Orchestration.Store do
       {:blob, format, hash} -> {3, format, hash}
       :abandoned -> {4, nil, nil}
       :cancelled -> {5, nil, nil}
+      :duplicated -> {6, nil, nil}
     end
   end
 
@@ -962,6 +967,7 @@ defmodule Coflux.Orchestration.Store do
       3 -> {:blob, format, value}
       4 -> :abandoned
       5 -> :cancelled
+      6 -> :duplicated
     end
   end
 

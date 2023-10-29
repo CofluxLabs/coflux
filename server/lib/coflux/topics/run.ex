@@ -61,7 +61,8 @@ defmodule Coflux.Topics.Run do
           completedAt: nil,
           dependencies: [],
           children: %{},
-          result: nil
+          result: nil,
+          retry: nil
         }
       )
 
@@ -119,7 +120,7 @@ defmodule Coflux.Topics.Run do
     {:ok, topic}
   end
 
-  def handle_info({:topic, _ref, {:result, execution_id, 0, result, created_at}}, topic) do
+  def handle_info({:topic, _ref, {:result, execution_id, result, retry, created_at}}, topic) do
     step_id = find_step_id_for_execution(topic, execution_id)
 
     topic =
@@ -144,6 +145,16 @@ defmodule Coflux.Topics.Run do
           :completedAt
         ],
         created_at
+      )
+      |> Topic.set(
+        [
+          :steps,
+          step_id,
+          :executions,
+          Integer.to_string(execution_id),
+          :retry
+        ],
+        build_retry(retry)
       )
 
     {:ok, topic}
@@ -203,7 +214,8 @@ defmodule Coflux.Topics.Run do
                        Map.new(execution.children, fn {external_run_id, repository, target} ->
                          {external_run_id, %{repository: repository, target: target}}
                        end),
-                     result: build_result(execution.result)
+                     result: build_result(execution.result),
+                     retry: build_retry(execution.retry)
                    }
                  }
                end)
@@ -245,8 +257,21 @@ defmodule Coflux.Topics.Run do
       :cancelled ->
         %{type: "cancelled"}
 
+      :duplicated ->
+        %{type: "duplicated"}
+
       nil ->
         nil
+    end
+  end
+
+  defp build_retry(retry) do
+    if retry do
+      %{
+        runId: retry.run_id,
+        stepId: retry.step_id,
+        sequence: retry.sequence
+      }
     end
   end
 

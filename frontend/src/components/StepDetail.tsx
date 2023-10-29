@@ -134,7 +134,9 @@ function Attempt({
     ? DateTime.fromMillis(attempt.assignedAt)
     : null;
   const completedAt =
-    attempt.completedAt && DateTime.fromMillis(attempt.completedAt);
+    attempt.completedAt !== null
+      ? DateTime.fromMillis(attempt.completedAt)
+      : null;
   const [logs, _] = useTopic<models.LogMessage[]>(
     "projects",
     projectId,
@@ -166,38 +168,69 @@ function Attempt({
           <p>Executing...</p>
         ) : null}
       </div>
-      {attempt.result && (
+      {attempt.result.type == "duplicated" ? (
         <div className="p-4">
-          <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
-          <Result
-            result={attempt.result}
-            runId={runId}
-            run={run}
-            projectId={projectId}
-            environmentName={environmentName}
-          />
+          <h3 className="uppercase text-sm font-bold text-slate-400">
+            De-duplication
+          </h3>
+          <p>After: {completedAt!.diff(scheduledAt).toMillis()}ms</p>
+          {attempt.retry && (
+            <Fragment>
+              <Link
+                to={buildUrl(
+                  `/projects/${projectId}/runs/${attempt.retry.runId}`,
+                  {
+                    environment: environmentName,
+                    step: attempt.retry.stepId,
+                    attempt: attempt.retry.sequence,
+                  }
+                )}
+                className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
+              >
+                Successor
+              </Link>
+              {attempt.retry.runId != runId ? `(${attempt.retry.runId})` : null}
+            </Fragment>
+          )}
         </div>
-      )}
-      <div className="p-4">
-        <h3 className="uppercase text-sm font-bold text-slate-400">Logs</h3>
-        {attemptLogs === undefined ? (
-          <Loading />
-        ) : attemptLogs.length == 0 ? (
-          <p>
-            <em>None</em>
-          </p>
-        ) : (
-          <ol>
-            {sortBy(attemptLogs, (l) => l[1]).map((message, index) => (
-              <LogMessageItem
-                key={index}
-                message={message}
-                startTime={scheduledAt}
+      ) : attempt.result.type != "abandoned" ? (
+        <Fragment>
+          {attempt.result && (
+            <div className="p-4">
+              <h3 className="uppercase text-sm font-bold text-slate-400">
+                Result
+              </h3>
+              <Result
+                result={attempt.result}
+                runId={runId}
+                run={run}
+                projectId={projectId}
+                environmentName={environmentName}
               />
-            ))}
-          </ol>
-        )}
-      </div>
+            </div>
+          )}
+          <div className="p-4">
+            <h3 className="uppercase text-sm font-bold text-slate-400">Logs</h3>
+            {attemptLogs === undefined ? (
+              <Loading />
+            ) : attemptLogs.length == 0 ? (
+              <p>
+                <em>None</em>
+              </p>
+            ) : (
+              <ol>
+                {sortBy(attemptLogs, (l) => l[1]).map((message, index) => (
+                  <LogMessageItem
+                    key={index}
+                    message={message}
+                    startTime={scheduledAt}
+                  />
+                ))}
+              </ol>
+            )}
+          </div>
+        </Fragment>
+      ) : null}
     </Fragment>
   );
 }
@@ -392,7 +425,9 @@ export default function StepDetail({
               {(attempt) => (
                 <div className="flex items-center">
                   <span className="mr-1 flex-1">#{attempt.sequence}</span>
-                  {!attempt.assignedAt ? (
+                  {attempt.result?.type == "duplicated" ? (
+                    <Badge intent="none" label="Duplicated" />
+                  ) : !attempt.assignedAt ? (
                     <Badge intent="info" label="Assigning" />
                   ) : !attempt.result ? (
                     <Badge intent="info" label="Running" />
