@@ -616,7 +616,7 @@ defmodule Coflux.Orchestration.Server do
                 state
             end
 
-          {execution_id, nil, _, _, _, sensor_activation_id, _}, state ->
+          {execution_id, nil, _, _, _, _, sensor_activation_id, _}, state ->
             {:ok, {repository, target, deactivated_at}} =
               Store.get_sensor_activation_by_id(state.db, sensor_activation_id)
 
