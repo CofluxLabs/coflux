@@ -110,7 +110,7 @@ export default function ProjectLayout() {
   const environmentName = searchParams.get("environment") || undefined;
   const [activeTarget, setActiveTarget] = useState<Target>();
   return (
-    <SocketProvider url="ws://localhost:7070/topics">
+    <SocketProvider url={`ws://${window.location.host}/topics`}>
       <div className="flex flex-col min-h-screen max-h-screen">
         <Header projectId={projectId} />
         <div className="flex-auto flex overflow-hidden">

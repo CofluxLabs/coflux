@@ -5,6 +5,8 @@
     ".elixir_ls/": true,
     "_build/": true,
     ".direnv/": true,
-    "blobs/": true
-  }
+    "blobs/": true,
+    "node_modules": true
+  },
+  "editor.defaultFormatter": "esbenp.prettier-vscode"
 }

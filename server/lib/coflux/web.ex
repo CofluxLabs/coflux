@@ -1,4 +1,6 @@
-defmodule Coflux.Api do
+defmodule Coflux.Web do
+  @otp_app Mix.Project.config()[:app]
+
   alias Coflux.Handlers
   alias Topical.Adapters.Cowboy.WebsocketHandler, as: TopicalHandler
 
@@ -13,10 +15,11 @@ defmodule Coflux.Api do
     :cowboy_router.compile([
       {:_,
        [
-         {"/", Handlers.Root, []},
          {"/blobs/:key", Handlers.Blobs, []},
          {"/agent", Handlers.Agent, []},
-         {"/topics", TopicalHandler, registry: Coflux.TopicalRegistry}
+         {"/topics", TopicalHandler, registry: Coflux.TopicalRegistry},
+         {"/static/[...]", :cowboy_static, {:priv_dir, @otp_app, "static"}},
+         {"/[...]", Handlers.Root, []}
        ]}
     ])
   end

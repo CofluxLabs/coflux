@@ -34,3 +34,9 @@ coflux-*.tar
 
 # Direnv
 /.direnv/
+
+# Node modules
+/node_modules/
+
+# Frontend bundle
+/priv/static/app.*

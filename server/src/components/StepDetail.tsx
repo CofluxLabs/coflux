@@ -56,7 +56,7 @@ function Result({
     case "blob":
       return (
         <a
-          href={`http://localhost:7070/blobs/${result.key}`}
+          href={`/blobs/${result.key}`}
           className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
         >
           Blob
@@ -335,7 +335,7 @@ function Argument({
       return (
         <span>
           <a
-            href={`http://localhost:7070/blobs/${argument.key}`}
+            href={`/blobs/${argument.key}`}
             className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-1 py-0.5 my-0.5 inline-block"
           >
             Blob
