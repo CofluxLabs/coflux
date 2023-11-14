@@ -4,6 +4,11 @@ import { sortBy } from "lodash";
 import classNames from "classnames";
 import { Link, useLocation } from "react-router-dom";
 import { DateTime } from "luxon";
+import {
+  IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
+} from "@tabler/icons-react";
 
 import * as models from "../models";
 import { buildUrl } from "../utils";
@@ -72,7 +77,7 @@ function Options({
                       {runId}
                     </h3>
                     <p
-                      className="text-xs text-gray-500"
+                      className="text-xs text-gray-500 whitespace-nowrap"
                       title={createdAt.toLocaleString(
                         DateTime.DATETIME_SHORT_WITH_SECONDS
                       )}
@@ -85,6 +90,70 @@ function Options({
             );
           })}
       </Fragment>
+    );
+  }
+}
+
+function getNextPrevious(
+  ids: string[],
+  currentId: string,
+  direction: "next" | "previous"
+) {
+  const index = ids.indexOf(currentId);
+  if (index >= 0) {
+    if (direction == "next") {
+      if (index < ids.length - 1) {
+        return ids[index + 1];
+      }
+    } else {
+      if (index > 0) {
+        return ids[index - 1];
+      }
+    }
+  }
+
+  return null;
+}
+
+type NextPreviousButtonProps = {
+  projectId: string | null;
+  environmentName: string | undefined;
+  runs: Record<string, Pick<models.Run, "createdAt">>;
+  currentRunId: string;
+  direction: "next" | "previous";
+};
+
+function NextPreviousButton({
+  projectId,
+  environmentName,
+  runs,
+  currentRunId,
+  direction,
+}: NextPreviousButtonProps) {
+  const location = useLocation();
+  // TODO: move to parent?
+  const runIds = sortBy(Object.keys(runs), (runId) => runs[runId].createdAt);
+  const runId = getNextPrevious(runIds, currentRunId, direction);
+  const Icon = direction == "next" ? IconChevronRight : IconChevronLeft;
+  const className = classNames(
+    "p-1 bg-white border border-gray-300 flex items-center",
+    runId ? "hover:bg-gray-100" : "text-gray-300",
+    direction == "next" ? "rounded-r -ml-px" : "rounded-l -mr-px"
+  );
+  if (runId) {
+    return (
+      <Link
+        to={getRunUrl(projectId!, runId, environmentName, location.pathname)}
+        className={className}
+      >
+        <Icon size={20} />
+      </Link>
+    );
+  } else {
+    return (
+      <span className={className}>
+        <Icon size={20} />
+      </span>
     );
   }
 }
@@ -105,35 +174,53 @@ export default function RunSelector({
   className,
 }: Props) {
   return (
-    <Menu>
-      {({ open }) => (
-        <div className={classNames(className, "relative")}>
-          <Menu.Button className="relative w-full p-1 pl-2 bg-white border border-gray-300 hover:border-gray-600 rounded">
-            <span className="font-mono">{runId}</span>
-            <span className="text-slate-400 text-xs mx-2">▼</span>
-          </Menu.Button>
-          <Transition
-            as={Fragment}
-            leave="transition ease-in duration-100"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <Menu.Items
-              className="absolute z-10 py-1 mt-1 overflow-y-scroll text-base bg-white rounded shadow-lg max-h-60"
-              static={true}
+    <div className={classNames(className, "flex shadow-sm")}>
+      <NextPreviousButton
+        direction="previous"
+        projectId={projectId}
+        environmentName={environmentName}
+        runs={runs}
+        currentRunId={runId}
+      />
+      <Menu>
+        {({ open }) => (
+          <div className="relative">
+            <Menu.Button className="flex items-center w-full py-1 px-2 gap-1 bg-white border border-gray-300 hover:bg-gray-50">
+              <span className="font-mono">{runId}</span>
+              <span className="text-slate-400">
+                <IconChevronDown size={20} />
+              </span>
+            </Menu.Button>
+            <Transition
+              as={Fragment}
+              leave="transition ease-in duration-100"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
             >
-              {open && (
-                <Options
-                  runs={runs}
-                  projectId={projectId}
-                  environmentName={environmentName}
-                  selectedRunId={runId}
-                />
-              )}
-            </Menu.Items>
-          </Transition>
-        </div>
-      )}
-    </Menu>
+              <Menu.Items
+                className="absolute z-10 overflow-y-scroll text-base bg-white rounded shadow-lg max-h-60"
+                static={true}
+              >
+                {open && (
+                  <Options
+                    runs={runs}
+                    projectId={projectId}
+                    environmentName={environmentName}
+                    selectedRunId={runId}
+                  />
+                )}
+              </Menu.Items>
+            </Transition>
+          </div>
+        )}
+      </Menu>
+      <NextPreviousButton
+        direction="next"
+        projectId={projectId}
+        environmentName={environmentName}
+        runs={runs}
+        currentRunId={runId}
+      />
+    </div>
   );
 }

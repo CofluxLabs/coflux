@@ -26,9 +26,8 @@ export default function TaskHeader({
         <div className="flex items-center">
           {runId && (
             <Fragment>
-              <span className="ml-2">→</span>
               <RunSelector
-                className="ml-2"
+                className="ml-3"
                 runs={task.runs}
                 projectId={projectId}
                 runId={runId}
