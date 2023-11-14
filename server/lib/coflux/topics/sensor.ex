@@ -32,8 +32,8 @@ defmodule Coflux.Topics.Sensor do
           end)
 
         runs =
-          Map.new(runs, fn {run_id, created_at, repository, target} ->
-            {run_id,
+          Map.new(runs, fn {external_run_id, created_at, repository, target} ->
+            {external_run_id,
              %{
                createdAt: created_at,
                repository: repository,
@@ -73,12 +73,12 @@ defmodule Coflux.Topics.Sensor do
     {:ok, topic}
   end
 
-  def handle_info({:topic, _ref, {:run, run_id, created_at, repository, target}}, topic) do
+  def handle_info({:topic, _ref, {:run, external_run_id, created_at, repository, target}}, topic) do
     # TODO: limit number of runs
     topic =
       Topic.set(
         topic,
-        [:runs, run_id],
+        [:runs, external_run_id],
         %{createdAt: created_at, repository: repository, target: target}
       )
 

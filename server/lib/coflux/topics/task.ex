@@ -27,8 +27,8 @@ defmodule Coflux.Topics.Task do
          ) do
       {:ok, target, runs, _ref} ->
         runs =
-          Map.new(runs, fn {run_id, created_at} ->
-            {run_id, %{id: run_id, createdAt: created_at}}
+          Map.new(runs, fn {external_run_id, created_at} ->
+            {external_run_id, %{id: external_run_id, createdAt: created_at}}
           end)
 
         task = %{
@@ -54,12 +54,12 @@ defmodule Coflux.Topics.Task do
     end
   end
 
-  def handle_info({:topic, _ref, {:run, run_id, created_at}}, topic) do
+  def handle_info({:topic, _ref, {:run, external_run_id, created_at}}, topic) do
     topic =
       Topic.set(
         topic,
-        [:runs, run_id],
-        %{id: run_id, createdAt: created_at}
+        [:runs, external_run_id],
+        %{id: external_run_id, createdAt: created_at}
       )
 
     {:ok, topic}

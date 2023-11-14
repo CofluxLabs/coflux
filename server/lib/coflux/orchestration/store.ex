@@ -648,7 +648,7 @@ defmodule Coflux.Orchestration.Store do
     query(
       db,
       """
-      SELECT r.id, r.created_at, s.repository, s.target
+      SELECT r.external_id, r.created_at, s.repository, s.target
       FROM runs AS r
       INNER JOIN executions AS e ON e.id = r.parent_id
       INNER JOIN sensor_executions AS se ON se.execution_id = e.id
