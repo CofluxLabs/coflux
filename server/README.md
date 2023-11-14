@@ -5,5 +5,5 @@
 Requires Nix.
 
 $ nix-shell
-$ npm run build
+$ npm run build -- --watch
 $ iex -S mix
