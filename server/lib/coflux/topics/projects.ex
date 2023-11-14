@@ -1,5 +1,5 @@
 defmodule Coflux.Topics.Projects do
-  use Topical.Topic, route: "projects"
+  use Topical.Topic, route: ["projects"]
 
   def init(_params) do
     schedule_tick()

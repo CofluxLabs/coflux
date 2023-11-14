@@ -1,6 +1,6 @@
 defmodule Coflux.Topics.Logs do
   use Topical.Topic,
-    route: "projects/:project_id/environments/:environment_name/runs/:run_id/logs"
+    route: ["projects", :project_id, "environments", :environment_name, "runs", :run_id, "logs"]
 
   alias Coflux.Logging
 

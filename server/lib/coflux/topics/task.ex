@@ -1,6 +1,14 @@
 defmodule Coflux.Topics.Task do
   use Topical.Topic,
-    route: "projects/:project_id/environments/:environment_name/tasks/:repository/:target"
+    route: [
+      "projects",
+      :project_id,
+      "environments",
+      :environment_name,
+      "tasks",
+      :repository,
+      :target
+    ]
 
   alias Coflux.Orchestration
 

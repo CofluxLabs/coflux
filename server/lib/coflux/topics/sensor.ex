@@ -1,6 +1,14 @@
 defmodule Coflux.Topics.Sensor do
   use Topical.Topic,
-    route: "projects/:project_id/environments/:environment_name/sensors/:repository/:target"
+    route: [
+      "projects",
+      :project_id,
+      "environments",
+      :environment_name,
+      "sensors",
+      :repository,
+      :target
+    ]
 
   alias Coflux.Orchestration
 

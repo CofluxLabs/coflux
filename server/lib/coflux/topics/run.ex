@@ -1,5 +1,6 @@
 defmodule Coflux.Topics.Run do
-  use Topical.Topic, route: "projects/:project_id/environments/:environment_name/runs/:run_id"
+  use Topical.Topic,
+    route: ["projects", :project_id, "environments", :environment_name, "runs", :run_id]
 
   alias Coflux.Orchestration
 
