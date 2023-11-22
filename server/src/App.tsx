@@ -1,6 +1,11 @@
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 
-import { ExternalLayout, ProjectLayout, RunLayout } from "./layouts";
+import {
+  ExternalLayout,
+  InternalLayout,
+  ProjectLayout,
+  RunLayout,
+} from "./layouts";
 import {
   HomePage,
   ProjectPage,
@@ -22,9 +27,9 @@ export default function App() {
       <Routes>
         <Route element={<ExternalLayout />}>
           <Route index={true} element={<HomePage />} />
-          <Route path="projects" element={<ProjectsPage />} />
         </Route>
-        <Route path="projects">
+        <Route path="projects" element={<InternalLayout />}>
+          <Route index={true} element={<ProjectsPage />} />
           <Route path=":project" element={<ProjectLayout />}>
             <Route index={true} element={<ProjectPage />} />
             <Route path="tasks/:repository/:target" element={<TaskPage />} />
