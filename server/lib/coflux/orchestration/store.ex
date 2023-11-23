@@ -830,7 +830,7 @@ defmodule Coflux.Orchestration.Store do
          retry_delay_max,
          now
        ) do
-    case generate_external_id(db, :runs, 3, "S") do
+    case generate_external_id(db, :steps, 3, "S") do
       {:ok, external_id} ->
         case insert_one(
                db,
