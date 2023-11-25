@@ -12,16 +12,24 @@ export default function GraphPage() {
   const activeAttemptNumber = searchParams.has("attempt")
     ? parseInt(searchParams.get("attempt")!)
     : undefined;
-  return (
-    <RunGraph
-      run={run}
-      width={width}
-      height={height}
-      runId={runId!}
-      projectId={projectId!}
-      environmentName={environmentName}
-      activeStepId={activeStepId}
-      activeAttemptNumber={activeAttemptNumber}
-    />
-  );
+  if (Object.keys(run.steps).length < 1000) {
+    return (
+      <RunGraph
+        run={run}
+        width={width}
+        height={height}
+        runId={runId!}
+        projectId={projectId!}
+        environmentName={environmentName}
+        activeStepId={activeStepId}
+        activeAttemptNumber={activeAttemptNumber}
+      />
+    );
+  } else {
+    return (
+      <div className="p-4">
+        <p className="italic text-gray-500">Run graph is too big to render.</p>
+      </div>
+    );
+  }
 }
