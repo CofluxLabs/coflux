@@ -1,7 +1,7 @@
-import { ChangeEvent, FormEvent, Fragment, useCallback, useState } from "react";
-import { Dialog, Transition } from "@headlessui/react";
+import { ChangeEvent, FormEvent, useCallback, useState } from "react";
 import classNames from "classnames";
 
+import Dialog from "./common/Dialog";
 import * as models from "../models";
 
 type ParameterProps = {
@@ -66,81 +66,43 @@ export default function RunDialog({
     [parameters, values, onRun]
   );
   return (
-    <Transition appear show={open} as={Fragment}>
-      <Dialog className="fixed inset-0 z-10 overflow-y-auto" onClose={onClose}>
-        <div className="min-h-screen px-4 text-center">
-          <Transition.Child
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
+    <Dialog title="Run task" open={open} onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        {parameters.length > 0 && (
+          <div className="mt-4">
+            <h3 className="font-bold uppercase text-gray-400 text-sm">
+              Arguments
+            </h3>
+            {parameters.map((parameter) => (
+              <Parameter
+                key={parameter.name}
+                parameter={parameter}
+                value={values[parameter.name]}
+                onChange={handleValueChange}
+              />
+            ))}
+          </div>
+        )}
+        <div className="mt-4">
+          <button
+            type="submit"
+            className={classNames(
+              "px-4 py-2 rounded text-white font-bold  mr-2",
+              starting ? "bg-slate-200" : "bg-slate-400 hover:bg-slate-500"
+            )}
+            disabled={starting}
           >
-            <Dialog.Overlay className="fixed inset-0 bg-black opacity-30" />
-          </Transition.Child>
-          <span
-            className="inline-block h-screen align-middle"
-            aria-hidden="true"
+            Run
+          </button>
+          <button
+            type="button"
+            className="px-4 py-2 border border-slate-300 rounded text-slate-400 font-bold hover:bg-slate-100"
+            onClick={onClose}
           >
-            &#8203;
-          </span>
-          <Transition.Child
-            as={Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0 scale-95"
-            enterTo="opacity-100 scale-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100 scale-100"
-            leaveTo="opacity-0 scale-95"
-          >
-            <form
-              className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg"
-              onSubmit={handleSubmit}
-            >
-              <Dialog.Title className="text-xl font-medium leading-6 text-gray-900">
-                Run task
-              </Dialog.Title>
-              {parameters.length > 0 && (
-                <div className="mt-4">
-                  <h3 className="font-bold uppercase text-gray-400 text-sm">
-                    Arguments
-                  </h3>
-                  {parameters.map((parameter) => (
-                    <Parameter
-                      key={parameter.name}
-                      parameter={parameter}
-                      value={values[parameter.name]}
-                      onChange={handleValueChange}
-                    />
-                  ))}
-                </div>
-              )}
-              <div className="mt-4">
-                <button
-                  type="submit"
-                  className={classNames(
-                    "px-4 py-2 rounded text-white font-bold  mr-2",
-                    starting
-                      ? "bg-slate-200"
-                      : "bg-slate-400 hover:bg-slate-500"
-                  )}
-                  disabled={starting}
-                >
-                  Run
-                </button>
-                <button
-                  type="button"
-                  className="px-4 py-2 border border-slate-400 rounded text-slate-400 font-bold hover:bg-slate-100"
-                  onClick={onClose}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </Transition.Child>
+            Cancel
+          </button>
         </div>
-      </Dialog>
-    </Transition>
+      </form>
+    </Dialog>
   );
 }
