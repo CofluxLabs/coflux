@@ -74,7 +74,7 @@ export type Execution = {
   assignedAt: number | null;
   completedAt: number | null;
   dependencies: string[];
-  result: Result;
+  result: Result | null;
   children: Record<string, Target>;
   retry: { runId: string; stepId: string; sequence: number } | null;
 };

@@ -168,7 +168,7 @@ function Attempt({
           <p>Executing...</p>
         ) : null}
       </div>
-      {attempt.result.type == "duplicated" ? (
+      {attempt.result?.type == "duplicated" ? (
         <div className="p-4">
           <h3 className="uppercase text-sm font-bold text-slate-400">
             De-duplication
@@ -193,7 +193,7 @@ function Attempt({
             </Fragment>
           )}
         </div>
-      ) : attempt.result.type != "abandoned" ? (
+      ) : attempt.result?.type != "abandoned" ? (
         <Fragment>
           {attempt.result && (
             <div className="p-4">
