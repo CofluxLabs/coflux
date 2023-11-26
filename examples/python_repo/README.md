@@ -8,10 +8,10 @@ Requires Nix.
 $ nix-shell
 ```
 
-Run with CLI (with auto-reload):
+Run agent with CLI (with auto-reload):
 
 ```bash
-$ poetry run python -m coflux example.repo --reload
+$ poetry run python -m coflux run example.repo --reload
 ```
 
 Or using Python library:

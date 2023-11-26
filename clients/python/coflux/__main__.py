@@ -8,7 +8,12 @@ def _callback(_changes: set[tuple[watchfiles.Change, str]]) -> None:
     print("Change detected. Reloading...")
 
 
-@click.command()
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
 @click.option(
     "-p",
     "--project",
@@ -42,7 +47,7 @@ def _callback(_changes: set[tuple[watchfiles.Change, str]]) -> None:
     help="Enable auto-reload when code changes",
 )
 @click.argument("module_name", nargs=-1)
-def cli(
+def run(
     project: str,
     environment: str,
     version: str,
@@ -51,6 +56,9 @@ def cli(
     reload: bool,
     module_name: tuple[str],
 ) -> None:
+    """
+    Runs the agent.
+    """
     args = (*module_name,)
     kwargs = {
         "project": project,
