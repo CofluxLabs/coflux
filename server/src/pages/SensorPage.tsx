@@ -8,6 +8,7 @@ import { buildUrl } from "../utils";
 import TargetHeader from "../components/TargetHeader";
 import { DateTime } from "luxon";
 import { useSetActiveTarget } from "../layouts/ProjectLayout";
+import Button from "../components/common/Button";
 
 type HeaderProps = {
   sensor: models.Sensor;
@@ -20,19 +21,9 @@ function Header({ sensor, onDeactivate, onActivate }: HeaderProps) {
     <TargetHeader repository={sensor.repository} target={sensor.target}>
       <div className="flex-1 flex justify-end">
         {sensor.activated ? (
-          <button
-            className="px-2 py-1 m-2 border border-slate-400 text-slate-500 rounded font-bold hover:bg-slate-100"
-            onClick={onDeactivate}
-          >
-            Deactivate
-          </button>
+          <Button onClick={onDeactivate}>Deactivate</Button>
         ) : (
-          <button
-            className="px-2 py-1 m-2 border border-slate-400 text-slate-500 rounded font-bold hover:bg-slate-100"
-            onClick={onActivate}
-          >
-            Activate
-          </button>
+          <Button onClick={onActivate}>Activate</Button>
         )}
       </div>
     </TargetHeader>

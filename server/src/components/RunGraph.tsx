@@ -148,7 +148,7 @@ function StepNode({
             attempt?.result || undefined,
             !!step.cachedExecutionId
           ),
-          isActive && "ring ring-offset-2",
+          isActive && "ring ring-offset-2 ring-cyan-400",
           { "font-bold": !step.parentId }
         )}
       >

@@ -18,6 +18,7 @@
     "use-resize-observer": "^9.1.0"
   },
   "devDependencies": {
+    "@tailwindcss/forms": "^0.5.7",
     "@types/dagre": "^0.7.47",
     "@types/lodash": "^4.14.191",
     "@types/luxon": "^3.2.0",

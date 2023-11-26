@@ -150,7 +150,7 @@ export default function RunTimeline({
                 })}
                 className={classNames(
                   "inline-block px-1 max-w-full truncate",
-                  isActive && "rounded ring ring-offset-2"
+                  isActive && "rounded ring ring-offset-2 ring-cyan-400"
                 )}
               >
                 <span className="font-mono">{step.target}</span>{" "}

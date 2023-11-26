@@ -18,7 +18,7 @@ export default function ProjectSelector({ projectIds }: Props) {
       <select
         value={activeProjectId || ""}
         onChange={handleChange}
-        className="text-slate-300 bg-transparent rounded px-1 w-full"
+        className="bg-transparent border-none text-white"
       >
         <option value="">Select...</option>
         {projectIds.map((projectId) => (

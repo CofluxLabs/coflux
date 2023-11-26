@@ -74,7 +74,7 @@ export default function RunLogs({
                           )}
                           className={classNames(
                             "inline-block whitespace-nowrap px-1 truncate max-w-full rounded",
-                            isActive && "ring ring-offset-2"
+                            isActive && "ring ring-offset-2 ring-cyan-400"
                           )}
                         >
                           <span className="font-mono">{step.target}</span>{" "}

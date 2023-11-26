@@ -1,8 +1,11 @@
-import { ChangeEvent, FormEvent, useCallback, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 import classNames from "classnames";
 
 import Dialog from "./common/Dialog";
 import * as models from "../models";
+import Field from "./common/Field";
+import Input from "./common/Input";
+import Button from "./common/Button";
 
 type ParameterProps = {
   parameter: models.Parameter;
@@ -12,28 +15,21 @@ type ParameterProps = {
 
 function Parameter({ parameter, value, onChange }: ParameterProps) {
   const handleChange = useCallback(
-    (ev: ChangeEvent<HTMLInputElement>) =>
-      onChange(parameter.name, ev.target.value),
+    (value: string) => onChange(parameter.name, value),
     [parameter, onChange]
   );
   return (
-    <div className="py-1">
-      <label className="w-32">
-        <span className="font-mono font-bold">{parameter.name}</span>
-        {parameter.annotation && (
-          <span className="text-gray-500 ml-1 text-sm">
-            ({parameter.annotation})
-          </span>
-        )}
-      </label>
-      <input
-        type="text"
-        className="border border-gray-400 rounded px-2 py-1 w-full"
+    <Field
+      label={<span className="font-mono font-bold">{parameter.name}</span>}
+      hint={parameter.annotation}
+    >
+      <Input
+        value={value ?? ""}
         placeholder={parameter.default}
-        value={value == undefined ? "" : value}
         onChange={handleChange}
+        className="w-full"
       />
-    </div>
+    </Field>
   );
 }
 
@@ -83,24 +79,13 @@ export default function RunDialog({
             ))}
           </div>
         )}
-        <div className="mt-4">
-          <button
-            type="submit"
-            className={classNames(
-              "px-4 py-2 rounded text-white font-bold  mr-2",
-              starting ? "bg-slate-200" : "bg-slate-400 hover:bg-slate-500"
-            )}
-            disabled={starting}
-          >
+        <div className="mt-4 flex gap-2">
+          <Button type="submit" disabled={starting}>
             Run
-          </button>
-          <button
-            type="button"
-            className="px-4 py-2 border border-slate-300 rounded text-slate-400 font-bold hover:bg-slate-100"
-            onClick={onClose}
-          >
+          </Button>
+          <Button type="button" outline={true} onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </div>
       </form>
     </Dialog>

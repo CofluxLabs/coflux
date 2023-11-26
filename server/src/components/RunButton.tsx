@@ -2,6 +2,7 @@ import { Fragment, useCallback, useState } from "react";
 
 import * as models from "../models";
 import RunDialog from "./RunDialog";
+import Button from "./common/Button";
 
 type Props = {
   task: models.Task;
@@ -24,12 +25,7 @@ export default function RunButton({ task, onRun }: Props) {
   const handleRunDialogClose = useCallback(() => setRunDialogOpen(false), []);
   return (
     <Fragment>
-      <button
-        className="px-2 py-1 m-2 border border-slate-400 text-slate-500 rounded font-bold hover:bg-slate-100"
-        onClick={handleRunClick}
-      >
-        Run...
-      </button>
+      <Button onClick={handleRunClick}>Run...</Button>
       <RunDialog
         parameters={task.parameters}
         open={runDialogOpen}

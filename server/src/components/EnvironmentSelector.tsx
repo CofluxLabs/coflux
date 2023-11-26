@@ -31,7 +31,7 @@ export default function EnvironmentSelector({
         <select
           value={selected || ""}
           onChange={handleChange}
-          className="text-slate-300 bg-transparent rounded px-1 w-full"
+          className="bg-transparent border-none text-white"
         >
           <option value="">Select...</option>
           {environments.map((environmentName) => (

@@ -14,14 +14,14 @@ type HeaderProps = {
 function Header({ projectId }: HeaderProps) {
   const [projects] = useTopic<Record<string, models.Project>>("projects");
   return (
-    <div className="flex bg-slate-700 px-3 items-center h-14 flex-none">
+    <div className="flex bg-cyan-600 px-3 items-center h-14 flex-none">
       <Logo />
       {projects && (
         <Fragment>
           <ProjectSelector projectIds={Object.keys(projects)} />
           {projectId && projects[projectId] && (
             <Fragment>
-              <span className="text-slate-500 px-1">/</span>
+              <span className="text-white px-1">/</span>
               <EnvironmentSelector
                 environments={projects[projectId].environments}
               />
@@ -34,7 +34,7 @@ function Header({ projectId }: HeaderProps) {
   );
 }
 
-export default function ProjectLayout() {
+export default function InternalLayout() {
   const { project: projectId } = useParams();
   return (
     <SocketProvider url={`ws://${window.location.host}/topics`}>

@@ -17,6 +17,7 @@ import Badge from "./Badge";
 import { buildUrl } from "../utils";
 import Loading from "./Loading";
 import LogMessage from "./LogMessage";
+import Button from "./common/Button";
 
 function findExecution(
   run: models.Run,
@@ -443,16 +444,9 @@ export default function StepDetail({
                 </div>
               )}
             </AttemptSelector>
-            <button
-              className={classNames(
-                "ml-1 rounded border border-slate-300 text-slate-600 bg-white hover:border-slate-600 px-2 py-1 text-sm",
-                rerunning && "text-slate-500"
-              )}
-              disabled={rerunning}
-              onClick={handleRetryClick}
-            >
+            <Button disabled={rerunning} onClick={handleRetryClick}>
               Retry
-            </button>
+            </Button>
           </div>
         )}
       </div>
