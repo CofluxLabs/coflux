@@ -8,5 +8,5 @@
   "jason": {:hex, :jason, "1.4.1", "af1504e35f629ddcdd6addb3513c3853991f694921b1b9368b0bd32beb9f1b63", [:mix], [{:decimal, "~> 1.0 or ~> 2.0", [hex: :decimal, repo: "hexpm", optional: true]}], "hexpm", "fbb01ecdfd565b56261302f7e1fcc27c4fb8f32d56eab74db621fc154604a7a1"},
   "ranch": {:hex, :ranch, "1.8.0", "8c7a100a139fd57f17327b6413e4167ac559fbc04ca7448e9be9057311597a1d", [:make, :rebar3], [], "hexpm", "49fbcfd3682fab1f5d109351b61257676da1a2fdbe295904176d5e521a2ddfe5"},
   "telemetry": {:hex, :telemetry, "1.2.1", "68fdfe8d8f05a8428483a97d7aab2f268aaff24b49e0f599faa091f1d4e7f61c", [:rebar3], [], "hexpm", "dad9ce9d8effc621708f99eac538ef1cbe05d6a874dd741de2e689c47feafed5"},
-  "topical": {:hex, :topical, "0.1.11", "2118e42533eac048db946b469c410589056052bb03829c1c010cd8e87d879ed3", [:mix], [{:cowboy, "~> 2.9", [hex: :cowboy, repo: "hexpm", optional: true]}, {:jason, "~> 1.4", [hex: :jason, repo: "hexpm", optional: false]}], "hexpm", "053fca8296dc8f57e08be1e0dfe4d87f3657062ce13e6b7a5623042c564830dc"},
+  "topical": {:hex, :topical, "0.1.12", "58788adcbecb2463b6aa3d55b19ce173dfc64293e8a110bd29a31164dde28ef2", [:mix], [{:cowboy, "~> 2.9", [hex: :cowboy, repo: "hexpm", optional: true]}, {:jason, "~> 1.4", [hex: :jason, repo: "hexpm", optional: false]}], "hexpm", "26a829a1d2e1e78f3a10cec1b440d7e954596c392c940fd5340fe5278264613e"},
 }
