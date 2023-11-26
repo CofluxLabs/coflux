@@ -4,8 +4,13 @@ import types
 import typing as t
 import importlib
 import random
+import yaml
+import functools
+import pathlib
 
 from . import session, annotations
+
+T = t.TypeVar("T")
 
 
 def _load_module(module: types.ModuleType) -> dict:
@@ -69,6 +74,29 @@ async def _run(client: Client, modules: list[types.ModuleType | str]) -> None:
     await client.run()
 
 
+@functools.cache
+def _load_config() -> dict[str, t.Any]:
+    path = pathlib.Path("coflux.yaml")
+    if not path.exists():
+        return {}
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+
+def _get_option(
+    argument: T | None,
+    env_name: str,
+    config_name: str | None = None,
+    default: T = None,
+) -> T:
+    return (
+        argument
+        or os.environ.get(env_name)
+        or (config_name and _load_config().get(config_name))
+        or default
+    )
+
+
 def init(
     *modules: types.ModuleType | str,
     project: str | None = None,
@@ -77,11 +105,17 @@ def init(
     host: str | None = None,
     concurrency: int | None = None,
 ) -> None:
-    project = project or os.environ.get("COFLUX_PROJECT")
-    environment = environment or os.environ.get("COFLUX_ENVIRONMENT") or "development"
-    version = version or os.environ.get("COFLUX_VERSION")
-    host = host or os.environ.get("COFLUX_HOST") or "localhost:7777"
-    concurrency = concurrency or os.environ.get("COFLUX_CONCURRENCY")
+    if not modules:
+        raise Exception("No module(s) specified.")
+    project = _get_option(project, "COFLUX_PROJECT", "project")
+    if not project:
+        raise Exception("No project ID specified.")
+    environment = _get_option(
+        environment, "COFLUX_ENVIRONMENT", "environment", "development"
+    )
+    version = _get_option(version, "COFLUX_VERSION")
+    host = _get_option(host, "COFLUX_HOST", "host", "localhost:7777")
+    concurrency = _get_option(concurrency, "COFLUX_CONCURRENCY", "concurrency")
     try:
         client = Client(project, environment, version, host, concurrency)
         asyncio.run(_run(client, modules))
