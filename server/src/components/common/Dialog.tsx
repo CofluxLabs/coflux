@@ -44,7 +44,7 @@ export default function Dialog({ title, open, children, onClose }: Props) {
           >
             <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
               {title && (
-                <HeadlessDialog.Title className="text-xl font-medium leading-6 text-gray-900">
+                <HeadlessDialog.Title className="text-2xl font-bold text-gray-900 mb-4">
                   {title}
                 </HeadlessDialog.Title>
               )}

@@ -14,7 +14,7 @@ export default function Field({ label, hint, children }: Props) {
     <Context.Provider value={id}>
       <div className="my-3">
         <div className="mb-1">
-          <label className="font-medium" htmlFor={id}>
+          <label className="font-bold" htmlFor={id}>
             {label}
             {hint && (
               <span className="text-slate-400 ml-1 text-sm">({hint})</span>
