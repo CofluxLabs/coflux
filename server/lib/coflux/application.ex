@@ -1,13 +1,14 @@
 defmodule Coflux.Application do
   use Application
 
-  alias Coflux.{Orchestration, Logging, Topics}
+  alias Coflux.{Projects, Orchestration, Logging, Topics}
 
   @impl true
   def start(_type, _args) do
     port = String.to_integer(System.get_env("PORT", "7777"))
 
     children = [
+      {Projects, name: Coflux.ProjectsServer},
       Orchestration.Supervisor,
       Logging.Supervisor,
       {Topical, name: Coflux.TopicalRegistry, topics: topics()},

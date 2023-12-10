@@ -1,37 +1,35 @@
 defmodule Coflux.Topics.Projects do
-  alias Coflux.Orchestration
+  alias Coflux.{Projects, Orchestration}
+
   use Topical.Topic, route: ["projects"]
 
+  @server Coflux.ProjectsServer
+
   def init(_params) do
-    schedule_tick()
-    {:ok, Topic.new(find_projects())}
+    {ref, projects} = Projects.subscribe(@server, self())
+    {:ok, Topic.new(projects, %{ref: ref})}
   end
 
-  def handle_info(:tick, topic) do
-    # TODO: update with changes
-    topic = Topic.set(topic, [], find_projects())
-    schedule_tick()
-    {:ok, topic}
+  def handle_execute("create_project", {project_name, environment_name}, topic, _context) do
+    case Projects.create_project(@server, project_name, environment_name) do
+      {:ok, project_id} ->
+        # TODO: update topic?
+        case Orchestration.Supervisor.get_server(project_id, environment_name) do
+          {:ok, _server} ->
+            {:ok, project_id, topic}
+        end
+    end
   end
 
-  def handle_execute("create_project", {project_id, environment}, topic, _context) do
-    # TODO: validate
-    case Orchestration.Supervisor.get_server(project_id, environment) do
-      {:ok, _server} ->
-        topic = Topic.set(topic, [], find_projects())
+  def handle_execute("add_environment", {project_id, environment_name}, topic, _context) do
+    case Projects.add_environment(@server, project_id, environment_name) do
+      :ok ->
         {:ok, nil, topic}
     end
   end
 
-  defp find_projects() do
-    "data"
-    |> File.ls!()
-    |> Map.new(fn project_id ->
-      {project_id, %{"environments" => File.ls!("data/#{project_id}")}}
-    end)
-  end
-
-  defp schedule_tick() do
-    Process.send_after(self(), :tick, 10_000)
+  def handle_info({:project, _ref, project_id, project}, topic) do
+    topic = Topic.set(topic, [project_id], project)
+    {:ok, topic}
   end
 end

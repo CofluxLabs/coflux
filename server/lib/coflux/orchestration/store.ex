@@ -1,8 +1,7 @@
 defmodule Coflux.Orchestration.Store do
   alias Exqlite.Sqlite3
   alias Coflux.Orchestration.Store.{Migrations, Models}
-
-  @id_chars String.codepoints("bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ23456789")
+  alias Coflux.Utils
 
   def open(project_id, environment) do
     dir = "data/#{project_id}/#{environment}"
@@ -27,7 +26,7 @@ defmodule Coflux.Orchestration.Store do
   end
 
   defp generate_external_id(db, table, length, prefix \\ "") do
-    id = prefix <> Enum.map_join(0..length, fn _ -> Enum.random(@id_chars) end)
+    id = Utils.generate_id(length)
 
     case query(db, "SELECT id FROM #{table} WHERE external_id = ?1", {id}) do
       {:ok, []} -> {:ok, id}

@@ -1,11 +1,13 @@
 import { ChangeEvent, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import * as models from "../models";
+
 type Props = {
-  projectIds: string[];
+  projects: Record<string, models.Project>;
 };
 
-export default function ProjectSelector({ projectIds }: Props) {
+export default function ProjectSelector({ projects }: Props) {
   const { project: activeProjectId } = useParams();
   const navigate = useNavigate();
   const handleChange = useCallback(
@@ -21,9 +23,9 @@ export default function ProjectSelector({ projectIds }: Props) {
         className="bg-transparent border-none text-white"
       >
         <option value="">Select...</option>
-        {projectIds.map((projectId) => (
+        {Object.entries(projects).map(([projectId, project]) => (
           <option value={projectId} key={projectId}>
-            {projectId}
+            {project.name}
           </option>
         ))}
       </select>

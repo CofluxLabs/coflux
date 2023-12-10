@@ -87,7 +87,7 @@ type Props = {};
 export default function NewProjectDialog({}: Props) {
   const [_projects, { execute }] =
     useTopic<Record<string, models.Project>>("projects");
-  const [projectId, setProjectId] = useState(() => randomProjectName());
+  const [projectName, setProjectName] = useState(() => randomProjectName());
   const [environmentName, setEnvironmentName] = useState("development");
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
@@ -98,8 +98,8 @@ export default function NewProjectDialog({}: Props) {
     (ev: FormEvent) => {
       ev.preventDefault();
       setCreating(true);
-      execute("create_project", projectId, environmentName)
-        .then(() => {
+      execute("create_project", projectName, environmentName)
+        .then((projectId: string) => {
           navigate(`/projects/${projectId}?environment=${environmentName}`);
         })
         .catch(() => {
@@ -109,20 +109,20 @@ export default function NewProjectDialog({}: Props) {
           setCreating(false);
         });
     },
-    [execute, navigate, projectId, environmentName]
+    [execute, navigate, projectName, environmentName]
   );
   return (
     <Dialog title="New project" open={true} onClose={handleClose}>
       <form onSubmit={handleSubmit}>
-        <Field label="Project ID">
+        <Field label="Project name">
           <Input
             type="text"
-            value={projectId}
+            value={projectName}
             className="w-full"
-            onChange={setProjectId}
+            onChange={setProjectName}
           />
         </Field>
-        <Field label="Environment name">
+        <Field label="Initial environment name">
           <Input
             type="text"
             value={environmentName}

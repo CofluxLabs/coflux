@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import {
   Outlet,
+  useNavigate,
   useOutletContext,
   useParams,
   useSearchParams,
@@ -13,8 +14,10 @@ import {
   IconCircleCheck,
 } from "@tabler/icons-react";
 
+import * as models from "../models";
 import TargetsList from "../components/TargetsList";
 import { pluralise } from "../utils";
+import Loading from "../components/Loading";
 
 type Target = { repository: string; target: string };
 
@@ -76,28 +79,59 @@ type OutletContext = {
 export default function ProjectLayout() {
   const { project: projectId } = useParams();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const environmentName = searchParams.get("environment") || undefined;
   const [activeTarget, setActiveTarget] = useState<Target>();
-  return (
-    <div className="flex-auto flex overflow-hidden">
-      <div className="w-64 bg-slate-100 text-gray-100 border-r border-slate-200 flex-none flex flex-col">
-        <div className="flex-1 overflow-auto">
-          <TargetsList
+  const [projects] = useTopic<Record<string, models.Project>>("projects");
+  const [repositories] = useTopic<
+    Record<string, Record<string, models.Target>>
+  >("projects", projectId, "environments", environmentName, "repositories");
+  const [agents] = useTopic<Record<string, Record<string, string[]>>>(
+    "projects",
+    projectId,
+    "environments",
+    environmentName,
+    "agents"
+  );
+  const currentEnvironment = searchParams.get("environment") || undefined;
+  const defaultEnvironment =
+    projectId && projects && projects[projectId]?.environments[0];
+  useEffect(() => {
+    if (projectId && !currentEnvironment && defaultEnvironment) {
+      // TODO: retain current url?
+      navigate(`/projects/${projectId}?environment=${defaultEnvironment}`, {
+        replace: true,
+      });
+    }
+  }, [navigate, projectId, currentEnvironment, defaultEnvironment]);
+  if (!repositories) {
+    return <Loading />;
+  } else if (!Object.keys(repositories).length) {
+    return <div></div>;
+  } else {
+    return (
+      <div className="flex-auto flex overflow-hidden">
+        <div className="w-64 bg-slate-100 text-gray-100 border-r border-slate-200 flex-none flex flex-col">
+          <div className="flex-1 overflow-auto">
+            <TargetsList
+              projectId={projectId}
+              environmentName={environmentName}
+              activeTarget={activeTarget}
+              repositories={repositories}
+              agents={agents}
+            />
+          </div>
+          <ConnectionStatus
             projectId={projectId}
             environmentName={environmentName}
-            activeTarget={activeTarget}
           />
         </div>
-        <ConnectionStatus
-          projectId={projectId}
-          environmentName={environmentName}
-        />
+        <div className="flex-1 flex flex-col">
+          <Outlet context={{ setActiveTarget }} />
+        </div>
       </div>
-      <div className="flex-1 flex flex-col">
-        <Outlet context={{ setActiveTarget }} />
-      </div>
-    </div>
-  );
+    );
+  }
 }
 
 export function useSetActiveTarget(task: Target | undefined) {

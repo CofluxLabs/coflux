@@ -18,7 +18,7 @@ function Header({ projectId }: HeaderProps) {
       <Logo />
       {projects && (
         <Fragment>
-          <ProjectSelector projectIds={Object.keys(projects)} />
+          <ProjectSelector projects={projects} />
           {projectId && projects[projectId] && (
             <Fragment>
               <span className="text-white px-1">/</span>
