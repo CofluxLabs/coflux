@@ -4,11 +4,8 @@ import types
 import typing as t
 import importlib
 import random
-import yaml
-import functools
-import pathlib
 
-from . import session, annotations
+from . import session, annotations, config
 
 T = t.TypeVar("T")
 
@@ -74,15 +71,6 @@ async def _run(client: Client, modules: list[types.ModuleType | str]) -> None:
     await client.run()
 
 
-@functools.cache
-def _load_config() -> dict[str, t.Any]:
-    path = pathlib.Path("coflux.yaml")
-    if not path.exists():
-        return {}
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
-
-
 def _get_option(
     argument: T | None,
     env_name: str,
@@ -92,7 +80,7 @@ def _get_option(
     return (
         argument
         or os.environ.get(env_name)
-        or (config_name and _load_config().get(config_name))
+        or (config_name and config.load().get(config_name))
         or default
     )
 
