@@ -5,7 +5,7 @@ require("esbuild")
     entryPoints: ["src/main.ts"],
     outfile: "priv/static/app.js",
     bundle: true,
-    minify: true,
+    minify: process.argv.includes("--minify"),
     plugins: [
       postCssPlugin({
         postcss: {

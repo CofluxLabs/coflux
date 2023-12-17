@@ -6,7 +6,7 @@ RUN npm install
 
 COPY esbuild.js tailwind.config.js tsconfig.json ./
 COPY src src/
-RUN npm run build
+RUN npm run build -- --minify
 
 
 FROM elixir:1.14 as mix_build

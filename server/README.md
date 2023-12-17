@@ -4,6 +4,4 @@
 
 Requires Nix.
 
-$ nix-shell
-$ npm run build -- --watch
 $ iex -S mix
