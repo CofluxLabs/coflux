@@ -16,6 +16,9 @@ pyyaml = "^6.0.1"
 [tool.poetry.group.dev.dependencies]
 black = "^23.1.0"
 
+[tool.poetry.scripts]
+coflux = "coflux.__main__:cli"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
