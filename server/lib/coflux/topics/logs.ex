@@ -23,7 +23,7 @@ defmodule Coflux.Topics.Logs do
   def handle_info({:messages, _ref, messages}, topic) do
     topic =
       Enum.reduce(messages, topic, fn message, topic ->
-        Topic.insert(topic, [], encode_message(message))
+        Topic.insert(topic, [], [encode_message(message)])
       end)
 
     {:ok, topic}
