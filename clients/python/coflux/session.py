@@ -99,33 +99,6 @@ def _build_key(
     return hashlib.sha256(cache_key.encode()).hexdigest()
 
 
-def _resolve_argument(
-    argument: list,
-    session: "Session",
-    loop: asyncio.AbstractEventLoop,
-    from_execution_id: str,
-) -> t.Any:
-    match argument:
-        case ["raw", "json", value]:
-            return json.loads(value)
-        case ["blob", "json", key]:
-            task = session._get_blob(key)
-            content = asyncio.run_coroutine_threadsafe(task, loop).result()
-            return json.loads(content)
-        case ["blob", "pickle", key]:
-            task = session._get_blob(key)
-            content = asyncio.run_coroutine_threadsafe(task, loop).result()
-            return pickle.loads(content)
-        case ["reference", execution_id]:
-            return Future(
-                lambda: session.get_result(execution_id, from_execution_id),
-                argument,
-                loop,
-            )
-        case _:
-            raise Exception(f"unrecognised argument ({argument})")
-
-
 class Session:
     def __init__(
         self,
@@ -200,23 +173,52 @@ class Session:
         # TODO: include exception state
         await self._channel.notify("put_error", execution_id, str(exception)[:200], {})
 
+    async def _resolve_argument(
+        self,
+        argument: list,
+        loop: asyncio.AbstractEventLoop,
+        from_execution_id: str,
+    ) -> t.Any:
+        match argument:
+            case ["raw", "json", value]:
+                return json.loads(value)
+            case ["blob", "json", key]:
+                content = await self._get_blob(key)
+                return json.loads(content)
+            case ["blob", "pickle", key]:
+                content = await self._get_blob(key)
+                return pickle.loads(content)
+            case ["reference", execution_id]:
+                return Future(
+                    lambda: self.get_result(execution_id, from_execution_id),
+                    argument,
+                    loop,
+                )
+            case _:
+                raise Exception(f"unrecognised argument ({argument})")
+
+    async def _resolve_arguments(
+        self, arguments: list[list], loop: asyncio.AbstractEventLoop, execution_id: str
+    ) -> list[t.Any]:
+        return await asyncio.gather(
+            *(self._resolve_argument(a, loop, execution_id) for a in arguments)
+        )
+
     # TODO: consider thread safety
     def _execute_target(
         self,
         execution_id: str,
-        repository: str,
-        target_name: str,
+        target: t.Callable,
         arguments: list[list[t.Any]],
         loop: asyncio.AbstractEventLoop,
     ) -> None:
-        target = self._modules[repository][target_name][1]
-        # TODO: fetch blobs in parallel
-        arguments = [_resolve_argument(a, self, loop, execution_id) for a in arguments]
+        task = self._resolve_arguments(arguments, loop, execution_id)
+        resolved_arguments = asyncio.run_coroutine_threadsafe(task, loop).result()
         self._semaphore.acquire()
         self._set_execution_status(execution_id, ExecutionStatus.EXECUTING)
         token = context.set_execution(execution_id, self, loop)
         try:
-            value = target(*arguments)
+            value = target(*resolved_arguments)
         except Exception as e:
             traceback.print_exc()
             task = self._put_error(execution_id, e)
@@ -247,7 +249,8 @@ class Session:
         # TODO: check execution isn't already running?
         print(f"Handling execute '{target_name}' ({execution_id})...")
         loop = asyncio.get_running_loop()
-        args = (execution_id, repository, target_name, arguments, loop)
+        target = self._modules[repository][target_name][1]
+        args = (execution_id, target, arguments, loop)
         thread = threading.Thread(target=self._execute_target, args=args, daemon=True)
         self._executions[execution_id] = (thread, time.time(), ExecutionStatus.STARTING)
         thread.start()
