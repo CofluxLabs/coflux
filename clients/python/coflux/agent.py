@@ -15,7 +15,7 @@ def _load_module(module: types.ModuleType) -> dict:
     return dict(a._coflux_target for a in attrs if hasattr(a, annotations.TARGET_KEY))
 
 
-class Client:
+class Agent:
     def __init__(
         self,
         project_id: str,
@@ -63,12 +63,12 @@ class Client:
             await self._session.register_module(module_name, targets)
 
 
-async def _run(client: Client, modules: list[types.ModuleType | str]) -> None:
+async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
     for module in modules:
         if isinstance(module, str):
             module = importlib.import_module(module)
-        await client.register_module(module)
-    await client.run()
+        await agent.register_module(module)
+    await agent.run()
 
 
 def _get_option(
@@ -105,7 +105,7 @@ def init(
     host = _get_option(host, "COFLUX_HOST", "host", "localhost:7777")
     concurrency = _get_option(concurrency, "COFLUX_CONCURRENCY", "concurrency")
     try:
-        client = Client(project, environment, version, host, concurrency)
-        asyncio.run(_run(client, modules))
+        agent = Agent(project, environment, version, host, concurrency)
+        asyncio.run(_run(agent, modules))
     except KeyboardInterrupt:
         pass

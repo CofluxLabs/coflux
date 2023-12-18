@@ -2,7 +2,7 @@ import click
 import watchfiles
 from pathlib import Path
 
-from . import client, config
+from . import agent, config
 
 
 def _callback(_changes: set[tuple[watchfiles.Change, str]]) -> None:
@@ -147,13 +147,13 @@ def run(
     if reload:
         watchfiles.run_process(
             ".",
-            target=client.init,
+            target=agent.init,
             args=args,
             kwargs=kwargs,
             callback=_callback,
         )
     else:
-        client.init(*args, **kwargs)
+        agent.init(*args, **kwargs)
 
 
 cli()
