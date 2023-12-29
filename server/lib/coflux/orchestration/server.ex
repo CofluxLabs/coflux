@@ -588,7 +588,10 @@ defmodule Coflux.Orchestration.Server do
       executions_duplicated
       |> Enum.reverse()
       |> Enum.reduce(state, fn {execution_id, duplication_id, run_id}, state ->
-        record_and_notify_result(state, execution_id, :duplicated, run_id, duplication_id)
+        case record_and_notify_result(state, execution_id, :duplicated, run_id, duplication_id) do
+          {:ok, state} -> state
+          {:error, :already_recorded} -> state
+        end
       end)
 
     # TODO: order by priority?
@@ -745,7 +748,10 @@ defmodule Coflux.Orchestration.Server do
           {:result, execution_id, result, retry, created_at}
         )
 
-        state
+        {:ok, state}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -779,8 +785,10 @@ defmodule Coflux.Orchestration.Server do
             {nil, state}
           end
 
-        state = record_and_notify_result(state, execution_id, result, step.run_id, retry_id)
-        {:ok, state}
+        case record_and_notify_result(state, execution_id, result, step.run_id, retry_id) do
+          {:ok, state} -> {:ok, state}
+          {:error, :already_recorded} -> {:ok, state}
+        end
 
       sensor_activation_id ->
         case Store.record_result(state.db, execution_id, result) do

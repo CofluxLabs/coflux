@@ -16,13 +16,18 @@ defmodule Coflux.Orchestration.Store do
   end
 
   def start_session(db) do
-    case generate_external_id(db, :sessions, 30) do
-      {:ok, external_id} ->
-        case insert_one(db, :sessions, external_id: external_id, created_at: current_timestamp()) do
-          {:ok, session_id} ->
-            {:ok, session_id, external_id}
-        end
-    end
+    with_transaction(db, fn ->
+      case generate_external_id(db, :sessions, 30) do
+        {:ok, external_id} ->
+          case insert_one(db, :sessions,
+                 external_id: external_id,
+                 created_at: current_timestamp()
+               ) do
+            {:ok, session_id} ->
+              {:ok, session_id, external_id}
+          end
+      end
+    end)
   end
 
   defp generate_external_id(db, table, length, prefix \\ "") do
@@ -108,16 +113,18 @@ defmodule Coflux.Orchestration.Store do
   end
 
   def record_session_manifest(db, session_id, manifest_id) do
-    now = current_timestamp()
+    with_transaction(db, fn ->
+      now = current_timestamp()
 
-    {:ok, _} =
-      insert_one(db, :session_manifests,
-        session_id: session_id,
-        manifest_id: manifest_id,
-        created_at: now
-      )
+      {:ok, _} =
+        insert_one(db, :session_manifests,
+          session_id: session_id,
+          manifest_id: manifest_id,
+          created_at: now
+        )
 
-    :ok
+      :ok
+    end)
   end
 
   def start_run(db, repository, target, arguments, opts \\ []) do
@@ -284,31 +291,35 @@ defmodule Coflux.Orchestration.Store do
   end
 
   def assign_execution(db, execution_id, session_id) do
-    now = current_timestamp()
+    with_transaction(db, fn ->
+      now = current_timestamp()
 
-    {:ok, _} =
-      insert_one(
-        db,
-        :assignments,
-        execution_id: execution_id,
-        session_id: session_id,
-        created_at: now
-      )
+      {:ok, _} =
+        insert_one(
+          db,
+          :assignments,
+          execution_id: execution_id,
+          session_id: session_id,
+          created_at: now
+        )
 
-    {:ok, now}
+      {:ok, now}
+    end)
   end
 
   def record_dependency(db, execution_id, dependency_id) do
-    {:ok, _} =
-      insert_one(
-        db,
-        :dependencies,
-        execution_id: execution_id,
-        dependency_id: dependency_id,
-        created_at: current_timestamp()
-      )
+    with_transaction(db, fn ->
+      {:ok, _} =
+        insert_one(
+          db,
+          :dependencies,
+          execution_id: execution_id,
+          dependency_id: dependency_id,
+          created_at: current_timestamp()
+        )
 
-    :ok
+      :ok
+    end)
   end
 
   def record_hearbeats(db, executions) do
@@ -329,12 +340,17 @@ defmodule Coflux.Orchestration.Store do
   end
 
   def record_result(db, execution_id, result, retry_id \\ nil) do
-    now = current_timestamp()
+    with_transaction(db, fn ->
+      now = current_timestamp()
 
-    case insert_result(db, execution_id, result, retry_id, now) do
-      {:ok, _} ->
-        {:ok, now}
-    end
+      case insert_result(db, execution_id, result, retry_id, now) do
+        {:ok, _} ->
+          {:ok, now}
+
+        {:error, "UNIQUE constraint failed: " <> _field} ->
+          {:error, :already_recorded}
+      end
+    end)
   end
 
   def get_execution_result(db, execution_id) do
@@ -1014,15 +1030,48 @@ defmodule Coflux.Orchestration.Store do
 
   defp with_transaction(db, fun) do
     :ok = Sqlite3.execute(db, "BEGIN")
-    result = fun.()
-    :ok = Sqlite3.execute(db, "COMMIT")
-    result
+
+    try do
+      fun.()
+    rescue
+      e ->
+        :ok = Sqlite3.execute(db, "ROLLBACK")
+        reraise e, __STACKTRACE__
+    else
+      result ->
+        :ok = Sqlite3.execute(db, "COMMIT")
+        result
+    end
+  end
+
+  defp with_snapshot(db, fun) do
+    name = "s#{:erlang.unique_integer([:positive])}"
+    :ok = Sqlite3.execute(db, "SAVEPOINT #{name}")
+
+    try do
+      fun.()
+    rescue
+      e ->
+        :ok = Sqlite3.execute(db, "ROLLBACK TO #{name}")
+        reraise e, __STACKTRACE__
+    else
+      {:ok, result} ->
+        :ok = Sqlite3.execute(db, "RELEASE #{name}")
+        {:ok, result}
+
+      {:error, reason} ->
+        :ok = Sqlite3.execute(db, "ROLLBACK TO #{name}")
+        {:error, reason}
+    end
   end
 
   defp insert_one(db, table, values) do
     {fields, values} = Enum.unzip(values)
-    {:ok, [id]} = insert_many(db, table, List.to_tuple(fields), [List.to_tuple(values)])
-    {:ok, id}
+
+    case insert_many(db, table, List.to_tuple(fields), [List.to_tuple(values)]) do
+      {:ok, [id]} -> {:ok, id}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp insert_many(db, table, fields, values) do
@@ -1038,15 +1087,22 @@ defmodule Coflux.Orchestration.Store do
       sql = "INSERT INTO #{table} (#{fields}) VALUES (#{placeholders})"
 
       with_prepare(db, sql, fn statement ->
-        ids =
-          Enum.map(values, fn row ->
+        with_snapshot(db, fn ->
+          Enum.reduce_while(values, {:ok, []}, fn row, {:ok, ids} ->
             :ok = Sqlite3.bind(db, statement, Tuple.to_list(row))
-            :done = Sqlite3.step(db, statement)
-            {:ok, id} = Sqlite3.last_insert_rowid(db)
-            id
-          end)
 
-        {:ok, ids}
+            result = Sqlite3.step(db, statement)
+
+            case result do
+              :done ->
+                {:ok, id} = Sqlite3.last_insert_rowid(db)
+                {:cont, {:ok, ids ++ [id]}}
+
+              {:error, reason} ->
+                {:halt, {:error, reason}}
+            end
+          end)
+        end)
       end)
     else
       {:ok, []}
