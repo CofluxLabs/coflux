@@ -26,7 +26,7 @@ defmodule Coflux.Orchestration.Store do
   end
 
   defp generate_external_id(db, table, length, prefix \\ "") do
-    id = Utils.generate_id(length)
+    id = Utils.generate_id(length, prefix)
 
     case query(db, "SELECT id FROM #{table} WHERE external_id = ?1", {id}) do
       {:ok, []} -> {:ok, id}
