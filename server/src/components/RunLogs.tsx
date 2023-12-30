@@ -34,24 +34,25 @@ export default function RunLogs({
           <em>None</em>
         </p>
       ) : (
-        <table className="w-full border-separate border-spacing-x-2">
+        <table className="w-full">
           <tbody>
             {sortBy(logs, (l) => l[1]).map((message, index) => {
+              const [executionId, timestamp, level, content] = message;
               const stepId = Object.keys(run.steps).find(
-                (id) => message[0] in run.steps[id].executions
+                (id) => executionId in run.steps[id].executions
               );
               const step = stepId && run.steps[stepId];
               const attempt =
-                stepId && run.steps[stepId].executions[message[0]];
+                stepId && run.steps[stepId].executions[executionId];
               const isActive =
                 stepId &&
                 stepId == activeStepId &&
                 attempt &&
                 attempt.sequence == activeAttemptNumber;
-              const createdAt = DateTime.fromMillis(message[1]);
+              const createdAt = DateTime.fromMillis(timestamp);
               return (
                 <tr key={index}>
-                  <td className="text-sm w-0">
+                  <td className="text-sm w-0 align-top px-1">
                     <span
                       title={createdAt.toLocaleString(
                         DateTime.DATETIME_SHORT_WITH_SECONDS
@@ -60,33 +61,35 @@ export default function RunLogs({
                       +{Math.floor(createdAt.diff(startTime).toMillis())}ms
                     </span>
                   </td>
-                  <td className="w-0">
-                    <div className="w-40">
-                      {step && attempt && (
-                        <Link
-                          to={buildUrl(
-                            `/projects/${projectId}/runs/${runId}/logs`,
-                            {
-                              environment: environmentName,
-                              step: isActive ? undefined : stepId,
-                              attempt: isActive ? undefined : attempt.sequence,
-                            }
-                          )}
-                          className={classNames(
-                            "inline-block whitespace-nowrap truncate max-w-full rounded leading-none",
-                            isActive && "ring-2 ring-offset-1 ring-cyan-400"
-                          )}
-                        >
-                          <span className="font-mono">{step.target}</span>{" "}
-                          <span className="text-gray-500 text-sm">
-                            ({step.repository})
-                          </span>
-                        </Link>
-                      )}
-                    </div>
+                  <td className="w-0 align-top px-1">
+                    {step && attempt && (
+                      <Link
+                        to={buildUrl(
+                          `/projects/${projectId}/runs/${runId}/logs`,
+                          {
+                            environment: environmentName,
+                            step: isActive ? undefined : stepId,
+                            attempt: isActive ? undefined : attempt.sequence,
+                          }
+                        )}
+                        className={classNames(
+                          "inline-block truncate w-40 max-w-full rounded leading-none",
+                          isActive && "ring-2 ring-offset-1 ring-cyan-400"
+                        )}
+                      >
+                        <span className="font-mono">{step.target}</span>{" "}
+                        <span className="text-gray-500 text-sm">
+                          ({step.repository})
+                        </span>
+                      </Link>
+                    )}
                   </td>
-                  <td>
-                    <LogMessage message={message} />
+                  <td className="align-top px-1">
+                    <LogMessage
+                      level={level}
+                      content={content}
+                      className="mb-2"
+                    />
                   </td>
                 </tr>
               );

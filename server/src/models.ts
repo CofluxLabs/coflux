@@ -102,6 +102,6 @@ export type Run = {
   steps: Record<string, Step>;
 };
 
-type LogMessageLevel = 0 | 1 | 2 | 3 | 4 | 5;
+export type LogMessageLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
 export type LogMessage = [string, number, LogMessageLevel, string];

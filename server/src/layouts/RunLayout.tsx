@@ -152,7 +152,7 @@ export default function RunLayout() {
     return <Loading />;
   } else {
     return (
-      <div className="flex flex-1">
+      <div className="flex flex-1 overflow-hidden">
         <div className="grow flex flex-col">
           <TaskHeader
             task={task}
@@ -177,7 +177,7 @@ export default function RunLayout() {
           run={run}
           projectId={projectId!}
           environmentName={environmentName!}
-          className="w-1/3"
+          className="w-[400px]"
           onRerunStep={rerunStep}
         />
       </div>

@@ -99,15 +99,16 @@ type LogMessageItemProps = {
 };
 
 function LogMessageItem({ message, startTime }: LogMessageItemProps) {
-  const createdAt = DateTime.fromMillis(message[1]);
+  const [_executionId, timestamp, level, content] = message;
+  const createdAt = DateTime.fromMillis(timestamp);
   return (
     <li>
-      <div className="my-3">
-        <LogMessage message={message} />
-        <div className="text-xs text-slate-500 mt-1">
+      <div className="py-2">
+        <div className="text-xs text-slate-400 mb-0.5">
           {createdAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)} (+
           {Math.floor(createdAt.diff(startTime).toMillis())}ms)
         </div>
+        <LogMessage level={level} content={content} />
       </div>
     </li>
   );
@@ -402,7 +403,7 @@ export default function StepDetail({
   return (
     <div
       className={classNames(
-        "divide-y divide-slate-200 overflow-hidden",
+        "divide-y divide-slate-200 overflow-hidden flex flex-col",
         className
       )}
       style={style}
@@ -450,37 +451,39 @@ export default function StepDetail({
           </div>
         )}
       </div>
-      {step.arguments?.length > 0 && (
-        <div className="p-4">
-          <h3 className="uppercase text-sm font-bold text-slate-400">
-            Arguments
-          </h3>
-          <ol className="list-decimal list-inside ml-1 marker:text-gray-400 marker:text-xs">
-            {step.arguments.map((argument, index) => (
-              <li key={index}>
-                <Argument
-                  argument={argument}
-                  runId={runId}
-                  run={run}
-                  projectId={projectId}
-                  environmentName={environmentName}
-                />
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-      {attempt && (
-        <Attempt
-          key={attempt.sequence}
-          attempt={attempt}
-          executionId={executionId}
-          runId={runId}
-          run={run}
-          projectId={projectId}
-          environmentName={environmentName}
-        />
-      )}
+      <div className="flex flex-col overflow-auto">
+        {step.arguments?.length > 0 && (
+          <div className="p-4">
+            <h3 className="uppercase text-sm font-bold text-slate-400">
+              Arguments
+            </h3>
+            <ol className="list-decimal list-inside ml-1 marker:text-gray-400 marker:text-xs">
+              {step.arguments.map((argument, index) => (
+                <li key={index}>
+                  <Argument
+                    argument={argument}
+                    runId={runId}
+                    run={run}
+                    projectId={projectId}
+                    environmentName={environmentName}
+                  />
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+        {attempt && (
+          <Attempt
+            key={attempt.sequence}
+            attempt={attempt}
+            executionId={executionId}
+            runId={runId}
+            run={run}
+            projectId={projectId}
+            environmentName={environmentName}
+          />
+        )}
+      </div>
     </div>
   );
 }
