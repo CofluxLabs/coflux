@@ -88,6 +88,11 @@ defmodule Coflux.Handlers.Agent do
         :ok = Orchestration.record_heartbeats(state.project_id, state.environment, executions)
         {[], state}
 
+      "notify_terminated" ->
+        [execution_ids] = message["params"]
+        :ok = Orchestration.notify_terminated(state.project_id, state.environment, execution_ids)
+        {[], state}
+
       "put_cursor" ->
         [execution_id, result] = message["params"]
         result = parse_result(result)

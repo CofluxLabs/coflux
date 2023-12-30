@@ -1,47 +1,34 @@
-import asyncio
-import typing as t
-import websockets
 import collections
+import asyncio
 import json
+import typing as t
 
 
-class Request:
-    def __init__(self):
-        self._event = asyncio.Event()
-
-    def put_result(self, result: t.Any) -> None:
-        self._result = result
-        self._event.set()
-
-    def put_error(self, error: t.Any) -> None:
-        self._error = error
-        self._event.set()
-
-    async def get(self) -> t.Any:
-        await self._event.wait()
-        if hasattr(self, "_error"):
-            raise Exception(self._error)
-        else:
-            return self._result
-
-
-class Channel:
-    def __init__(self, handlers: dict[str, t.Callable[..., None]]):
+class Connection:
+    def __init__(
+        self,
+        handlers: dict[str, t.Callable[..., None]],
+    ):
         self._handlers = handlers
         self._last_id = 0
-        self._requests = {}
+        self._requests: dict[int, t.Callable] = {}
         self._session_id = None
         self._queue = collections.deque()
         self._cond = asyncio.Condition()
 
-    async def notify(self, request: str, *params) -> None:
+    @property
+    def session_id(self):
+        return self._session_id
+
+    async def notify(self, request: str, params: tuple) -> None:
         await self._enqueue(request, params)
 
-    async def request(self, request: str, *params) -> t.Any:
+    async def request(
+        self, request: str, params: tuple, callback: t.Callable
+    ) -> asyncio.Future:
         id = self._next_id()
-        self._requests[id] = Request()
+        self._requests[id] = callback
         await self._enqueue(request, params, id)
-        return await self._requests[id].get()
 
     async def run(self, websocket) -> None:
         coros = [self._receive(websocket), self._send(websocket)]
@@ -49,9 +36,13 @@ class Channel:
         for task in pending:
             task.cancel()
 
-    @property
-    def session_id(self) -> str | None:
-        return self._session_id
+    def reset(self):
+        self._session_id = None
+        self._last_id = 0
+        for callback in self._requests.values():
+            # TODO: more explicit indicator of error?
+            callback(Exception("Session reset"))
+        self._requests = {}
 
     async def _enqueue(
         self, request: str, params: tuple, id: str | None = None
@@ -81,9 +72,10 @@ class Channel:
                 case [2, data]:
                     request = self._requests[data["id"]]
                     if "result" in data:
-                        request.put_result(data["result"])
+                        request(data["result"])
                     elif "error" in data:
-                        request.put_error(data["error"])
+                        request(Exception(data["error"]))
+                    del self._requests[data["id"]]
 
     async def _send(self, websocket) -> t.NoReturn:
         while True:

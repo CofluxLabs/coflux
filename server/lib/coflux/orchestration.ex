@@ -36,8 +36,12 @@ defmodule Coflux.Orchestration do
     call_server(project_id, environment, {:deactivate_sensor, repository, target})
   end
 
-  def record_heartbeats(project_id, environment, execution_ids) do
-    call_server(project_id, environment, {:record_heartbeats, execution_ids})
+  def record_heartbeats(project_id, environment, executions) do
+    call_server(project_id, environment, {:record_heartbeats, executions})
+  end
+
+  def notify_terminated(project_id, environment, execution_ids) do
+    call_server(project_id, environment, {:notify_terminated, execution_ids})
   end
 
   def record_result(project_id, environment, execution_id, result) do

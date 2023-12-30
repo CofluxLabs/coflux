@@ -159,6 +159,9 @@ defmodule Coflux.Orchestration.Server do
         state
       ) do
     target = get_target(state.db, repository, target_name)
+
+    # TODO: handle unrecognised target (return {:error, :invalid_target}?)
+
     parent_id = Keyword.get(opts, :parent_id)
 
     if parent_id do
@@ -311,19 +314,30 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:record_heartbeats, execution_ids}, _from, state) do
+  def handle_call({:record_heartbeats, executions}, _from, state) do
     # TODO: check whether any executions have been cancelled/abandoned?
-    case Store.record_hearbeats(state.db, execution_ids) do
+    case Store.record_hearbeats(state.db, executions) do
       {:ok, created_at} ->
         state =
-          execution_ids
+          executions
           |> Map.keys()
           |> Enum.reduce(state, fn execution_id, state ->
+            # TODO: don't add execution (just update existing)?
             put_in(state, [Access.key(:running), execution_id], created_at)
           end)
 
         {:reply, :ok, state}
     end
+  end
+
+  def handle_call({:notify_terminated, execution_ids}, _from, state) do
+    # TODO: record in database?
+    state =
+      Enum.reduce(execution_ids, state, fn execution_id, state ->
+        Map.update!(state, :running, &Map.delete(&1, execution_id))
+      end)
+
+    {:reply, :ok, state}
   end
 
   def handle_call({:record_result, execution_id, result}, _from, state) do
@@ -756,8 +770,6 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp record_result(state, execution_id, result) do
-    state = Map.update!(state, :running, &Map.delete(&1, execution_id))
-
     case find_sensor(state, execution_id) do
       nil ->
         {:ok, step} = Store.get_step_for_execution(state.db, execution_id)
