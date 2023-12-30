@@ -102,9 +102,9 @@ function LogMessageItem({ message, startTime }: LogMessageItemProps) {
   const createdAt = DateTime.fromMillis(message[1]);
   return (
     <li>
-      <div className="my-2">
-        <LogMessage message={message} className="my-1" />
-        <div className="text-xs text-slate-500 my-1">
+      <div className="my-3">
+        <LogMessage message={message} />
+        <div className="text-xs text-slate-500 mt-1">
           {createdAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)} (+
           {Math.floor(createdAt.diff(startTime).toMillis())}ms)
         </div>

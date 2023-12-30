@@ -5,17 +5,17 @@ import * as models from "../models";
 function classForLevel(level: 0 | 1 | 2 | 3 | 4 | 5) {
   switch (level) {
     case 0:
-      return ["Stdout", "text-gray-200"];
+      return ["Debug", "border-l-4 pl-1 border-gray-400"];
     case 1:
-      return ["Stderr", "text-red-200"];
+      return ["Stdout", "text-gray-600 font-mono text-sm"];
     case 2:
-      return ["Debug", "border-gray-400"];
+      return ["Info", "border-l-4 pl-1 border-blue-400"];
     case 3:
-      return ["Info", "border-blue-400"];
+      return ["Stderr", "text-red-400 font-mono text-sm"];
     case 4:
-      return ["Warning", "border-yellow-400"];
+      return ["Warning", "border-l-4 pl-1 border-yellow-400"];
     case 5:
-      return ["Error", "border-red-400"];
+      return ["Error", "border-l-4 pl-1 border-red-400"];
   }
 }
 
@@ -28,7 +28,7 @@ export default function LogMessage({ message, className }: Props) {
   const [level, levelClassName] = classForLevel(message[2]);
   return (
     <div
-      className={classNames(className, "border-l-4 pl-2", levelClassName)}
+      className={classNames(className, "whitespace-pre", levelClassName)}
       title={level}
     >
       {message[3]}

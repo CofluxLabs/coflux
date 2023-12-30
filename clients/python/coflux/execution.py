@@ -11,6 +11,7 @@ import json
 import pickle
 import contextvars
 import traceback
+import contextlib
 
 from . import server, future, blobs
 
@@ -312,6 +313,25 @@ def _resolve_arguments(arguments: list[list], channel: Channel) -> list[t.Any]:
     return [_resolve_argument(a, channel) for a in arguments]
 
 
+class Capture:
+    def __init__(self, channel: Channel, level: int):
+        self._channel = channel
+        self._level = level
+        self._buffer = ""
+
+    def write(self, content):
+        self._buffer += content
+        lines = self._buffer.split("\n")
+        for line in lines[:-1]:
+            self._channel.log_message(self._level, line)
+        self._buffer = lines[-1]
+
+    def flush(self):
+        if self._buffer:
+            self._channel.log_message(self._level, self._buffer)
+            self._buffer = ""
+
+
 def _execute(
     target: t.Callable,
     arguments: list[list[t.Any]],
@@ -326,7 +346,11 @@ def _execute(
     token = channel_context.set(channel)
     channel.notify_executing()
     try:
-        value = target(*resolved_arguments)
+        with contextlib.redirect_stdout(Capture(channel, 1)) as stdout_capture:
+            with contextlib.redirect_stderr(Capture(channel, 3)) as stderr_capture:
+                value = target(*resolved_arguments)
+        stdout_capture.flush()
+        stderr_capture.flush()
     except Exception as e:
         traceback.print_exc()
         channel.record_error(e)

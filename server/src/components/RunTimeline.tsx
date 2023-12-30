@@ -149,8 +149,8 @@ export default function RunTimeline({
                   attempt: isActive ? undefined : latestAttempt?.sequence,
                 })}
                 className={classNames(
-                  "inline-block px-1 max-w-full truncate",
-                  isActive && "rounded ring ring-offset-2 ring-cyan-400"
+                  "inline-block max-w-full truncate leading-none",
+                  isActive && "rounded ring-2 ring-offset-1 ring-cyan-400"
                 )}
               >
                 <span className="font-mono">{step.target}</span>{" "}

@@ -49,11 +49,11 @@ def get_result(target_execution_id: str) -> future.Future[t.Any]:
 
 
 def log_debug(message: str) -> None:
-    _get_channel().log_message(2, message)
+    _get_channel().log_message(0, message)
 
 
 def log_info(message: str) -> None:
-    _get_channel().log_message(3, message)
+    _get_channel().log_message(2, message)
 
 
 def log_warning(message: str) -> None:
