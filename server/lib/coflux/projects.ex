@@ -34,7 +34,10 @@ defmodule Coflux.Projects do
       if File.exists?(path) do
         path
         |> File.read!()
-        |> Jason.decode!(keys: :atoms)
+        |> Jason.decode!()
+        |> Map.new(fn {project_id, project} ->
+          {project_id, build_project(project)}
+        end)
       else
         %{}
       end
@@ -113,5 +116,12 @@ defmodule Coflux.Projects do
     else
       id
     end
+  end
+
+  defp build_project(project) do
+    %{
+      name: Map.fetch!(project, "name"),
+      environments: Map.fetch!(project, "environments")
+    }
   end
 end

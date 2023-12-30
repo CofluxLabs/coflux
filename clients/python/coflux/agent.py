@@ -119,7 +119,13 @@ class Agent:
                     for task in done:
                         task.result()
             except websockets.WebSocketException as e:
-                if e.code == 4001:
+                if e.reason == "project_not_found":
+                    print("Project not found")
+                    return
+                elif e.reason == "environment_not_found":
+                    print("Environment not found")
+                    return
+                elif e.reason == "session_invalid":
                     print("Session expired. Resetting and reconnecting...")
                     self._connection.reset()
                     for module_name, targets in self._modules.items():

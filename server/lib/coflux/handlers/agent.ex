@@ -1,5 +1,5 @@
 defmodule Coflux.Handlers.Agent do
-  alias Coflux.{Orchestration, Logging}
+  alias Coflux.{Orchestration, Logging, Projects}
 
   def init(req, _opts) do
     qs = :cowboy_req.parse_qs(req)
@@ -12,20 +12,30 @@ defmodule Coflux.Handlers.Agent do
   end
 
   def websocket_init({project_id, environment, session_id}) do
-    # TODO: authenticate
-    # TODO: monitor server?
-    case Orchestration.connect(project_id, environment, session_id, self()) do
-      {:ok, session_id} ->
-        {[session_message(session_id)],
-         %{
-           project_id: project_id,
-           environment: environment,
-           session_id: session_id,
-           requests: %{}
-         }}
+    case Projects.get_project_by_id(Coflux.ProjectsServer, project_id) do
+      {:ok, project} ->
+        # TODO: authenticate
+        if Enum.member?(project.environments, environment) do
+          # TODO: monitor server?
+          case Orchestration.connect(project_id, environment, session_id, self()) do
+            {:ok, session_id} ->
+              {[session_message(session_id)],
+               %{
+                 project_id: project_id,
+                 environment: environment,
+                 session_id: session_id,
+                 requests: %{}
+               }}
 
-      {:error, :no_session} ->
-        {[{:close, 4001, "no_session"}], nil}
+            {:error, :no_session} ->
+              {[{:close, 4000, "session_invalid"}], nil}
+          end
+        else
+          {[{:close, 4000, "environment_not_found"}], nil}
+        end
+
+      :error ->
+        {[{:close, 4000, "project_not_found"}], nil}
     end
   end
 
