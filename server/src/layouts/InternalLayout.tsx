@@ -17,7 +17,7 @@ function Header({ projectId }: HeaderProps) {
     <div className="flex bg-cyan-600 px-3 items-center h-14 flex-none">
       <Logo />
       {projects && (
-        <Fragment>
+        <div className="flex items-center">
           <ProjectSelector projects={projects} />
           {projectId && projects[projectId] && (
             <Fragment>
@@ -27,7 +27,7 @@ function Header({ projectId }: HeaderProps) {
               />
             </Fragment>
           )}
-        </Fragment>
+        </div>
       )}
       <span className="flex-1"></span>
     </div>
