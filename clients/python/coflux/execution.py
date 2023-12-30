@@ -445,6 +445,7 @@ class Execution:
                 retry_delay_min,
                 retry_delay_max,
             ):
+                execute_after_ms = execute_after and (execute_after.timestamp() * 1000)
                 self._server_request(
                     "schedule",
                     (
@@ -452,7 +453,7 @@ class Execution:
                         target,
                         arguments,
                         self._id,
-                        execute_after,
+                        execute_after_ms,
                         cache_key,
                         deduplicate_key,
                         retry_count,
