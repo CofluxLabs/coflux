@@ -32,9 +32,11 @@ class Connection:
 
     async def run(self, websocket) -> None:
         coros = [self._receive(websocket), self._send(websocket)]
-        _, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
+        for task in done:
+            task.result()
 
     def reset(self):
         self._session_id = None

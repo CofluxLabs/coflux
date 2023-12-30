@@ -111,21 +111,27 @@ class Agent:
                         self._connection.run(websocket),
                         self._execution_manager.run(),
                     ]
-                    _, pending = await asyncio.wait(
+                    done, pending = await asyncio.wait(
                         coros, return_when=asyncio.FIRST_COMPLETED
                     )
                     for task in pending:
                         task.cancel()
-                    if websocket.close_code == 4001:
-                        print("Session expired. Resetting...")
-                        self._connection.reset()
-                        for module_name, targets in self._modules.items():
-                            await self._register_module(module_name, targets)
+                    for task in done:
+                        task.result()
+            except websockets.WebSocketException as e:
+                if e.code == 4001:
+                    print("Session expired. Resetting and reconnecting...")
+                    self._connection.reset()
+                    for module_name, targets in self._modules.items():
+                        await self._register_module(module_name, targets)
+                else:
+                    delay = 1 + 3 * random.random()  # TODO: exponential backoff
+                    print(f"Disconnected (reconnecting in {delay:.1f} seconds).")
+                    await asyncio.sleep(delay)
             except OSError:
-                pass
-            delay = 1 + 3 * random.random()  # TODO: exponential backoff
-            print(f"Disconnected (reconnecting in {delay:.1f} seconds).")
-            await asyncio.sleep(delay)
+                delay = 1 + 3 * random.random()  # TODO: exponential backoff
+                print(f"Can't connect (retrying in {delay:.1f} seconds).")
+                await asyncio.sleep(delay)
 
     async def register_module(
         self, module: types.ModuleType, *, name: str | None = None
