@@ -34,7 +34,7 @@ export default function RunLogs({
           <em>None</em>
         </p>
       ) : (
-        <table className="w-full">
+        <table className="w-full border-separate border-spacing-x-2">
           <tbody>
             {sortBy(logs, (l) => l[1]).map((message, index) => {
               const stepId = Object.keys(run.steps).find(

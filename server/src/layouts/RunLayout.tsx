@@ -44,7 +44,7 @@ function Tab({ page, children }: TabProps) {
       className={({ isActive }) =>
         classNames(
           "px-2 py-1",
-          isActive && "inline-block border-b-4 border-slate-500"
+          isActive && "inline-block border-b-4 border-cyan-500"
         )
       }
     >
