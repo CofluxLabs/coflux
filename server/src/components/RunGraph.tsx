@@ -2,10 +2,11 @@ import { useMemo } from "react";
 import dagre from "dagre";
 import classNames from "classnames";
 import { Link } from "react-router-dom";
+import { max } from "lodash";
+import { IconArrowForward, IconArrowForwardUp } from "@tabler/icons-react";
 
 import * as models from "../models";
 import { buildUrl } from "../utils";
-import { max } from "lodash";
 
 function buildGraph(
   run: models.Run,
@@ -164,6 +165,7 @@ type RunNodeProps = {
   projectId: string;
   runId: string;
   environmentName: string | undefined;
+  direction: "in" | "out";
 };
 
 function RunNode({
@@ -172,6 +174,7 @@ function RunNode({
   projectId,
   runId,
   environmentName,
+  direction,
 }: RunNodeProps) {
   return (
     <div
@@ -187,11 +190,13 @@ function RunNode({
         to={buildUrl(`/projects/${projectId}/runs/${runId}`, {
           environment: environmentName,
         })}
-        className="flex-1 flex items-center border rounded p-2 bg-white"
+        className="flex-1 flex gap-1 items-center border rounded p-2 bg-white"
       >
+        {direction == "out" && <IconArrowForwardUp size={20} />}
         <div className="flex-1 truncate">
           <span className="font-mono">{runId}</span>
         </div>
+        {direction == "in" && <IconArrowForward size={20} />}
       </Link>
     </div>
   );
@@ -311,6 +316,7 @@ export default function RunGraph({
                   projectId={projectId}
                   runId={nodeId}
                   environmentName={environmentName}
+                  direction={nodeId == run.parent?.runId ? "in" : "out"}
                 />
               );
             }
