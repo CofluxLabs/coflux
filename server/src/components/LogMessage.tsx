@@ -21,7 +21,7 @@ function classForLevel(level: models.LogMessageLevel) {
 function iconForLevel(
   level: models.LogMessageLevel,
   className: string,
-  size = 20
+  size = 18
 ) {
   switch (level) {
     case 2:
@@ -61,7 +61,7 @@ export default function LogMessage({ level, content, className }: Props) {
     <div
       className={classNames(className, "leading-tight", classForLevel(level))}
     >
-      {iconForLevel(level, "inline-block mr-0.5 -mt-px")}
+      {iconForLevel(level, "inline-block mr-1 mt-[-2px]")}
       <span className="whitespace-pre-wrap">{content}</span>
     </div>
   );
