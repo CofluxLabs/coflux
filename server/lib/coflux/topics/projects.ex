@@ -16,15 +16,21 @@ defmodule Coflux.Topics.Projects do
         # TODO: update topic?
         case Orchestration.Supervisor.get_server(project_id, environment_name) do
           {:ok, _server} ->
-            {:ok, project_id, topic}
+            {:ok, [true, project_id], topic}
         end
+
+      {:error, errors} ->
+        {:ok, [false, Enum.map(errors, &Atom.to_string/1)], topic}
     end
   end
 
   def handle_execute("add_environment", {project_id, environment_name}, topic, _context) do
     case Projects.add_environment(@server, project_id, environment_name) do
       :ok ->
-        {:ok, nil, topic}
+        {:ok, [true, nil], topic}
+
+      {:error, errors} ->
+        {:ok, [false, Enum.map(errors, &Atom.to_string/1)], topic}
     end
   end
 

@@ -46,26 +46,55 @@ defmodule Coflux.Projects do
   end
 
   def handle_call({:create_project, project_name, environment_name}, _from, state) do
-    # TODO: validate
-    project_id = generate_id(state)
-
-    state =
-      put_in(
-        state.projects[project_id],
-        %{name: project_name, environments: [environment_name]}
+    errors =
+      Enum.reject(
+        [
+          validate_project_name(project_name, Map.keys(state.projects)),
+          validate_environment_name(environment_name)
+        ],
+        &(&1 == :ok)
       )
 
-    save_projects(state)
-    notify_subscribers(state, project_id)
-    {:reply, {:ok, project_id}, state}
+    if Enum.any?(errors) do
+      {:reply, {:error, errors}, state}
+    else
+      project_id = generate_id(state)
+
+      state =
+        put_in(
+          state.projects[project_id],
+          %{name: project_name, environments: [environment_name]}
+        )
+
+      save_projects(state)
+      notify_subscribers(state, project_id)
+      {:reply, {:ok, project_id}, state}
+    end
   end
 
   def handle_call({:add_environment, project_id, environment_name}, _from, state) do
-    # TODO: validate
-    state = update_in(state.projects[project_id].environments, &(&1 ++ environment_name))
-    save_projects(state)
-    notify_subscribers(state, project_id)
-    {:noreply, :ok, state}
+    existing_environments =
+      if Map.has_key?(state.projects, project_id) do
+        state.projects[project_id].environments
+      end
+
+    errors =
+      Enum.reject(
+        [
+          validate_project_id(project_id, state.projects),
+          validate_environment_name(environment_name, existing_environments)
+        ],
+        &(&1 == :ok)
+      )
+
+    if Enum.any?(errors) do
+      {:reply, {:error, errors}, state}
+    else
+      state = update_in(state.projects[project_id].environments, &(&1 ++ [environment_name]))
+      save_projects(state)
+      notify_subscribers(state, project_id)
+      {:reply, :ok, state}
+    end
   end
 
   def handle_call({:get_project_by_id, project_id}, _from, state) do
@@ -123,5 +152,28 @@ defmodule Coflux.Projects do
       name: Map.fetch!(project, "name"),
       environments: Map.fetch!(project, "environments")
     }
+  end
+
+  defp validate_project_name(name, existing) do
+    cond do
+      not Regex.match?(~r/^[a-z0-9]+$/i, name) -> :invalid_project_name
+      Enum.member?(existing, name) -> :project_already_exists
+      true -> :ok
+    end
+  end
+
+  defp validate_environment_name(name, existing \\ nil) do
+    cond do
+      not Regex.match?(~r/^[a-z0-9\/]+$/i, name) -> :invalid_environment_name
+      existing && Enum.member?(existing, name) -> :environment_already_exists
+      true -> :ok
+    end
+  end
+
+  defp validate_project_id(project_id, projects) do
+    cond do
+      not Map.has_key?(projects, project_id) -> :project_not_found
+      true -> :ok
+    end
   end
 end

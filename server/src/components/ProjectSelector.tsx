@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { Link, useParams } from "react-router-dom";
 import classNames from "classnames";
 import { Menu, Transition } from "@headlessui/react";
-import { IconChevronDown } from "@tabler/icons-react";
+import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 
 import * as models from "../models";
 
@@ -17,12 +17,10 @@ export default function ProjectSelector({ projects }: Props) {
   return (
     <Menu as="div" className="relative">
       <Menu.Button className="flex items-center gap-1 py-1 px-2 text-white rounded bg-black/10 hover:bg-white/10">
-        {activeProject ? (
-          <span className="text-sm">{activeProject.name}</span>
-        ) : (
-          <span>Select project...</span>
-        )}
-        <IconChevronDown size={20} className="text-white/50" />
+        <span className="text-sm">
+          {activeProject ? activeProject.name : "Select project..."}
+        </span>
+        <IconChevronDown size={16} className="opacity-40 mt-0.5" />
       </Menu.Button>
       <Transition
         as={Fragment}
@@ -44,10 +42,15 @@ export default function ProjectSelector({ projects }: Props) {
                   <Link
                     to={`/projects/${projectId}`}
                     className={classNames(
-                      "flex px-2 py-1 rounded whitespace-nowrap text-sm",
+                      "flex items-center gap-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm",
                       active && "bg-slate-100"
                     )}
                   >
+                    {projectId == activeProjectId ? (
+                      <IconCheck size={16} className="mt-0.5" />
+                    ) : (
+                      <span className="w-[16px]" />
+                    )}
                     {project.name}
                   </Link>
                 )}

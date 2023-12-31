@@ -8,6 +8,7 @@ import Field from "./common/Field";
 import Button from "./common/Button";
 import * as models from "../models";
 import { choose } from "../utils";
+import ErrorsList from "./ErrorsList";
 
 const adjectives = [
   "bewitching",
@@ -82,6 +83,19 @@ function randomProjectName(): string {
   return `${choose(adjectives)}_${choose(properNames)}`;
 }
 
+function translateError(error: string) {
+  switch (error) {
+    case "invalid_project_name":
+      return "Invalid project name";
+    case "project_already_exists":
+      return "Project already exists";
+    case "invalid_environment_name":
+      return "Invalid environment name";
+    default:
+      return "Unexpected error";
+  }
+}
+
 type Props = {};
 
 export default function NewProjectDialog({}: Props) {
@@ -89,6 +103,7 @@ export default function NewProjectDialog({}: Props) {
     useTopic<Record<string, models.Project>>("projects");
   const [projectName, setProjectName] = useState(() => randomProjectName());
   const [environmentName, setEnvironmentName] = useState("development");
+  const [errors, setErrors] = useState<string[]>();
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const handleClose = useCallback(() => {
@@ -98,12 +113,17 @@ export default function NewProjectDialog({}: Props) {
     (ev: FormEvent) => {
       ev.preventDefault();
       setCreating(true);
+      setErrors(undefined);
       execute("create_project", projectName, environmentName)
-        .then((projectId: string) => {
-          navigate(`/projects/${projectId}?environment=${environmentName}`);
+        .then(([success, result]: [true, string] | [false, string[]]) => {
+          if (success) {
+            navigate(`/projects/${result}?environment=${environmentName}`);
+          } else {
+            setErrors(result);
+          }
         })
         .catch(() => {
-          // TODO
+          setErrors(["exception"]);
         })
         .finally(() => {
           setCreating(false);
@@ -113,6 +133,11 @@ export default function NewProjectDialog({}: Props) {
   );
   return (
     <Dialog title="New project" open={true} onClose={handleClose}>
+      <ErrorsList
+        message="Failed to create project:"
+        errors={errors}
+        translate={translateError}
+      />
       <form onSubmit={handleSubmit}>
         <Field label="Project name">
           <Input

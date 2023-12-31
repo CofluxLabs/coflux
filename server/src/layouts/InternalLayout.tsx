@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { SocketProvider, useTopic } from "@topical/react";
+import { IconChevronCompactRight } from "@tabler/icons-react";
 
 import EnvironmentSelector from "../components/EnvironmentSelector";
 import Logo from "../components/Logo";
@@ -17,11 +18,11 @@ function Header({ projectId }: HeaderProps) {
     <div className="flex bg-cyan-600 px-3 items-center h-14 flex-none">
       <Logo />
       {projects && (
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           <ProjectSelector projects={projects} />
           {projectId && projects[projectId] && (
             <Fragment>
-              <span className="text-white px-1">/</span>
+              <IconChevronCompactRight size={16} className="text-white/40" />
               <EnvironmentSelector
                 environments={projects[projectId].environments}
               />
