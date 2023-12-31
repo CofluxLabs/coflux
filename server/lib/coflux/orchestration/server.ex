@@ -162,114 +162,64 @@ defmodule Coflux.Orchestration.Server do
 
     # TODO: handle unrecognised target (return {:error, :invalid_target}?)
 
-    parent_id = Keyword.get(opts, :parent_id)
-
-    if parent_id do
-      case Store.get_sensor_activation_for_execution_id(state.db, parent_id) do
-        {:ok, {sensor_repository, sensor_target}} ->
+    result =
+      case Keyword.get(opts, :parent_id) do
+        nil ->
           if target.type == :task do
-            case Store.start_run(state.db, repository, target_name, arguments, opts) do
-              {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, _sequence,
-               created_at} ->
-                notify_listeners(
-                  state,
-                  {:sensor, sensor_repository, sensor_target},
-                  {:run, external_run_id, created_at, repository, target_name}
-                )
-
-                notify_listeners(
-                  state,
-                  {:task, repository, target_name},
-                  {:run, external_run_id, created_at}
-                )
-
-                send(self(), :execute)
-                {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
-            end
+            start_run(state, repository, target_name, arguments, opts)
           else
-            {:reply, {:error, :invalid_target}, state}
+            {:error, :invalid_target}
           end
 
-        {:ok, nil} ->
-          {:ok, step} = Store.get_step_for_execution(state.db, parent_id)
-
-          case target.type do
-            :task ->
-              case Store.start_run(state.db, repository, target_name, arguments, opts) do
-                {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id,
-                 _sequence, created_at} ->
-                  notify_listeners(
-                    state,
-                    {:run, step.run_id},
-                    {:child, parent_id, external_run_id, repository, target_name}
-                  )
-
-                  notify_listeners(
-                    state,
-                    {:task, repository, target_name},
-                    {:run, external_run_id, created_at}
-                  )
-
-                  send(self(), :execute)
-                  {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
+        parent_id ->
+          case Store.get_sensor_activation_for_execution_id(state.db, parent_id) do
+            {:ok, {sensor_repository, sensor_target}} ->
+              if target.type == :task do
+                start_sensor_run(
+                  state,
+                  sensor_repository,
+                  sensor_target,
+                  repository,
+                  target_name,
+                  arguments,
+                  opts
+                )
+              else
+                {:error, :invalid_target}
               end
 
-            :step ->
-              case Store.schedule_step(
-                     state.db,
-                     step.run_id,
-                     parent_id,
-                     repository,
-                     target_name,
-                     arguments,
-                     opts
-                   ) do
-                {:ok, _step_id, external_step_id, execution_id, sequence, created_at,
-                 cached_execution_id} ->
-                  notify_listeners(
+            {:ok, nil} ->
+              {:ok, step} = Store.get_step_for_execution(state.db, parent_id)
+
+              case target.type do
+                :task ->
+                  start_run(
                     state,
-                    {:run, step.run_id},
-                    {:step, external_step_id, parent_id, repository, target_name, created_at,
-                     arguments, cached_execution_id}
+                    repository,
+                    target_name,
+                    arguments,
+                    opts,
+                    {step.run_id, parent_id}
                   )
 
-                  unless cached_execution_id do
-                    notify_listeners(
-                      state,
-                      {:run, step.run_id},
-                      {:execution, execution_id, external_step_id, sequence, created_at}
-                    )
-                  end
+                :step ->
+                  schedule_step(
+                    state,
+                    step.run_id,
+                    parent_id,
+                    repository,
+                    target_name,
+                    arguments,
+                    opts
+                  )
 
-                  send(self(), :execute)
-
-                  # TODO: return (external) run id?
-                  {:reply, {:ok, nil, external_step_id, execution_id || cached_execution_id},
-                   state}
+                _ ->
+                  {:error, :invalid_target}
               end
-
-            _ ->
-              {:reply, {:error, :invalid_target}, state}
           end
       end
-    else
-      if target.type == :task do
-        case Store.start_run(state.db, repository, target_name, arguments, opts) do
-          {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, _sequence,
-           created_at} ->
-            notify_listeners(
-              state,
-              {:task, repository, target_name},
-              {:run, external_run_id, created_at}
-            )
 
-            send(self(), :execute)
-            {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
-        end
-      else
-        {:reply, {:error, :invalid_target}, state}
-      end
-    end
+    {:reply, result, state}
   end
 
   def handle_call({:rerun_step, external_step_id}, _from, state) do
@@ -906,6 +856,93 @@ defmodule Coflux.Orchestration.Server do
       state
     else
       update_in(state.sessions[session_id].queue, &[message | &1])
+    end
+  end
+
+  defp start_run(state, repository, target_name, arguments, opts, parent \\ nil) do
+    case Store.start_run(state.db, repository, target_name, arguments, opts) do
+      {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, _sequence,
+       created_at} ->
+        if parent do
+          {run_id, parent_id} = parent
+
+          notify_listeners(
+            state,
+            {:run, run_id},
+            {:child, parent_id, external_run_id, repository, target_name}
+          )
+        end
+
+        notify_listeners(
+          state,
+          {:task, repository, target_name},
+          {:run, external_run_id, created_at}
+        )
+
+        send(self(), :execute)
+        {:ok, external_run_id, external_step_id, execution_id}
+    end
+  end
+
+  defp start_sensor_run(
+         state,
+         sensor_repository,
+         sensor_target,
+         repository,
+         target_name,
+         arguments,
+         opts
+       ) do
+    case Store.start_run(state.db, repository, target_name, arguments, opts) do
+      {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, _sequence,
+       created_at} ->
+        notify_listeners(
+          state,
+          {:sensor, sensor_repository, sensor_target},
+          {:run, external_run_id, created_at, repository, target_name}
+        )
+
+        notify_listeners(
+          state,
+          {:task, repository, target_name},
+          {:run, external_run_id, created_at}
+        )
+
+        send(self(), :execute)
+        {:ok, external_run_id, external_step_id, execution_id}
+    end
+  end
+
+  defp schedule_step(state, run_id, parent_id, repository, target_name, arguments, opts) do
+    case Store.schedule_step(
+           state.db,
+           run_id,
+           parent_id,
+           repository,
+           target_name,
+           arguments,
+           opts
+         ) do
+      {:ok, _step_id, external_step_id, execution_id, sequence, created_at, cached_execution_id} ->
+        notify_listeners(
+          state,
+          {:run, run_id},
+          {:step, external_step_id, parent_id, repository, target_name, created_at, arguments,
+           cached_execution_id}
+        )
+
+        unless cached_execution_id do
+          notify_listeners(
+            state,
+            {:run, run_id},
+            {:execution, execution_id, external_step_id, sequence, created_at}
+          )
+        end
+
+        send(self(), :execute)
+
+        # TODO: return (external) run id?
+        {:ok, nil, external_step_id, execution_id || cached_execution_id}
     end
   end
 
