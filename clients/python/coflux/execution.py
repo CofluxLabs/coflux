@@ -12,6 +12,7 @@ import pickle
 import contextvars
 import traceback
 import contextlib
+from concurrent.futures import Future
 
 from . import server, future, blobs
 
@@ -75,9 +76,19 @@ class ExecutionScheduledResponse(t.NamedTuple):
     execution_id: str
 
 
+class ExecutionScheduleFailedResponse(t.NamedTuple):
+    schedule_id: int
+    error: str
+
+
 class ResultResolvedResponse(t.NamedTuple):
     execution_id: str
     result: t.Any
+
+
+class ResultResolveFailedResponse(t.NamedTuple):
+    execution_id: str
+    error: str
 
 
 def _parse_retries(
@@ -133,21 +144,6 @@ def _serialise_value(value: t.Any, blob_store: blobs.Store) -> t.Tuple[str, str,
     return ["blob", "pickle", key]
 
 
-class Future:
-    def __init__(self):
-        self._event = threading.Event()
-        self._value = None
-
-    def set(self, value):
-        self._value = value
-        self._event.set()
-
-    def get(self, timeout=None):
-        if not self._event.wait(timeout):
-            raise Exception("Timed out")
-        return self._value
-
-
 class Channel:
     def __init__(self, execution_id: str, server_host: str, connection):
         self._execution_id = execution_id
@@ -164,9 +160,13 @@ class Channel:
                 message = self._connection.recv()
                 match message:
                     case ExecutionScheduledResponse(schedule_id, execution_id):
-                        self._schedules.pop(schedule_id).set(execution_id)
+                        self._schedules.pop(schedule_id).set_result(execution_id)
+                    case ExecutionScheduleFailedResponse(schedule_id, error):
+                        self._resolves.pop(execution_id).set_exception(Exception(error))
                     case ResultResolvedResponse(execution_id, result):
-                        self._resolves.pop(execution_id).set(result)
+                        self._resolves.pop(execution_id).set_result(result)
+                    case ResultResolveFailedResponse(execution_id, error):
+                        self._resolves.pop(execution_id).set_exception(Exception(error))
                     case other:
                         raise Exception(f"Received unhandled response: {other}")
 
@@ -248,7 +248,7 @@ class Channel:
                 retry_delay_max,
             )
         )
-        return future.get()
+        return future.result()
 
     def resolve_reference(self, execution_id):
         future = self._resolves.get(execution_id)
@@ -256,7 +256,7 @@ class Channel:
             future = Future()
             self._resolves[execution_id] = future
             self._send(ResolveReferenceRequest(execution_id))
-        value = future.get()
+        value = future.result()
         return _deserialise_value(value, self._blob_store)
 
     def log_message(self, level, message):
@@ -414,8 +414,8 @@ class Execution:
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         future.result()
 
-    def _server_request(self, request, params, callback):
-        coro = self._server.request(request, params, callback)
+    def _server_request(self, request, params, on_success, on_error):
+        coro = self._server.request(request, params, on_success, on_error)
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result()
 
@@ -463,6 +463,9 @@ class Execution:
                     lambda execution_id: self._connection.send(
                         ExecutionScheduledResponse(schedule_id, execution_id)
                     ),
+                    lambda error: self._connection.send(
+                        ExecutionScheduleFailedResponse(schedule_id, error)
+                    ),
                 )
             case ResolveReferenceRequest(execution_id):
                 # TODO: set (and unset) state on Execution to indicate waiting?
@@ -471,6 +474,9 @@ class Execution:
                     (execution_id, self._id),
                     lambda result: self._connection.send(
                         ResultResolvedResponse(execution_id, result)
+                    ),
+                    lambda error: self._connection.send(
+                        ExecutionScheduleFailedResponse(execution_id, error)
                     ),
                 )
             case LogMessageRequest(level, message, timestamp):

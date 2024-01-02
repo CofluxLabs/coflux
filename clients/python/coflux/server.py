@@ -11,7 +11,7 @@ class Connection:
     ):
         self._handlers = handlers
         self._last_id = 0
-        self._requests: dict[int, t.Callable] = {}
+        self._requests: dict[int, tuple[t.Callable, t.Callable]] = {}
         self._session_id = None
         self._queue = collections.deque()
         self._cond = asyncio.Condition()
@@ -24,10 +24,10 @@ class Connection:
         await self._enqueue(request, params)
 
     async def request(
-        self, request: str, params: tuple, callback: t.Callable
+        self, request: str, params: tuple, on_success: t.Callable, on_error: t.Callable
     ) -> asyncio.Future:
         id = self._next_id()
-        self._requests[id] = callback
+        self._requests[id] = (on_success, on_error)
         await self._enqueue(request, params, id)
 
     async def run(self, websocket) -> None:
@@ -41,9 +41,9 @@ class Connection:
     def reset(self):
         self._session_id = None
         self._last_id = 0
-        for callback in self._requests.values():
-            # TODO: more explicit indicator of error?
-            callback(Exception("Session reset"))
+        for _on_success, on_error in self._requests.values():
+            # TODO: better error?
+            on_error("session reset")
         self._requests = {}
 
     async def _enqueue(
@@ -72,11 +72,11 @@ class Connection:
                     params = data.get("params", [])
                     await handler(*params)
                 case [2, data]:
-                    request = self._requests[data["id"]]
+                    on_success, on_error = self._requests[data["id"]]
                     if "result" in data:
-                        request(data["result"])
+                        on_success(data["result"])
                     elif "error" in data:
-                        request(Exception(data["error"]))
+                        on_error(data["error"])
                     del self._requests[data["id"]]
 
     async def _send(self, websocket) -> t.NoReturn:
