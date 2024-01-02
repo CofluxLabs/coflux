@@ -94,7 +94,7 @@ function classNameForResult(
     return "border-blue-400 bg-blue-100";
   } else if (result.type == "error") {
     return "border-red-400 bg-red-100";
-  } else if (result.type == "abandoned") {
+  } else if (result.type == "abandoned" || result.type == "cancelled") {
     return "border-yellow-400 bg-yellow-100";
   } else {
     return "border-slate-400 bg-slate-100";

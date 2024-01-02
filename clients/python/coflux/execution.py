@@ -405,9 +405,10 @@ class Execution:
     def touch(self, timestamp):
         self._timestamp = timestamp
 
-    def abort(self):
+    def abort(self) -> bool:
         self._status = ExecutionStatus.ABORTING
         self._process.kill()
+        return True
 
     def _server_notify(self, request, params):
         coro = self._server.notify(request, params)
@@ -492,7 +493,6 @@ class Execution:
             if self._connection.poll(1):
                 message = self._connection.recv()
                 self._handle_message(message)
-        self._server_notify("notify_terminated", ([self._id],))
 
 
 class Manager:
@@ -547,13 +547,21 @@ class Manager:
             self._connection,
             loop,
         )
-        thread = threading.Thread(target=self._run_execution, args=(execution,))
+        thread = threading.Thread(target=self._run_execution, args=(execution, loop))
         thread.start()
 
-    def _run_execution(self, execution: Execution):
+    def _run_execution(self, execution: Execution, loop: asyncio.AbstractEventLoop):
         self._executions[execution.id] = execution
-        execution.run()
-        del self._executions[execution.id]
+        try:
+            execution.run()
+        finally:
+            del self._executions[execution.id]
+            coro = self._connection.notify("notify_terminated", ([execution.id],))
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
+            future.result()
 
     def abort(self, execution_id: str) -> bool:
-        self._executions[execution_id].abort()
+        execution = self._executions.get(execution_id)
+        if not execution:
+            return False
+        return execution.abort()

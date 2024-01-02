@@ -51,6 +51,7 @@ export type Result =
       key: string;
     }
   | { type: "abandoned" }
+  | { type: "cancelled" }
   | { type: "duplicated" };
 
 export type Argument =

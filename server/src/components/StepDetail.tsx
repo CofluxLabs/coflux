@@ -103,13 +103,11 @@ function LogMessageItem({ message, startTime }: LogMessageItemProps) {
   const createdAt = DateTime.fromMillis(timestamp);
   return (
     <li>
-      <div className="py-2">
-        <div className="text-xs text-slate-400 mb-0.5">
-          {createdAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)} (+
-          {Math.floor(createdAt.diff(startTime).toMillis())}ms)
-        </div>
-        <LogMessage level={level} content={content} />
+      <div className="text-xs text-slate-400 mb-0.5">
+        {createdAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)} (+
+        {Math.floor(createdAt.diff(startTime).toMillis())}ms)
       </div>
+      <LogMessage level={level} content={content} />
     </li>
   );
 }
@@ -151,7 +149,7 @@ function Attempt({
   const attemptLogs = logs && logs.filter((l) => l[0] == executionId);
   return (
     <Fragment>
-      <div className="p-4">
+      <div>
         <h3 className="uppercase text-sm font-bold text-slate-400">
           Execution
         </h3>
@@ -171,7 +169,7 @@ function Attempt({
         ) : null}
       </div>
       {attempt.result?.type == "duplicated" ? (
-        <div className="p-4">
+        <div>
           <h3 className="uppercase text-sm font-bold text-slate-400">
             De-duplication
           </h3>
@@ -195,23 +193,25 @@ function Attempt({
             </Fragment>
           )}
         </div>
-      ) : attempt.result?.type != "abandoned" ? (
+      ) : (
         <Fragment>
-          {attempt.result && (
-            <div className="p-4">
-              <h3 className="uppercase text-sm font-bold text-slate-400">
-                Result
-              </h3>
-              <Result
-                result={attempt.result}
-                runId={runId}
-                run={run}
-                projectId={projectId}
-                environmentName={environmentName}
-              />
-            </div>
-          )}
-          <div className="p-4">
+          {attempt.result &&
+            attempt.result?.type != "abandoned" &&
+            attempt.result?.type != "cancelled" && (
+              <div>
+                <h3 className="uppercase text-sm font-bold text-slate-400">
+                  Result
+                </h3>
+                <Result
+                  result={attempt.result}
+                  runId={runId}
+                  run={run}
+                  projectId={projectId}
+                  environmentName={environmentName}
+                />
+              </div>
+            )}
+          <div>
             <h3 className="uppercase text-sm font-bold text-slate-400">Logs</h3>
             {attemptLogs === undefined ? (
               <Loading />
@@ -220,7 +220,7 @@ function Attempt({
                 <em>None</em>
               </p>
             ) : (
-              <ol>
+              <ol className="flex flex-col py-1 gap-3">
                 {sortBy(attemptLogs, (l) => l[1]).map((message, index) => (
                   <LogMessageItem
                     key={index}
@@ -232,7 +232,7 @@ function Attempt({
             )}
           </div>
         </Fragment>
-      ) : null}
+      )}
     </Fragment>
   );
 }
@@ -402,13 +402,10 @@ export default function StepDetail({
   const attempt = executionId && step.executions[executionId];
   return (
     <div
-      className={classNames(
-        "divide-y divide-slate-200 overflow-hidden flex flex-col",
-        className
-      )}
+      className={classNames("overflow-hidden flex flex-col", className)}
       style={style}
     >
-      <div className="p-4 pt-5 flex items-center">
+      <div className="p-4 pt-5 flex items-center border-b border-slate-200">
         <h2 className="flex-1">
           <span className="font-mono text-xl">{step.target}</span>{" "}
           <span className="text-slate-500">({step.repository})</span>
@@ -441,6 +438,8 @@ export default function StepDetail({
                     <Badge intent="danger" label="Failed" />
                   ) : attempt.result.type == "abandoned" ? (
                     <Badge intent="warning" label="Abandoned" />
+                  ) : attempt.result.type == "cancelled" ? (
+                    <Badge intent="warning" label="Cancelled" />
                   ) : null}
                 </div>
               )}
@@ -451,9 +450,9 @@ export default function StepDetail({
           </div>
         )}
       </div>
-      <div className="flex flex-col overflow-auto">
+      <div className="flex flex-col overflow-auto p-4 gap-5">
         {step.arguments?.length > 0 && (
-          <div className="p-4">
+          <div>
             <h3 className="uppercase text-sm font-bold text-slate-400">
               Arguments
             </h3>

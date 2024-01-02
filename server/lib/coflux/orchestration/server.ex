@@ -222,6 +222,41 @@ defmodule Coflux.Orchestration.Server do
     {:reply, result, state}
   end
 
+  def handle_call({:cancel_run, external_run_id}, _from, state) do
+    # TODO: use one query to get all execution ids?
+    case Store.get_run_by_external_id(state.db, external_run_id) do
+      {:ok, nil} ->
+        {:reply, {:error, :not_found}, state}
+
+      {:ok, {run_id, _run_parent_id, _run_created_at}} ->
+        {:ok, steps} = Store.get_run_steps(state.db, run_id)
+        step_ids = Enum.map(steps, &elem(&1, 0))
+
+        state =
+          Enum.reduce(step_ids, state, fn step_id, state ->
+            {:ok, executions} = Store.get_step_executions(state.db, step_id)
+            execution_ids = Enum.map(executions, &elem(&1, 0))
+
+            Enum.reduce(execution_ids, state, fn execution_id, state ->
+              state = abort_execution(state, execution_id)
+
+              case Store.get_execution_result(state.db, execution_id) do
+                {:ok, nil} ->
+                  case record_and_notify_result(state, execution_id, :cancelled, run_id) do
+                    {:ok, state} -> state
+                    {:error, :already_recorded} -> state
+                  end
+
+                {:ok, _other} ->
+                  state
+              end
+            end)
+          end)
+
+        {:reply, :ok, state}
+    end
+  end
+
   def handle_call({:rerun_step, external_step_id}, _from, state) do
     {:ok, step} = Store.get_step_by_external_id(state.db, external_step_id)
     # TODO: abort/cancel any scheduled retry? (and reference?)
@@ -251,14 +286,7 @@ defmodule Coflux.Orchestration.Server do
           sensor_activation_ids
           |> Enum.map(&Map.get(state.sensors, &1))
           |> Enum.reject(&is_nil/1)
-          |> Enum.reduce(state, fn execution_id, state ->
-            # TODO: only send to agent that has execution?
-            state.sessions
-            |> Map.keys()
-            |> Enum.reduce(state, fn session_id, state ->
-              send_session(state, session_id, {:abort, execution_id})
-            end)
-          end)
+          |> Enum.reduce(state, &abort_execution(&2, &1))
 
         {:reply, :ok, state}
     end
@@ -702,7 +730,7 @@ defmodule Coflux.Orchestration.Server do
     }
   end
 
-  defp record_and_notify_result(state, execution_id, result, run_id, retry_id) do
+  defp record_and_notify_result(state, execution_id, result, run_id, retry_id \\ nil) do
     case Store.record_result(state.db, execution_id, result, retry_id) do
       {:ok, created_at} ->
         state = notify_waiting(state, execution_id)
@@ -1030,5 +1058,19 @@ defmodule Coflux.Orchestration.Server do
           end
       end
     end)
+  end
+
+  defp abort_execution(state, execution_id) do
+    case Map.fetch(state.executions, execution_id) do
+      {:ok, execution} ->
+        if execution.session_id do
+          send_session(state, execution.session_id, {:abort, execution_id})
+        else
+          state
+        end
+
+      :error ->
+        state
+    end
   end
 end

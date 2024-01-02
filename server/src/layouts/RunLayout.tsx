@@ -124,7 +124,11 @@ export default function RunLayout() {
     ? parseInt(searchParams.get("attempt")!, 10)
     : undefined;
   const environmentName = searchParams.get("environment") || undefined;
-  const [run, rerunStep] = useRunTopic(projectId, environmentName, runId);
+  const [run, rerunStep, cancelRun] = useRunTopic(
+    projectId,
+    environmentName,
+    runId
+  );
   const initialStep = run && Object.values(run.steps).find((j) => !j.parentId);
   const [task, startRun] = useTaskTopic(
     projectId,
@@ -151,6 +155,9 @@ export default function RunLayout() {
   if (!run || !task) {
     return <Loading />;
   } else {
+    const isRunning = Object.values(run.steps).some((s) =>
+      Object.values(s.executions).some((e) => !e.result)
+    );
     return (
       <div className="flex flex-1 overflow-hidden">
         <div className="grow flex flex-col">
@@ -160,6 +167,7 @@ export default function RunLayout() {
             runId={runId}
             environmentName={environmentName}
             onRun={handleRun}
+            onCancel={isRunning ? cancelRun : undefined}
           />
           <div className="border-b px-4">
             <Tab page={null}>Graph</Tab>

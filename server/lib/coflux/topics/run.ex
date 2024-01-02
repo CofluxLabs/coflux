@@ -7,12 +7,12 @@ defmodule Coflux.Topics.Run do
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
     environment_name = Keyword.fetch!(params, :environment_name)
-    run_id = Keyword.fetch!(params, :run_id)
+    external_run_id = Keyword.fetch!(params, :run_id)
 
     case Orchestration.subscribe_run(
            project_id,
            environment_name,
-           run_id,
+           external_run_id,
            self()
          ) do
       {:error, :not_found} ->
@@ -22,7 +22,8 @@ defmodule Coflux.Topics.Run do
         {:ok,
          Topic.new(build_run(run, parent, steps), %{
            project_id: project_id,
-           environment_name: environment_name
+           environment_name: environment_name,
+           external_run_id: external_run_id
          })}
     end
   end
@@ -159,6 +160,17 @@ defmodule Coflux.Topics.Run do
       )
 
     {:ok, topic}
+  end
+
+  def handle_execute("cancel_run", {}, topic, _context) do
+    case Orchestration.cancel_run(
+           topic.state.project_id,
+           topic.state.environment_name,
+           topic.state.external_run_id
+         ) do
+      :ok ->
+        {:ok, true, topic}
+    end
   end
 
   def handle_execute("rerun_step", {step_id}, topic, _context) do

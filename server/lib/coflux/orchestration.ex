@@ -24,6 +24,10 @@ defmodule Coflux.Orchestration do
     )
   end
 
+  def cancel_run(project_id, environment, run_id) do
+    call_server(project_id, environment, {:cancel_run, run_id})
+  end
+
   def rerun_step(project_id, environment, step_id) do
     call_server(project_id, environment, {:rerun_step, step_id})
   end

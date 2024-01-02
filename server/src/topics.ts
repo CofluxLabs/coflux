@@ -7,7 +7,7 @@ export function useRunTopic(
   projectId: string | undefined,
   environmentName: string | undefined,
   runId: string | undefined
-): [models.Run | undefined, (stepId: string) => Promise<number>] {
+): [models.Run | undefined, (stepId: string) => Promise<number>, () => void] {
   const [run, { execute }] = useTopic<models.Run>(
     "projects",
     projectId,
@@ -17,12 +17,11 @@ export function useRunTopic(
     runId
   );
   const rerunStep = useCallback(
-    (stepId: string) => {
-      return execute("rerun_step", stepId);
-    },
+    (stepId: string) => execute("rerun_step", stepId),
     [execute]
   );
-  return [run, rerunStep];
+  const cancelRun = useCallback(() => execute("cancel_run"), [execute]);
+  return [run, rerunStep, cancelRun];
 }
 
 export function useTaskTopic(
