@@ -34,8 +34,8 @@ defmodule Coflux.Orchestration.Server do
               # execution_id -> [{pid, ref}]
               waiting: %{},
 
-              # execution_id -> timestamp
-              running: %{},
+              # execution_id -> %{timestamp, session_id}
+              executions: %{},
 
               # sensor_activation_id -> execution_id
               sensors: %{}
@@ -52,9 +52,9 @@ defmodule Coflux.Orchestration.Server do
       {:ok, db} ->
         {:ok, pending} = Store.get_pending_assignments(db)
 
-        running =
-          Map.new(pending, fn {execution_id, assigned_at, heartbeat_at} ->
-            {execution_id, heartbeat_at || assigned_at}
+        executions =
+          Map.new(pending, fn {execution_id, session_id, assigned_at, heartbeat_at} ->
+            {execution_id, %{timestamp: heartbeat_at || assigned_at, session_id: session_id}}
           end)
 
         {:ok, sensors} = Store.get_activated_sensors(db)
@@ -63,7 +63,7 @@ defmodule Coflux.Orchestration.Server do
           project_id: project_id,
           environment: environment,
           db: db,
-          running: running,
+          executions: executions,
           sensors: Map.new(sensors)
         }
 
@@ -272,8 +272,13 @@ defmodule Coflux.Orchestration.Server do
           executions
           |> Map.keys()
           |> Enum.reduce(state, fn execution_id, state ->
-            # TODO: don't add execution (just update existing)?
-            put_in(state, [Access.key(:running), execution_id], created_at)
+            update_in(state.executions[execution_id], fn execution ->
+              if execution do
+                Map.put(execution, :timestamp, created_at)
+              else
+                %{timestamp: created_at, session_id: nil}
+              end
+            end)
           end)
 
         {:reply, :ok, state}
@@ -284,7 +289,7 @@ defmodule Coflux.Orchestration.Server do
     # TODO: record in database?
     state =
       Enum.reduce(execution_ids, state, fn execution_id, state ->
-        Map.update!(state, :running, &Map.delete(&1, execution_id))
+        Map.update!(state, :executions, &Map.delete(&1, execution_id))
       end)
 
     {:reply, :ok, state}
@@ -780,6 +785,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp resolve_result(execution_id, db) do
+    # TODO: check execution exists?
     case Store.get_execution_result(db, execution_id) do
       {:ok, nil} ->
         {:pending, execution_id}
@@ -949,8 +955,9 @@ defmodule Coflux.Orchestration.Server do
   defp check_abandoned(state) do
     now = System.os_time(:millisecond)
 
-    Enum.reduce(state.running, state, fn {execution_id, updated_at}, state ->
-      if now - updated_at > @abandon_timeout_ms do
+    Enum.reduce(state.executions, state, fn {execution_id, execution}, state ->
+      # TODO: abandon if execution.session_id is nil?
+      if now - execution.timestamp > @abandon_timeout_ms do
         {:ok, state} = record_result(state, execution_id, :abandoned)
         state
       else
@@ -985,9 +992,11 @@ defmodule Coflux.Orchestration.Server do
         {:ok, arguments} ->
           {:ok, assigned_at} = Store.assign_execution(state.db, execution_id, session_id)
 
+          execution = %{timestamp: assigned_at, session_id: session_id}
+
           state =
             state
-            |> put_in([Access.key(:running), execution_id], assigned_at)
+            |> put_in([Access.key(:executions), execution_id], execution)
             |> send_session(
               session_id,
               {:execute, execution_id, repository, target, arguments}

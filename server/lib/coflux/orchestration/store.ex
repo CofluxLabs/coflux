@@ -451,7 +451,7 @@ defmodule Coflux.Orchestration.Store do
     query(
       db,
       """
-      SELECT a.execution_id, a.created_at, (SELECT MAX(created_at) FROM heartbeats WHERE execution_id = a.execution_id)
+      SELECT a.execution_id, a.session_id, a.created_at, (SELECT MAX(created_at) FROM heartbeats WHERE execution_id = a.execution_id)
       FROM assignments AS a
       LEFT JOIN results AS r ON r.execution_id = a.execution_id
       WHERE r.created_at IS NULL
