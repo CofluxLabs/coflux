@@ -78,7 +78,7 @@ export default function RunLogs({
                         )}
                       >
                         <span className="font-mono">{step.target}</span>{" "}
-                        <span className="text-gray-500 text-sm">
+                        <span className="text-slate-500 text-sm">
                           ({step.repository})
                         </span>
                       </Link>

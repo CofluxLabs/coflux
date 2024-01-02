@@ -66,7 +66,7 @@ export default function RunDialog({
       <form onSubmit={handleSubmit}>
         {parameters.length > 0 && (
           <div className="mt-4">
-            <h3 className="font-bold uppercase text-gray-400 text-sm">
+            <h3 className="font-bold uppercase text-slate-400 text-sm">
               Arguments
             </h3>
             {parameters.map((parameter) => (

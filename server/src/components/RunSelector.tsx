@@ -77,7 +77,7 @@ function Options({
                       {runId}
                     </h3>
                     <p
-                      className="text-xs text-gray-500 whitespace-nowrap"
+                      className="text-xs text-slate-500 whitespace-nowrap"
                       title={createdAt.toLocaleString(
                         DateTime.DATETIME_SHORT_WITH_SECONDS
                       )}
@@ -136,9 +136,9 @@ function NextPreviousButton({
   const runId = getNextPrevious(runIds, currentRunId, direction);
   const Icon = direction == "next" ? IconChevronRight : IconChevronLeft;
   const className = classNames(
-    "p-1 bg-white border border-gray-300 flex items-center",
-    runId ? "hover:bg-gray-100" : "text-gray-300",
-    direction == "next" ? "rounded-r -ml-px" : "rounded-l -mr-px"
+    "p-1 bg-white border border-slate-300 flex items-center",
+    runId ? "hover:bg-slate-100 text-slate-500" : "text-slate-200",
+    direction == "next" ? "rounded-r-md -ml-px" : "rounded-l-md -mr-px"
   );
   if (runId) {
     return (
@@ -146,13 +146,13 @@ function NextPreviousButton({
         to={getRunUrl(projectId!, runId, environmentName, location.pathname)}
         className={className}
       >
-        <Icon size={20} />
+        <Icon size={16} />
       </Link>
     );
   } else {
     return (
       <span className={className}>
-        <Icon size={20} />
+        <Icon size={16} />
       </span>
     );
   }
@@ -185,10 +185,10 @@ export default function RunSelector({
       <Menu>
         {({ open }) => (
           <div className="relative">
-            <Menu.Button className="flex items-center w-full py-1 px-2 gap-1 bg-white border border-gray-300 hover:bg-gray-50">
-              <span className="font-mono">{runId}</span>
+            <Menu.Button className="flex items-center w-full py-1 px-2 gap-1 bg-white border border-slate-300 hover:bg-slate-50">
+              <span className="font-mono text-sm">{runId}</span>
               <span className="text-slate-400">
-                <IconChevronDown size={20} />
+                <IconChevronDown size={16} />
               </span>
             </Menu.Button>
             <Transition

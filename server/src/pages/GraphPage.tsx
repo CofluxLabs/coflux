@@ -28,7 +28,7 @@ export default function GraphPage() {
   } else {
     return (
       <div className="p-4">
-        <p className="italic text-gray-500">Run graph is too big to render.</p>
+        <p className="italic text-slate-500">Run graph is too big to render.</p>
       </div>
     );
   }

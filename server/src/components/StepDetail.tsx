@@ -6,11 +6,12 @@ import {
   useState,
 } from "react";
 import classNames from "classnames";
-import { filter, findKey, sortBy } from "lodash";
+import { findKey, sortBy } from "lodash";
 import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTopic } from "@topical/react";
+import { IconChevronDown } from "@tabler/icons-react";
 
 import * as models from "../models";
 import Badge from "./Badge";
@@ -260,26 +261,26 @@ function AttemptSelector({
   return (
     <Listbox value={selectedNumber} onChange={onChange}>
       <div className="relative">
-        <Listbox.Button className="relative w-full p-1 pl-2 bg-white text-left border border-slate-300 text-slate-600 hover:border-slate-600 rounded">
+        <Listbox.Button className="flex items-center gap-1 relative p-1 pl-2 bg-white text-left text-slate-600 border border-slate-300 rounded-md shadow-sm font-bold">
           {selectedAttempt && children(selectedAttempt, true, false)}
+          <IconChevronDown size={16} className="opacity-40" />
         </Listbox.Button>
         <Transition
           as={Fragment}
+          enter="transition ease-in duration-100"
+          enterFrom="opacity-0 scale-95"
+          enterTo="opacity-100 scale-100"
           leave="transition ease-in duration-100"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
+          leaveFrom="opacity-100 scale-100"
+          leaveTo="opacity-0 scale-95"
         >
-          <Listbox.Options className="absolute right-0 py-1 mt-1 overflow-auto text-base bg-white rounded shadow-lg max-h-60">
+          <Listbox.Options className="absolute p-1 mt-1 overflow-auto text-base bg-white rounded shadow-lg max-h-60">
             {sortBy(Object.values(attempts), "sequence").map((attempt) => (
-              <Listbox.Option
-                key={attempt.sequence}
-                className="relative cursor-default"
-                value={attempt.sequence}
-              >
+              <Listbox.Option key={attempt.sequence} value={attempt.sequence}>
                 {({ selected, active }) => (
                   <div
                     className={classNames(
-                      "p-2",
+                      "p-1 cursor-default rounded",
                       selected && "font-bold",
                       active && "bg-slate-100"
                     )}
@@ -406,49 +407,58 @@ export default function StepDetail({
       style={style}
     >
       <div className="p-4 pt-5 flex items-center border-b border-slate-200">
-        <h2 className="flex-1">
-          <span className="font-mono text-xl">{step.target}</span>{" "}
-          <span className="text-slate-500">({step.repository})</span>
-        </h2>
+        <div className="flex-1">
+          <h2>
+            <span className="font-mono text-xl">{step.target}</span>{" "}
+            <span className="text-slate-500">({step.repository})</span>
+          </h2>
+          {!step.cachedExecutionId && (
+            <div className="flex items-center gap-1 mt-1">
+              <AttemptSelector
+                selectedNumber={sequence}
+                attempts={step.executions}
+                onChange={changeAttempt}
+              >
+                {(attempt) => (
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 text-sm">#{attempt.sequence}</span>
+                    {attempt.result?.type == "duplicated" ? (
+                      <Badge intent="none" label="Duplicated" />
+                    ) : !attempt.assignedAt ? (
+                      <Badge intent="info" label="Assigning" />
+                    ) : !attempt.result ? (
+                      <Badge intent="info" label="Running" />
+                    ) : ["reference", "raw", "blob"].includes(
+                        attempt.result.type
+                      ) ? (
+                      <Badge intent="success" label="Completed" />
+                    ) : attempt.result.type == "error" ? (
+                      <Badge intent="danger" label="Failed" />
+                    ) : attempt.result.type == "abandoned" ? (
+                      <Badge intent="warning" label="Abandoned" />
+                    ) : attempt.result.type == "cancelled" ? (
+                      <Badge intent="warning" label="Cancelled" />
+                    ) : null}
+                  </div>
+                )}
+              </AttemptSelector>
+
+              <Button
+                disabled={rerunning}
+                outline={true}
+                size="sm"
+                onClick={handleRetryClick}
+              >
+                Retry
+              </Button>
+            </div>
+          )}
+        </div>
         {step.cachedExecutionId ? (
           <Badge intent="none" label="Cached" />
         ) : !Object.keys(step.executions).length ? (
           <Badge intent="info" label="Scheduling" />
-        ) : (
-          <div className="flex">
-            <AttemptSelector
-              selectedNumber={sequence}
-              attempts={step.executions}
-              onChange={changeAttempt}
-            >
-              {(attempt) => (
-                <div className="flex items-center">
-                  <span className="mr-1 flex-1">#{attempt.sequence}</span>
-                  {attempt.result?.type == "duplicated" ? (
-                    <Badge intent="none" label="Duplicated" />
-                  ) : !attempt.assignedAt ? (
-                    <Badge intent="info" label="Assigning" />
-                  ) : !attempt.result ? (
-                    <Badge intent="info" label="Running" />
-                  ) : ["reference", "raw", "blob"].includes(
-                      attempt.result.type
-                    ) ? (
-                    <Badge intent="success" label="Completed" />
-                  ) : attempt.result.type == "error" ? (
-                    <Badge intent="danger" label="Failed" />
-                  ) : attempt.result.type == "abandoned" ? (
-                    <Badge intent="warning" label="Abandoned" />
-                  ) : attempt.result.type == "cancelled" ? (
-                    <Badge intent="warning" label="Cancelled" />
-                  ) : null}
-                </div>
-              )}
-            </AttemptSelector>
-            <Button disabled={rerunning} onClick={handleRetryClick}>
-              Retry
-            </Button>
-          </div>
-        )}
+        ) : null}
       </div>
       <div className="flex flex-col overflow-auto p-4 gap-5">
         {step.arguments?.length > 0 && (
@@ -456,7 +466,7 @@ export default function StepDetail({
             <h3 className="uppercase text-sm font-bold text-slate-400">
               Arguments
             </h3>
-            <ol className="list-decimal list-inside ml-1 marker:text-gray-400 marker:text-xs">
+            <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs">
               {step.arguments.map((argument, index) => (
                 <li key={index}>
                   <Argument

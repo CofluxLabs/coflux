@@ -80,7 +80,7 @@ export default function SensorPage() {
                           })}
                         >
                           <span className="font-mono">{run.target}</span>{" "}
-                          <span className="text-gray-500 text-sm">
+                          <span className="text-slate-500 text-sm">
                             ({run.repository})
                           </span>
                         </Link>

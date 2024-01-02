@@ -154,7 +154,7 @@ export default function RunTimeline({
                 )}
               >
                 <span className="font-mono">{step.target}</span>{" "}
-                <span className="text-gray-500 text-sm">
+                <span className="text-slate-500 text-sm">
                   ({step.repository})
                 </span>
               </Link>
@@ -173,7 +173,7 @@ export default function RunTimeline({
                   x2={stepFinishedAt}
                   x0={earliestTime}
                   d={totalMillis}
-                  className="bg-gray-100"
+                  className="bg-slate-100"
                 />
                 {Object.values(step.executions).map((attempt) => {
                   const [createdAt, assignedAt, resultAt] =
@@ -185,7 +185,7 @@ export default function RunTimeline({
                         x2={stepFinishedAt}
                         x0={earliestTime}
                         d={totalMillis}
-                        className="bg-gray-200"
+                        className="bg-slate-200"
                       />
                       {assignedAt && (
                         <Bar

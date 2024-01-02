@@ -64,7 +64,7 @@ export default function TaskPage() {
             onRun={handleRun}
           />
           <div className="p-4 flex-1">
-            <h1 className="text-gray-400 text-xl text-center">
+            <h1 className="text-slate-400 text-xl text-center">
               This task hasn't been run yet
             </h1>
           </div>

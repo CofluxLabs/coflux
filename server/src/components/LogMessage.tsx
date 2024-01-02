@@ -10,7 +10,7 @@ import {
 function classForLevel(level: models.LogMessageLevel) {
   switch (level) {
     case 1:
-      return "text-gray-600 font-mono text-sm";
+      return "text-slate-600 font-mono text-sm";
     case 3:
       return "text-red-800 font-mono text-sm";
     default:
