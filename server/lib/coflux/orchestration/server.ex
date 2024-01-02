@@ -264,21 +264,22 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:record_heartbeats, executions}, _from, state) do
+  def handle_call({:record_heartbeats, executions, external_session_id}, _from, state) do
     # TODO: check whether any executions have been cancelled/abandoned?
+    # TODO: handle execution's session ID changing?
+    # TODO: handle execution status?
+    session_id = Map.fetch!(state.session_ids, external_session_id)
+
     case Store.record_hearbeats(state.db, executions) do
       {:ok, created_at} ->
         state =
           executions
           |> Map.keys()
           |> Enum.reduce(state, fn execution_id, state ->
-            update_in(state.executions[execution_id], fn execution ->
-              if execution do
-                Map.put(execution, :timestamp, created_at)
-              else
-                %{timestamp: created_at, session_id: nil}
-              end
-            end)
+            put_in(state.executions[execution_id], %{
+              timestamp: created_at,
+              session_id: session_id
+            })
           end)
 
         {:reply, :ok, state}

@@ -95,7 +95,15 @@ defmodule Coflux.Handlers.Agent do
       "record_heartbeats" ->
         [executions] = message["params"]
         executions = Map.new(executions, fn {k, v} -> {String.to_integer(k), v} end)
-        :ok = Orchestration.record_heartbeats(state.project_id, state.environment, executions)
+
+        :ok =
+          Orchestration.record_heartbeats(
+            state.project_id,
+            state.environment,
+            executions,
+            state.session_id
+          )
+
         {[], state}
 
       "notify_terminated" ->
