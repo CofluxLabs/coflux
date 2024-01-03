@@ -4,7 +4,6 @@ defmodule Coflux.Orchestration.Server do
   alias Coflux.Orchestration.Store
   alias Coflux.MapUtils
 
-  @abandon_timeout_ms 5_000
   @session_timeout_ms 5_000
 
   defmodule State do
@@ -16,7 +15,7 @@ defmodule Coflux.Orchestration.Server do
               # ref -> {pid, session_id}
               agents: %{},
 
-              # session_id -> %{external_id, agent, targets, queue, expire_timer}
+              # session_id -> %{external_id, agent, targets, queue, executions, expire_timer}
               sessions: %{},
 
               # external_id -> session_id
@@ -34,9 +33,6 @@ defmodule Coflux.Orchestration.Server do
               # execution_id -> [{pid, ref}]
               waiting: %{},
 
-              # execution_id -> %{timestamp, session_id}
-              executions: %{},
-
               # sensor_activation_id -> execution_id
               sensors: %{}
   end
@@ -50,27 +46,30 @@ defmodule Coflux.Orchestration.Server do
   def init({project_id, environment}) do
     case Store.open(project_id, environment) do
       {:ok, db} ->
-        {:ok, pending} = Store.get_pending_assignments(db)
-
-        executions =
-          Map.new(pending, fn {execution_id, session_id, assigned_at, heartbeat_at} ->
-            {execution_id, %{timestamp: heartbeat_at || assigned_at, session_id: session_id}}
-          end)
-
         {:ok, sensors} = Store.get_activated_sensors(db)
 
         state = %State{
           project_id: project_id,
           environment: environment,
           db: db,
-          executions: executions,
           sensors: Map.new(sensors)
         }
 
-        send(self(), :check_abandoned)
-
-        {:ok, state}
+        {:ok, state, {:continue, :abandon_pending}}
     end
+  end
+
+  def handle_continue(:abandon_pending, state) do
+    {:ok, pending} = Store.get_pending_assignments(state.db)
+
+    state =
+      Enum.reduce(pending, state, fn {execution_id, _session_id, _assigned_at, _heartbeat_at},
+                                     state ->
+        {:ok, state} = record_result(state, execution_id, :abandoned)
+        state
+      end)
+
+    {:noreply, state}
   end
 
   def handle_call({:connect, external_id, pid}, _from, state) do
@@ -119,16 +118,15 @@ defmodule Coflux.Orchestration.Server do
         {:ok, session_id, external_id} ->
           ref = Process.monitor(pid)
 
+          session =
+            external_id
+            |> build_session()
+            |> Map.put(:agent, ref)
+
           state =
             state
             |> put_in([Access.key(:agents), ref], {pid, session_id})
-            |> put_in([Access.key(:sessions), session_id], %{
-              external_id: external_id,
-              agent: ref,
-              targets: %{},
-              queue: [],
-              expire_timer: nil
-            })
+            |> put_in([Access.key(:sessions), session_id], session)
             |> put_in([Access.key(:session_ids), external_id], session_id)
 
           notify_agent(state, session_id)
@@ -293,32 +291,70 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:record_heartbeats, executions, external_session_id}, _from, state) do
-    # TODO: check whether any executions have been cancelled/abandoned?
-    # TODO: handle execution's session ID changing?
-    # TODO: handle execution status?
+    # TODO: handle execution statuses?
     session_id = Map.fetch!(state.session_ids, external_session_id)
+    session = Map.fetch!(state.sessions, session_id)
+
+    execution_ids = executions |> Map.keys() |> MapSet.new()
+
+    state =
+      session.starting
+      |> MapSet.intersection(execution_ids)
+      |> Enum.reduce(state, fn execution_id, state ->
+        update_in(state.sessions[session_id].starting, &MapSet.delete(&1, execution_id))
+      end)
+
+    state =
+      session.executing
+      |> MapSet.difference(execution_ids)
+      |> Enum.reduce(state, fn execution_id, state ->
+        case Store.get_execution_result(state.db, execution_id) do
+          {:ok, nil} ->
+            {:ok, state} = record_result(state, execution_id, :abandoned)
+            state
+
+          {:ok, _other} ->
+            state
+        end
+      end)
+
+    state =
+      execution_ids
+      |> MapSet.difference(session.starting)
+      |> MapSet.difference(session.executing)
+      |> Enum.reduce(state, fn execution_id, state ->
+        case Store.get_execution_result(state.db, execution_id) do
+          {:ok, nil} ->
+            state
+
+          {:ok, _other} ->
+            send_session(state, session_id, {:abort, execution_id})
+        end
+      end)
 
     case Store.record_hearbeats(state.db, executions) do
-      {:ok, created_at} ->
-        state =
-          executions
-          |> Map.keys()
-          |> Enum.reduce(state, fn execution_id, state ->
-            put_in(state.executions[execution_id], %{
-              timestamp: created_at,
-              session_id: session_id
-            })
-          end)
-
+      {:ok, _created_at} ->
+        state = put_in(state.sessions[session_id].executing, execution_ids)
         {:reply, :ok, state}
     end
   end
 
   def handle_call({:notify_terminated, execution_ids}, _from, state) do
     # TODO: record in database?
+
     state =
       Enum.reduce(execution_ids, state, fn execution_id, state ->
-        Map.update!(state, :executions, &Map.delete(&1, execution_id))
+        case find_session_for_execution(state, execution_id) do
+          {:ok, session_id} ->
+            update_in(state.sessions[session_id], fn session ->
+              session
+              |> Map.update!(:starting, &MapSet.delete(&1, execution_id))
+              |> Map.update!(:executing, &MapSet.delete(&1, execution_id))
+            end)
+
+          :error ->
+            state
+        end
       end)
 
     {:reply, :ok, state}
@@ -504,13 +540,6 @@ defmodule Coflux.Orchestration.Server do
     {:noreply, state}
   end
 
-  def handle_info(:check_abandoned, state) do
-    state = check_abandoned(state)
-    # TODO: only if running executions
-    Process.send_after(self(), :check_abandoned, @abandon_timeout_ms)
-    {:noreply, state}
-  end
-
   def handle_info({:expire_session, session_id}, state) do
     if state.sessions[session_id].agent do
       IO.puts("Ignoring session expire (#{inspect(session_id)})")
@@ -519,7 +548,12 @@ defmodule Coflux.Orchestration.Server do
       {session, state} = pop_in(state.sessions[session_id])
 
       state =
-        state
+        session.executing
+        |> MapSet.union(session.starting)
+        |> Enum.reduce(state, fn execution_id, state ->
+          {:ok, state} = record_result(state, execution_id, :abandoned)
+          state
+        end)
         |> Map.update!(:targets, fn all_targets ->
           Enum.reduce(
             session.targets,
@@ -671,6 +705,7 @@ defmodule Coflux.Orchestration.Server do
       Map.has_key?(state.agents, ref) ->
         {{^pid, session_id}, state} = pop_in(state.agents[ref])
 
+        # TODO: (re-)schedule timer when receiving heartbeats?
         expire_timer =
           Process.send_after(self(), {:expire_session, session_id}, @session_timeout_ms)
 
@@ -695,6 +730,18 @@ defmodule Coflux.Orchestration.Server do
 
   def terminate(_reason, state) do
     Store.close(state.db)
+  end
+
+  defp build_session(external_id) do
+    %{
+      external_id: external_id,
+      agent: nil,
+      targets: %{},
+      queue: [],
+      starting: MapSet.new(),
+      executing: MapSet.new(),
+      expire_timer: nil
+    }
   end
 
   defp rerun_step(state, step, execute_after \\ nil) do
@@ -981,20 +1028,6 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp check_abandoned(state) do
-    now = System.os_time(:millisecond)
-
-    Enum.reduce(state.executions, state, fn {execution_id, execution}, state ->
-      # TODO: abandon if execution.session_id is nil?
-      if now - execution.timestamp > @abandon_timeout_ms do
-        {:ok, state} = record_result(state, execution_id, :abandoned)
-        state
-      else
-        state
-      end
-    end)
-  end
-
   defp get_target(db, repository, target_name) do
     # TODO: just query specific target
     {:ok, targets} = Store.get_latest_targets(db)
@@ -1021,11 +1054,14 @@ defmodule Coflux.Orchestration.Server do
         {:ok, arguments} ->
           {:ok, assigned_at} = Store.assign_execution(state.db, execution_id, session_id)
 
-          execution = %{timestamp: assigned_at, session_id: session_id}
+          IO.puts("Assigned execution #{execution_id} to session #{session_id}")
 
           state =
             state
-            |> put_in([Access.key(:executions), execution_id], execution)
+            |> update_in(
+              [Access.key(:sessions), session_id, :starting],
+              &MapSet.put(&1, execution_id)
+            )
             |> send_session(
               session_id,
               {:execute, execution_id, repository, target, arguments}
@@ -1060,16 +1096,28 @@ defmodule Coflux.Orchestration.Server do
     end)
   end
 
+  defp find_session_for_execution(state, execution_id) do
+    state.sessions
+    |> Map.keys()
+    |> Enum.find(fn session_id ->
+      session = Map.fetch!(state.sessions, session_id)
+
+      MapSet.member?(session.starting, execution_id) or
+        MapSet.member?(session.executing, execution_id)
+    end)
+    |> case do
+      nil -> :error
+      session_id -> {:ok, session_id}
+    end
+  end
+
   defp abort_execution(state, execution_id) do
-    case Map.fetch(state.executions, execution_id) do
-      {:ok, execution} ->
-        if execution.session_id do
-          send_session(state, execution.session_id, {:abort, execution_id})
-        else
-          state
-        end
+    case find_session_for_execution(state, execution_id) do
+      {:ok, session_id} ->
+        send_session(state, session_id, {:abort, execution_id})
 
       :error ->
+        IO.puts("Couldn't locate session for execution #{execution_id}. Ignoring.")
         state
     end
   end

@@ -308,6 +308,7 @@ defmodule Coflux.Orchestration.Store do
   end
 
   def record_dependency(db, execution_id, dependency_id) do
+    # TODO: ignore duplicate?
     with_transaction(db, fn ->
       {:ok, _} =
         insert_one(
