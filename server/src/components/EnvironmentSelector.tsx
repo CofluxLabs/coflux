@@ -9,11 +9,11 @@ import AddEnvironmentDialog from "./AddEnvironmentDialog";
 
 function classNameForEnvironment(name: string) {
   if (name.startsWith("stag")) {
-    return "bg-yellow-300 text-yellow-700 hover:bg-yellow-300/90";
+    return "bg-yellow-300/90 text-yellow-700 hover:bg-yellow-300/80";
   } else if (name.startsWith("prod")) {
-    return "bg-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-300/90";
+    return "bg-fuchsia-300/90 text-fuchsia-700 hover:bg-fuchsia-300/80";
   } else {
-    return "bg-slate-300 text-slate-700 hover:bg-slate-300/90";
+    return "bg-slate-300/90 text-slate-700 hover:bg-slate-300/80";
   }
 }
 

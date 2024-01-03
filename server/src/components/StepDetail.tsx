@@ -17,8 +17,8 @@ import * as models from "../models";
 import Badge from "./Badge";
 import { buildUrl } from "../utils";
 import Loading from "./Loading";
-import LogMessage from "./LogMessage";
 import Button from "./common/Button";
+import RunLogs from "./RunLogs";
 
 function findExecution(
   run: models.Run,
@@ -92,25 +92,6 @@ function Result({
     default:
       return null;
   }
-}
-
-type LogMessageItemProps = {
-  message: models.LogMessage;
-  startTime: DateTime;
-};
-
-function LogMessageItem({ message, startTime }: LogMessageItemProps) {
-  const [_executionId, timestamp, level, content] = message;
-  const createdAt = DateTime.fromMillis(timestamp);
-  return (
-    <li>
-      <div className="text-xs text-slate-400 mb-0.5">
-        {createdAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)} (+
-        {Math.floor(createdAt.diff(startTime).toMillis())}ms)
-      </div>
-      <LogMessage level={level} content={content} />
-    </li>
-  );
 }
 
 type AttemptProps = {
@@ -216,20 +197,12 @@ function Attempt({
             <h3 className="uppercase text-sm font-bold text-slate-400">Logs</h3>
             {attemptLogs === undefined ? (
               <Loading />
-            ) : attemptLogs.length == 0 ? (
-              <p>
-                <em>None</em>
-              </p>
             ) : (
-              <ol className="flex flex-col py-1 gap-3">
-                {sortBy(attemptLogs, (l) => l[1]).map((message, index) => (
-                  <LogMessageItem
-                    key={index}
-                    message={message}
-                    startTime={scheduledAt}
-                  />
-                ))}
-              </ol>
+              <RunLogs
+                startTime={scheduledAt}
+                logs={attemptLogs}
+                darkerTimestampRule={true}
+              />
             )}
           </div>
         </Fragment>

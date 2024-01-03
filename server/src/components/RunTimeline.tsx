@@ -141,7 +141,7 @@ export default function RunTimeline({
             key={stepId}
             className="flex items-center border-r border-slate-200"
           >
-            <div className="w-40 mr-2 border-r border-slate-200">
+            <div className="w-40 mr-2 border-r border-slate-200 py-0.5">
               <Link
                 to={buildUrl(`/projects/${projectId}/runs/${runId}/timeline`, {
                   environment: environmentName,
@@ -149,8 +149,8 @@ export default function RunTimeline({
                   attempt: isActive ? undefined : latestAttempt?.sequence,
                 })}
                 className={classNames(
-                  "inline-block max-w-full truncate leading-none",
-                  isActive && "rounded ring-2 ring-offset-1 ring-cyan-400"
+                  "block max-w-full rounded truncate leading-none text-sm",
+                  isActive && "ring-2 ring-offset-1 ring-cyan-400"
                 )}
               >
                 <span className="font-mono">{step.target}</span>{" "}
