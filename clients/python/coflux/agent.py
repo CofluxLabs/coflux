@@ -128,6 +128,7 @@ class Agent:
                 elif e.reason == "session_invalid":
                     print("Session expired. Resetting and reconnecting...")
                     self._connection.reset()
+                    self._execution_manager.abort_all()
                     for module_name, targets in self._modules.items():
                         await self._register_module(module_name, targets)
                 else:

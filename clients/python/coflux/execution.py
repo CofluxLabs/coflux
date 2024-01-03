@@ -505,20 +505,17 @@ class Manager:
     async def _send_heartbeats(self) -> t.NoReturn:
         while True:
             now = time.time()
-            executions = [
-                e
-                for e in self._executions.values()
-                if now - e.timestamp > _EXECUTION_THRESHOLD_S
-            ]
-            if self._should_send_heartbeat(executions, _AGENT_THRESHOLD_S, now):
+            executions = [e for e in self._executions.values()]
+            if self._should_send_heartbeats(executions, _AGENT_THRESHOLD_S, now):
                 heartbeats = {e.id: e.status.value for e in executions}
                 await self._connection.notify("record_heartbeats", (heartbeats,))
                 self._last_heartbeat_sent = now
                 for execution in executions:
                     execution.touch(now)
-            await asyncio.sleep(1)
+            elapsed = time.time() - now
+            await asyncio.sleep(_EXECUTION_THRESHOLD_S - elapsed)
 
-    def _should_send_heartbeat(
+    def _should_send_heartbeats(
         self, executions: dict, threshold_s: float, now: float
     ) -> bool:
         return (
@@ -565,3 +562,7 @@ class Manager:
         if not execution:
             return False
         return execution.abort()
+
+    def abort_all(self):
+        for execution in self._executions.values():
+            execution.abort()
