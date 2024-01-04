@@ -70,7 +70,7 @@ function Result({
         const [stepId, attempt] = stepAttempt;
         return (
           <Link
-            to={buildUrl(`/projects/${projectId}/runs/${runId}`, {
+            to={buildUrl(`/projects/${projectId}/runs/${runId}/graph`, {
               environment: environmentName,
               step: stepId,
               attempt: attempt.sequence,
@@ -160,7 +160,7 @@ function Attempt({
             <Fragment>
               <Link
                 to={buildUrl(
-                  `/projects/${projectId}/runs/${attempt.retry.runId}`,
+                  `/projects/${projectId}/runs/${attempt.retry.runId}/graph`,
                   {
                     environment: environmentName,
                     step: attempt.retry.stepId,
@@ -294,7 +294,7 @@ function Argument({
         const [stepId, attempt] = stepAttempt;
         return (
           <Link
-            to={buildUrl(`/projects/${projectId}/runs/${runId}`, {
+            to={buildUrl(`/projects/${projectId}/runs/${runId}/graph`, {
               environment: environmentName,
               step: stepId,
               attempt: attempt.sequence,
