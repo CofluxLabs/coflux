@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import dagre from "dagre";
 import classNames from "classnames";
 import { Link } from "react-router-dom";
-import { max } from "lodash";
+import { max, sortBy } from "lodash";
 import { IconArrowForward, IconArrowForwardUp } from "@tabler/icons-react";
 
 import * as models from "../models";
@@ -19,25 +19,37 @@ function buildGraph(
     return {};
   });
 
-  const initialStepId = Object.keys(run.steps).find(
-    (id) => !run.steps[id].parentId
-  )!;
-  let stepId = activeStepId || initialStepId;
-  const stepAttempts = { [stepId]: activeStepId && activeAttemptNumber };
-  while (run.steps[stepId].parentId) {
-    const parentId = run.steps[stepId].parentId!;
-    stepId = Object.keys(run.steps).find(
-      (id) => parentId in run.steps[id].executions
-    )!;
-    stepAttempts[stepId] = run.steps[stepId].executions[parentId].sequence;
+  const stepAttempts: Record<string, number> = {};
+
+  if (activeStepId && activeAttemptNumber) {
+    if (activeAttemptNumber) {
+      stepAttempts[activeStepId] = activeAttemptNumber;
+    }
+
+    let stepId = activeStepId;
+    while (run.steps[stepId].parentId) {
+      const parentId = run.steps[stepId].parentId!;
+      stepId = Object.keys(run.steps).find(
+        (id) => parentId in run.steps[id].executions
+      )!;
+      stepAttempts[stepId] = run.steps[stepId].executions[parentId].sequence;
+    }
   }
 
+  const rootStepIds = sortBy(
+    Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
+    (stepId) => run.steps[stepId].createdAt
+  );
+
   if (run.parent) {
-    const step = run.steps[stepId];
+    const initialStepId = rootStepIds[0];
+    const step = run.steps[initialStepId];
     const attemptNumber =
-      stepAttempts[stepId] ||
+      stepAttempts[initialStepId] ||
       max(Object.values(step.executions).map((e) => e.sequence));
-    const nodeId = attemptNumber ? `${stepId}/${attemptNumber}` : stepId;
+    const nodeId = attemptNumber
+      ? `${initialStepId}/${attemptNumber}`
+      : initialStepId;
 
     g.setNode(run.parent.runId, { width: 160, height: 50 });
     g.setEdge(run.parent.runId, nodeId);
@@ -77,7 +89,8 @@ function buildGraph(
     }
   };
 
-  traverse(stepId);
+  rootStepIds.forEach((stepId: string) => traverse(stepId));
+
   dagre.layout(g);
   return g;
 }
@@ -138,7 +151,7 @@ function StepNode({
       }}
     >
       <Link
-        to={buildUrl(`/projects/${projectId}/runs/${runId}`, {
+        to={buildUrl(`/projects/${projectId}/runs/${runId}/graph`, {
           environment: environmentName,
           step: isActive ? undefined : stepId,
           attempt: isActive ? undefined : attemptNumber,

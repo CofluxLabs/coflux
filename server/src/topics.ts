@@ -24,23 +24,23 @@ export function useRunTopic(
   return [run, rerunStep, cancelRun];
 }
 
-export function useTaskTopic(
+export function useTargetTopic(
   projectId: string | undefined,
   environmentName: string | undefined,
   repository: string | undefined,
-  target: string | undefined
+  targetName: string | undefined
 ): [
-  models.Task | undefined,
+  models.Target | undefined,
   (parameters: ["json", string][]) => Promise<string>
 ] {
-  const [task, { execute }] = useTopic<models.Task>(
+  const [target, { execute }] = useTopic<models.Target>(
     "projects",
     projectId,
     "environments",
     environmentName,
-    "tasks",
+    "targets",
     repository,
-    target
+    targetName
   );
   const startRun = useCallback(
     (paremeters: ["json", string][]) => {
@@ -48,5 +48,5 @@ export function useTaskTopic(
     },
     [execute]
   );
-  return [task, startRun];
+  return [target, startRun];
 }

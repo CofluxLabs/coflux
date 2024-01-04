@@ -10,11 +10,12 @@ import {
   HomePage,
   ProjectPage,
   ProjectsPage,
+  RunPage,
   GraphPage,
   TimelinePage,
+  RunsPage,
   LogsPage,
-  TaskPage,
-  SensorPage,
+  TargetPage,
 } from "./pages";
 import NewProjectDialog from "./components/NewProjectDialog";
 
@@ -37,14 +38,15 @@ export default function App() {
             </Route>
             <Route path=":project" element={<ProjectLayout />}>
               <Route index={true} element={<ProjectPage />} />
-              <Route path="tasks/:repository/:target" element={<TaskPage />} />
               <Route
-                path="sensors/:repository/:sensor"
-                element={<SensorPage />}
+                path="targets/:repository/:target"
+                element={<TargetPage />}
               />
               <Route path="runs/:run" element={<RunLayout />}>
-                <Route index={true} element={<GraphPage />} />
+                <Route index={true} element={<RunPage />} />
+                <Route path="graph" element={<GraphPage />} />
                 <Route path="timeline" element={<TimelinePage />} />
+                <Route path="runs" element={<RunsPage />} />
                 <Route path="logs" element={<LogsPage />} />
               </Route>
             </Route>

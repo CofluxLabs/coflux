@@ -43,14 +43,9 @@ CREATE TABLE runs (
   external_id TEXT NOT NULL UNIQUE,
   parent_id INTEGER,
   idempotency_key TEXT UNIQUE,
+  recurrent INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE
-);
-
-CREATE TABLE run_stops (
-  run_id INTEGER PRIMARY KEY,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE
 );
 
 CREATE TABLE steps (
@@ -72,6 +67,7 @@ CREATE TABLE steps (
 );
 
 CREATE INDEX steps_repository_target ON steps (repository, target) WHERE parent_id IS NULL;
+CREATE UNIQUE INDEX steps_initial_step ON steps (run_id) WHERE parent_id IS NULL;
 CREATE INDEX steps_cache_key ON steps (cache_key);
 
 CREATE TABLE arguments (
@@ -153,28 +149,4 @@ CREATE TABLE cursors (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (execution_id, sequence),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
-);
-
-CREATE TABLE sensor_activations (
-  id INTEGER PRIMARY KEY,
-  repository TEXT NOT NULL,
-  target TEXT NOT NULL,
-  created_at INTEGER NOT NULL
-);
-
-CREATE INDEX sensor_activations_repository_target ON sensor_activations (repository, target);
-
-CREATE TABLE sensor_deactivations (
-  sensor_activation_id INTEGER PRIMARY KEY,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (sensor_activation_id) REFERENCES sensor_activations ON DELETE CASCADE
-);
-
-CREATE TABLE sensor_executions (
-  sensor_activation_id INTEGER NOT NULL,
-  sequence INTEGER NOT NULL,
-  execution_id INTEGER NOT NULL UNIQUE,
-  PRIMARY KEY (sensor_activation_id, sequence),
-  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
-  FOREIGN KEY (sensor_activation_id) REFERENCES sensor_activations ON DELETE CASCADE
 );

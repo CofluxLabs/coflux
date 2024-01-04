@@ -32,14 +32,6 @@ defmodule Coflux.Orchestration do
     call_server(project_id, environment, {:rerun_step, step_id})
   end
 
-  def activate_sensor(project_id, environment, repository, target) do
-    call_server(project_id, environment, {:activate_sensor, repository, target})
-  end
-
-  def deactivate_sensor(project_id, environment, repository, target) do
-    call_server(project_id, environment, {:deactivate_sensor, repository, target})
-  end
-
   def record_heartbeats(project_id, environment, executions, session_id) do
     call_server(project_id, environment, {:record_heartbeats, executions, session_id})
   end
@@ -72,12 +64,8 @@ defmodule Coflux.Orchestration do
     call_server(project_id, environment, {:subscribe_agents, pid})
   end
 
-  def subscribe_task(project_id, environment, repository, target, pid) do
-    call_server(project_id, environment, {:subscribe_task, repository, target, pid})
-  end
-
-  def subscribe_sensor(project_id, environment, repository, target, pid) do
-    call_server(project_id, environment, {:subscribe_sensor, repository, target, pid})
+  def subscribe_target(project_id, environment, repository, target, pid) do
+    call_server(project_id, environment, {:subscribe_target, repository, target, pid})
   end
 
   def subscribe_run(project_id, environment, run_id, pid) do

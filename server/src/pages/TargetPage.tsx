@@ -10,18 +10,18 @@ import {
 import { useSetActiveTarget } from "../layouts/ProjectLayout";
 import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
-import TaskHeader from "../components/TaskHeader";
-import { useTaskTopic } from "../topics";
+import { useTargetTopic } from "../topics";
+import TargetHeader from "../components/TargetHeader";
 
-export default function TaskPage() {
-  const { project: projectId, repository, target } = useParams();
+export default function TargetPage() {
+  const { project: projectId, repository, target: targetName } = useParams();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
-  const [task, startRun] = useTaskTopic(
+  const [target, startRun] = useTargetTopic(
     projectId,
     environmentName,
     repository,
-    target
+    targetName
   );
   // TODO: remove duplication (RunLayout)
   const navigate = useNavigate();
@@ -37,13 +37,13 @@ export default function TaskPage() {
     },
     [startRun]
   );
-  useSetActiveTarget(task);
-  if (!task) {
+  useSetActiveTarget(target);
+  if (!target) {
     return <Loading />;
   } else {
     const latestRunId = maxBy(
-      Object.keys(task.runs),
-      (runId) => task.runs[runId].createdAt
+      Object.keys(target.runs),
+      (runId) => target.runs[runId].createdAt
     );
     if (latestRunId) {
       return (
@@ -57,15 +57,15 @@ export default function TaskPage() {
     } else {
       return (
         <Fragment>
-          <TaskHeader
-            task={task}
+          <TargetHeader
+            target={target}
             projectId={projectId!}
             environmentName={environmentName}
             onRun={handleRun}
           />
           <div className="p-4 flex-1">
             <h1 className="text-slate-400 text-xl text-center">
-              This task hasn't been run yet
+              This target hasn't been run yet
             </h1>
           </div>
         </Fragment>

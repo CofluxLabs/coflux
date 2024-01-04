@@ -5,11 +5,11 @@ import RunDialog from "./RunDialog";
 import Button from "./common/Button";
 
 type Props = {
-  task: models.Task;
+  target: models.Target;
   onRun: (parameters: ["json", string][]) => Promise<void>;
 };
 
-export default function RunButton({ task, onRun }: Props) {
+export default function RunButton({ target, onRun }: Props) {
   const [starting, setStarting] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const handleRunClick = useCallback(() => {
@@ -27,7 +27,7 @@ export default function RunButton({ task, onRun }: Props) {
     <Fragment>
       <Button onClick={handleRunClick}>Run...</Button>
       <RunDialog
-        parameters={task.parameters}
+        parameters={target.parameters}
         open={runDialogOpen}
         starting={starting}
         onRun={handleRun}

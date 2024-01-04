@@ -62,7 +62,8 @@ export default function RunDialog({
     [parameters, values, onRun]
   );
   return (
-    <Dialog title="Run task" open={open} onClose={onClose}>
+    // TODO: show target name in title
+    <Dialog title="Run target" open={open} onClose={onClose}>
       <form onSubmit={handleSubmit}>
         {parameters.length > 0 && (
           <div className="mt-4">

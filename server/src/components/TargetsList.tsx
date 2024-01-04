@@ -77,36 +77,19 @@ export default function TargetsList({
                   !!activeTarget &&
                   activeTarget.repository == repository &&
                   activeTarget.target == name;
-                switch (target.type) {
-                  case "task":
-                    return (
-                      <Target
-                        key={name}
-                        name={name}
-                        icon={IconSubtask}
-                        url={buildUrl(
-                          `/projects/${projectId}/tasks/${repository}/${name}`,
-                          { environment: environmentName }
-                        )}
-                        isActive={isActive}
-                        isOnline={isTargetOnline(agents, repository, name)}
-                      />
-                    );
-                  case "sensor":
-                    return (
-                      <Target
-                        key={name}
-                        name={name}
-                        icon={IconCpu}
-                        url={buildUrl(
-                          `/projects/${projectId}/sensors/${repository}/${name}`,
-                          { environment: environmentName }
-                        )}
-                        isActive={isActive}
-                        isOnline={isTargetOnline(agents, repository, name)}
-                      />
-                    );
-                }
+                return (
+                  <Target
+                    key={name}
+                    name={name}
+                    icon={target.type == "sensor" ? IconCpu : IconSubtask}
+                    url={buildUrl(
+                      `/projects/${projectId}/targets/${repository}/${name}`,
+                      { environment: environmentName }
+                    )}
+                    isActive={isActive}
+                    isOnline={isTargetOnline(agents, repository, name)}
+                  />
+                );
               })}
             </ul>
           ) : (

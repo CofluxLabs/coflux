@@ -13,22 +13,8 @@ export type Target = {
   type: "task" | "step" | "sensor";
   repository: string;
   target: string;
-};
-
-export type Task = Target & {
-  type: "task";
   parameters: Parameter[];
   runs: Record<string, Pick<Run, "createdAt">>;
-};
-
-export type Sensor = Target & {
-  type: "task";
-  activated: boolean;
-  executions: Record<string, Pick<Execution, "createdAt">>;
-  runs: Record<
-    string,
-    Pick<Run, "createdAt"> & { repository: string; target: string }
-  >;
 };
 
 export type Result =
@@ -70,6 +56,10 @@ export type Argument =
       key: string;
     };
 
+export type Child = Pick<Target, "repository" | "target"> & {
+  createdAt: number;
+};
+
 export type Execution = {
   sequence: number;
   createdAt: number;
@@ -77,7 +67,7 @@ export type Execution = {
   completedAt: number | null;
   dependencies: string[];
   result: Result | null;
-  children: Record<string, Target>;
+  children: Record<string, Child>;
   retry: { runId: string; stepId: string; sequence: number } | null;
 };
 
@@ -91,7 +81,7 @@ export type Step = {
   cachedExecutionId: string | null;
 };
 
-export type Parent = Target & {
+export type Parent = Pick<Target, "repository" | "target"> & {
   runId: string;
   stepId: string;
   sequence: number;
@@ -99,6 +89,7 @@ export type Parent = Target & {
 
 export type Run = {
   createdAt: number;
+  recurrent: boolean;
   parent: Parent | null;
   steps: Record<string, Step>;
 };

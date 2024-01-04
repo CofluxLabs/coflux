@@ -12,13 +12,13 @@ import { Transition } from "@headlessui/react";
 import useResizeObserver from "use-resize-observer";
 
 import * as models from "../models";
-import TaskHeader from "../components/TaskHeader";
 import { useSetActiveTarget } from "./ProjectLayout";
 import StepDetail from "../components/StepDetail";
 import usePrevious from "../hooks/usePrevious";
 import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
-import { useRunTopic, useTaskTopic } from "../topics";
+import { useRunTopic, useTargetTopic } from "../topics";
+import TargetHeader from "../components/TargetHeader";
 
 type TabProps = {
   page: string | null;
@@ -130,7 +130,7 @@ export default function RunLayout() {
     runId
   );
   const initialStep = run && Object.values(run.steps).find((j) => !j.parentId);
-  const [task, startRun] = useTaskTopic(
+  const [target, startRun] = useTargetTopic(
     projectId,
     environmentName,
     initialStep?.repository,
@@ -150,9 +150,9 @@ export default function RunLayout() {
     },
     [startRun]
   );
-  useSetActiveTarget(task);
+  useSetActiveTarget(target);
   const { ref, width, height } = useResizeObserver<HTMLDivElement>();
-  if (!run || !task) {
+  if (!run || !target) {
     return <Loading />;
   } else {
     const isRunning = Object.values(run.steps).some((s) =>
@@ -161,8 +161,8 @@ export default function RunLayout() {
     return (
       <div className="flex flex-1 overflow-hidden">
         <div className="grow flex flex-col">
-          <TaskHeader
-            task={task}
+          <TargetHeader
+            target={target}
             projectId={projectId!}
             runId={runId}
             environmentName={environmentName}
@@ -170,8 +170,14 @@ export default function RunLayout() {
             onCancel={isRunning ? cancelRun : undefined}
           />
           <div className="border-b px-4">
-            <Tab page={null}>Graph</Tab>
-            <Tab page="timeline">Timeline</Tab>
+            {run.recurrent ? (
+              <Tab page="runs">Runs</Tab>
+            ) : (
+              <Fragment>
+                <Tab page="graph">Graph</Tab>
+                <Tab page="timeline">Timeline</Tab>
+              </Fragment>
+            )}
             <Tab page="logs">Logs</Tab>
           </div>
           <div className="flex-1 basis-0 overflow-auto" ref={ref}>

@@ -184,7 +184,7 @@ defmodule Coflux.Topics.Run do
     end
   end
 
-  defp build_run({created_at}, parent, steps) do
+  defp build_run(run, parent, steps) do
     parent =
       case parent do
         {run_external_id, step_external_id, sequence, repository, target} ->
@@ -201,7 +201,8 @@ defmodule Coflux.Topics.Run do
       end
 
     %{
-      createdAt: created_at,
+      createdAt: run.created_at,
+      recurrent: run.recurrent,
       parent: parent,
       steps:
         Map.new(steps, fn {step_id, step} ->
@@ -224,9 +225,13 @@ defmodule Coflux.Topics.Run do
                      completedAt: execution.completed_at,
                      dependencies: execution.dependencies,
                      children:
-                       Map.new(execution.children, fn {external_run_id, repository, target} ->
-                         {external_run_id, %{repository: repository, target: target}}
-                       end),
+                       Map.new(
+                         execution.children,
+                         fn {external_run_id, created_at, repository, target} ->
+                           {external_run_id,
+                            %{createdAt: created_at, repository: repository, target: target}}
+                         end
+                       ),
                      result: build_result(execution.result),
                      retry: build_retry(execution.retry)
                    }

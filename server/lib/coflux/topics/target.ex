@@ -1,11 +1,11 @@
-defmodule Coflux.Topics.Task do
+defmodule Coflux.Topics.Target do
   use Topical.Topic,
     route: [
       "projects",
       :project_id,
       "environments",
       :environment_name,
-      "tasks",
+      "targets",
       :repository,
       :target
     ]
@@ -18,7 +18,7 @@ defmodule Coflux.Topics.Task do
     repository = Keyword.fetch!(params, :repository)
     target_name = Keyword.fetch!(params, :target)
 
-    case Orchestration.subscribe_task(
+    case Orchestration.subscribe_target(
            project_id,
            environment_name,
            repository,
@@ -31,7 +31,7 @@ defmodule Coflux.Topics.Task do
             {external_run_id, %{id: external_run_id, createdAt: created_at}}
           end)
 
-        task = %{
+        target = %{
           repository: repository,
           target: target_name,
           parameters:
@@ -42,7 +42,7 @@ defmodule Coflux.Topics.Task do
         }
 
         {:ok,
-         Topic.new(task, %{
+         Topic.new(target, %{
            project_id: project_id,
            environment_name: environment_name,
            repository: repository,

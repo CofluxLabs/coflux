@@ -130,6 +130,7 @@ defmodule Coflux.Orchestration.Store do
   def start_run(db, repository, target, arguments, opts \\ []) do
     idempotency_key = Keyword.get(opts, :idempotency_key)
     parent_id = Keyword.get(opts, :parent_id)
+    recurrent = Keyword.get(opts, :recurrent)
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
     deduplicate_key = Keyword.get(opts, :deduplicate_key)
@@ -139,7 +140,7 @@ defmodule Coflux.Orchestration.Store do
     now = current_timestamp()
 
     with_transaction(db, fn ->
-      {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, now)
+      {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
       {:ok, step_id, external_step_id} =
         insert_step(
@@ -280,16 +281,6 @@ defmodule Coflux.Orchestration.Store do
     end)
   end
 
-  def iterate_sensor(db, sensor_activation_id) do
-    with_transaction(db, fn ->
-      now = current_timestamp()
-      {:ok, sequence} = get_next_sensor_execution_sequence(db, sensor_activation_id)
-      {:ok, execution_id} = insert_execution(db, nil, now)
-      {:ok, _} = insert_sensor_execution(db, sensor_activation_id, sequence, execution_id)
-      {:ok, execution_id, sequence, now}
-    end)
-  end
-
   def assign_execution(db, execution_id, session_id) do
     with_transaction(db, fn ->
       now = current_timestamp()
@@ -401,28 +392,6 @@ defmodule Coflux.Orchestration.Store do
     end)
   end
 
-  def get_latest_sensor_activation_cursor(db, sensor_activation_id) do
-    case query(
-           db,
-           """
-           SELECT type, format, value
-           FROM cursors AS c
-           INNER JOIN sensor_executions AS se ON se.execution_id = c.execution_id
-           WHERE se.sensor_activation_id = ?1
-           ORDER BY se.sequence DESC, c.sequence DESC
-           LIMIT 1
-           """,
-           {sensor_activation_id}
-         ) do
-      {:ok, [{type, format, value}]} ->
-        result = build_result(type, format, value)
-        {:ok, result}
-
-      {:ok, []} ->
-        {:ok, nil}
-    end
-  end
-
   def get_unassigned_executions(db) do
     query(
       db,
@@ -434,13 +403,11 @@ defmodule Coflux.Orchestration.Store do
         s.repository,
         s.target,
         s.deduplicate_key,
-        sne.sensor_activation_id,
         e.execute_after
       FROM executions AS e
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN step_executions AS ste ON ste.execution_id = e.id
       LEFT JOIN steps AS s ON s.id = ste.step_id
-      LEFT JOIN sensor_executions AS sne ON sne.execution_id = e.id
       LEFT JOIN results AS r ON r.execution_id = e.id
       WHERE a.created_at IS NULL AND r.created_at IS NULL
       ORDER BY e.execute_after, e.created_at
@@ -457,114 +424,6 @@ defmodule Coflux.Orchestration.Store do
       LEFT JOIN results AS r ON r.execution_id = a.execution_id
       WHERE r.created_at IS NULL
       """
-    )
-  end
-
-  def activate_sensor(db, repository, target) do
-    now = current_timestamp()
-
-    with_transaction(db, fn ->
-      {:ok, sensor_activation_id} =
-        insert_one(db, :sensor_activations,
-          repository: repository,
-          target: target,
-          created_at: now
-        )
-
-      sequence = 1
-      {:ok, execution_id} = insert_execution(db, nil, now)
-      {:ok, _} = insert_sensor_execution(db, sensor_activation_id, sequence, execution_id)
-      {:ok, sensor_activation_id, sequence, execution_id}
-    end)
-  end
-
-  def deactivate_sensor(db, repository, target) do
-    now = current_timestamp()
-
-    with_transaction(db, fn ->
-      {:ok, rows} =
-        query(
-          db,
-          """
-          SELECT sa.id
-          FROM sensor_activations AS sa
-          LEFT JOIN sensor_deactivations AS sd ON sd.sensor_activation_id = sa.id
-          WHERE sa.repository = ?1 AND sa.target = ?2 AND sd.created_at IS NULL
-          """,
-          {repository, target}
-        )
-
-      sensor_activation_ids =
-        Enum.map(rows, fn {sensor_activation_id} -> sensor_activation_id end)
-
-      case insert_many(
-             db,
-             :sensor_deactivations,
-             {:sensor_activation_id, :created_at},
-             Enum.map(sensor_activation_ids, &{&1, now})
-           ) do
-        {:ok, _} ->
-          {:ok, sensor_activation_ids}
-      end
-    end)
-  end
-
-  def get_activated_sensors(db) do
-    query(
-      db,
-      """
-      SELECT sa.id, (
-        SELECT se.execution_id
-        FROM sensor_executions AS se
-        INNER JOIN executions AS e ON se.execution_id = e.id
-        LEFT JOIN results AS r ON r.execution_id = se.execution_id
-        WHERE se.sensor_activation_id = sa.id AND r.created_at IS NULL
-        ORDER BY e.created_at DESC
-        LIMIT 1
-      )
-      FROM sensor_activations AS sa
-      LEFT JOIN sensor_deactivations AS sd ON sd.sensor_activation_id = sa.id
-      WHERE sd.created_at IS NULL
-      """
-    )
-  end
-
-  def get_sensor_activation(db, repository, target_name) do
-    query_one(
-      db,
-      """
-      SELECT sa.id
-      FROM sensor_activations AS sa
-      LEFT JOIN sensor_deactivations AS sd ON sd.sensor_activation_id = sa.id
-      WHERE sa.repository = ?1 AND sa.target = ?2 AND sd.created_at IS NULL
-      """,
-      {repository, target_name}
-    )
-  end
-
-  def get_sensor_activation_by_id(db, sensor_activation_id) do
-    query_one(
-      db,
-      """
-      SELECT sa.repository, sa.target, sd.created_at
-      FROM sensor_activations AS sa
-      LEFT JOIN sensor_deactivations AS sd ON sd.sensor_activation_id = sa.id
-      WHERE sa.id = ?1
-      """,
-      {sensor_activation_id}
-    )
-  end
-
-  def get_sensor_activation_for_execution_id(db, execution_id) do
-    query_one(
-      db,
-      """
-      SELECT sa.repository, sa.target
-      FROM sensor_activations AS sa
-      INNER JOIN sensor_executions AS se ON se.sensor_activation_id = sa.id
-      WHERE se.execution_id = ?1
-      """,
-      {execution_id}
     )
   end
 
@@ -627,11 +486,11 @@ defmodule Coflux.Orchestration.Store do
     {:ok, targets}
   end
 
-  def get_task_runs(db, repository, target, limit \\ 50) do
+  def get_target_runs(db, repository, target, limit \\ 50) do
     query(
       db,
       """
-      SELECT r.external_id, r.created_at
+      SELECT DISTINCT r.external_id, r.created_at
       FROM runs as r
       INNER JOIN steps AS s ON s.run_id = r.id
       WHERE s.repository = ?1
@@ -644,37 +503,16 @@ defmodule Coflux.Orchestration.Store do
     )
   end
 
-  def get_sensor_executions(db, repository, target, limit \\ 10) do
-    query(
+  def get_run_by_id(db, id) do
+    query_one(
       db,
       """
-      SELECT e.id, e.created_at
-      FROM sensor_executions AS se
-      INNER JOIN executions AS e ON e.id = se.execution_id
-      INNER JOIN sensor_activations AS sa ON sa.id = se.sensor_activation_id
-      WHERE sa.repository = ?1 AND sa.target = ?2
-      ORDER BY e.created_at DESC
-      LIMIT ?3
+      SELECT id, external_id, parent_id, idempotency_key, recurrent, created_at
+      FROM runs
+      WHERE id = ?1
       """,
-      {repository, target, limit}
-    )
-  end
-
-  def get_sensor_runs(db, repository, target, limit \\ 50) do
-    query(
-      db,
-      """
-      SELECT r.external_id, r.created_at, s.repository, s.target
-      FROM runs AS r
-      INNER JOIN executions AS e ON e.id = r.parent_id
-      INNER JOIN sensor_executions AS se ON se.execution_id = e.id
-      INNER JOIN sensor_activations AS sa ON sa.id = se.sensor_activation_id
-      INNER JOIN steps AS s ON s.run_id = r.id AND s.parent_id IS NULL
-      WHERE sa.repository = ?1 AND sa.target = ?2
-      ORDER BY r.created_at DESC
-      LIMIT ?3
-      """,
-      {repository, target, limit}
+      {id},
+      Models.Run
     )
   end
 
@@ -682,15 +520,17 @@ defmodule Coflux.Orchestration.Store do
     query_one(
       db,
       """
-      SELECT id, parent_id, created_at
+      SELECT id, external_id, parent_id, idempotency_key, recurrent, created_at
       FROM runs
       WHERE external_id = ?1
       """,
-      {external_id}
+      {external_id},
+      Models.Run
     )
   end
 
   def get_run_by_execution(db, execution_id) do
+    # TODO: include 'recurrent'?
     query_one(
       db,
       """
@@ -723,7 +563,7 @@ defmodule Coflux.Orchestration.Store do
     query(
       db,
       """
-      SELECT r.external_id, s.repository, s.target
+      SELECT r.external_id, r.created_at, s.repository, s.target
       FROM runs AS r
       INNER JOIN steps AS s ON s.run_id = r.id AND s.parent_id IS NULL
       WHERE r.parent_id = ?1
@@ -817,13 +657,14 @@ defmodule Coflux.Orchestration.Store do
     end
   end
 
-  defp insert_run(db, parent_id, idempotency_key, created_at) do
+  defp insert_run(db, parent_id, idempotency_key, recurrent, created_at) do
     case generate_external_id(db, :runs, 2, "R") do
       {:ok, external_id} ->
         case insert_one(db, :runs,
                external_id: external_id,
                parent_id: parent_id,
                idempotency_key: idempotency_key,
+               recurrent: if(recurrent, do: 1, else: 0),
                created_at: created_at
              ) do
           {:ok, run_id} ->
@@ -908,21 +749,6 @@ defmodule Coflux.Orchestration.Store do
     end
   end
 
-  def get_next_sensor_execution_sequence(db, sensor_activation_id) do
-    {:ok, [{last_sequence}]} =
-      query(
-        db,
-        """
-        SELECT MAX(sequence)
-        FROM sensor_executions
-        WHERE sensor_activation_id = ?1
-        """,
-        {sensor_activation_id}
-      )
-
-    {:ok, last_sequence + 1}
-  end
-
   defp insert_execution(db, execute_after, created_at) do
     insert_one(
       db,
@@ -937,16 +763,6 @@ defmodule Coflux.Orchestration.Store do
       db,
       :step_executions,
       step_id: step_id,
-      sequence: sequence,
-      execution_id: execution_id
-    )
-  end
-
-  defp insert_sensor_execution(db, sensor_activation_id, sequence, execution_id) do
-    insert_one(
-      db,
-      :sensor_executions,
-      sensor_activation_id: sensor_activation_id,
       sequence: sequence,
       execution_id: execution_id
     )
@@ -1112,8 +928,16 @@ defmodule Coflux.Orchestration.Store do
 
   defp build(row, model, columns) do
     if model do
-      keys = Enum.map(columns, &String.to_existing_atom/1)
-      struct(model, Enum.zip(keys, row))
+      prepare =
+        if function_exported?(model, :prepare, 1),
+          do: &model.prepare/1,
+          else: &Function.identity/1
+
+      columns
+      |> Enum.map(&String.to_existing_atom/1)
+      |> Enum.zip(row)
+      |> prepare.()
+      |> then(&struct(model, &1))
     else
       List.to_tuple(row)
     end

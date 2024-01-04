@@ -89,7 +89,7 @@ function generatePackageName(projectName: string | undefined) {
 }
 
 type OutletContext = {
-  setActiveTarget: (task: Target | undefined) => void;
+  setActiveTarget: (target: Target | undefined) => void;
 };
 
 export default function ProjectLayout() {
@@ -182,10 +182,10 @@ export default function ProjectLayout() {
   }
 }
 
-export function useSetActiveTarget(task: Target | undefined) {
+export function useSetActiveTarget(target: Target | undefined) {
   const { setActiveTarget } = useOutletContext<OutletContext>();
   useEffect(() => {
-    setActiveTarget(task);
+    setActiveTarget(target);
     return () => setActiveTarget(undefined);
-  }, [setActiveTarget, task]);
+  }, [setActiveTarget, target]);
 }
