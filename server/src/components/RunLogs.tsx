@@ -47,7 +47,7 @@ function classForLevel(level: models.LogMessageLevel) {
 function iconForLevel(
   level: models.LogMessageLevel,
   className: string,
-  size = 18
+  size = 16
 ) {
   switch (level) {
     case 2:

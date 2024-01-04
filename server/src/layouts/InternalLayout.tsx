@@ -19,6 +19,7 @@ function Header({ projectId }: HeaderProps) {
       <Logo />
       {projects && (
         <div className="flex items-center gap-1">
+          <IconChevronCompactRight size={16} className="text-white/40" />
           <ProjectSelector projects={projects} />
           {projectId && projects[projectId] && (
             <Fragment>
