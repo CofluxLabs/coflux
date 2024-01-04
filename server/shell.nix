@@ -4,7 +4,7 @@ pkgs.mkShell {
   buildInputs = with pkgs; [
     elixir
     elixir-ls
-    sqlite
+    sqlite-interactive
     nodejs
     nodePackages.typescript
     nodePackages.typescript-language-server
