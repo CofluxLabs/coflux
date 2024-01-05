@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { IconCpu, IconSubtask } from "@tabler/icons-react";
 
 import * as models from "../models";
 import RunButton from "./RunButton";
@@ -27,6 +28,17 @@ function CancelButton({ onCancel }: CancelButtonProps) {
   );
 }
 
+function iconForTarget(target: models.Target) {
+  switch (target.type) {
+    case "task":
+      return IconSubtask;
+    case "sensor":
+      return IconCpu;
+    default:
+      return null;
+  }
+}
+
 type Props = {
   target: models.Target;
   projectId: string;
@@ -44,9 +56,13 @@ export default function TargetHeader({
   onRun,
   onCancel,
 }: Props) {
+  const Icon = iconForTarget(target);
   return (
     <div className="p-4 flex">
       <h1 className="flex items-center">
+        {Icon && (
+          <Icon size={24} strokeWidth={1.5} className="text-slate-400 mr-1" />
+        )}
         <span className="text-xl font-bold font-mono">{target.target}</span>
         <span className="ml-2 text-slate-500">({target.repository})</span>
       </h1>
