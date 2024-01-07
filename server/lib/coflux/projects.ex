@@ -156,7 +156,7 @@ defmodule Coflux.Projects do
 
   defp validate_project_name(name, existing) do
     cond do
-      not Regex.match?(~r/^[a-z0-9]+$/i, name) -> :invalid_project_name
+      not Regex.match?(~r/^[a-z0-9_]+$/i, name) -> :invalid_project_name
       Enum.member?(existing, name) -> :project_already_exists
       true -> :ok
     end
@@ -164,7 +164,7 @@ defmodule Coflux.Projects do
 
   defp validate_environment_name(name, existing \\ nil) do
     cond do
-      not Regex.match?(~r/^[a-z0-9\/]+$/i, name) -> :invalid_environment_name
+      not Regex.match?(~r/^[a-z0-9_\/]+$/i, name) -> :invalid_environment_name
       existing && Enum.member?(existing, name) -> :environment_already_exists
       true -> :ok
     end
