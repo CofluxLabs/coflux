@@ -113,8 +113,8 @@ function DetailPanel({
 
 type OutletContext = {
   run: models.Run;
-  width: number | undefined;
-  height: number | undefined;
+  width: number;
+  height: number;
 };
 
 export default function RunLayout() {
@@ -183,7 +183,9 @@ export default function RunLayout() {
               <Tab page="logs">Logs</Tab>
             </div>
             <div className="flex-1 basis-0 overflow-auto" ref={ref}>
-              <Outlet context={{ run, width, height }} />
+              <Outlet
+                context={{ run, width: width || 0, height: height || 0 }}
+              />
             </div>
           </div>
           <DetailPanel

@@ -1,4 +1,12 @@
-import { Fragment, useMemo } from "react";
+import {
+  Fragment,
+  useCallback,
+  useMemo,
+  useState,
+  MouseEvent as ReactMouseEvent,
+  WheelEvent as ReactWheelEvent,
+  useRef,
+} from "react";
 import dagre from "@dagrejs/dagre";
 import classNames from "classnames";
 import { Link } from "react-router-dom";
@@ -221,7 +229,7 @@ function classNameForResult(
 
 type StepNodeProps = {
   node: dagre.Node;
-  offset: number;
+  offset: [number, number];
   stepId: string;
   step: models.Step;
   attemptNumber: number | undefined;
@@ -246,8 +254,8 @@ function StepNode({
     <div
       className="absolute"
       style={{
-        left: node.x - node.width / 2 + offset,
-        top: node.y - node.height / 2 + offset,
+        left: node.x - node.width / 2 + offset[0],
+        top: node.y - node.height / 2 + offset[1],
         width: node.width,
         height: node.height,
       }}
@@ -297,7 +305,7 @@ function StepNode({
 
 type ParentNodeProps = {
   node: dagre.Node;
-  offset: number;
+  offset: [number, number];
   projectId: string;
   parent: models.Parent;
   environmentName: string | undefined;
@@ -314,8 +322,8 @@ function ParentNode({
     <div
       className="absolute flex"
       style={{
-        left: node.x - node.width / 2 + offset,
-        top: node.y - node.height / 2 + offset,
+        left: node.x - node.width / 2 + offset[0],
+        top: node.y - node.height / 2 + offset[1],
         width: node.width,
         height: node.height,
       }}
@@ -340,7 +348,7 @@ function ParentNode({
 
 type ChildNodeProps = {
   node: dagre.Node;
-  offset: number;
+  offset: [number, number];
   projectId: string;
   runId: string;
   child: models.Child;
@@ -359,8 +367,8 @@ function ChildNode({
     <div
       className="absolute flex"
       style={{
-        left: node.x - node.width / 2 + offset,
-        top: node.y - node.height / 2 + offset,
+        left: node.x - node.width / 2 + offset[0],
+        top: node.y - node.height / 2 + offset[1],
         width: node.width,
         height: node.height,
       }}
@@ -385,10 +393,10 @@ function ChildNode({
 
 type EdgeProps = {
   edge: dagre.GraphEdge;
-  offset: number;
+  offset: [number, number];
 };
 
-function Edge({ edge, offset: o }: EdgeProps) {
+function Edge({ edge, offset }: EdgeProps) {
   const { points, type } = edge;
   return (
     <Fragment>
@@ -399,11 +407,13 @@ function Edge({ edge, offset: o }: EdgeProps) {
         fill="none"
         strokeWidth={type == "dependency" ? 2 : 2}
         strokeDasharray={type == "dependency" ? undefined : "5"}
-        d={`M ${points.map(({ x, y }) => `${x + o} ${y + o}`).join(" ")}`}
+        d={`M ${points
+          .map(({ x, y }) => `${x + offset[0]} ${y + offset[1]}`)
+          .join(" ")}`}
       />
       <circle
-        cx={points[points.length - 1].x + o}
-        cy={points[points.length - 1].y + o}
+        cx={points[points.length - 1].x + offset[0]}
+        cy={points[points.length - 1].y + offset[1]}
         r={3}
         className={type == "dependency" ? "fill-slate-300" : "fill-slate-200"}
       />
@@ -411,103 +421,205 @@ function Edge({ edge, offset: o }: EdgeProps) {
   );
 }
 
+function calculateMargins(
+  containerWidth: number,
+  containerHeight: number,
+  graphWidth: number,
+  graphHeight: number
+) {
+  const aspect =
+    containerWidth && containerHeight ? containerWidth / containerHeight : 1;
+  const marginX =
+    Math.max(
+      100,
+      containerWidth - graphWidth,
+      (graphHeight + 100) * aspect - graphWidth
+    ) / 2;
+  const marginY =
+    Math.max(
+      100,
+      containerHeight - graphHeight,
+      (graphWidth + 100) / aspect - graphHeight
+    ) / 2;
+  return [marginX, marginY];
+}
+
 type Props = {
   runId: string;
   run: models.Run;
-  width: number | undefined;
-  height: number | undefined;
+  width: number;
+  height: number;
   projectId: string;
   environmentName: string | undefined;
   activeStepId: string | undefined;
   activeAttemptNumber: number | undefined;
-  offset?: number;
+  minimumMargin?: number;
 };
 
 export default function RunGraph({
   runId,
   run,
-  width,
-  height,
+  width: containerWidth,
+  height: containerHeight,
   projectId,
   environmentName,
   activeStepId,
   activeAttemptNumber,
-  offset = 20,
 }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [offsetOverride, setOffsetOverride] = useState<[number, number]>();
+  const [dragging, setDragging] = useState<[number, number]>();
+  const [zoomOverride, setZoomOverride] = useState<number>();
   const graph = useMemo(
     () => buildGraph(run, activeStepId, activeAttemptNumber),
     [run, activeStepId, activeAttemptNumber]
   );
+  const graphWidth = graph.graph().width || 0;
+  const graphHeight = graph.graph().height || 0;
+  const [marginX, marginY] = calculateMargins(
+    containerWidth,
+    containerHeight,
+    graphWidth,
+    graphHeight
+  );
+  const canvasWidth = Math.max(graphWidth + 2 * marginX, containerWidth);
+  const canvasHeight = Math.max(graphHeight + 2 * marginY, containerHeight);
+  const minZoom = Math.min(
+    containerWidth / canvasWidth,
+    containerHeight / canvasHeight
+  );
+  const zoom = zoomOverride || Math.max(minZoom, 0.6);
+  const maxDragX = -(canvasWidth * zoom - containerWidth);
+  const maxDragY = -(canvasHeight * zoom - containerHeight);
+  const [offsetX, offsetY] = offsetOverride || [maxDragX / 2, maxDragY / 2];
+  const handleMouseDown = useCallback(
+    (ev: ReactMouseEvent) => {
+      const dragStart = [ev.screenX, ev.screenY];
+      let dragging: [number, number] = [offsetX, offsetY];
+      const handleMove = (ev: MouseEvent) => {
+        dragging = [
+          Math.min(0, Math.max(maxDragX, offsetX - dragStart[0] + ev.screenX)),
+          Math.min(0, Math.max(maxDragY, offsetY - dragStart[1] + ev.screenY)),
+        ];
+        setDragging(dragging);
+      };
+      const handleUp = () => {
+        setDragging(undefined);
+        setOffsetOverride(dragging);
+        window.removeEventListener("mousemove", handleMove);
+        window.removeEventListener("mouseup", handleUp);
+      };
+      window.addEventListener("mousemove", handleMove);
+      window.addEventListener("mouseup", handleUp);
+    },
+    [offsetX, offsetY, maxDragX, maxDragY]
+  );
+  const handleWheel = useCallback(
+    (ev: ReactWheelEvent<HTMLDivElement>) => {
+      const mouseX = ev.clientX - containerRef.current!.offsetLeft;
+      const mouseY = ev.clientY - containerRef.current!.offsetTop;
+      const canvasX = (mouseX - offsetX) / zoom;
+      const canvasY = (mouseY - offsetY) / zoom;
+      const newZoom = Math.max(
+        minZoom,
+        Math.min(1.5, zoom * (1 + ev.deltaY / -500))
+      );
+      const delta = newZoom - zoom;
+      setZoomOverride(newZoom);
+      setOffsetOverride([
+        Math.min(0, Math.max(maxDragX, offsetX - canvasX * delta)),
+        Math.min(0, Math.max(maxDragY, offsetY - canvasY * delta)),
+      ]);
+    },
+    [offsetX, offsetY, zoom, minZoom, maxDragX, maxDragY]
+  );
+  const [dx, dy] = dragging || [offsetX, offsetY];
   return (
-    <div className="relative">
-      <svg
-        width={Math.max(graph.graph().width! + 2 * offset, width || 0)}
-        height={Math.max(graph.graph().height! + 2 * offset, height || 0)}
-        className="absolute"
+    <div
+      className="relative w-full h-full overflow-hidden"
+      ref={containerRef}
+      onWheel={handleWheel}
+    >
+      <div
+        style={{
+          transformOrigin: "0 0",
+          transform: `translate(${dx}px, ${dy}px) scale(${zoom})`,
+        }}
+        className="relative will-change-transform"
       >
-        <defs>
-          <pattern
-            id="grid"
-            width={16}
-            height={16}
-            patternUnits="userSpaceOnUse"
-          >
-            <circle cx={10} cy={10} r={0.5} className="fill-slate-400" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#grid)" />
-        {graph.edges().flatMap((edge) => {
-          return (
-            <Edge
-              key={`${edge.v}-${edge.w}`}
-              edge={graph.edge(edge)}
-              offset={offset}
-            />
-          );
-        })}
-      </svg>
-      <div className="absolute">
-        {graph.nodes().map((nodeId) => {
-          const node = graph.node(nodeId);
-          switch (node.type) {
-            case "step":
-              return (
-                <StepNode
-                  key={nodeId}
-                  node={node}
-                  offset={offset}
-                  stepId={node.stepId}
-                  step={node.step}
-                  attemptNumber={node.attemptNumber}
-                  runId={runId}
-                  isActive={nodeId == activeStepId}
-                />
-              );
-            case "parent":
-              return (
-                <ParentNode
-                  key={nodeId}
-                  node={node}
-                  offset={offset}
-                  projectId={projectId}
-                  parent={node.parent}
-                  environmentName={environmentName}
-                />
-              );
-            case "child":
-              return (
-                <ChildNode
-                  key={nodeId}
-                  node={node}
-                  offset={offset}
-                  projectId={projectId}
-                  runId={node.runId}
-                  child={node.child}
-                  environmentName={environmentName}
-                />
-              );
-          }
-        })}
+        <svg
+          width={canvasWidth}
+          height={canvasHeight}
+          className={classNames(
+            "absolute",
+            dragging ? "cursor-grabbing" : "cursor-grab"
+          )}
+          onMouseDown={handleMouseDown}
+        >
+          <defs>
+            <pattern
+              id="grid"
+              width={16}
+              height={16}
+              patternUnits="userSpaceOnUse"
+            >
+              <circle cx={10} cy={10} r={0.5} className="fill-slate-400" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#grid)" />
+          {graph.edges().flatMap((edge) => {
+            return (
+              <Edge
+                key={`${edge.v}-${edge.w}`}
+                offset={[marginX, marginY]}
+                edge={graph.edge(edge)}
+              />
+            );
+          })}
+        </svg>
+        <div className="absolute">
+          {graph.nodes().map((nodeId) => {
+            const node = graph.node(nodeId);
+            switch (node.type) {
+              case "step":
+                return (
+                  <StepNode
+                    key={nodeId}
+                    node={node}
+                    stepId={node.stepId}
+                    step={node.step}
+                    attemptNumber={node.attemptNumber}
+                    runId={runId}
+                    isActive={nodeId == activeStepId}
+                    offset={[marginX, marginY]}
+                  />
+                );
+              case "parent":
+                return (
+                  <ParentNode
+                    key={nodeId}
+                    node={node}
+                    projectId={projectId}
+                    parent={node.parent}
+                    environmentName={environmentName}
+                    offset={[marginX, marginY]}
+                  />
+                );
+              case "child":
+                return (
+                  <ChildNode
+                    key={nodeId}
+                    node={node}
+                    projectId={projectId}
+                    runId={node.runId}
+                    child={node.child}
+                    environmentName={environmentName}
+                    offset={[marginX, marginY]}
+                  />
+                );
+            }
+          })}
+        </div>
       </div>
     </div>
   );
