@@ -5,11 +5,11 @@
     "build": "node ./esbuild.js"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^1.0.4",
     "@headlessui/react": "^1.7.13",
     "@tabler/icons-react": "^2.44.0",
     "@topical/react": "^0.1.7",
     "classnames": "^2.3.2",
-    "dagre": "^0.8.5",
     "lodash": "^4.17.21",
     "luxon": "^3.3.0",
     "react": "^18.2.0",
@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.7",
-    "@types/dagre": "^0.7.47",
+    "@types/dagre": "^0.7.52",
     "@types/lodash": "^4.14.191",
     "@types/luxon": "^3.2.0",
     "@types/node": "^18.14.6",

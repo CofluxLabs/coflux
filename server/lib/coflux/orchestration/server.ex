@@ -327,7 +327,7 @@ defmodule Coflux.Orchestration.Server do
   def handle_call({:get_result, execution_id, from_execution_id, pid}, _from, state) do
     if from_execution_id do
       :ok = Store.record_dependency(state.db, from_execution_id, execution_id)
-      {:ok, step} = Store.get_step_for_execution(state.db, execution_id)
+      {:ok, step} = Store.get_step_for_execution(state.db, from_execution_id)
 
       notify_listeners(
         state,
@@ -391,6 +391,7 @@ defmodule Coflux.Orchestration.Server do
       {:ok, run} ->
         {:ok, parent} =
           if run.parent_id do
+            # TODO: use `resolve_execution`?
             Store.get_run_by_execution(state.db, run.parent_id)
           else
             {:ok, nil}
@@ -418,6 +419,14 @@ defmodule Coflux.Orchestration.Server do
                                          _session_id, assigned_at} ->
                    {:ok, dependencies} = Store.get_execution_dependencies(state.db, execution_id)
 
+                   dependencies =
+                     Enum.map(dependencies, fn {dependency_id} ->
+                       # TODO: if execution doesn't belong to this run, resolve it (`resolve_execution`)
+                       # TODO: (and where event is fired)
+                       # TODO: or update `get_execution_dependencies` to do resolving?
+                       dependency_id
+                     end)
+
                    {result, retry_id, completed_at} =
                      case Store.get_execution_result(state.db, execution_id) do
                        {:ok, {result, retry_id, completed_at}} ->
@@ -429,7 +438,7 @@ defmodule Coflux.Orchestration.Server do
 
                    retry =
                      if retry_id do
-                       resolve_retry(state.db, retry_id)
+                       resolve_execution(state.db, retry_id)
                      end
 
                    {:ok, children} = Store.get_runs_by_parent(state.db, execution_id)
@@ -440,8 +449,7 @@ defmodule Coflux.Orchestration.Server do
                       created_at: created_at,
                       assigned_at: assigned_at,
                       completed_at: completed_at,
-                      dependencies:
-                        Enum.map(dependencies, fn {dependency_id} -> dependency_id end),
+                      dependencies: dependencies,
                       result: result,
                       children: children,
                       retry: retry
@@ -664,9 +672,9 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp resolve_retry(db, retry_id) do
+  defp resolve_execution(db, execution_id) do
     {:ok, {external_run_id, external_step_id, step_sequence, _, _}} =
-      Store.get_run_by_execution(db, retry_id)
+      Store.get_run_by_execution(db, execution_id)
 
     %{
       run_id: external_run_id,
@@ -682,7 +690,7 @@ defmodule Coflux.Orchestration.Server do
 
         retry =
           if retry_id do
-            resolve_retry(state.db, retry_id)
+            resolve_execution(state.db, retry_id)
           end
 
         notify_listeners(
@@ -848,7 +856,8 @@ defmodule Coflux.Orchestration.Server do
           notify_listeners(
             state,
             {:run, run_id},
-            {:child, parent_id, external_run_id, repository, target_name}
+            {:child, parent_id, external_run_id, created_at, repository, target_name,
+             execution_id}
           )
         end
 

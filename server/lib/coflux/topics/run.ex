@@ -38,9 +38,9 @@ defmodule Coflux.Topics.Run do
       Topic.set(topic, [:steps, step_id], %{
         repository: repository,
         target: target,
-        parentId: parent_id,
+        parentId: if(parent_id, do: Integer.to_string(parent_id)),
         createdAt: created_at,
-        cachedExecutionId: cached_execution_id,
+        cachedExecutionId: if(cached_execution_id, do: Integer.to_string(cached_execution_id)),
         arguments: Enum.map(arguments, &build_argument/1),
         executions: %{}
       })
@@ -103,20 +103,29 @@ defmodule Coflux.Topics.Run do
           Integer.to_string(execution_id),
           :dependencies
         ],
-        dependency_id
+        Integer.to_string(dependency_id)
       )
 
     {:ok, topic}
   end
 
-  def handle_info({:topic, _ref, {:child, parent_id, external_run_id, repository, target}}, topic) do
+  def handle_info(
+        {:topic, _ref,
+         {:child, parent_id, external_run_id, created_at, repository, target, execution_id}},
+        topic
+      ) do
     step_id = find_step_id_for_execution(topic, parent_id)
 
     topic =
       Topic.set(
         topic,
         [:steps, step_id, :executions, Integer.to_string(parent_id), :children, external_run_id],
-        %{repository: repository, target: target}
+        %{
+          createdAt: created_at,
+          repository: repository,
+          target: target,
+          executionId: if(execution_id, do: Integer.to_string(execution_id))
+        }
       )
 
     {:ok, topic}
@@ -210,9 +219,10 @@ defmodule Coflux.Topics.Run do
            %{
              repository: step.repository,
              target: step.target,
-             parentId: step.parent_id,
+             parentId: if(step.parent_id, do: Integer.to_string(step.parent_id)),
              createdAt: step.created_at,
-             cachedExecutionId: step.cached_execution_id,
+             cachedExecutionId:
+               if(step.cached_execution_id, do: Integer.to_string(step.cached_execution_id)),
              arguments: Enum.map(step.arguments, &build_argument/1),
              executions:
                Map.new(step.executions, fn {execution_id, execution} ->
@@ -223,13 +233,18 @@ defmodule Coflux.Topics.Run do
                      createdAt: execution.created_at,
                      assignedAt: execution.assigned_at,
                      completedAt: execution.completed_at,
-                     dependencies: execution.dependencies,
+                     dependencies: Enum.map(execution.dependencies, &Integer.to_string/1),
                      children:
                        Map.new(
                          execution.children,
-                         fn {external_run_id, created_at, repository, target} ->
+                         fn {external_run_id, created_at, repository, target, execution_id} ->
                            {external_run_id,
-                            %{createdAt: created_at, repository: repository, target: target}}
+                            %{
+                              createdAt: created_at,
+                              repository: repository,
+                              target: target,
+                              executionId: if(execution_id, do: Integer.to_string(execution_id))
+                            }}
                          end
                        ),
                      result: build_result(execution.result),

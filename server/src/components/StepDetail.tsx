@@ -150,6 +150,41 @@ function Attempt({
           <p>Executing...</p>
         ) : null}
       </div>
+      <div>
+        <h3 className="uppercase text-sm font-bold text-slate-400">
+          Dependencies
+        </h3>
+        {attempt.dependencies.length ? (
+          <ul className="flex flex-wrap gap-1">
+            {attempt.dependencies.map((dependency) => {
+              const execution = findExecution(run, dependency);
+              return (
+                <li key={dependency}>
+                  {execution ? (
+                    <Link
+                      to={buildUrl(
+                        `/projects/${projectId}/runs/${runId}/graph`,
+                        {
+                          environment: environmentName,
+                          step: execution[0],
+                          attempt: execution[1].sequence,
+                        }
+                      )}
+                      className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
+                    >
+                      {dependency}
+                    </Link>
+                  ) : (
+                    dependency
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p>None</p>
+        )}
+      </div>
       {attempt.result?.type == "duplicated" ? (
         <div>
           <h3 className="uppercase text-sm font-bold text-slate-400">

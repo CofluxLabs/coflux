@@ -406,8 +406,8 @@ defmodule Coflux.Orchestration.Store do
         e.execute_after
       FROM executions AS e
       LEFT JOIN assignments AS a ON a.execution_id = e.id
-      LEFT JOIN step_executions AS ste ON ste.execution_id = e.id
-      LEFT JOIN steps AS s ON s.id = ste.step_id
+      LEFT JOIN step_executions AS se ON se.execution_id = e.id
+      LEFT JOIN steps AS s ON s.id = se.step_id
       LEFT JOIN results AS r ON r.execution_id = e.id
       WHERE a.created_at IS NULL AND r.created_at IS NULL
       ORDER BY e.execute_after, e.created_at
@@ -563,9 +563,10 @@ defmodule Coflux.Orchestration.Store do
     query(
       db,
       """
-      SELECT r.external_id, r.created_at, s.repository, s.target
+      SELECT r.external_id, r.created_at, s.repository, s.target, se.execution_id
       FROM runs AS r
       INNER JOIN steps AS s ON s.run_id = r.id AND s.parent_id IS NULL
+      LEFT JOIN step_executions AS se ON se.step_id = s.id AND se.sequence = 1
       WHERE r.parent_id = ?1
       """,
       {execution_id}

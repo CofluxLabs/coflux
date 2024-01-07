@@ -34,6 +34,7 @@ defmodule Coflux.Topics.Target do
         target = %{
           repository: repository,
           target: target_name,
+          type: target.type,
           parameters:
             Enum.map(target.parameters, fn {name, default, annotation} ->
               %{name: name, default: default, annotation: annotation}

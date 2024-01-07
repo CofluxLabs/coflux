@@ -58,6 +58,7 @@ export type Argument =
 
 export type Child = Pick<Target, "repository" | "target"> & {
   createdAt: number;
+  executionId: string | null;
 };
 
 export type Execution = {

@@ -1,31 +1,40 @@
-import { useMemo } from "react";
-import dagre from "dagre";
+import { Fragment, useMemo } from "react";
+import dagre from "@dagrejs/dagre";
 import classNames from "classnames";
 import { Link } from "react-router-dom";
 import { max, sortBy } from "lodash";
-import { IconArrowForward, IconArrowForwardUp } from "@tabler/icons-react";
+import { IconArrowForward, IconArrowUpRight } from "@tabler/icons-react";
 
 import * as models from "../models";
 import { buildUrl } from "../utils";
 
-function buildGraph(
+type Node =
+  | {
+      type: "step";
+      step: models.Step;
+      stepId: string;
+      attemptNumber: number | undefined;
+    }
+  | {
+      type: "parent";
+      parent: models.Parent;
+    }
+  | {
+      type: "child";
+      child: models.Child;
+      runId: string;
+    };
+
+function chooseStepAttempts(
   run: models.Run,
   activeStepId: string | undefined,
   activeAttemptNumber: number | undefined
 ) {
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", ranksep: 40, nodesep: 40 });
-  g.setDefaultEdgeLabel(function () {
-    return {};
-  });
-
   const stepAttempts: Record<string, number> = {};
-
   if (activeStepId && activeAttemptNumber) {
     if (activeAttemptNumber) {
       stepAttempts[activeStepId] = activeAttemptNumber;
     }
-
     let stepId = activeStepId;
     while (run.steps[stepId].parentId) {
       const parentId = run.steps[stepId].parentId!;
@@ -35,61 +44,155 @@ function buildGraph(
       stepAttempts[stepId] = run.steps[stepId].executions[parentId].sequence;
     }
   }
+  return stepAttempts;
+}
 
-  const rootStepIds = sortBy(
-    Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
-    (stepId) => run.steps[stepId].createdAt
+function traverseRun(
+  run: models.Run,
+  stepAttempts: Record<string, number>,
+  callback: (stepId: string, executionId: string | undefined) => void,
+  parentId?: string
+) {
+  Object.keys(run.steps)
+    .filter((id) => run.steps[id].parentId == parentId)
+    .forEach((stepId) => {
+      const step = run.steps[stepId];
+      const attemptNumber =
+        stepAttempts[stepId] ||
+        max(Object.values(step.executions).map((e) => e.sequence));
+      const executionId = Object.keys(step.executions).find(
+        (id) => step.executions[id].sequence == attemptNumber
+      );
+      callback(stepId, executionId);
+      if (executionId) {
+        traverseRun(run, stepAttempts, callback, executionId);
+      }
+    });
+}
+
+function buildGraph(
+  run: models.Run,
+  activeStepId: string | undefined,
+  activeAttemptNumber: number | undefined
+) {
+  const g = new dagre.graphlib.Graph<Node>();
+  g.setGraph({ rankdir: "LR", ranksep: 40, nodesep: 40 });
+
+  const stepAttempts = chooseStepAttempts(
+    run,
+    activeStepId,
+    activeAttemptNumber
   );
 
   if (run.parent) {
-    const initialStepId = rootStepIds[0];
-    const step = run.steps[initialStepId];
-    const attemptNumber =
-      stepAttempts[initialStepId] ||
-      max(Object.values(step.executions).map((e) => e.sequence));
-    const nodeId = attemptNumber
-      ? `${initialStepId}/${attemptNumber}`
-      : initialStepId;
-
-    g.setNode(run.parent.runId, { width: 160, height: 50 });
-    g.setEdge(run.parent.runId, nodeId);
+    const initialStepId = sortBy(
+      Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
+      (stepId) => run.steps[stepId].createdAt
+    )[0];
+    g.setNode(run.parent.runId, {
+      width: 160,
+      height: 50,
+      type: "parent",
+      parent: run.parent,
+    });
+    g.setEdge(run.parent.runId, initialStepId, {
+      type: "parent",
+      weight: 1000,
+    });
   }
 
-  const traverse = (stepId: string) => {
-    const step = run.steps[stepId];
-    const attemptNumber =
-      stepAttempts[stepId] ||
-      max(Object.values(step.executions).map((e) => e.sequence));
-    const nodeId = attemptNumber ? `${stepId}/${attemptNumber}` : stepId;
-    g.setNode(nodeId, { width: 160, height: 50 });
-    if (step.parentId) {
-      const parentId = step.parentId;
-      const parentStepId = Object.keys(run.steps).find(
-        (id) => parentId in run.steps[id].executions
-      )!;
-      const parentSequence =
-        run.steps[parentStepId].executions[parentId].sequence;
-      const parentNodeId = `${parentStepId}/${parentSequence}`;
-      g.setEdge(parentNodeId, nodeId);
-    }
-    const executionId = Object.keys(step.executions).find(
-      (id) => step.executions[id].sequence == attemptNumber
-    );
-    if (executionId) {
-      const children = step.executions[executionId].children;
-      if (children && Object.keys(children).length) {
-        Object.entries(children).forEach(([runId, target]) => {
-          g.setNode(runId, { width: 160, height: 50 });
-          g.setEdge(nodeId, runId);
+  traverseRun(
+    run,
+    stepAttempts,
+    (stepId: string, executionId: string | undefined) => {
+      const step = run.steps[stepId];
+      const execution = executionId ? step.executions[executionId] : undefined;
+      if (execution) {
+        execution.dependencies.forEach((dependencyId) => {
+          const dependencyStepId = Object.keys(run.steps).find(
+            (id) => dependencyId in run.steps[id].executions
+          );
+          if (dependencyStepId) {
+            g.setEdge(dependencyStepId, stepId, {
+              type: "dependency",
+              weight: 100,
+            });
+          } else {
+            // TODO: handle other dependency?
+          }
         });
       }
-      Object.keys(run.steps)
-        .filter((stepId) => run.steps[stepId].parentId == executionId)
-        .forEach((stepId) => traverse(stepId));
     }
-  };
+  );
 
-  rootStepIds.forEach((stepId: string) => traverse(stepId));
+  traverseRun(
+    run,
+    stepAttempts,
+    (stepId: string, executionId: string | undefined) => {
+      const step = run.steps[stepId];
+      const execution = executionId ? step.executions[executionId] : undefined;
+      g.setNode(stepId, {
+        width: 160,
+        height: 50,
+        type: "step",
+        step,
+        stepId: stepId,
+        attemptNumber: execution?.sequence,
+      });
+      if (step.parentId) {
+        const parentId = step.parentId;
+        const parentStepId = Object.keys(run.steps).find(
+          (id) => parentId in run.steps[id].executions
+        )!;
+        const parent = run.steps[parentStepId].executions[parentId];
+        if (
+          step.cachedExecutionId &&
+          parent.dependencies.includes(step.cachedExecutionId)
+        ) {
+          g.setEdge(stepId, parentStepId, {
+            type: "dependency",
+            weight: 100,
+          });
+        } else if (executionId && !parent.dependencies.includes(executionId)) {
+          g.setEdge(parentStepId, stepId, {
+            type: "parent",
+            weight: 1,
+          });
+        }
+      }
+    }
+  );
+
+  traverseRun(
+    run,
+    stepAttempts,
+    (stepId: string, executionId: string | undefined) => {
+      const step = run.steps[stepId];
+      const execution = executionId ? step.executions[executionId] : undefined;
+      if (execution) {
+        const children = execution.children;
+        if (children && Object.keys(children).length) {
+          Object.entries(children).forEach(([runId, child]) => {
+            g.setNode(runId, {
+              width: 160,
+              height: 50,
+              type: "child",
+              child,
+              runId,
+            });
+            if (
+              child.executionId &&
+              execution.dependencies.includes(child.executionId)
+            ) {
+              g.setEdge(runId, stepId, { type: "dependency", weight: 2 });
+            } else {
+              g.setEdge(stepId, runId, { type: "child", weight: 2 });
+            }
+          });
+        }
+      }
+    }
+  );
 
   dagre.layout(g);
   return g;
@@ -142,7 +245,7 @@ function StepNode({
   );
   return (
     <div
-      className="absolute flex items-center"
+      className="absolute"
       style={{
         left: node.x - node.width / 2 + offset,
         top: node.y - node.height / 2 + offset,
@@ -150,6 +253,9 @@ function StepNode({
         height: node.height,
       }}
     >
+      {Object.keys(step.executions).length > 1 && (
+        <div className="absolute w-full h-full border border-slate-300 bg-white rounded -top-1 -right-1"></div>
+      )}
       <Link
         to={buildUrl(`/projects/${projectId}/runs/${runId}/graph`, {
           environment: environmentName,
@@ -157,38 +263,45 @@ function StepNode({
           attempt: isActive ? undefined : attemptNumber,
         })}
         className={classNames(
-          "flex-1 items-center border block rounded p-2 truncate",
+          "absolute w-full h-full flex flex-col border rounded px-2 py-1 truncate ring-offset-2 ",
           classNameForResult(
             attempt?.result || undefined,
             !!step.cachedExecutionId
           ),
-          isActive && "ring ring-offset-2 ring-cyan-400",
-          { "font-bold": !step.parentId }
+          isActive ? "ring ring-cyan-400" : "hover:ring hover:ring-slate-200"
         )}
       >
-        <span className="font-mono">{step.target}</span>
+        <span
+          className={classNames(
+            "font-mono text-sm",
+            !step.parentId && "font-bold"
+          )}
+        >
+          {step.target}
+        </span>
+        {!step.parentId && (
+          <span className="text-xs text-slate-500">{runId}</span>
+        )}
       </Link>
     </div>
   );
 }
 
-type RunNodeProps = {
+type ParentNodeProps = {
   node: dagre.Node;
   offset: number;
   projectId: string;
-  runId: string;
+  parent: models.Parent;
   environmentName: string | undefined;
-  direction: "in" | "out";
 };
 
-function RunNode({
+function ParentNode({
   node,
   offset,
   projectId,
-  runId,
+  parent,
   environmentName,
-  direction,
-}: RunNodeProps) {
+}: ParentNodeProps) {
   return (
     <div
       className="absolute flex"
@@ -200,16 +313,63 @@ function RunNode({
       }}
     >
       <Link
-        to={buildUrl(`/projects/${projectId}/runs/${runId}`, {
+        to={buildUrl(`/projects/${projectId}/runs/${parent.runId}`, {
           environment: environmentName,
         })}
-        className="flex-1 flex gap-1 items-center border rounded p-2 bg-white"
+        className="flex-1 flex gap-2 items-center border border-dashed border-slate-300 rounded px-2 py-1 bg-white"
       >
-        {direction == "out" && <IconArrowForwardUp size={20} />}
-        <div className="flex-1 truncate">
-          <span className="font-mono">{runId}</span>
+        <div className="flex-1 flex flex-col truncate">
+          <span className="font-mono font-bold text-slate-400 text-sm">
+            {parent.target}
+          </span>
+          <span className="text-xs text-slate-400">{parent.runId}</span>
         </div>
-        {direction == "in" && <IconArrowForward size={20} />}
+        <IconArrowForward size={20} className="text-slate-400" />
+      </Link>
+    </div>
+  );
+}
+
+type ChildNodeProps = {
+  node: dagre.Node;
+  offset: number;
+  projectId: string;
+  runId: string;
+  child: models.Child;
+  environmentName: string | undefined;
+};
+
+function ChildNode({
+  node,
+  offset,
+  projectId,
+  runId,
+  child,
+  environmentName,
+}: ChildNodeProps) {
+  return (
+    <div
+      className="absolute flex"
+      style={{
+        left: node.x - node.width / 2 + offset,
+        top: node.y - node.height / 2 + offset,
+        width: node.width,
+        height: node.height,
+      }}
+    >
+      <Link
+        to={buildUrl(`/projects/${projectId}/runs/${runId}/graph`, {
+          environment: environmentName,
+        })}
+        className="flex-1 flex gap-2 items-center border border-slate-300 rounded px-2 py-1 bg-white"
+      >
+        <div className="flex-1 flex flex-col truncate">
+          <span className="font-mono font-bold text-slate-500 text-sm">
+            {child.target}
+          </span>
+          <span className="text-xs text-slate-400">{runId}</span>
+        </div>
+        <IconArrowUpRight size={20} className="text-slate-400" />
       </Link>
     </div>
   );
@@ -221,18 +381,25 @@ type EdgeProps = {
 };
 
 function Edge({ edge, offset: o }: EdgeProps) {
-  const {
-    points: [a, b, c],
-  } = edge;
+  const { points, type } = edge;
   return (
-    <path
-      className="stroke-slate-200"
-      fill="none"
-      strokeWidth={5}
-      d={`M ${a.x + o} ${a.y + o} Q ${b.x + o} ${b.y + o} ${c.x + o} ${
-        c.y + o
-      }`}
-    />
+    <Fragment>
+      <path
+        className={
+          type == "dependency" ? "stroke-slate-300" : "stroke-slate-200"
+        }
+        fill="none"
+        strokeWidth={type == "dependency" ? 2 : 2}
+        strokeDasharray={type == "dependency" ? undefined : "5"}
+        d={`M ${points.map(({ x, y }) => `${x + o} ${y + o}`).join(" ")}`}
+      />
+      <circle
+        cx={points[points.length - 1].x + o}
+        cy={points[points.length - 1].y + o}
+        r={3}
+        className={type == "dependency" ? "fill-slate-300" : "fill-slate-200"}
+      />
+    </Fragment>
   );
 }
 
@@ -294,47 +461,45 @@ export default function RunGraph({
       <div className="absolute">
         {graph.nodes().map((nodeId) => {
           const node = graph.node(nodeId);
-          if (node) {
-            const parts = nodeId.split("/", 2);
-            const stepId = parts[0];
-            const step = run.steps[stepId];
-            if (step) {
-              const attemptNumber =
-                parts.length > 1 ? parseInt(parts[1], 10) : undefined;
+          switch (node.type) {
+            case "step":
               return (
                 <StepNode
                   key={nodeId}
                   node={node}
                   offset={offset}
-                  stepId={stepId}
-                  step={step}
-                  attemptNumber={attemptNumber}
+                  stepId={node.stepId}
+                  step={node.step}
+                  attemptNumber={node.attemptNumber}
                   projectId={projectId}
                   runId={runId}
                   environmentName={environmentName}
-                  isActive={
-                    nodeId ==
-                    (activeAttemptNumber
-                      ? `${activeStepId}/${activeAttemptNumber}`
-                      : activeStepId)
-                  }
+                  isActive={nodeId == activeStepId}
                 />
               );
-            } else {
+            case "parent":
               return (
-                <RunNode
+                <ParentNode
                   key={nodeId}
                   node={node}
                   offset={offset}
                   projectId={projectId}
-                  runId={nodeId}
+                  parent={node.parent}
                   environmentName={environmentName}
-                  direction={nodeId == run.parent?.runId ? "in" : "out"}
                 />
               );
-            }
-          } else {
-            return null;
+            case "child":
+              return (
+                <ChildNode
+                  key={nodeId}
+                  node={node}
+                  offset={offset}
+                  projectId={projectId}
+                  runId={node.runId}
+                  child={node.child}
+                  environmentName={environmentName}
+                />
+              );
           }
         })}
       </div>
