@@ -19,6 +19,7 @@ import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
 import { useRunTopic, useTargetTopic } from "../topics";
 import TargetHeader from "../components/TargetHeader";
+import HoverContext from "../components/HoverContext";
 
 type TabProps = {
   page: string | null;
@@ -159,42 +160,44 @@ export default function RunLayout() {
       Object.values(s.executions).some((e) => !e.result)
     );
     return (
-      <div className="flex flex-1 overflow-hidden">
-        <div className="grow flex flex-col">
-          <TargetHeader
-            target={target}
+      <HoverContext>
+        <div className="flex flex-1 overflow-hidden">
+          <div className="grow flex flex-col">
+            <TargetHeader
+              target={target}
+              projectId={projectId!}
+              runId={runId}
+              environmentName={environmentName}
+              onRun={handleRun}
+              onCancel={isRunning ? cancelRun : undefined}
+            />
+            <div className="border-b px-4">
+              {run.recurrent ? (
+                <Tab page="runs">Runs</Tab>
+              ) : (
+                <Fragment>
+                  <Tab page="graph">Graph</Tab>
+                  <Tab page="timeline">Timeline</Tab>
+                </Fragment>
+              )}
+              <Tab page="logs">Logs</Tab>
+            </div>
+            <div className="flex-1 basis-0 overflow-auto" ref={ref}>
+              <Outlet context={{ run, width, height }} />
+            </div>
+          </div>
+          <DetailPanel
+            runId={runId!}
+            stepId={activeStepId}
+            attemptNumber={activeAttemptNumber}
+            run={run}
             projectId={projectId!}
-            runId={runId}
-            environmentName={environmentName}
-            onRun={handleRun}
-            onCancel={isRunning ? cancelRun : undefined}
+            environmentName={environmentName!}
+            className="w-[400px]"
+            onRerunStep={rerunStep}
           />
-          <div className="border-b px-4">
-            {run.recurrent ? (
-              <Tab page="runs">Runs</Tab>
-            ) : (
-              <Fragment>
-                <Tab page="graph">Graph</Tab>
-                <Tab page="timeline">Timeline</Tab>
-              </Fragment>
-            )}
-            <Tab page="logs">Logs</Tab>
-          </div>
-          <div className="flex-1 basis-0 overflow-auto" ref={ref}>
-            <Outlet context={{ run, width, height }} />
-          </div>
         </div>
-        <DetailPanel
-          runId={runId!}
-          stepId={activeStepId}
-          attemptNumber={activeAttemptNumber}
-          run={run}
-          projectId={projectId!}
-          environmentName={environmentName!}
-          className="w-[400px]"
-          onRerunStep={rerunStep}
-        />
-      </div>
+      </HoverContext>
     );
   }
 }

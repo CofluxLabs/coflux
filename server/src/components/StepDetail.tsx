@@ -19,6 +19,7 @@ import { buildUrl } from "../utils";
 import Loading from "./Loading";
 import Button from "./common/Button";
 import RunLogs from "./RunLogs";
+import StepLink from "./StepLink";
 
 function findExecution(
   run: models.Run,
@@ -34,20 +35,12 @@ function findExecution(
 }
 
 type ResultProps = {
-  result: models.Result;
   runId: string;
   run: models.Run;
-  projectId: string;
-  environmentName: string;
+  result: models.Result;
 };
 
-function Result({
-  result,
-  runId,
-  run,
-  projectId,
-  environmentName,
-}: ResultProps) {
+function Result({ runId, run, result }: ResultProps) {
   switch (result.type) {
     case "raw":
       return (
@@ -69,16 +62,14 @@ function Result({
       if (stepAttempt) {
         const [stepId, attempt] = stepAttempt;
         return (
-          <Link
-            to={buildUrl(`/projects/${projectId}/runs/${runId}/graph`, {
-              environment: environmentName,
-              step: stepId,
-              attempt: attempt.sequence,
-            })}
+          <StepLink
+            runId={runId}
+            stepId={stepId}
+            attemptNumber={attempt.sequence}
             className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
           >
             Result
-          </Link>
+          </StepLink>
         );
       } else {
         return <em>Unrecognised execution</em>;
@@ -91,6 +82,31 @@ function Result({
       );
     default:
       return null;
+  }
+}
+
+type DependencyProps = {
+  runId: string;
+  run: models.Run;
+  dependency: string;
+};
+
+function Dependency({ runId, run, dependency }: DependencyProps) {
+  const execution = findExecution(run, dependency);
+  if (execution) {
+    return (
+      <StepLink
+        runId={runId}
+        stepId={execution[0]}
+        attemptNumber={execution[1].sequence}
+        className="border border-slate-300 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
+        hoveredClassName="border-slate-600"
+      >
+        {dependency}
+      </StepLink>
+    );
+  } else {
+    return <span>{dependency}</span>;
   }
 }
 
@@ -157,26 +173,9 @@ function Attempt({
         {attempt.dependencies.length ? (
           <ul className="flex flex-wrap gap-1">
             {attempt.dependencies.map((dependency) => {
-              const execution = findExecution(run, dependency);
               return (
                 <li key={dependency}>
-                  {execution ? (
-                    <Link
-                      to={buildUrl(
-                        `/projects/${projectId}/runs/${runId}/graph`,
-                        {
-                          environment: environmentName,
-                          step: execution[0],
-                          attempt: execution[1].sequence,
-                        }
-                      )}
-                      className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
-                    >
-                      {dependency}
-                    </Link>
-                  ) : (
-                    dependency
-                  )}
+                  <Dependency runId={runId} run={run} dependency={dependency} />
                 </li>
               );
             })}
@@ -219,13 +218,7 @@ function Attempt({
                 <h3 className="uppercase text-sm font-bold text-slate-400">
                   Result
                 </h3>
-                <Result
-                  result={attempt.result}
-                  runId={runId}
-                  run={run}
-                  projectId={projectId}
-                  environmentName={environmentName}
-                />
+                <Result result={attempt.result} runId={runId} run={run} />
               </div>
             )}
           <div>
@@ -309,17 +302,9 @@ type ArgumentProps = {
   argument: models.Argument;
   runId: string;
   run: models.Run;
-  projectId: string;
-  environmentName: string;
 };
 
-function Argument({
-  argument,
-  runId,
-  run,
-  projectId,
-  environmentName,
-}: ArgumentProps) {
+function Argument({ runId, run, argument }: ArgumentProps) {
   switch (argument.type) {
     case "raw":
       return <span className="font-mono truncate">{argument.value}</span>;
@@ -328,16 +313,14 @@ function Argument({
       if (stepAttempt) {
         const [stepId, attempt] = stepAttempt;
         return (
-          <Link
-            to={buildUrl(`/projects/${projectId}/runs/${runId}/graph`, {
-              environment: environmentName,
-              step: stepId,
-              attempt: attempt.sequence,
-            })}
+          <StepLink
+            runId={runId}
+            stepId={stepId}
+            attemptNumber={attempt.sequence}
             className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-1 py-0.5 my-0.5 inline-block"
           >
             Result
-          </Link>
+          </StepLink>
         );
       } else {
         return <em>Unrecognised execution</em>;
@@ -477,13 +460,7 @@ export default function StepDetail({
             <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs">
               {step.arguments.map((argument, index) => (
                 <li key={index}>
-                  <Argument
-                    argument={argument}
-                    runId={runId}
-                    run={run}
-                    projectId={projectId}
-                    environmentName={environmentName}
-                  />
+                  <Argument runId={runId} run={run} argument={argument} />
                 </li>
               ))}
             </ol>

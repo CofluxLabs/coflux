@@ -2,11 +2,10 @@ import { Fragment } from "react";
 import { DateTime } from "luxon";
 import classNames from "classnames";
 import { maxBy, sortBy } from "lodash";
-import { Link } from "react-router-dom";
 
 import * as models from "../models";
 import useNow from "../hooks/useNow";
-import { buildUrl } from "../utils";
+import StepLink from "./StepLink";
 
 function loadExecutionTimes(run: models.Run): {
   [key: string]: [DateTime, DateTime | null, DateTime | null];
@@ -87,20 +86,11 @@ function formatElapsed(millis: number) {
 }
 
 type Props = {
-  run: models.Run;
   runId: string;
-  projectId: string;
-  environmentName: string | null | undefined;
-  activeStepId: string | null;
+  run: models.Run;
 };
 
-export default function RunTimeline({
-  run,
-  runId,
-  projectId,
-  environmentName,
-  activeStepId,
-}: Props) {
+export default function RunTimeline({ runId, run }: Props) {
   const running = isRunning(run);
   const now = useNow(running ? 30 : 0);
   const stepTimes = loadStepTimes(run);
@@ -135,37 +125,31 @@ export default function RunTimeline({
           (latestAttempt
             ? executionTimes[`${stepId}:${latestAttempt.sequence}`][2]
             : null) || latestTime;
-        const isActive = stepId == activeStepId;
         return (
           <div
             key={stepId}
             className="flex items-center border-r border-slate-200"
           >
-            <div className="w-40 mr-2 border-r border-slate-200 py-0.5">
-              <Link
-                to={buildUrl(`/projects/${projectId}/runs/${runId}/timeline`, {
-                  environment: environmentName,
-                  step: isActive ? undefined : stepId,
-                  attempt: isActive ? undefined : latestAttempt?.sequence,
-                })}
-                className={classNames(
-                  "block max-w-full rounded truncate leading-none text-sm",
-                  isActive && "ring-2 ring-offset-1 ring-cyan-400"
-                )}
+            <div className="w-40 mr-2 border-r border-slate-200 py-1">
+              <StepLink
+                runId={runId}
+                stepId={stepId}
+                attemptNumber={latestAttempt?.sequence}
+                className="block max-w-full rounded truncate leading-none text-sm ring-offset-1"
+                activeClassName="ring-2 ring-cyan-400"
+                hoveredClassName="ring-2 ring-slate-300"
               >
                 <span className="font-mono">{step.target}</span>{" "}
                 <span className="text-slate-500 text-sm">
                   ({step.repository})
                 </span>
-              </Link>
+              </StepLink>
             </div>
             <div className="flex-1 relative">
-              <Link
-                to={buildUrl(`/projects/${projectId}/runs/${runId}/timeline`, {
-                  environment: environmentName,
-                  step: isActive ? undefined : stepId,
-                  attempt: isActive ? undefined : latestAttempt?.sequence,
-                })}
+              <StepLink
+                runId={runId}
+                stepId={stepId}
+                attemptNumber={latestAttempt?.sequence}
                 className="block h-2"
               >
                 <Bar
@@ -199,7 +183,7 @@ export default function RunTimeline({
                     </Fragment>
                   );
                 })}
-              </Link>
+              </StepLink>
             </div>
           </div>
         );

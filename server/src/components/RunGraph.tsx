@@ -7,6 +7,8 @@ import { IconArrowForward, IconArrowUpRight } from "@tabler/icons-react";
 
 import * as models from "../models";
 import { buildUrl } from "../utils";
+import StepLink from "./StepLink";
+import { useHoverContext } from "./HoverContext";
 
 type Node =
   | {
@@ -223,9 +225,7 @@ type StepNodeProps = {
   stepId: string;
   step: models.Step;
   attemptNumber: number | undefined;
-  projectId: string;
   runId: string;
-  environmentName: string | undefined;
   isActive: boolean;
 };
 
@@ -235,14 +235,13 @@ function StepNode({
   stepId,
   step,
   attemptNumber,
-  projectId,
   runId,
-  environmentName,
   isActive,
 }: StepNodeProps) {
   const attempt = Object.values(step.executions).find(
     (e) => e.sequence == attemptNumber
   );
+  const { isHovered } = useHoverContext();
   return (
     <div
       className="absolute"
@@ -254,22 +253,31 @@ function StepNode({
       }}
     >
       {Object.keys(step.executions).length > 1 && (
-        <div className="absolute w-full h-full border border-slate-300 bg-white rounded -top-1 -right-1"></div>
+        <div
+          className={classNames(
+            "absolute w-full h-full border border-slate-300 bg-white rounded ring-offset-2",
+            isActive || isHovered(runId, stepId, attemptNumber)
+              ? "-top-2 -right-2"
+              : "-top-1 -right-1",
+            isHovered(runId, stepId) &&
+              !isHovered(runId, stepId, attemptNumber) &&
+              "ring-2 ring-slate-300"
+          )}
+        ></div>
       )}
-      <Link
-        to={buildUrl(`/projects/${projectId}/runs/${runId}/graph`, {
-          environment: environmentName,
-          step: isActive ? undefined : stepId,
-          attempt: isActive ? undefined : attemptNumber,
-        })}
+      <StepLink
+        runId={runId}
+        stepId={stepId}
+        attemptNumber={attemptNumber}
         className={classNames(
-          "absolute w-full h-full flex flex-col border rounded px-2 py-1 truncate ring-offset-2 ",
+          "absolute w-full h-full flex flex-col border rounded px-2 py-1 truncate ring-offset-2",
           classNameForResult(
             attempt?.result || undefined,
             !!step.cachedExecutionId
-          ),
-          isActive ? "ring ring-cyan-400" : "hover:ring hover:ring-slate-200"
+          )
         )}
+        activeClassName="ring ring-cyan-400"
+        hoveredClassName="ring ring-slate-300"
       >
         <span
           className={classNames(
@@ -282,7 +290,7 @@ function StepNode({
         {!step.parentId && (
           <span className="text-xs text-slate-500">{runId}</span>
         )}
-      </Link>
+      </StepLink>
     </div>
   );
 }
@@ -471,9 +479,7 @@ export default function RunGraph({
                   stepId={node.stepId}
                   step={node.step}
                   attemptNumber={node.attemptNumber}
-                  projectId={projectId}
                   runId={runId}
-                  environmentName={environmentName}
                   isActive={nodeId == activeStepId}
                 />
               );
