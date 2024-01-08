@@ -552,7 +552,11 @@ export default function RunGraph({
           height={canvasHeight}
           className={classNames(
             "absolute",
-            dragging ? "cursor-grabbing" : "cursor-grab"
+            dragging
+              ? "cursor-grabbing"
+              : zoom > minZoom
+              ? "cursor-grab"
+              : undefined
           )}
           onMouseDown={handleMouseDown}
         >
@@ -620,6 +624,17 @@ export default function RunGraph({
             }
           })}
         </div>
+      </div>
+      <div className="absolute flex right-1 bottom-1 bg-white/90 rounded-xl px-2 py-1">
+        <input
+          type="range"
+          value={zoom}
+          min={Math.floor(minZoom * 100) / 100}
+          max={1.5}
+          step={0.01}
+          className="w-24 accent-cyan-500 cursor-pointer"
+          onChange={(ev) => setZoomOverride(parseFloat(ev.target.value))}
+        />
       </div>
     </div>
   );
