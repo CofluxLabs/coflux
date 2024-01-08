@@ -131,38 +131,16 @@ defmodule Coflux.Orchestration.Store do
     idempotency_key = Keyword.get(opts, :idempotency_key)
     parent_id = Keyword.get(opts, :parent_id)
     recurrent = Keyword.get(opts, :recurrent)
-    priority = Keyword.get(opts, :priority, 0)
-    execute_after = Keyword.get(opts, :execute_after)
-    deduplicate_key = Keyword.get(opts, :deduplicate_key)
-    retry_count = Keyword.get(opts, :retry_count, 0)
-    retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
-    retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
     now = current_timestamp()
 
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
-      {:ok, step_id, external_step_id} =
-        insert_step(
-          db,
-          run_id,
-          nil,
-          repository,
-          target,
-          priority,
-          nil,
-          deduplicate_key,
-          retry_count,
-          retry_delay_min,
-          retry_delay_max,
-          now
-        )
+      {:ok, step_id, external_step_id, execution_id, sequence, now, is_cached} =
+        do_schedule_step(db, run_id, nil, repository, target, arguments, now, opts)
 
-      :ok = insert_arguments(db, step_id, arguments)
-      sequence = 1
-      {:ok, execution_id} = insert_execution(db, execute_after, now)
-      {:ok, _} = insert_step_execution(db, step_id, sequence, execution_id)
-      {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, sequence, now}
+      {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, sequence, now,
+       is_cached}
     end)
   end
 
@@ -218,6 +196,14 @@ defmodule Coflux.Orchestration.Store do
   end
 
   def schedule_step(db, run_id, parent_id, repository, target, arguments, opts \\ []) do
+    now = current_timestamp()
+
+    with_transaction(db, fn ->
+      do_schedule_step(db, run_id, parent_id, repository, target, arguments, now, opts)
+    end)
+  end
+
+  defp do_schedule_step(db, run_id, parent_id, repository, target, arguments, now, opts) do
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
     cache_key = Keyword.get(opts, :cache_key)
@@ -225,49 +211,46 @@ defmodule Coflux.Orchestration.Store do
     retry_count = Keyword.get(opts, :retry_count, 0)
     retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
     retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
-    now = current_timestamp()
 
-    with_transaction(db, fn ->
-      cached_execution_id =
-        if cache_key do
-          case find_cached_execution(db, cache_key) do
-            {:ok, cached_execution_id} ->
-              cached_execution_id
-          end
+    cached_execution_id =
+      if cache_key do
+        case find_cached_execution(db, cache_key) do
+          {:ok, cached_execution_id} ->
+            cached_execution_id
         end
+      end
 
-      # TODO: validate parent belongs to run?
-      {:ok, step_id, external_step_id} =
-        insert_step(
-          db,
-          run_id,
-          parent_id,
-          repository,
-          target,
-          priority,
-          unless(cached_execution_id, do: cache_key),
-          deduplicate_key,
-          retry_count,
-          retry_delay_min,
-          retry_delay_max,
-          now
-        )
+    # TODO: validate parent belongs to run?
+    {:ok, step_id, external_step_id} =
+      insert_step(
+        db,
+        run_id,
+        parent_id,
+        repository,
+        target,
+        priority,
+        unless(cached_execution_id, do: cache_key),
+        deduplicate_key,
+        retry_count,
+        retry_delay_min,
+        retry_delay_max,
+        now
+      )
 
-      :ok = insert_arguments(db, step_id, arguments)
+    :ok = insert_arguments(db, step_id, arguments)
 
-      {execution_id, sequence} =
-        if cached_execution_id do
-          {:ok, _} = insert_cached_execution(db, step_id, cached_execution_id, now)
-          {nil, nil}
-        else
-          sequence = 1
-          {:ok, execution_id} = insert_execution(db, execute_after, now)
-          {:ok, _} = insert_step_execution(db, step_id, sequence, execution_id)
-          {execution_id, sequence}
-        end
+    {execution_id, sequence, is_cached} =
+      if cached_execution_id do
+        {:ok, _} = insert_cached_execution(db, step_id, cached_execution_id, now)
+        {cached_execution_id, nil, true}
+      else
+        sequence = 1
+        {:ok, execution_id} = insert_execution(db, execute_after, now)
+        {:ok, _} = insert_step_execution(db, step_id, sequence, execution_id)
+        {execution_id, sequence, false}
+      end
 
-      {:ok, step_id, external_step_id, execution_id, sequence, now, cached_execution_id}
-    end)
+    {:ok, step_id, external_step_id, execution_id, sequence, now, is_cached}
   end
 
   def rerun_step(db, step_id, execute_after \\ nil) do

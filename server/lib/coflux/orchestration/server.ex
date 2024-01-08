@@ -849,7 +849,7 @@ defmodule Coflux.Orchestration.Server do
   defp start_run(state, repository, target_name, arguments, opts, parent \\ nil) do
     case Store.start_run(state.db, repository, target_name, arguments, opts) do
       {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, _sequence,
-       created_at} ->
+       created_at, _is_cached} ->
         if parent do
           {run_id, parent_id} = parent
 
@@ -882,7 +882,9 @@ defmodule Coflux.Orchestration.Server do
            arguments,
            opts
          ) do
-      {:ok, _step_id, external_step_id, execution_id, sequence, created_at, cached_execution_id} ->
+      {:ok, _step_id, external_step_id, execution_id, sequence, created_at, is_cached} ->
+        cached_execution_id = if is_cached, do: execution_id
+
         notify_listeners(
           state,
           {:run, run_id},
@@ -890,7 +892,7 @@ defmodule Coflux.Orchestration.Server do
            cached_execution_id}
         )
 
-        unless cached_execution_id do
+        unless is_cached do
           notify_listeners(
             state,
             {:run, run_id},
@@ -901,7 +903,7 @@ defmodule Coflux.Orchestration.Server do
         send(self(), :execute)
 
         # TODO: return (external) run id?
-        {:ok, nil, external_step_id, execution_id || cached_execution_id}
+        {:ok, nil, external_step_id, execution_id}
     end
   end
 
