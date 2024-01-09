@@ -44,12 +44,16 @@ defmodule Coflux.Orchestration.Server do
   def init({project_id, environment}) do
     case Store.open(project_id, environment) do
       {:ok, db} ->
-        {:ok,
-         %State{
-           project_id: project_id,
-           environment: environment,
-           db: db
-         }, {:continue, :abandon_pending}}
+        state =
+          %State{
+            project_id: project_id,
+            environment: environment,
+            db: db
+          }
+
+        send(self(), :execute)
+
+        {:ok, state, {:continue, :abandon_pending}}
     end
   end
 
