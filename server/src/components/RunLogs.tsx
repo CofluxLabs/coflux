@@ -9,29 +9,7 @@ import {
 } from "@tabler/icons-react";
 
 import * as models from "../models";
-import { pluralise } from "../utils";
-
-const DIFF_UNITS: Partial<Record<keyof DurationObjectUnits, string>> = {
-  days: "day",
-  hours: "hour",
-  minutes: "minute",
-  seconds: "second",
-  milliseconds: "millisecond",
-};
-
-function formatDiff(diff: Duration) {
-  const parts = diff.toObject();
-  const units = (Object.keys(DIFF_UNITS) as (keyof DurationObjectUnits)[])
-    .filter((unit) => unit != "milliseconds" && parts[unit])
-    .slice(0, 2);
-  if (units.length) {
-    return units
-      .map((unit) => pluralise(Math.floor(parts[unit]!), DIFF_UNITS[unit]!))
-      .join(", ");
-  } else {
-    return pluralise(Math.floor(diff.toMillis()), "millisecond");
-  }
-}
+import { formatDiff, pluralise } from "../utils";
 
 function classForLevel(level: models.LogMessageLevel) {
   switch (level) {
@@ -112,10 +90,13 @@ export default function RunLogs({
           {sortBy(logs, (l) => l[1]).map((message, index) => {
             const [executionId, timestamp, level, content] = message;
             const createdAt = DateTime.fromMillis(timestamp);
-            const diff = createdAt.diff(
-              lastTimestamp,
-              Object.keys(DIFF_UNITS) as (keyof DurationObjectUnits)[]
-            );
+            const diff = createdAt.diff(lastTimestamp, [
+              "days",
+              "hours",
+              "minutes",
+              "seconds",
+              "milliseconds",
+            ]);
             const showTimestamp = index == 0 || diff.toMillis() > 1000;
             if (showTimestamp) {
               lastTimestamp = createdAt;

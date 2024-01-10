@@ -17,6 +17,15 @@ export type Target = {
   runs: Record<string, Pick<Run, "createdAt">>;
 };
 
+export type Repository = {
+  targets: Record<string, Target>;
+  stats: {
+    executing: number;
+    nextDueAt: number | null;
+    scheduled: number;
+  };
+};
+
 export type Result =
   | {
       type: "error";

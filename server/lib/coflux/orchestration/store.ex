@@ -386,7 +386,8 @@ defmodule Coflux.Orchestration.Store do
         s.repository,
         s.target,
         s.deduplicate_key,
-        e.execute_after
+        e.execute_after,
+        e.created_at
       FROM executions AS e
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN step_executions AS se ON se.execution_id = e.id

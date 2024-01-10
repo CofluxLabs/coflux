@@ -22,22 +22,11 @@ import Loading from "../components/Loading";
 type Target = { repository: string; target: string };
 
 type ConnectionStatusProps = {
-  projectId: string | undefined;
-  environmentName: string | undefined;
+  agents: Record<string, Record<string, string[]>> | undefined;
 };
 
-function ConnectionStatus({
-  projectId,
-  environmentName,
-}: ConnectionStatusProps) {
+function ConnectionStatus({ agents }: ConnectionStatusProps) {
   const [_socket, status] = useSocket();
-  const [agents] = useTopic<Record<string, Record<string, string[]>>>(
-    "projects",
-    projectId,
-    "environments",
-    environmentName,
-    "agents"
-  );
   const count = agents && Object.keys(agents).length;
   return (
     <div className="p-3 flex items-center border-t border-slate-200">
@@ -99,9 +88,13 @@ export default function ProjectLayout() {
   const environmentName = searchParams.get("environment") || undefined;
   const [activeTarget, setActiveTarget] = useState<Target>();
   const [projects] = useTopic<Record<string, models.Project>>("projects");
-  const [repositories] = useTopic<
-    Record<string, Record<string, models.Target>>
-  >("projects", projectId, "environments", environmentName, "repositories");
+  const [repositories] = useTopic<Record<string, models.Repository>>(
+    "projects",
+    projectId,
+    "environments",
+    environmentName,
+    "repositories"
+  );
   const [agents] = useTopic<Record<string, Record<string, string[]>>>(
     "projects",
     projectId,
@@ -169,10 +162,7 @@ export default function ProjectLayout() {
               agents={agents}
             />
           </div>
-          <ConnectionStatus
-            projectId={projectId}
-            environmentName={environmentName}
-          />
+          <ConnectionStatus agents={agents} />
         </div>
         <div className="flex-1 flex flex-col">
           <Outlet context={{ setActiveTarget }} />
