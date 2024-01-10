@@ -8,5 +8,7 @@ export default function TimelinePage() {
   const { run: runId } = useParams();
   if (runId) {
     return <RunTimeline runId={runId} run={run} />;
+  } else {
+    return null;
   }
 }
