@@ -127,7 +127,9 @@ function Attempt({
   projectId,
   environmentName,
 }: AttemptProps) {
-  const scheduledAt = DateTime.fromMillis(attempt.createdAt);
+  const scheduledAt = DateTime.fromMillis(
+    attempt.executeAfter || attempt.createdAt
+  );
   const assignedAt = attempt.assignedAt
     ? DateTime.fromMillis(attempt.assignedAt)
     : null;
