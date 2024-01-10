@@ -41,9 +41,6 @@ class Connection:
     def reset(self):
         self._session_id = None
         self._last_id = 0
-        for _on_success, on_error in self._requests.values():
-            # TODO: better error?
-            on_error("session reset")
         self._requests = {}
 
     async def _enqueue(

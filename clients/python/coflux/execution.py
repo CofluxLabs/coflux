@@ -420,6 +420,12 @@ class Execution:
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result()
 
+    def _try_send(self, message):
+        try:
+            self._connection.send(message)
+        except BrokenPipeError:
+            pass
+
     def _handle_message(self, message):
         match message:
             case ExecutingNotification():
@@ -461,10 +467,10 @@ class Execution:
                         retry_delay_min,
                         retry_delay_max,
                     ),
-                    lambda execution_id: self._connection.send(
+                    lambda execution_id: self._try_send(
                         ExecutionScheduledResponse(schedule_id, execution_id)
                     ),
-                    lambda error: self._connection.send(
+                    lambda error: self._try_send(
                         ExecutionScheduleFailedResponse(schedule_id, error)
                     ),
                 )
@@ -473,10 +479,10 @@ class Execution:
                 self._server_request(
                     "get_result",
                     (execution_id, self._id),
-                    lambda result: self._connection.send(
+                    lambda result: self._try_send(
                         ResultResolvedResponse(execution_id, result)
                     ),
-                    lambda error: self._connection.send(
+                    lambda error: self._try_send(
                         ExecutionScheduleFailedResponse(execution_id, error)
                     ),
                 )
@@ -491,8 +497,12 @@ class Execution:
         self._process.start()
         while self._process.is_alive():
             if self._connection.poll(1):
-                message = self._connection.recv()
-                self._handle_message(message)
+                try:
+                    message = self._connection.recv()
+                except EOFError:
+                    pass
+                else:
+                    self._handle_message(message)
 
 
 class Manager:

@@ -8,6 +8,7 @@ import types
 import typing as t
 import urllib
 import websockets
+import traceback
 
 from . import server, execution, config, annotations
 
@@ -119,13 +120,14 @@ class Agent:
                     for task in done:
                         task.result()
             except websockets.WebSocketException as e:
-                if e.reason == "project_not_found":
+                reason = e.reason if hasattr(e, "reason") else None
+                if reason == "project_not_found":
                     print("Project not found")
                     return
-                elif e.reason == "environment_not_found":
+                elif reason == "environment_not_found":
                     print("Environment not found")
                     return
-                elif e.reason == "session_invalid":
+                elif reason == "session_invalid":
                     print("Session expired. Resetting and reconnecting...")
                     self._connection.reset()
                     self._execution_manager.abort_all()
@@ -136,6 +138,7 @@ class Agent:
                     print(f"Disconnected (reconnecting in {delay:.1f} seconds).")
                     await asyncio.sleep(delay)
             except OSError:
+                traceback.print_exc()
                 delay = 1 + 3 * random.random()  # TODO: exponential backoff
                 print(f"Can't connect (retrying in {delay:.1f} seconds).")
                 await asyncio.sleep(delay)
