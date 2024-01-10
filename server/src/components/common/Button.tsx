@@ -1,47 +1,82 @@
 import classNames from "classnames";
 import { ButtonHTMLAttributes } from "react";
-
-type Variant = "primary" | "secondary" | "success" | "warning" | "danger";
-type Size = "sm" | "md" | "lg";
-
-const variantStyles = {
-  primary: "focus:ring-cyan-200",
-  secondary: "border-slate-500 focus:ring-slate-200",
-  success: "border-green-500 focus:ring-green-200",
-  warning: "border-yellow-500 focus:ring-yellow-200",
-  danger: "border-red-500 focus:ring-red-200",
-};
+import { Size, Variant } from "./types";
 
 const outlineStyles = {
-  true: "bg-white",
+  true: "bg-white border",
   false: "text-white",
 };
 
 const variantOutlineStyles = {
   primary: {
-    true: "border-cyan-500/50 text-cyan-500 hover:text-cyan-600 hover:text-cyan-600 hover:border-cyan-500 shadow-cyan-500/30",
-    false:
-      "border-cyan-500 bg-cyan-500 hover:bg-cyan-600 hover:border-cyan-600 shadow-cyan-800/50",
+    true: [
+      "border-cyan-500/50 text-cyan-500 enabled:shadow-cyan-500/30",
+      "hover:text-cyan-600 hover:text-cyan-600 hover:border-cyan-500",
+      "focus:ring-cyan-300",
+      "disabled:border-cyan-500/20 disabled:text-cyan-500/30",
+    ],
+    false: [
+      "bg-cyan-500 enabled:shadow-cyan-800/50",
+      "hover:bg-cyan-600",
+      "focus:ring-cyan-400/50",
+      "disabled:bg-cyan-600/20",
+    ],
   },
   secondary: {
-    true: "border-slate-500/50 text-slate-500 hover:text-slate-600 hover:text-slate-600 hover:border-slate-500 shadow-slate-500/30",
-    false:
-      "border-slate-500 bg-slate-500 hover:bg-slate-600 hover:border-slate-600 shadow-slate-800/50",
+    true: [
+      "border-slate-500/50 text-slate-500 enabled:shadow-slate-500/30",
+      "hover:text-slate-600 hover:text-slate-600 hover:border-slate-500",
+      "focus:ring-slate-300",
+      "disabled:border-slate-500/20 disabled:text-slate-500/30",
+    ],
+    false: [
+      "bg-slate-500 enabled:shadow-slate-800/50",
+      "hover:bg-slate-600",
+      "focus:ring-slate-400/50",
+      "disabled:bg-slate-600/20",
+    ],
   },
   success: {
-    true: "border-green-500/50 text-green-500 hover:text-green-600 hover:text-green-600 hover:border-green-500 shadow-green-500/30",
-    false:
-      "border-green-500 bg-green-500 hover:bg-green-600 hover:border-green-600 shadow-green-800/50",
+    true: [
+      "border-green-500/50 text-green-500 enabled:shadow-green-500/30",
+      "hover:text-green-600 hover:text-green-600 hover:border-green-500",
+      "focus:ring-green-300",
+      "disabled:border-green-500/20 disabled:text-green-500/30",
+    ],
+    false: [
+      "bg-green-500 enabled:shadow-green-800/50",
+      "hover:bg-green-600",
+      "focus:ring-green-400/50",
+      "disabled:bg-green-600/20",
+    ],
   },
   warning: {
-    true: "border-yellow-500/50 text-yellow-500 hover:text-yellow-600 hover:text-yellow-600 hover:border-yellow-500 shadow-yellow-500/30",
-    false:
-      "border-yellow-500 bg-yellow-500 hover:bg-yellow-600 hover:border-yellow-600 shadow-yellow-800/50",
+    true: [
+      "border-yellow-500/50 text-yellow-500 enabled:shadow-yellow-500/30",
+      "hover:text-yellow-600 hover:text-yellow-600 hover:border-yellow-500",
+      "focus:ring-yellow-300",
+      "disabled:border-yellow-500/20 disabled:text-yellow-500/30",
+    ],
+    false: [
+      "bg-yellow-500 enabled:shadow-yellow-800/50",
+      "hover:bg-yellow-600",
+      "focus:ring-yellow-400/50",
+      "disabled:bg-yellow-600/20",
+    ],
   },
   danger: {
-    true: "border-red-500/50 text-red-500 hover:text-red-600 hover:text-red-600 hover:border-red-500 shadow-red-500/30",
-    false:
-      "border-red-500 bg-red-500 hover:bg-red-600 hover:border-red-600 shadow-red-800/50",
+    true: [
+      "border-red-500/50 text-red-500 enabled:shadow-red-500/30",
+      "hover:text-red-600 hover:text-red-600 hover:border-red-500",
+      "focus:ring-red-300",
+      "disabled:border-red-500/20 disabled:text-red-500/30",
+    ],
+    false: [
+      "bg-red-500 enabled:shadow-red-800/50",
+      "hover:bg-red-600",
+      "focus:ring-red-400/50",
+      "disabled:bg-red-600/20",
+    ],
   },
 };
 
@@ -68,8 +103,7 @@ export default function Button({
   return (
     <button
       className={classNames(
-        "border focus:ring focus:outline-none focus:ring-opacity-50 font-medium text-center shadow-sm",
-        variantStyles[variant],
+        "focus:ring focus:outline-none focus:ring-opacity-50 font-medium text-center shadow-sm",
         outlineStyles[outline ? "true" : "false"],
         variantOutlineStyles[variant][outline ? "true" : "false"],
         sizeStyles[size],
