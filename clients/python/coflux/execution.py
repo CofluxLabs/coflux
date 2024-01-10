@@ -10,7 +10,6 @@ import hashlib
 import json
 import pickle
 import contextvars
-import traceback
 import contextlib
 from concurrent.futures import Future
 
@@ -352,7 +351,6 @@ def _execute(
         stdout_capture.flush()
         stderr_capture.flush()
     except Exception as e:
-        traceback.print_exc()
         channel.record_error(e)
     else:
         if inspect.isgenerator(value):
