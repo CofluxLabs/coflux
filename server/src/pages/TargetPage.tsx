@@ -12,6 +12,7 @@ import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
 import { useTargetTopic } from "../topics";
 import TargetHeader from "../components/TargetHeader";
+import { useTitlePart } from "../components/TitleContext";
 
 export default function TargetPage() {
   const { project: projectId, repository, target: targetName } = useParams();
@@ -37,6 +38,7 @@ export default function TargetPage() {
     },
     [startRun]
   );
+  useTitlePart(`${targetName} (${repository})`);
   useSetActiveTarget(target);
   if (!target) {
     return <Loading />;

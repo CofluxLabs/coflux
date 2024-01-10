@@ -20,6 +20,7 @@ import Loading from "../components/Loading";
 import { useRunTopic, useTargetTopic } from "../topics";
 import TargetHeader from "../components/TargetHeader";
 import HoverContext from "../components/HoverContext";
+import { useTitlePart } from "../components/TitleContext";
 
 type TabProps = {
   page: string | null;
@@ -150,6 +151,9 @@ export default function RunLayout() {
       });
     },
     [startRun]
+  );
+  useTitlePart(
+    initialStep && `${initialStep.target} (${initialStep.repository})`
   );
   useSetActiveTarget(target);
   const { ref, width, height } = useResizeObserver<HTMLDivElement>();

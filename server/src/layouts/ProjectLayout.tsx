@@ -18,6 +18,7 @@ import * as models from "../models";
 import TargetsList from "../components/TargetsList";
 import { pluralise } from "../utils";
 import Loading from "../components/Loading";
+import { useTitlePart } from "../components/TitleContext";
 
 type Target = { repository: string; target: string };
 
@@ -113,6 +114,9 @@ export default function ProjectLayout() {
       });
     }
   }, [navigate, projectId, currentEnvironment, defaultEnvironment]);
+  useTitlePart(
+    project && environmentName && `${project.name} (${environmentName})`
+  );
   if (!repositories) {
     return <Loading />;
   } else if (!Object.keys(repositories).length) {
