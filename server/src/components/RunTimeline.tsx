@@ -115,20 +115,22 @@ export default function RunTimeline({ runId, run }: Props) {
     (id) => run.steps[id].createdAt
   );
   return (
-    <div className="p-4">
-      <div className="flex text-slate-400 text-sm">
+    <div className="px-4">
+      <div className="flex text-slate-400 text-sm  sticky top-0 z-10">
         <div className="w-40"></div>
-        <div className="flex-1 ml-2 border-l border-slate-200 px-1 pb-2">
-          {earliestTime.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}
-        </div>
-        <div className="border-r border-slate-200 px-1 pb-2">
-          <span
-            title={latestTime.toLocaleString(
-              DateTime.DATETIME_FULL_WITH_SECONDS
-            )}
-          >
-            +{formatDiff(elapsedDiff)}
-          </span>
+        <div className="flex-1 ml-2 flex border-x border-slate-200 px-1 py-2 bg-white/90">
+          <div className="flex-1">
+            {earliestTime.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}
+          </div>
+          <div>
+            <span
+              title={latestTime.toLocaleString(
+                DateTime.DATETIME_FULL_WITH_SECONDS
+              )}
+            >
+              +{formatDiff(elapsedDiff)}
+            </span>
+          </div>
         </div>
       </div>
       {stepIds.map((stepId) => {
