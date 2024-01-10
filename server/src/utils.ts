@@ -26,16 +26,28 @@ const DIFF_UNITS: Partial<Record<keyof DurationObjectUnits, string>> = {
   milliseconds: "millisecond",
 };
 
-export function formatDiff(diff: Duration, maxParts = 2) {
+export function formatDiff(diff: Duration, concise = false, maxParts = 2) {
   const parts = diff.toObject();
   const units = (Object.keys(DIFF_UNITS) as (keyof DurationObjectUnits)[])
     .filter((unit) => unit != "milliseconds" && parts[unit])
     .slice(0, maxParts);
   if (units.length) {
     return units
-      .map((unit) => pluralise(Math.floor(parts[unit]!), DIFF_UNITS[unit]!))
+      .map((unit) => {
+        const value = Math.floor(parts[unit]!);
+        if (concise) {
+          return `${value}${DIFF_UNITS[unit]![0]}`;
+        } else {
+          return pluralise(Math.floor(parts[unit]!), DIFF_UNITS[unit]!);
+        }
+      })
       .join(", ");
   } else {
-    return pluralise(Math.floor(diff.toMillis()), "millisecond");
+    const value = Math.floor(diff.toMillis());
+    if (concise) {
+      return `${value}ms`;
+    } else {
+      return pluralise(value, "millisecond");
+    }
   }
 }

@@ -15,7 +15,7 @@ import { IconChevronDown } from "@tabler/icons-react";
 
 import * as models from "../models";
 import Badge from "./Badge";
-import { buildUrl } from "../utils";
+import { buildUrl, formatDiff } from "../utils";
 import Loading from "./Loading";
 import Button from "./common/Button";
 import RunLogs from "./RunLogs";
@@ -161,7 +161,18 @@ function Attempt({
           <p>
             Duration: {completedAt.diff(assignedAt).toMillis()}ms{" "}
             <span className="text-slate-500 text-sm">
-              (+{assignedAt!.diff(scheduledAt).toMillis()}ms wait)
+              (+
+              {formatDiff(
+                assignedAt!.diff(scheduledAt, [
+                  "days",
+                  "hours",
+                  "minutes",
+                  "seconds",
+                  "milliseconds",
+                ]),
+                true
+              )}{" "}
+              wait)
             </span>
           </p>
         ) : assignedAt ? (
