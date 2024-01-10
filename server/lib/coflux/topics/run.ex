@@ -49,7 +49,7 @@ defmodule Coflux.Topics.Run do
   end
 
   def handle_info(
-        {:topic, _ref, {:execution, execution_id, step_id, sequence, created_at}},
+        {:topic, _ref, {:execution, execution_id, step_id, sequence, created_at, execute_after}},
         topic
       ) do
     topic =
@@ -59,6 +59,7 @@ defmodule Coflux.Topics.Run do
         %{
           sequence: sequence,
           createdAt: created_at,
+          executeAfter: execute_after,
           assignedAt: nil,
           completedAt: nil,
           dependencies: [],
@@ -231,6 +232,7 @@ defmodule Coflux.Topics.Run do
                    %{
                      sequence: execution.sequence,
                      createdAt: execution.created_at,
+                     executeAfter: execution.execute_after,
                      assignedAt: execution.assigned_at,
                      completedAt: execution.completed_at,
                      dependencies: Enum.map(execution.dependencies, &Integer.to_string/1),

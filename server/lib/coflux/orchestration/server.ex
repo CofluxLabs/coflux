@@ -445,7 +445,7 @@ defmodule Coflux.Orchestration.Server do
                cached_execution_id: cached_execution_id,
                arguments: arguments,
                executions:
-                 Map.new(executions, fn {execution_id, sequence, _execute_after, created_at,
+                 Map.new(executions, fn {execution_id, sequence, execute_after, created_at,
                                          _session_id, assigned_at} ->
                    {:ok, dependencies} = Store.get_execution_dependencies(state.db, execution_id)
 
@@ -477,6 +477,7 @@ defmodule Coflux.Orchestration.Server do
                     %{
                       sequence: sequence,
                       created_at: created_at,
+                      execute_after: execute_after,
                       assigned_at: assigned_at,
                       completed_at: completed_at,
                       dependencies: dependencies,
@@ -714,7 +715,7 @@ defmodule Coflux.Orchestration.Server do
         notify_listeners(
           state,
           {:run, step.run_id},
-          {:execution, execution_id, step.external_id, sequence, created_at}
+          {:execution, execution_id, step.external_id, sequence, created_at, execute_after}
         )
 
         send(self(), :execute)
@@ -977,10 +978,12 @@ defmodule Coflux.Orchestration.Server do
         )
 
         unless is_cached do
+          execute_after = Keyword.get(opts, :execute_after)
+
           notify_listeners(
             state,
             {:run, run_id},
-            {:execution, execution_id, external_step_id, sequence, created_at}
+            {:execution, execution_id, external_step_id, sequence, created_at, execute_after}
           )
         end
 

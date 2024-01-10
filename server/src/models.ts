@@ -73,6 +73,7 @@ export type Child = Pick<Target, "repository" | "target"> & {
 export type Execution = {
   sequence: number;
   createdAt: number;
+  executeAfter: number | null;
   assignedAt: number | null;
   completedAt: number | null;
   dependencies: string[];
