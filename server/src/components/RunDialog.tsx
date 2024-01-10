@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useState } from "react";
-import classNames from "classnames";
+import { IconAlertTriangle } from "@tabler/icons-react";
 
 import Dialog from "./common/Dialog";
 import * as models from "../models";
@@ -10,10 +10,11 @@ import Button from "./common/Button";
 type ParameterProps = {
   parameter: models.Parameter;
   value: string | undefined;
+  valid: boolean;
   onChange: (name: string, value: string) => void;
 };
 
-function Parameter({ parameter, value, onChange }: ParameterProps) {
+function Parameter({ parameter, value, valid, onChange }: ParameterProps) {
   const handleChange = useCallback(
     (value: string) => onChange(parameter.name, value),
     [parameter, onChange]
@@ -26,15 +27,42 @@ function Parameter({ parameter, value, onChange }: ParameterProps) {
       <Input
         value={value ?? ""}
         placeholder={parameter.default}
-        onChange={handleChange}
         className="w-full"
+        right={
+          !valid && (
+            <span className="text-yellow-500" title="Must be valid JSON">
+              <IconAlertTriangle size={20} stroke={1.5} />
+            </span>
+          )
+        }
+        onChange={handleChange}
       />
     </Field>
   );
 }
 
+function isValidJson(value: string) {
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validateValues(
+  values: Record<string, string>,
+  parameters: models.Parameter[]
+) {
+  return parameters.reduce<Record<string, boolean>>((result, parameter) => {
+    const value = values[parameter.name];
+    const valid = !value ? !!parameter.default : isValidJson(value);
+    return { ...result, [parameter.name]: valid };
+  }, {});
+}
+
 type Props = {
-  parameters: models.Parameter[];
+  target: models.Target;
   open: boolean;
   starting: boolean;
   onRun: (parameters: ["json", string][]) => void;
@@ -42,7 +70,7 @@ type Props = {
 };
 
 export default function RunDialog({
-  parameters,
+  target,
   open,
   starting,
   onRun,
@@ -57,31 +85,41 @@ export default function RunDialog({
   const handleSubmit = useCallback(
     (ev: FormEvent) => {
       ev.preventDefault();
-      onRun(parameters.map((p) => ["json", values[p.name] || p.default]));
+      onRun(
+        target.parameters.map((p) => ["json", values[p.name] || p.default])
+      );
     },
-    [parameters, values, onRun]
+    [target, values, onRun]
   );
+  const valuesValid = validateValues(values, target.parameters);
+  const invalid = Object.values(valuesValid).some((v) => !v);
   return (
-    // TODO: show target name in title
-    <Dialog title="Run target" open={open} onClose={onClose}>
+    <Dialog
+      title={
+        <span className="font-normal">
+          <span className="font-mono">{target.target}</span>{" "}
+          <span className="text-slate-500 text-sm">({target.repository})</span>
+        </span>
+      }
+      open={open}
+      onClose={onClose}
+    >
       <form onSubmit={handleSubmit}>
-        {parameters.length > 0 && (
-          <div className="mt-4">
-            <h3 className="font-bold uppercase text-slate-400 text-sm">
-              Arguments
-            </h3>
-            {parameters.map((parameter) => (
+        {target.parameters.length > 0 && (
+          <div>
+            {target.parameters.map((parameter) => (
               <Parameter
                 key={parameter.name}
                 parameter={parameter}
                 value={values[parameter.name]}
+                valid={valuesValid[parameter.name]}
                 onChange={handleValueChange}
               />
             ))}
           </div>
         )}
         <div className="mt-4 flex gap-2">
-          <Button type="submit" disabled={starting}>
+          <Button type="submit" disabled={invalid || starting}>
             Run
           </Button>
           <Button type="button" outline={true} onClick={onClose}>

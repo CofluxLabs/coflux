@@ -27,7 +27,7 @@ export default function RunButton({ target, onRun }: Props) {
     <Fragment>
       <Button onClick={handleRunClick}>Run...</Button>
       <RunDialog
-        parameters={target.parameters}
+        target={target}
         open={runDialogOpen}
         starting={starting}
         onRun={handleRun}
