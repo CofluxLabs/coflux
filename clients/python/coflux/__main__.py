@@ -37,6 +37,12 @@ def cli():
     help="Host to connect to",
 )
 @click.option(
+    "--concurrency",
+    type=int,
+    default=lambda: config.load().get("concurrency"),
+    help="Limit on number of executions to process at once",
+)
+@click.option(
     "--repo",
     help="Name of the Python repo to setup (if it doesn't already exist; e.g., 'my_package.repo')",
 )
@@ -44,6 +50,7 @@ def init(
     project: str,
     environment: str,
     host: str | None,
+    concurrency: int | None,
     repo: str | None,
 ):
     """
@@ -58,6 +65,7 @@ def init(
             "project": project,
             "environment": environment,
             "host": host,
+            "concurrency": concurrency,
         }
     )
     click.secho(f"Configuration written to '{config.path}'.", fg="green")
@@ -89,7 +97,6 @@ def init(
     help="Project ID",
 )
 @click.option(
-    "environment",
     "-e",
     "--environment",
     help="Environment name",
@@ -105,6 +112,11 @@ def init(
     help="Host to connect to",
 )
 @click.option(
+    "--concurrency",
+    type=int,
+    help="Limit on number of executions to process at once",
+)
+@click.option(
     "--reload",
     is_flag=True,
     default=False,
@@ -116,6 +128,7 @@ def run(
     environment: str,
     version: str,
     host: str,
+    concurrency: int | None,
     reload: bool,
     module_name: tuple[str],
 ) -> None:
@@ -128,6 +141,7 @@ def run(
         "environment": environment,
         "version": version,
         "host": host,
+        "concurrency": concurrency,
     }
     if reload:
         watchfiles.run_process(

@@ -7,17 +7,18 @@ defmodule Coflux.Handlers.Agent do
     project_id = get_query_param(qs, "project")
     environment = get_query_param(qs, "environment")
     session_id = get_query_param(qs, "session")
+    concurrency = get_query_param(qs, "concurrency", &String.to_integer/1) || 0
 
-    {:cowboy_websocket, req, {project_id, environment, session_id}}
+    {:cowboy_websocket, req, {project_id, environment, session_id, concurrency}}
   end
 
-  def websocket_init({project_id, environment, session_id}) do
+  def websocket_init({project_id, environment, session_id, concurrency}) do
     case Projects.get_project_by_id(Coflux.ProjectsServer, project_id) do
       {:ok, project} ->
         # TODO: authenticate
         if Enum.member?(project.environments, environment) do
           # TODO: monitor server?
-          case Orchestration.connect(project_id, environment, session_id, self()) do
+          case Orchestration.connect(project_id, environment, session_id, concurrency, self()) do
             {:ok, session_id} ->
               {[session_message(session_id)],
                %{
@@ -219,10 +220,22 @@ defmodule Coflux.Handlers.Agent do
     {:text, Jason.encode!([2, %{"id" => id, "result" => result}])}
   end
 
-  defp get_query_param(qs, key) do
+  defp get_query_param(qs, key, fun \\ nil) do
     case List.keyfind(qs, key, 0) do
-      {^key, value} -> value
-      nil -> nil
+      {^key, value} ->
+        if fun do
+          try do
+            fun.(value)
+          rescue
+            ArgumentError ->
+              nil
+          end
+        else
+          value
+        end
+
+      nil ->
+        nil
     end
   end
 

@@ -60,11 +60,13 @@ class Agent:
         environment_name: str,
         version: str,
         server_host: str,
+        concurrency: int,
     ):
         self._project_id = project_id
         self._environment_name = environment_name
         self._version = version
         self._server_host = server_host
+        self._concurrency = concurrency
         self._modules = {}
         self._connection = server.Connection(
             {"execute": self._handle_execute, "abort": self._handle_abort}
@@ -104,6 +106,7 @@ class Agent:
                 project=self._project_id,
                 environment=self._environment_name,
                 session=self._connection.session_id,
+                concurrency=self._concurrency,
             )
             try:
                 async with websockets.connect(url) as websocket:
@@ -171,11 +174,18 @@ def _get_option(
     config_name: str | None = None,
     default: T = None,
 ) -> T:
-    return (
-        argument
-        or os.environ.get(env_name)
-        or (config_name and config.load().get(config_name))
-        or default
+    return next(
+        (
+            value
+            for value in (
+                argument,
+                os.environ.get(env_name),
+                (config_name and config.load().get(config_name)),
+                default,
+            )
+            if value is not None
+        ),
+        None,
     )
 
 
@@ -185,6 +195,7 @@ def init(
     environment: str | None = None,
     version: str | None = None,
     host: str | None = None,
+    concurrency: int | None = None,
 ) -> None:
     if not modules:
         raise Exception("No module(s) specified.")
@@ -196,8 +207,11 @@ def init(
     )
     version = _get_option(version, "COFLUX_VERSION")
     host = _get_option(host, "COFLUX_HOST", "host", "localhost:7777")
+    concurrency = _get_option(
+        concurrency, "COFLUX_CONCURRENCY", "concurrency", min(32, os.cpu_count() + 4)
+    )
     try:
-        agent = Agent(project, environment, version, host)
+        agent = Agent(project, environment, version, host, concurrency)
         asyncio.run(_run(agent, modules))
     except KeyboardInterrupt:
         pass

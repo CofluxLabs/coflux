@@ -1,8 +1,8 @@
 defmodule Coflux.Orchestration do
   alias Coflux.Orchestration
 
-  def connect(project_id, environment, session_id, pid) do
-    call_server(project_id, environment, {:connect, session_id, pid})
+  def connect(project_id, environment, session_id, concurrency, pid) do
+    call_server(project_id, environment, {:connect, session_id, concurrency, pid})
   end
 
   def register_targets(project_id, environment, session_id, repository, targets) do

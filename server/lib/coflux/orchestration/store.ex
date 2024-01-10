@@ -394,7 +394,7 @@ defmodule Coflux.Orchestration.Store do
       LEFT JOIN steps AS s ON s.id = se.step_id
       LEFT JOIN results AS r ON r.execution_id = e.id
       WHERE a.created_at IS NULL AND r.created_at IS NULL
-      ORDER BY e.execute_after, e.created_at
+      ORDER BY e.execute_after, e.created_at, s.priority
       """
     )
   end

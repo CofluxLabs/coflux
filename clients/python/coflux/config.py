@@ -18,8 +18,13 @@ def _read() -> dict[str, t.Any]:
         return yaml.safe_load(f)
 
 
-def write(config) -> None:
-    new_config = {**_read(), **config}
+def write(updates: dict[str, t.Any]) -> None:
+    config = _read()
+    for key, value in updates.items():
+        if value is not None:
+            config[key] = value
+        elif key in config:
+            del config[key]
     with open(path, "w") as f:
-        yaml.safe_dump(new_config, f)
+        yaml.safe_dump(config, f)
     load.cache_clear()

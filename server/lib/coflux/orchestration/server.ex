@@ -90,7 +90,7 @@ defmodule Coflux.Orchestration.Server do
     {:noreply, state}
   end
 
-  def handle_call({:connect, external_id, pid}, _from, state) do
+  def handle_call({:connect, external_id, concurrency, pid}, _from, state) do
     if external_id do
       case Map.fetch(state.session_ids, external_id) do
         {:ok, session_id} ->
@@ -121,7 +121,11 @@ defmodule Coflux.Orchestration.Server do
             |> put_in([Access.key(:agents), ref], {pid, session_id})
             |> update_in(
               [Access.key(:sessions), session_id],
-              &Map.merge(&1, %{agent: ref, queue: []})
+              &Map.merge(&1, %{
+                agent: ref,
+                queue: [],
+                concurrency: concurrency
+              })
             )
 
           notify_agent(state, session_id)
@@ -140,6 +144,7 @@ defmodule Coflux.Orchestration.Server do
             external_id
             |> build_session()
             |> Map.put(:agent, ref)
+            |> Map.put(:concurrency, concurrency)
 
           state =
             state
@@ -566,14 +571,15 @@ defmodule Coflux.Orchestration.Server do
         end
       end)
 
-    # TODO: order by priority?
-    {state, assigned} =
+    {state, assigned, unassigned} =
       executions_due
       |> Enum.reverse()
       |> Enum.reduce(
-        {state, %{}},
+        {state, %{}, []},
         fn
-          {execution_id, step_id, run_id, repository, target, _, _, _}, {state, assigned} ->
+          execution, {state, assigned, unassigned} ->
+            {execution_id, step_id, run_id, repository, target, _, _, _} = execution
+
             case assign_execution(state, execution_id, repository, target, fn ->
                    Store.get_step_arguments(state.db, step_id)
                  end) do
@@ -590,10 +596,10 @@ defmodule Coflux.Orchestration.Server do
                   |> Map.put_new(repository, MapSet.new())
                   |> Map.update!(repository, &MapSet.put(&1, execution_id))
 
-                {state, assigned}
+                {state, assigned, unassigned}
 
               {:error, :no_session} ->
-                {state, assigned}
+                {state, assigned, [execution | unassigned]}
             end
         end
       )
@@ -615,11 +621,14 @@ defmodule Coflux.Orchestration.Server do
         end)
       end)
 
-    next_execution = List.last(executions_future)
+    next_execute_after =
+      unassigned
+      |> Enum.concat(executions_future)
+      |> Enum.map(&elem(&1, 6))
+      |> Enum.min(fn -> nil end)
 
     state =
-      if next_execution do
-        next_execute_after = elem(next_execution, 6)
+      if next_execute_after do
         delay_ms = trunc(next_execute_after) - System.os_time(:millisecond)
         timer = Process.send_after(self(), :execute, delay_ms)
         Map.put(state, :execute_timer, timer)
@@ -670,7 +679,8 @@ defmodule Coflux.Orchestration.Server do
       queue: [],
       starting: MapSet.new(),
       executing: MapSet.new(),
-      expire_timer: nil
+      expire_timer: nil,
+      concurrency: 0
     }
   end
 
@@ -1011,13 +1021,24 @@ defmodule Coflux.Orchestration.Server do
     targets |> Map.get(repository, %{}) |> Map.get(target_name)
   end
 
+  defp session_at_capacity(state, session_id) do
+    session = state.sessions[session_id]
+
+    if session.concurrency != 0 do
+      load = MapSet.size(session.starting) + MapSet.size(session.executing)
+      load >= session.concurrency
+    else
+      false
+    end
+  end
+
   defp assign_execution(state, execution_id, repository, target, arguments_fun) do
     session_ids =
       state.targets
       |> Map.get(repository, %{})
       |> Map.get(target, MapSet.new())
+      |> Enum.reject(&session_at_capacity(state, &1))
 
-    # TODO: limit number of active assignments per session?
     if Enum.any?(session_ids) do
       session_id = Enum.random(session_ids)
 
@@ -1025,7 +1046,7 @@ defmodule Coflux.Orchestration.Server do
         {:ok, arguments} ->
           {:ok, assigned_at} = Store.assign_execution(state.db, execution_id, session_id)
 
-          IO.puts("Assigned execution #{execution_id} to session #{session_id}")
+          # IO.puts("Assigned execution #{execution_id} to session #{session_id}")
 
           state =
             state
