@@ -1,11 +1,6 @@
 import { maxBy } from "lodash";
-import { Fragment, useCallback } from "react";
-import {
-  Navigate,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
+import { Fragment } from "react";
+import { Navigate, useParams, useSearchParams } from "react-router-dom";
 
 import { useSetActiveTarget } from "../layouts/ProjectLayout";
 import { buildUrl } from "../utils";
@@ -18,25 +13,11 @@ export default function TargetPage() {
   const { project: projectId, repository, target: targetName } = useParams();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
-  const [target, startRun] = useTargetTopic(
+  const target = useTargetTopic(
     projectId,
     environmentName,
     repository,
-    targetName
-  );
-  // TODO: remove duplication (RunLayout)
-  const navigate = useNavigate();
-  const handleRun = useCallback(
-    (parameters: ["json", string][]) => {
-      return startRun(parameters).then((runId) => {
-        navigate(
-          buildUrl(`/projects/${projectId}/runs/${runId}`, {
-            environment: environmentName,
-          })
-        );
-      });
-    },
-    [startRun]
+    targetName,
   );
   useTitlePart(`${targetName} (${repository})`);
   useSetActiveTarget(target);
@@ -45,7 +26,7 @@ export default function TargetPage() {
   } else {
     const latestRunId = maxBy(
       Object.keys(target.runs),
-      (runId) => target.runs[runId].createdAt
+      (runId) => target.runs[runId].createdAt,
     );
     if (latestRunId) {
       return (
@@ -63,7 +44,7 @@ export default function TargetPage() {
             target={target}
             projectId={projectId!}
             environmentName={environmentName}
-            onRun={handleRun}
+            isRunning={false}
           />
           <div className="p-4 flex-1">
             <h1 className="text-slate-400 text-xl text-center">

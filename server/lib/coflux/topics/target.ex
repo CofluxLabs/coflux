@@ -65,26 +65,4 @@ defmodule Coflux.Topics.Target do
 
     {:ok, topic}
   end
-
-  def handle_execute("start_run", {arguments}, topic, _context) do
-    %{
-      project_id: project_id,
-      environment_name: environment_name,
-      repository: repository,
-      target: target
-    } = topic.state
-
-    arguments = Enum.map(arguments, &parse_argument/1)
-
-    case Orchestration.schedule(project_id, environment_name, repository, target, arguments) do
-      {:ok, run_id, _step_id, _execution_id} ->
-        {:ok, run_id, topic}
-    end
-  end
-
-  defp parse_argument(argument) do
-    case argument do
-      ["json", value] -> {:raw, "json", value}
-    end
-  end
 end

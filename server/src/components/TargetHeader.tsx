@@ -1,10 +1,13 @@
-import { useCallback } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { IconCpu, IconSubtask } from "@tabler/icons-react";
+import { useNavigate } from "react-router-dom";
 
 import * as models from "../models";
-import RunButton from "./RunButton";
+import * as api from "../api";
 import RunSelector from "./RunSelector";
 import Button from "./common/Button";
+import { buildUrl } from "../utils";
+import RunDialog from "./RunDialog";
 
 type CancelButtonProps = {
   onCancel: () => void;
@@ -44,8 +47,7 @@ type Props = {
   projectId: string;
   runId?: string;
   environmentName: string | undefined;
-  onRun: (parameters: ["json", string][]) => Promise<void>;
-  onCancel?: () => void;
+  isRunning: boolean;
 };
 
 export default function TargetHeader({
@@ -53,9 +55,38 @@ export default function TargetHeader({
   projectId,
   runId,
   environmentName,
-  onRun,
-  onCancel,
+  isRunning,
 }: Props) {
+  const navigate = useNavigate();
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const handleRunSubmit = useCallback(
+    (arguments_: ["json", string][]) => {
+      return api
+        .schedule(
+          projectId,
+          environmentName!,
+          target.repository,
+          target.target,
+          arguments_,
+        )
+        .then(({ runId }) => {
+          setRunDialogOpen(false);
+          navigate(
+            buildUrl(`/projects/${projectId}/runs/${runId}`, {
+              environment: environmentName,
+            }),
+          );
+        });
+    },
+    [projectId, environmentName, target],
+  );
+  const handleCancel = useCallback(() => {
+    return api.cancelRun(projectId, environmentName!, runId!);
+  }, [projectId, environmentName, runId]);
+  const handleRunClick = useCallback(() => {
+    setRunDialogOpen(true);
+  }, []);
+  const handleRunDialogClose = useCallback(() => setRunDialogOpen(false), []);
   const Icon = iconForTarget(target);
   return (
     <div className="p-4 flex">
@@ -77,9 +108,19 @@ export default function TargetHeader({
               environmentName={environmentName}
             />
           )}
-          {onCancel && <CancelButton onCancel={onCancel} />}
+          {isRunning && <CancelButton onCancel={handleCancel} />}
         </div>
-        {environmentName && <RunButton target={target} onRun={onRun} />}
+        {environmentName && (
+          <Fragment>
+            <Button onClick={handleRunClick}>Run...</Button>
+            <RunDialog
+              target={target}
+              open={runDialogOpen}
+              onRun={handleRunSubmit}
+              onClose={handleRunDialogClose}
+            />
+          </Fragment>
+        )}
       </div>
     </div>
   );

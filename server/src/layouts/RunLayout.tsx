@@ -3,7 +3,6 @@ import { Fragment, ReactNode, useCallback } from "react";
 import {
   NavLink,
   Outlet,
-  useNavigate,
   useOutletContext,
   useParams,
   useSearchParams,
@@ -12,6 +11,7 @@ import { Transition } from "@headlessui/react";
 import useResizeObserver from "use-resize-observer";
 
 import * as models from "../models";
+import * as api from "../api";
 import { useSetActiveTarget } from "./ProjectLayout";
 import StepDetail from "../components/StepDetail";
 import usePrevious from "../hooks/usePrevious";
@@ -40,13 +40,13 @@ function Tab({ page, children }: TabProps) {
     <NavLink
       to={buildUrl(
         `/projects/${projectId}/runs/${runId}${page ? "/" + page : ""}`,
-        params
+        params,
       )}
       end={true}
       className={({ isActive }) =>
         classNames(
           "px-2 py-1",
-          isActive && "inline-block border-b-4 border-cyan-500"
+          isActive && "inline-block border-b-4 border-cyan-500",
         )
       }
     >
@@ -63,7 +63,6 @@ type DetailPanelProps = {
   projectId: string;
   environmentName: string;
   className?: string;
-  onRerunStep: (stepId: string, environmentName: string) => Promise<number>;
 };
 
 function DetailPanel({
@@ -74,10 +73,15 @@ function DetailPanel({
   projectId,
   environmentName,
   className,
-  onRerunStep,
 }: DetailPanelProps) {
   const previousStepId = usePrevious(stepId);
   const stepIdOrPrevious = stepId || previousStepId;
+  const handleRerunStep = useCallback(
+    (stepId: string) => {
+      return api.rerunStep(projectId, environmentName, stepId);
+    },
+    [projectId, environmentName],
+  );
   return (
     <Transition
       as={Fragment}
@@ -92,7 +96,7 @@ function DetailPanel({
       <div
         className={classNames(
           className,
-          "bg-slate-100 border-l border-slate-200 flex shadow-lg"
+          "bg-slate-100 border-l border-slate-200 flex shadow-lg",
         )}
       >
         {stepIdOrPrevious && (
@@ -104,7 +108,7 @@ function DetailPanel({
             projectId={projectId}
             environmentName={environmentName}
             className="flex-1"
-            onRerunStep={onRerunStep}
+            onRerunStep={handleRerunStep}
           />
         )}
       </div>
@@ -126,34 +130,16 @@ export default function RunLayout() {
     ? parseInt(searchParams.get("attempt")!, 10)
     : undefined;
   const environmentName = searchParams.get("environment") || undefined;
-  const [run, rerunStep, cancelRun] = useRunTopic(
-    projectId,
-    environmentName,
-    runId
-  );
+  const run = useRunTopic(projectId, environmentName, runId);
   const initialStep = run && Object.values(run.steps).find((j) => !j.parentId);
-  const [target, startRun] = useTargetTopic(
+  const target = useTargetTopic(
     projectId,
     environmentName,
     initialStep?.repository,
-    initialStep?.target
-  );
-  const navigate = useNavigate();
-  // TODO: remove duplication (TaskPage)
-  const handleRun = useCallback(
-    (parameters: ["json", string][]) => {
-      return startRun(parameters).then((runId) => {
-        navigate(
-          buildUrl(`/projects/${projectId}/runs/${runId}`, {
-            environment: environmentName,
-          })
-        );
-      });
-    },
-    [startRun]
+    initialStep?.target,
   );
   useTitlePart(
-    initialStep && `${initialStep.target} (${initialStep.repository})`
+    initialStep && `${initialStep.target} (${initialStep.repository})`,
   );
   useSetActiveTarget(target);
   const { ref, width, height } = useResizeObserver<HTMLDivElement>();
@@ -161,7 +147,7 @@ export default function RunLayout() {
     return <Loading />;
   } else {
     const isRunning = Object.values(run.steps).some((s) =>
-      Object.values(s.executions).some((e) => !e.result)
+      Object.values(s.executions).some((e) => !e.result),
     );
     return (
       <HoverContext>
@@ -172,8 +158,7 @@ export default function RunLayout() {
               projectId={projectId!}
               runId={runId}
               environmentName={environmentName}
-              onRun={handleRun}
-              onCancel={isRunning ? cancelRun : undefined}
+              isRunning={isRunning}
             />
             <div className="border-b px-4">
               {run.recurrent ? (
@@ -200,7 +185,6 @@ export default function RunLayout() {
             projectId={projectId!}
             environmentName={environmentName!}
             className="w-[400px]"
-            onRerunStep={rerunStep}
           />
         </div>
       </HoverContext>

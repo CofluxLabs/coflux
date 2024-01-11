@@ -26,4 +26,10 @@ defmodule Coflux.MapUtils do
         map
     end
   end
+
+  def translate_keys(map, translations) do
+    Map.new(map, fn {key, value} ->
+      {Map.get(translations, key, key), value}
+    end)
+  end
 end

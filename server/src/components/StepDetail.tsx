@@ -23,7 +23,7 @@ import StepLink from "./StepLink";
 
 function findExecution(
   run: models.Run,
-  executionId: string
+  executionId: string,
 ): [string, models.Execution] | null {
   const stepId = findKey(run.steps, (j) => executionId in j.executions);
   if (stepId) {
@@ -128,7 +128,7 @@ function Attempt({
   environmentName,
 }: AttemptProps) {
   const scheduledAt = DateTime.fromMillis(
-    attempt.executeAfter || attempt.createdAt
+    attempt.executeAfter || attempt.createdAt,
   );
   const assignedAt = attempt.assignedAt
     ? DateTime.fromMillis(attempt.assignedAt)
@@ -144,7 +144,7 @@ function Attempt({
     environmentName,
     "runs",
     runId,
-    "logs"
+    "logs",
   );
   const attemptLogs = logs && logs.filter((l) => l[0] == executionId);
   return (
@@ -170,7 +170,7 @@ function Attempt({
                   "seconds",
                   "milliseconds",
                 ]),
-                true
+                true,
               )}{" "}
               wait)
             </span>
@@ -212,7 +212,7 @@ function Attempt({
                     environment: environmentName,
                     step: attempt.retry.stepId,
                     attempt: attempt.retry.sequence,
-                  }
+                  },
                 )}
                 className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
               >
@@ -259,7 +259,7 @@ type AttemptSelectorProps = {
   children: (
     attempt: models.Execution,
     selected: boolean,
-    active: boolean
+    active: boolean,
   ) => ReactNode;
 };
 
@@ -270,7 +270,7 @@ function AttemptSelector({
   children,
 }: AttemptSelectorProps) {
   const selectedAttempt = Object.values(attempts).find(
-    (a) => a.sequence == selectedNumber
+    (a) => a.sequence == selectedNumber,
   );
   return (
     <Listbox value={selectedNumber} onChange={onChange}>
@@ -296,7 +296,7 @@ function AttemptSelector({
                     className={classNames(
                       "p-1 cursor-default rounded",
                       selected && "font-bold",
-                      active && "bg-slate-100"
+                      active && "bg-slate-100",
                     )}
                   >
                     {children(attempt, selected, active)}
@@ -364,7 +364,7 @@ type Props = {
   environmentName: string;
   className?: string;
   style?: CSSProperties;
-  onRerunStep: (stepId: string, environmentName: string) => Promise<number>;
+  onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
 };
 
 export default function StepDetail({
@@ -389,20 +389,20 @@ export default function StepDetail({
           environment: environmentName,
           step: stepId,
           attempt,
-        })
+        }),
       );
     },
-    [projectId, run, environmentName, step, navigate, location]
+    [projectId, run, environmentName, step, navigate, location],
   );
   const handleRetryClick = useCallback(() => {
     setRerunning(true);
-    onRerunStep(stepId, environmentName).then((attempt) => {
+    onRerunStep(stepId, environmentName).then(({ sequence }) => {
       setRerunning(false);
-      changeAttempt(attempt);
+      changeAttempt(sequence);
     });
   }, [onRerunStep, stepId, environmentName, changeAttempt]);
   const executionId = Object.keys(step.executions).find(
-    (id) => step.executions[id].sequence == sequence
+    (id) => step.executions[id].sequence == sequence,
   );
   const attempt = executionId && step.executions[executionId];
   return (
@@ -433,7 +433,7 @@ export default function StepDetail({
                     ) : !attempt.result ? (
                       <Badge intent="info" label="Running" />
                     ) : ["reference", "raw", "blob"].includes(
-                        attempt.result.type
+                        attempt.result.type,
                       ) ? (
                       <Badge intent="success" label="Completed" />
                     ) : attempt.result.type == "error" ? (

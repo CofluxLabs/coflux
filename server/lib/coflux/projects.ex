@@ -46,13 +46,18 @@ defmodule Coflux.Projects do
   end
 
   def handle_call({:create_project, project_name, environment_name}, _from, state) do
+    existing_project_names =
+      state.projects
+      |> Map.values()
+      |> MapSet.new(& &1.name)
+
     errors =
-      Enum.reject(
-        [
-          validate_project_name(project_name, Map.keys(state.projects)),
-          validate_environment_name(environment_name)
-        ],
-        &(&1 == :ok)
+      Map.reject(
+        %{
+          project_name: validate_project_name(project_name, existing_project_names),
+          environment_name: validate_environment_name(environment_name)
+        },
+        fn {_key, value} -> value == :ok end
       )
 
     if Enum.any?(errors) do
@@ -79,12 +84,12 @@ defmodule Coflux.Projects do
       end
 
     errors =
-      Enum.reject(
-        [
-          validate_project_id(project_id, state.projects),
-          validate_environment_name(environment_name, existing_environments)
-        ],
-        &(&1 == :ok)
+      Map.reject(
+        %{
+          project_id: validate_project_id(project_id, state.projects),
+          environment_name: validate_environment_name(environment_name, existing_environments)
+        },
+        fn {_key, value} -> value == :ok end
       )
 
     if Enum.any?(errors) do
@@ -156,23 +161,23 @@ defmodule Coflux.Projects do
 
   defp validate_project_name(name, existing) do
     cond do
-      not Regex.match?(~r/^[a-z0-9_]+$/i, name) -> :invalid_project_name
-      Enum.member?(existing, name) -> :project_already_exists
+      not Regex.match?(~r/^[a-z0-9_]+$/i, name) -> :invalid
+      Enum.member?(existing, name) -> :exists
       true -> :ok
     end
   end
 
   defp validate_environment_name(name, existing \\ nil) do
     cond do
-      not Regex.match?(~r/^[a-z0-9_\/]+$/i, name) -> :invalid_environment_name
-      existing && Enum.member?(existing, name) -> :environment_already_exists
+      not Regex.match?(~r/^[a-z0-9_\/]+$/i, name) -> :invalid
+      existing && Enum.member?(existing, name) -> :exists
       true -> :ok
     end
   end
 
   defp validate_project_id(project_id, projects) do
     cond do
-      not Map.has_key?(projects, project_id) -> :project_not_found
+      not Map.has_key?(projects, project_id) -> :not_found
       true -> :ok
     end
   end

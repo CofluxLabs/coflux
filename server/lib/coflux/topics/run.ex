@@ -172,28 +172,6 @@ defmodule Coflux.Topics.Run do
     {:ok, topic}
   end
 
-  def handle_execute("cancel_run", {}, topic, _context) do
-    case Orchestration.cancel_run(
-           topic.state.project_id,
-           topic.state.environment_name,
-           topic.state.external_run_id
-         ) do
-      :ok ->
-        {:ok, true, topic}
-    end
-  end
-
-  def handle_execute("rerun_step", {step_id}, topic, _context) do
-    case Orchestration.rerun_step(
-           topic.state.project_id,
-           topic.state.environment_name,
-           step_id
-         ) do
-      {:ok, _execution_id, sequence} ->
-        {:ok, sequence, topic}
-    end
-  end
-
   defp build_run(run, parent, steps) do
     parent =
       case parent do

@@ -7,16 +7,18 @@ import Input from "./common/Input";
 import Field from "./common/Field";
 import Button from "./common/Button";
 import * as models from "../models";
-import ErrorsList from "./ErrorsList";
+import * as api from "../api";
+import { RequestError } from "../api";
+import Alert from "./common/Alert";
 
-function translateError(error: string) {
+function translateError(error: string | undefined) {
   switch (error) {
-    case "invalid_environment_name":
+    case "invalid":
       return "Invalid environment name";
-    case "environment_already_exists":
+    case "exists":
       return "Environment already exists";
     default:
-      return "Unexpected error";
+      return error;
   }
 }
 
@@ -30,7 +32,7 @@ export default function AddEnvironmentDialog({ open, onClose }: Props) {
   const [_projects, { execute }] =
     useTopic<Record<string, models.Project>>("projects");
   const [environmentName, setEnvironmentName] = useState("");
-  const [errors, setErrors] = useState<string[]>();
+  const [errors, setErrors] = useState<Record<string, string>>();
   const [adding, setAdding] = useState(false);
   const navigate = useNavigate();
   const handleSubmit = useCallback(
@@ -38,36 +40,41 @@ export default function AddEnvironmentDialog({ open, onClose }: Props) {
       ev.preventDefault();
       setAdding(true);
       setErrors(undefined);
-      execute("add_environment", activeProjectId, environmentName)
-        .then(([success, result]: [true, string] | [false, string[]]) => {
-          if (success) {
-            navigate(
-              `/projects/${activeProjectId}?environment=${environmentName}`
-            );
-            setEnvironmentName("");
-            onClose();
-          } else {
-            setErrors(result);
-          }
+      api
+        .addEnvironment(activeProjectId!, environmentName)
+        .then(() => {
+          navigate(
+            `/projects/${activeProjectId}?environment=${environmentName}`,
+          );
+          setEnvironmentName("");
+          onClose();
         })
-        .catch(() => {
-          setErrors(["exception"]);
+        .catch((error) => {
+          if (error instanceof RequestError) {
+            setErrors(error.details);
+          } else {
+            // TODO
+            setErrors({});
+          }
         })
         .finally(() => {
           setAdding(false);
         });
     },
-    [execute, navigate, environmentName]
+    [execute, navigate, environmentName],
   );
   return (
     <Dialog title="Add environment" open={open} onClose={onClose}>
-      <ErrorsList
-        message="Failed to create environment:"
-        errors={errors}
-        translate={translateError}
-      />
+      {errors && (
+        <Alert variant="warning">
+          <p>Failed to create environment. Please check errors below.</p>
+        </Alert>
+      )}
       <form onSubmit={handleSubmit}>
-        <Field label="Environment name">
+        <Field
+          label="Environment name"
+          error={translateError(errors?.environment)}
+        >
           <Input
             type="text"
             value={environmentName}
@@ -79,7 +86,12 @@ export default function AddEnvironmentDialog({ open, onClose }: Props) {
           <Button type="submit" disabled={adding}>
             Create
           </Button>
-          <Button type="button" outline={true} onClick={onClose}>
+          <Button
+            type="button"
+            outline={true}
+            variant="secondary"
+            onClick={onClose}
+          >
             Cancel
           </Button>
         </div>

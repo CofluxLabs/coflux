@@ -1,14 +1,14 @@
 import { FormEvent, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useTopic } from "@topical/react";
 
 import Dialog from "./common/Dialog";
 import Input from "./common/Input";
 import Field from "./common/Field";
 import Button from "./common/Button";
-import * as models from "../models";
+import * as api from "../api";
 import { choose } from "../utils";
-import ErrorsList from "./ErrorsList";
+import { RequestError } from "../api";
+import Alert from "./common/Alert";
 
 const adjectives = [
   "bewitching",
@@ -83,27 +83,32 @@ function randomProjectName(): string {
   return `${choose(adjectives)}_${choose(properNames)}`;
 }
 
-function translateError(error: string) {
+function translateProjectNameError(error: string | undefined) {
   switch (error) {
-    case "invalid_project_name":
+    case "invalid":
       return "Invalid project name";
-    case "project_already_exists":
+    case "exists":
       return "Project already exists";
-    case "invalid_environment_name":
+    default:
+      return error;
+  }
+}
+
+function translateEnvironmentError(error: string | undefined) {
+  switch (error) {
+    case "invalid":
       return "Invalid environment name";
     default:
-      return "Unexpected error";
+      return error;
   }
 }
 
 type Props = {};
 
 export default function NewProjectDialog({}: Props) {
-  const [_projects, { execute }] =
-    useTopic<Record<string, models.Project>>("projects");
   const [projectName, setProjectName] = useState(() => randomProjectName());
   const [environmentName, setEnvironmentName] = useState("development");
-  const [errors, setErrors] = useState<string[]>();
+  const [errors, setErrors] = useState<Record<string, string>>();
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const handleClose = useCallback(() => {
@@ -114,44 +119,46 @@ export default function NewProjectDialog({}: Props) {
       ev.preventDefault();
       setCreating(true);
       setErrors(undefined);
-      execute("create_project", projectName, environmentName)
-        .then(([success, result]: [true, string] | [false, string[]]) => {
-          if (success) {
-            navigate(`/projects/${result}?environment=${environmentName}`);
-          } else {
-            setErrors(result);
-          }
+      api
+        .createProject(projectName, environmentName)
+        .then(({ projectId }) => {
+          navigate(`/projects/${projectId}?environment=${environmentName}`);
         })
-        .catch(() => {
-          setErrors(["exception"]);
+        .catch((error) => {
+          if (error instanceof RequestError) {
+            setErrors(error.details);
+          } else {
+            // TODO
+            setErrors({});
+          }
         })
         .finally(() => {
           setCreating(false);
         });
     },
-    [execute, navigate, projectName, environmentName]
+    [navigate, projectName, environmentName],
   );
   return (
     <Dialog title="New project" open={true} onClose={handleClose}>
-      <ErrorsList
-        message="Failed to create project:"
-        errors={errors}
-        translate={translateError}
-      />
+      {errors && (
+        <Alert variant="warning">
+          <p>Failed to create project. Please check errors below.</p>
+        </Alert>
+      )}
       <form onSubmit={handleSubmit}>
-        <Field label="Project name">
-          <Input
-            type="text"
-            value={projectName}
-            className="w-full"
-            onChange={setProjectName}
-          />
+        <Field
+          label="Project name"
+          error={translateProjectNameError(errors?.projectName)}
+        >
+          <Input type="text" value={projectName} onChange={setProjectName} />
         </Field>
-        <Field label="Initial environment name">
+        <Field
+          label="Initial environment name"
+          error={translateEnvironmentError(errors?.environment)}
+        >
           <Input
             type="text"
             value={environmentName}
-            className="w-full"
             onChange={setEnvironmentName}
           />
         </Field>
@@ -159,7 +166,12 @@ export default function NewProjectDialog({}: Props) {
           <Button type="submit" disabled={creating}>
             Create
           </Button>
-          <Button type="button" outline={true} onClick={handleClose}>
+          <Button
+            type="button"
+            outline={true}
+            variant="secondary"
+            onClick={handleClose}
+          >
             Cancel
           </Button>
         </div>
