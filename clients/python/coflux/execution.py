@@ -256,7 +256,7 @@ class Channel:
             self._resolves[execution_id] = future
             self._send(ResolveReferenceRequest(execution_id))
         value = future.result()
-        return _deserialise_value(value, self._blob_store)
+        return _deserialise_value(value, self._blob_store, "reference")
 
     def log_message(self, level, message):
         timestamp = time.time() * 1000
@@ -267,16 +267,25 @@ def get_channel() -> Channel:
     return channel_context.get(None)
 
 
-def _deserialise_value(value: t.Any, blob_store: blobs.Store):
+def _deserialise(
+    value: str, deserialiser: t.Callable[[str], t.Any], description: str
+) -> t.Any:
+    try:
+        return deserialiser(value)
+    except ValueError as e:
+        raise Exception(f"Failed to deserialise {description}") from e
+
+
+def _deserialise_value(value: t.Any, blob_store: blobs.Store, description: str):
     match value:
         case ["raw", "json", value]:
-            return json.loads(value)
+            return _deserialise(value, json.loads, description)
         case ["blob", "json", key]:
             content = blob_store.get(key)
-            return json.loads(content)
+            return _deserialise(content, json.loads, description)
         case ["blob", "pickle", key]:
             content = blob_store.get(key)
-            return pickle.loads(content)
+            return _deserialise(content, pickle.loads, description)
         case ["error", error]:
             # TODO: reconstruct exception state
             raise Exception(error)
@@ -288,16 +297,16 @@ def _deserialise_value(value: t.Any, blob_store: blobs.Store):
             raise Exception(f"unexeptected result ({result})")
 
 
-def _resolve_argument(argument: list, channel: Channel) -> t.Any:
+def _resolve_argument(argument: list, channel: Channel, description: str) -> t.Any:
     match argument:
         case ["raw", "json", value]:
-            return json.loads(value)
+            return _deserialise(value, json.loads, description)
         case ["blob", "json", key]:
             content = channel.get_blob(key)
-            return json.loads(content)
+            return _deserialise(content, json.loads, description)
         case ["blob", "pickle", key]:
             content = channel.get_blob(key)
-            return pickle.loads(content)
+            return _deserialise(content, pickle.loads, description)
         case ["reference", execution_id]:
             return future.Future(
                 lambda: channel.resolve_reference(execution_id),
@@ -309,7 +318,9 @@ def _resolve_argument(argument: list, channel: Channel) -> t.Any:
 
 def _resolve_arguments(arguments: list[list], channel: Channel) -> list[t.Any]:
     # TODO: parallelise
-    return [_resolve_argument(a, channel) for a in arguments]
+    return [
+        _resolve_argument(a, channel, f"argument {i}") for i, a in enumerate(arguments)
+    ]
 
 
 class Capture:
@@ -341,10 +352,10 @@ def _execute(
     channel = Channel(execution_id, server_host, conn)
     thread = threading.Thread(target=channel.run)
     thread.start()
-    resolved_arguments = _resolve_arguments(arguments, channel)
     token = channel_context.set(channel)
-    channel.notify_executing()
     try:
+        resolved_arguments = _resolve_arguments(arguments, channel)
+        channel.notify_executing()
         with contextlib.redirect_stdout(Capture(channel, 1)) as stdout_capture:
             with contextlib.redirect_stderr(Capture(channel, 3)) as stderr_capture:
                 value = target(*resolved_arguments)
