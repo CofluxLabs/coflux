@@ -127,7 +127,7 @@ defmodule Coflux.Projects do
   end
 
   defp remove_subscriber(state, ref) do
-    pop_in(state.subscribers[ref])
+    Map.update!(state, :subscribers, &Map.delete(&1, ref))
   end
 
   defp notify_subscribers(state, project_id) do
