@@ -25,7 +25,7 @@ defmodule Coflux.Topics.Target do
            target_name,
            self()
          ) do
-      {:ok, target, runs, _ref} ->
+      {:ok, target, runs, ref} ->
         runs =
           Map.new(runs, fn {external_run_id, created_at} ->
             {external_run_id, %{id: external_run_id, createdAt: created_at}}
@@ -35,24 +35,24 @@ defmodule Coflux.Topics.Target do
           repository: repository,
           target: target_name,
           type: target.type,
-          parameters:
-            Enum.map(target.parameters, fn {name, default, annotation} ->
-              %{name: name, default: default, annotation: annotation}
-            end),
+          parameters: build_parameters(target.parameters),
           runs: runs
         }
 
-        {:ok,
-         Topic.new(target, %{
-           project_id: project_id,
-           environment_name: environment_name,
-           repository: repository,
-           target: target_name
-         })}
+        {:ok, Topic.new(target, %{ref: ref})}
 
       {:error, :not_found} ->
         {:error, :not_found}
     end
+  end
+
+  def handle_info({:topic, _ref, {:target, type, parameters}}, topic) do
+    topic =
+      topic
+      |> Topic.set([:type], type)
+      |> Topic.set([:parameters], build_parameters(parameters))
+
+    {:ok, topic}
   end
 
   def handle_info({:topic, _ref, {:run, external_run_id, created_at}}, topic) do
@@ -64,5 +64,11 @@ defmodule Coflux.Topics.Target do
       )
 
     {:ok, topic}
+  end
+
+  defp build_parameters(parameters) do
+    Enum.map(parameters, fn {name, default, annotation} ->
+      %{name: name, default: default, annotation: annotation}
+    end)
   end
 end

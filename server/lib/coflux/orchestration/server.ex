@@ -147,7 +147,15 @@ defmodule Coflux.Orchestration.Server do
         state = register_targets(state, repository, targets, session_id)
         notify_listeners(state, :repositories, {:targets, repository, targets})
         notify_agent(state, session_id)
-        # TODO: notify target listeners ({:target, repository, target_name})
+
+        Enum.each(targets, fn {target_name, target} ->
+          notify_listeners(
+            state,
+            {:target, repository, target_name},
+            {:target, target.type, target.parameters}
+          )
+        end)
+
         send(self(), :execute)
         {:reply, :ok, state}
     end
