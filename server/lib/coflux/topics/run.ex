@@ -72,21 +72,23 @@ defmodule Coflux.Topics.Run do
     {:ok, topic}
   end
 
-  def handle_info({:topic, _ref, {:assignment, execution_id, created_at}}, topic) do
-    step_id = find_step_id_for_execution(topic, execution_id)
-
+  def handle_info({:topic, _ref, {:assigned, assigned}}, topic) do
     topic =
-      Topic.set(
-        topic,
-        [
-          :steps,
-          step_id,
-          :executions,
-          Integer.to_string(execution_id),
-          :assignedAt
-        ],
-        created_at
-      )
+      Enum.reduce(assigned, topic, fn {execution_id, assigned_at}, topic ->
+        step_id = find_step_id_for_execution(topic, execution_id)
+
+        Topic.set(
+          topic,
+          [
+            :steps,
+            step_id,
+            :executions,
+            Integer.to_string(execution_id),
+            :assignedAt
+          ],
+          assigned_at
+        )
+      end)
 
     {:ok, topic}
   end

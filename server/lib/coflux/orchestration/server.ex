@@ -607,28 +607,16 @@ defmodule Coflux.Orchestration.Server do
       executions_due
       |> Enum.reverse()
       |> Enum.reduce(
-        {state, %{}, []},
+        {state, [], []},
         fn
           execution, {state, assigned, unassigned} ->
-            {execution_id, step_id, run_id, repository, target, _, _, _} = execution
+            {execution_id, step_id, _run_id, repository, target, _, _, _} = execution
 
             case assign_execution(state, execution_id, repository, target, fn ->
                    Store.get_step_arguments(state.db, step_id)
                  end) do
               {:ok, state, {_session_id, assigned_at}} ->
-                # TODO: defer notify?
-                notify_listeners(
-                  state,
-                  {:run, run_id},
-                  {:assignment, execution_id, assigned_at}
-                )
-
-                assigned =
-                  assigned
-                  |> Map.put_new(repository, MapSet.new())
-                  |> Map.update!(repository, &MapSet.put(&1, execution_id))
-
-                {state, assigned, unassigned}
+                {state, [{execution, assigned_at} | assigned], unassigned}
 
               {:error, :no_session} ->
                 {state, assigned, [execution | unassigned]}
@@ -636,7 +624,26 @@ defmodule Coflux.Orchestration.Server do
         end
       )
 
-    notify_listeners(state, :repositories, {:assigned, assigned})
+    assigned
+    |> Enum.group_by(fn {execution, _assigned_at} -> elem(execution, 2) end)
+    |> Enum.each(fn {run_id, executions} ->
+      assigned =
+        Map.new(executions, fn {execution, assigned_at} ->
+          {elem(execution, 0), assigned_at}
+        end)
+
+      notify_listeners(state, {:run, run_id}, {:assigned, assigned})
+    end)
+
+    assigned_by_repository =
+      assigned
+      |> Enum.group_by(
+        fn {execution, _} -> elem(execution, 3) end,
+        fn {execution, _} -> elem(execution, 0) end
+      )
+      |> Map.new(fn {k, v} -> {k, MapSet.new(v)} end)
+
+    notify_listeners(state, :repositories, {:assigned, assigned_by_repository})
 
     next_execute_after =
       executions_future
