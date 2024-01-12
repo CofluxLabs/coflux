@@ -19,11 +19,9 @@ export type Target = {
 
 export type Repository = {
   targets: Record<string, Target>;
-  stats: {
-    executing: number;
-    nextDueAt: number | null;
-    scheduled: number;
-  };
+  executing: number;
+  nextDueAt: number | null;
+  scheduled: number;
 };
 
 export type Result =

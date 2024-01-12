@@ -25,10 +25,6 @@ defmodule Coflux.Orchestration.Server do
               # {repository, target} -> [session_id]
               targets: %{},
 
-              # TODO: limit number of 'scheduled' executions stored?
-              # repository -> {executing, scheduled}
-              repositories: %{},
-
               # ref -> topic
               listeners: %{},
 
@@ -48,34 +44,19 @@ defmodule Coflux.Orchestration.Server do
   def init({project_id, environment}) do
     case Store.open(project_id, environment) do
       {:ok, db} ->
-        state =
-          %State{
-            project_id: project_id,
-            environment: environment,
-            db: db
-          }
+        state = %State{
+          project_id: project_id,
+          environment: environment,
+          db: db
+        }
 
-        {:ok, state, {:continue, :setup}}
+        send(self(), :execute)
+
+        {:ok, state, {:continue, :abandon_pending}}
     end
   end
 
-  def handle_continue(:setup, state) do
-    {:ok, executions} = Store.get_unassigned_executions(state.db)
-
-    repositories =
-      Enum.reduce(executions, %{}, fn execution, repositories ->
-        {execution_id, _, _, repository, _, _, execute_after, created_at} = execution
-        default = %{executing: MapSet.new(), scheduled: %{}}
-
-        put_in(
-          repositories,
-          [Access.key(repository, default), :scheduled, execution_id],
-          execute_after || created_at
-        )
-      end)
-
-    state = Map.put(state, :repositories, repositories)
-
+  def handle_continue(:abandon_pending, state) do
     {:ok, pending} = Store.get_pending_assignments(state.db)
 
     state =
@@ -84,8 +65,6 @@ defmodule Coflux.Orchestration.Server do
         {:ok, state} = record_result(state, execution_id, :abandoned)
         state
       end)
-
-    send(self(), :execute)
 
     {:noreply, state}
   end
@@ -241,10 +220,11 @@ defmodule Coflux.Orchestration.Server do
 
       {:ok, run} ->
         {:ok, steps} = Store.get_run_steps(state.db, run.id)
-        step_ids = Enum.map(steps, &elem(&1, 0))
 
         state =
-          Enum.reduce(step_ids, state, fn step_id, state ->
+          Enum.reduce(steps, state, fn step, state ->
+            {step_id, _, _, repository, _, _, _} = step
+
             {:ok, executions} = Store.get_step_executions(state.db, step_id)
             execution_ids = Enum.map(executions, &elem(&1, 0))
 
@@ -253,7 +233,13 @@ defmodule Coflux.Orchestration.Server do
 
               case Store.get_execution_result(state.db, execution_id) do
                 {:ok, nil} ->
-                  case record_and_notify_result(state, execution_id, :cancelled, run.id) do
+                  case record_and_notify_result(
+                         state,
+                         execution_id,
+                         :cancelled,
+                         run.id,
+                         repository
+                       ) do
                     {:ok, state} -> state
                     {:error, :already_recorded} -> state
                   end
@@ -391,8 +377,39 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_call({:subscribe_repositories, pid}, _from, state) do
     {:ok, targets} = Store.get_latest_targets(state.db)
+
+    executing =
+      state.sessions
+      |> Map.values()
+      |> Enum.reduce(MapSet.new(), fn session, executing ->
+        executing |> MapSet.union(session.executing) |> MapSet.union(session.starting)
+      end)
+
+    {:ok, executions} = Store.get_unassigned_executions(state.db)
+
+    executions =
+      Enum.reduce(executions, %{}, fn execution, executions ->
+        {execution_id, _, _, repository, _, _, execute_after, created_at} = execution
+        default = %{executing: MapSet.new(), scheduled: %{}}
+
+        if Enum.member?(executing, execution_id) do
+          put_in(
+            executions,
+            [Access.key(repository, default), :scheduled, execution_id],
+            execute_after || created_at
+          )
+        else
+          put_in(
+            executions,
+            [Access.key(repository, default), :executing],
+            execution_id
+          )
+        end
+      end)
+
     {:ok, ref, state} = add_listener(state, :repositories, pid)
-    {:reply, {:ok, targets, state.repositories, ref}, state}
+
+    {:reply, {:ok, targets, executions, ref}, state}
   end
 
   def handle_call({:subscribe_agents, pid}, _from, state) do
@@ -564,14 +581,21 @@ defmodule Coflux.Orchestration.Server do
     state =
       executions_duplicated
       |> Enum.reverse()
-      |> Enum.reduce(state, fn {execution_id, duplication_id, run_id}, state ->
-        case record_and_notify_result(state, execution_id, :duplicated, run_id, duplication_id) do
+      |> Enum.reduce(state, fn {execution_id, duplication_id, run_id, repository}, state ->
+        case record_and_notify_result(
+               state,
+               execution_id,
+               :duplicated,
+               run_id,
+               repository,
+               duplication_id
+             ) do
           {:ok, state} -> state
           {:error, :already_recorded} -> state
         end
       end)
 
-    {state, assigned, unassigned} =
+    {state, assigned, _unassigned} =
       executions_due
       |> Enum.reverse()
       |> Enum.reduce(
@@ -604,34 +628,24 @@ defmodule Coflux.Orchestration.Server do
         end
       )
 
-    repositories =
-      MapSet.union(
-        MapSet.new(Map.keys(state.repositories)),
-        MapSet.new(executions, &elem(&1, 3))
-      )
-
-    state =
-      Enum.reduce(repositories, state, fn repository, state ->
-        update_repository(state, repository, fn stats ->
-          repository_assigned = Map.get(assigned, repository, MapSet.new())
-
-          stats
-          |> Map.update!(:executing, &MapSet.union(&1, repository_assigned))
-          |> Map.update!(:scheduled, &Map.drop(&1, MapSet.to_list(repository_assigned)))
-        end)
-      end)
+    notify_listeners(state, :repositories, {:assigned, assigned})
 
     next_execute_after =
-      unassigned
-      |> Enum.concat(executions_future)
+      executions_future
       |> Enum.map(&elem(&1, 6))
       |> Enum.min(fn -> nil end)
 
     state =
       if next_execute_after do
         delay_ms = trunc(next_execute_after) - System.os_time(:millisecond)
-        timer = Process.send_after(self(), :execute, delay_ms)
-        Map.put(state, :execute_timer, timer)
+
+        if delay_ms > 0 do
+          timer = Process.send_after(self(), :execute, delay_ms)
+          Map.put(state, :execute_timer, timer)
+        else
+          send(self(), :execute)
+          state
+        end
       else
         state
       end
@@ -698,7 +712,8 @@ defmodule Coflux.Orchestration.Server do
           duplication_id = duplication_key && Map.get(duplications, duplication_key)
 
           if duplication_id do
-            {due, future, [{execution_id, duplication_id, run_id} | duplicated], duplications}
+            {due, future, [{execution_id, duplication_id, run_id, repository} | duplicated],
+             duplications}
           else
             duplications =
               if duplication_key do
@@ -752,7 +767,7 @@ defmodule Coflux.Orchestration.Server do
     }
   end
 
-  defp record_and_notify_result(state, execution_id, result, run_id, retry_id \\ nil) do
+  defp record_and_notify_result(state, execution_id, result, run_id, repository, retry_id \\ nil) do
     case Store.record_result(state.db, execution_id, result, retry_id) do
       {:ok, created_at} ->
         state = notify_waiting(state, execution_id)
@@ -768,16 +783,7 @@ defmodule Coflux.Orchestration.Server do
           {:result, execution_id, result, retry, created_at}
         )
 
-        state =
-          state.repositories
-          |> Map.keys()
-          |> Enum.reduce(state, fn repository, state ->
-            update_repository(state, repository, fn stats ->
-              stats
-              |> Map.update!(:executing, &MapSet.delete(&1, execution_id))
-              |> Map.update!(:scheduled, &Map.delete(&1, execution_id))
-            end)
-          end)
+        notify_listeners(state, :repositories, {:completed, repository, execution_id})
 
         {:ok, state}
 
@@ -840,7 +846,14 @@ defmodule Coflux.Orchestration.Server do
       end
 
     state =
-      case record_and_notify_result(state, execution_id, result, step.run_id, retry_id) do
+      case record_and_notify_result(
+             state,
+             execution_id,
+             result,
+             step.run_id,
+             step.repository,
+             retry_id
+           ) do
         {:ok, state} -> state
         {:error, :already_recorded} -> state
       end
@@ -950,16 +963,16 @@ defmodule Coflux.Orchestration.Server do
           {:run, external_run_id, created_at}
         )
 
-        state =
-          unless is_cached do
-            update_repository(state, repository, fn stats ->
-              # TODO: neater way to get execution time?
-              execute_at = Keyword.get(opts, :execute_after) || created_at
-              Map.update!(stats, :scheduled, &Map.put(&1, execution_id, execute_at))
-            end)
-          else
-            state
-          end
+        unless is_cached do
+          # TODO: neater way to get execution time?
+          execute_at = Keyword.get(opts, :execute_after) || created_at
+
+          notify_listeners(
+            state,
+            :repositories,
+            {:scheduled, repository, execution_id, execute_at}
+          )
+        end
 
         send(self(), :execute)
 
@@ -995,18 +1008,15 @@ defmodule Coflux.Orchestration.Server do
             {:run, run_id},
             {:execution, execution_id, external_step_id, sequence, created_at, execute_after}
           )
-        end
 
-        # TODO: avoid duplication with start_run
-        state =
-          unless is_cached do
-            update_repository(state, repository, fn stats ->
-              execute_at = Keyword.get(opts, :execute_after) || created_at
-              Map.update!(stats, :scheduled, &Map.put(&1, execution_id, execute_at))
-            end)
-          else
-            state
-          end
+          execute_at = execute_after || created_at
+
+          notify_listeners(
+            state,
+            :repositories,
+            {:scheduled, repository, execution_id, execute_at}
+          )
+        end
 
         send(self(), :execute)
 
@@ -1046,8 +1056,6 @@ defmodule Coflux.Orchestration.Server do
         {:ok, arguments} ->
           {:ok, assigned_at} = Store.assign_execution(state.db, execution_id, session_id)
 
-          # IO.puts("Assigned execution #{execution_id} to session #{session_id}")
-
           state =
             state
             |> update_in(
@@ -1063,20 +1071,6 @@ defmodule Coflux.Orchestration.Server do
       end
     else
       {:error, :no_session}
-    end
-  end
-
-  defp update_repository(state, repository, fun) do
-    default = %{executing: MapSet.new(), scheduled: %{}}
-    initial_stats = Map.get(state.repositories, repository, default)
-    new_stats = fun.(initial_stats)
-
-    if new_stats != initial_stats do
-      state = put_in(state.repositories[repository], new_stats)
-      notify_listeners(state, :repositories, {:stats, repository, new_stats})
-      state
-    else
-      state
     end
   end
 
