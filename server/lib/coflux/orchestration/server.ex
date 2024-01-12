@@ -60,8 +60,7 @@ defmodule Coflux.Orchestration.Server do
     {:ok, pending} = Store.get_pending_assignments(state.db)
 
     state =
-      Enum.reduce(pending, state, fn {execution_id, _session_id, _assigned_at, _heartbeat_at},
-                                     state ->
+      Enum.reduce(pending, state, fn {execution_id}, state ->
         {:ok, state} = record_result(state, execution_id, :abandoned)
         state
       end)
