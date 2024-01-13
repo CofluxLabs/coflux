@@ -5,6 +5,7 @@ import os
 import types
 import typing as t
 import watchfiles
+import httpx
 from pathlib import Path
 
 from . import Agent, config
@@ -221,6 +222,60 @@ def agent_run(
         )
     else:
         _init(*args, **kwargs)
+
+
+@cli.command("task.run")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+)
+@click.option(
+    "-e",
+    "--environment",
+    help="Environment name",
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+)
+@click.argument("repository")
+@click.argument("target")
+@click.argument("argument", nargs=-1)
+def task_run(
+    project: str,
+    environment: str,
+    host: str,
+    repository: str,
+    target: str,
+    argument: tuple[str],
+) -> None:
+    """
+    Schedule a task run.
+    """
+    project_ = _get_option(project, "COFLUX_PROJECT", "project")
+    if not project_:
+        # TODO: click error
+        raise Exception("No project ID specified.")
+    environment_ = _get_option(
+        environment, "COFLUX_ENVIRONMENT", "environment", "development"
+    )
+    host_ = _get_option(host, "COFLUX_HOST", "host", "localhost:7777")
+    with httpx.Client() as client:
+        response = client.post(
+            f"http://{host_}/api/schedule",
+            json={
+                "projectId": project_,
+                "environment": environment_,
+                "repository": repository,
+                "target": target,
+                "arguments": [["json", a] for a in argument],
+            },
+        )
+        response.raise_for_status()
+    # TODO: follow logs?
+    # TODO: wait for result?
 
 
 if __name__ == "__main__":
