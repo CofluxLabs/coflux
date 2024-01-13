@@ -1,19 +1,14 @@
 import asyncio
-import importlib
 import inspect
 import json
-import os
 import random
 import types
 import typing as t
-import urllib
+import urllib.parse
 import websockets
 import traceback
 
-from . import server, execution, config, annotations
-
-
-T = t.TypeVar("T")
+from . import server, execution, annotations
 
 
 def _load_module(module: types.ModuleType) -> dict:
@@ -58,7 +53,7 @@ class Agent:
         self,
         project_id: str,
         environment_name: str,
-        version: str,
+        version: str | None,
         server_host: str,
         concurrency: int,
     ):
@@ -73,19 +68,15 @@ class Agent:
         )
         self._execution_manager = execution.Manager(self._connection, server_host)
 
-    async def _handle_execute(
-        self,
-        execution_id: str,
-        repository: str,
-        target_name: str,
-        arguments: list[list[t.Any]],
-    ) -> None:
+    async def _handle_execute(self, *args) -> None:
+        (execution_id, repository, target_name, arguments) = args
         print(f"Handling execute '{target_name}' ({execution_id})...")
         target = self._modules[repository][target_name][1]
         loop = asyncio.get_running_loop()
         self._execution_manager.execute(execution_id, target, arguments, loop)
 
-    async def _handle_abort(self, execution_id: str) -> None:
+    async def _handle_abort(self, *args) -> None:
+        (execution_id,) = args
         print(f"Aborting execution ({execution_id})...")
         if not self._execution_manager.abort(execution_id):
             print(f"Ignored abort for unrecognised execution ({execution_id}).")
@@ -158,60 +149,3 @@ class Agent:
         await self._connection.notify(
             "register", (module_name, self._version, _build_manifest(targets))
         )
-
-
-async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
-    for module in modules:
-        if isinstance(module, str):
-            module = importlib.import_module(module)
-        await agent.register_module(module)
-    await agent.run()
-
-
-def _get_option(
-    argument: T | None,
-    env_name: str,
-    config_name: str | None = None,
-    default: T = None,
-) -> T:
-    return next(
-        (
-            value
-            for value in (
-                argument,
-                os.environ.get(env_name),
-                (config_name and config.load().get(config_name)),
-                default,
-            )
-            if value is not None
-        ),
-        None,
-    )
-
-
-def init(
-    *modules: types.ModuleType | str,
-    project: str | None = None,
-    environment: str | None = None,
-    version: str | None = None,
-    host: str | None = None,
-    concurrency: int | None = None,
-) -> None:
-    if not modules:
-        raise Exception("No module(s) specified.")
-    project = _get_option(project, "COFLUX_PROJECT", "project")
-    if not project:
-        raise Exception("No project ID specified.")
-    environment = _get_option(
-        environment, "COFLUX_ENVIRONMENT", "environment", "development"
-    )
-    version = _get_option(version, "COFLUX_VERSION")
-    host = _get_option(host, "COFLUX_HOST", "host", "localhost:7777")
-    concurrency = _get_option(
-        concurrency, "COFLUX_CONCURRENCY", "concurrency", min(32, os.cpu_count() + 4)
-    )
-    try:
-        agent = Agent(project, environment, version, host, concurrency)
-        asyncio.run(_run(agent, modules))
-    except KeyboardInterrupt:
-        pass

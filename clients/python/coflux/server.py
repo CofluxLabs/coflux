@@ -7,7 +7,7 @@ import typing as t
 class Connection:
     def __init__(
         self,
-        handlers: dict[str, t.Callable[..., None]],
+        handlers: dict[str, t.Callable[..., t.Awaitable[None]]],
     ):
         self._handlers = handlers
         self._last_id = 0
@@ -25,7 +25,7 @@ class Connection:
 
     async def request(
         self, request: str, params: tuple, on_success: t.Callable, on_error: t.Callable
-    ) -> asyncio.Future:
+    ) -> None:
         id = self._next_id()
         self._requests[id] = (on_success, on_error)
         await self._enqueue(request, params, id)
@@ -44,12 +44,12 @@ class Connection:
         self._requests = {}
 
     async def _enqueue(
-        self, request: str, params: tuple, id: str | None = None
+        self, request: str, params: tuple, id: int | None = None
     ) -> None:
-        data = {"request": request}
+        data: dict[str, t.Any] = {"request": request}
         if params:
             data["params"] = params
-        if id:
+        if id is not None:
             data["id"] = id
         async with self._cond:
             self._queue.append(data)
@@ -84,6 +84,6 @@ class Connection:
                     data = self._queue.popleft()
                     try:
                         await websocket.send(json.dumps(data))
-                    except Exception as e:
+                    except Exception:
                         self._queue.appendleft(data)
                         raise

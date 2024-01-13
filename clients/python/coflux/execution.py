@@ -11,14 +11,17 @@ import json
 import pickle
 import contextvars
 import contextlib
-from concurrent.futures import Future
+import concurrent.futures as cf
 
 from . import server, future, blobs
+from .types import Value
 
 _BLOB_THRESHOLD = 100
 _EXECUTION_THRESHOLD_S = 1.0
 _AGENT_THRESHOLD_S = 5.0
 
+
+T = t.TypeVar("T")
 
 channel_context = contextvars.ContextVar("channel")
 
@@ -36,11 +39,11 @@ class ExecutingNotification(t.NamedTuple):
 
 
 class RecordCursorRequest(t.NamedTuple):
-    value: t.Any
+    value: tuple[str, str, str]
 
 
 class RecordResultRequest(t.NamedTuple):
-    value: t.Any
+    value: tuple[str, str, str]
 
 
 class RecordErrorRequest(t.NamedTuple):
@@ -51,7 +54,7 @@ class ScheduleExecutionRequest(t.NamedTuple):
     schedule_id: int
     repository: str
     target: str
-    arguments: t.Tuple[t.Any, ...]
+    arguments: list[tuple[str, str, str]]
     execute_after: dt.datetime | None
     cache_key: str | None
     deduplicate_key: str | None
@@ -82,7 +85,7 @@ class ExecutionScheduleFailedResponse(t.NamedTuple):
 
 class ResultResolvedResponse(t.NamedTuple):
     execution_id: str
-    result: t.Any
+    result: tuple[str, str, str]
 
 
 class ResultResolveFailedResponse(t.NamedTuple):
@@ -93,15 +96,16 @@ class ResultResolveFailedResponse(t.NamedTuple):
 def _parse_retries(
     retries: int | tuple[int, int] | tuple[int, int, int]
 ) -> tuple[int, int, int]:
-    if isinstance(retries, int):
-        return (retries, 0, 0)
-    assert isinstance(retries, tuple)
-    assert isinstance(retries[0], int)
     # TODO: parse string (e.g., '1h')
-    if len(retries) == 3:
-        return retries
-    if len(retries) == 2:
-        return (retries[0], retries[1], retries[1])
+    match retries:
+        case int(count):
+            return (count, 0, 0)
+        case (count, delay):
+            return (count, delay, delay)
+        case (count, delay_min, delay_max):
+            return (count, delay_min, delay_max)
+        case other:
+            raise ValueError(other)
 
 
 def _build_key(
@@ -126,7 +130,7 @@ def _json_dumps(obj: t.Any) -> str:
     return json.dumps(obj, separators=(",", ":"))
 
 
-def _serialise_value(value: t.Any, blob_store: blobs.Store) -> t.Tuple[str, str, str]:
+def _serialise_value(value: t.Any, blob_store: blobs.Store) -> Value:
     if isinstance(value, future.Future):
         return value.serialise()
     try:
@@ -136,11 +140,11 @@ def _serialise_value(value: t.Any, blob_store: blobs.Store) -> t.Tuple[str, str,
     else:
         if len(json_value) >= _BLOB_THRESHOLD:
             key = blob_store.put(json_value.encode())
-            return ["blob", "json", key]
-        return ["raw", "json", json_value]
+            return ("blob", "json", key)
+        return ("raw", "json", json_value)
     pickle_value = pickle.dumps(value)
     key = blob_store.put(pickle_value)
-    return ["blob", "pickle", key]
+    return ("blob", "pickle", key)
 
 
 class Channel:
@@ -149,8 +153,8 @@ class Channel:
         self._connection = connection
         self._blob_store = blobs.Store(server_host)
         self._last_schedule_id = 0
-        self._schedules: dict[int, Future] = {}
-        self._resolves: dict[int, Future] = {}
+        self._schedules: dict[int, cf.Future] = {}
+        self._resolves: dict[str, cf.Future] = {}
         self._running = True
 
     def run(self):
@@ -161,7 +165,7 @@ class Channel:
                     case ExecutionScheduledResponse(schedule_id, execution_id):
                         self._schedules.pop(schedule_id).set_result(execution_id)
                     case ExecutionScheduleFailedResponse(schedule_id, error):
-                        self._resolves.pop(execution_id).set_exception(Exception(error))
+                        self._schedules.pop(schedule_id).set_exception(Exception(error))
                     case ResultResolvedResponse(execution_id, result):
                         self._resolves.pop(execution_id).set_result(result)
                     case ResultResolveFailedResponse(execution_id, error):
@@ -231,7 +235,7 @@ class Channel:
         retry_count, retry_delay_min, retry_delay_max = _parse_retries(retries)
 
         schedule_id = self._next_schedule_id()
-        future = Future()
+        future = cf.Future()
         self._schedules[schedule_id] = future
         self._send(
             ScheduleExecutionRequest(
@@ -252,7 +256,7 @@ class Channel:
     def resolve_reference(self, execution_id):
         future = self._resolves.get(execution_id)
         if not future:
-            future = Future()
+            future = cf.Future()
             self._resolves[execution_id] = future
             self._send(ResolveReferenceRequest(execution_id))
         value = future.result()
@@ -260,7 +264,7 @@ class Channel:
 
     def log_message(self, level, message):
         timestamp = time.time() * 1000
-        self._send(LogMessageRequest(level, message, timestamp))
+        self._send(LogMessageRequest(level, message, int(timestamp)))
 
 
 def get_channel() -> Channel:
@@ -268,46 +272,46 @@ def get_channel() -> Channel:
 
 
 def _deserialise(
-    value: str, deserialiser: t.Callable[[str], t.Any], description: str
+    data: T, deserialiser: t.Callable[[T], t.Any], description: str
 ) -> t.Any:
     try:
-        return deserialiser(value)
+        return deserialiser(data)
     except ValueError as e:
         raise Exception(f"Failed to deserialise {description}") from e
 
 
-def _deserialise_value(value: t.Any, blob_store: blobs.Store, description: str):
+def _deserialise_value(value: Value, blob_store: blobs.Store, description: str):
     match value:
-        case ["raw", "json", value]:
-            return _deserialise(value, json.loads, description)
-        case ["blob", "json", key]:
+        case ("raw", "json", data):
+            return _deserialise(data, json.loads, description)
+        case ("blob", "json", key):
             content = blob_store.get(key)
             return _deserialise(content, json.loads, description)
-        case ["blob", "pickle", key]:
+        case ("blob", "pickle", key):
             content = blob_store.get(key)
             return _deserialise(content, pickle.loads, description)
-        case ["error", error]:
+        case ("error", error):
             # TODO: reconstruct exception state
             raise Exception(error)
-        case ["abandoned"]:
+        case ("abandoned"):
             raise Exception("abandoned")
-        case ["cancelled"]:
+        case ("cancelled"):
             raise Exception("cancelled")
         case result:
             raise Exception(f"unexeptected result ({result})")
 
 
-def _resolve_argument(argument: list, channel: Channel, description: str) -> t.Any:
+def _resolve_argument(argument: Value, channel: Channel, description: str) -> t.Any:
     match argument:
-        case ["raw", "json", value]:
+        case ("raw", "json", value):
             return _deserialise(value, json.loads, description)
-        case ["blob", "json", key]:
+        case ("blob", "json", key):
             content = channel.get_blob(key)
             return _deserialise(content, json.loads, description)
-        case ["blob", "pickle", key]:
+        case ("blob", "pickle", key):
             content = channel.get_blob(key)
             return _deserialise(content, pickle.loads, description)
-        case ["reference", execution_id]:
+        case ("reference", execution_id):
             return future.Future(
                 lambda: channel.resolve_reference(execution_id),
                 argument,
@@ -316,14 +320,14 @@ def _resolve_argument(argument: list, channel: Channel, description: str) -> t.A
             raise Exception(f"unrecognised argument ({argument})")
 
 
-def _resolve_arguments(arguments: list[list], channel: Channel) -> list[t.Any]:
+def _resolve_arguments(arguments: list[Value], channel: Channel) -> list[t.Any]:
     # TODO: parallelise
     return [
         _resolve_argument(a, channel, f"argument {i}") for i, a in enumerate(arguments)
     ]
 
 
-class Capture:
+class Capture(t.IO[str]):
     def __init__(self, channel: Channel, level: int):
         self._channel = channel
         self._level = level
@@ -344,7 +348,7 @@ class Capture:
 
 def _execute(
     target: t.Callable,
-    arguments: list[list[t.Any]],
+    arguments: list[Value],
     execution_id: str,
     server_host: str,
     conn,
@@ -368,7 +372,7 @@ def _execute(
             for cursor in value:
                 if cursor is not None:
                     channel.record_cursor(cursor)
-            channel.record_result()
+            channel.record_result(None)
         else:
             channel.record_result(value)
     finally:
@@ -380,7 +384,7 @@ class Execution:
         self,
         execution_id: str,
         target: t.Callable,
-        arguments: list[list[t.Any]],
+        arguments: list[Value],
         server_host: str,
         server_connection: server.Connection,
         loop: asyncio.AbstractEventLoop,
@@ -492,7 +496,7 @@ class Execution:
                         ResultResolvedResponse(execution_id, result)
                     ),
                     lambda error: self._try_send(
-                        ExecutionScheduleFailedResponse(execution_id, error)
+                        ResultResolveFailedResponse(execution_id, error)
                     ),
                 )
             case LogMessageRequest(level, message, timestamp):
@@ -535,10 +539,10 @@ class Manager:
             await asyncio.sleep(_EXECUTION_THRESHOLD_S - elapsed)
 
     def _should_send_heartbeats(
-        self, executions: dict, threshold_s: float, now: float
+        self, executions: list[Execution], threshold_s: float, now: float
     ) -> bool:
         return (
-            executions
+            any(executions)
             or not self._last_heartbeat_sent
             or (now - self._last_heartbeat_sent) > threshold_s
         )

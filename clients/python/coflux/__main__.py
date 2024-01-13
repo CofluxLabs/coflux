@@ -1,12 +1,62 @@
+import asyncio
 import click
+import importlib
+import os
+import types
+import typing as t
 import watchfiles
 from pathlib import Path
 
-from . import agent, config
+from . import Agent, config
+
+T = t.TypeVar("T")
 
 
 def _callback(_changes: set[tuple[watchfiles.Change, str]]) -> None:
     print("Change detected. Reloading...")
+
+
+def _get_environ(name: str, parser: t.Callable[[str], T]) -> T | None:
+    value = os.environ.get(name)
+    return parser(value) if value else None
+
+
+def _get_option(
+    argument: T | None,
+    env_name: str,
+    config_name: str | None = None,
+    default: T | None = None,
+    parser: t.Callable[[str], T] = lambda x: x,
+) -> T | None:
+    return (
+        argument
+        or _get_environ(env_name, parser)
+        or (config_name and config.load().get(config_name))
+        or default
+    )
+
+
+async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
+    for module in modules:
+        if isinstance(module, str):
+            module = importlib.import_module(module)
+        await agent.register_module(module)
+    await agent.run()
+
+
+def _init(
+    *modules: types.ModuleType | str,
+    project: str,
+    environment: str,
+    version: str | None,
+    host: str,
+    concurrency: int,
+) -> None:
+    try:
+        agent = Agent(project, environment, version, host, concurrency)
+        asyncio.run(_run(agent, list(modules)))
+    except KeyboardInterrupt:
+        pass
 
 
 @click.group()
@@ -87,7 +137,7 @@ def init(
             click.secho(f"Module ({path}) already exists.", fg="yellow")
         else:
             path.touch()
-            click.secho(f"Created package.", fg="green")
+            click.secho("Created package.", fg="green")
 
 
 @cli.command("agent.run")
@@ -123,11 +173,11 @@ def init(
     help="Enable auto-reload when code changes",
 )
 @click.argument("module_name", nargs=-1)
-def run(
-    project: str,
-    environment: str,
-    version: str,
-    host: str,
+def agent_run(
+    project: str | None,
+    environment: str | None,
+    version: str | None,
+    host: str | None,
     concurrency: int | None,
     reload: bool,
     module_name: tuple[str],
@@ -135,24 +185,42 @@ def run(
     """
     Run the agent.
     """
+    if not module_name:
+        # TODO: click error
+        raise Exception("No module(s) specified.")
+    project_ = _get_option(project, "COFLUX_PROJECT", "project")
+    if not project_:
+        # TODO: click error
+        raise Exception("No project ID specified.")
+    environment_ = _get_option(
+        environment, "COFLUX_ENVIRONMENT", "environment", "development"
+    )
+    version_ = _get_option(version, "COFLUX_VERSION")
+    host_ = _get_option(host, "COFLUX_HOST", "host", "localhost:7777")
+    concurrency_ = _get_option(
+        concurrency,
+        "COFLUX_CONCURRENCY",
+        "concurrency",
+        min(32, (os.cpu_count() or 4) + 4),
+    )
     args = (*module_name,)
     kwargs = {
-        "project": project,
-        "environment": environment,
-        "version": version,
-        "host": host,
-        "concurrency": concurrency,
+        "project": project_,
+        "environment": environment_,
+        "version": version_,
+        "host": host_,
+        "concurrency": concurrency_,
     }
     if reload:
         watchfiles.run_process(
             ".",
-            target=agent.init,
+            target=_init,
             args=args,
             kwargs=kwargs,
             callback=_callback,
         )
     else:
-        agent.init(*args, **kwargs)
+        _init(*args, **kwargs)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,4 @@
 import httpx
-import typing as t
 import hashlib
 import urllib.parse
 
@@ -14,13 +13,13 @@ class Store:
         query_string = f"?{urllib.parse.urlencode(params)}" if params else ""
         return f"{scheme}://{self._server_host}/{path}{query_string}"
 
-    def get(self, key: str):
+    def get(self, key: str) -> bytes:
         with httpx.Client() as client:
             response = client.get(self._url("http", f"blobs/{key}"))
             response.raise_for_status()
             return response.content
 
-    def put(self, content: t.Any):
+    def put(self, content: bytes) -> str:
         key = hashlib.sha256(content).hexdigest()
         # TODO: check whether already uploaded (using head request)?
         with httpx.Client() as client:
