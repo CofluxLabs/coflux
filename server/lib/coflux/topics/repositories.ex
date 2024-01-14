@@ -27,12 +27,12 @@ defmodule Coflux.Topics.Repositories do
 
         result =
           case Map.fetch(executions, repository) do
-            {:ok, executions} ->
-              next_due_at = executions.scheduled |> Map.values() |> Enum.min(fn -> nil end)
+            {:ok, {executing, scheduled}} ->
+              next_due_at = scheduled |> Map.values() |> Enum.min(fn -> nil end)
 
               result
-              |> Map.put(:executing, MapSet.size(executions.executing))
-              |> Map.put(:scheduled, map_size(executions.scheduled))
+              |> Map.put(:executing, MapSet.size(executing))
+              |> Map.put(:scheduled, map_size(scheduled))
               |> Map.put(:nextDueAt, next_due_at)
 
             :error ->

@@ -68,6 +68,17 @@ export type Child = Pick<Target, "repository" | "target"> & {
   executionId: string | null;
 };
 
+// TODO: combine with `Execution`?
+export type QueuedExecution = {
+  target: string;
+  runId: string;
+  stepId: string;
+  sequence: number;
+  executeAfter: number | null;
+  createdAt: number;
+  assignedAt: number | null;
+};
+
 export type Execution = {
   sequence: number;
   createdAt: number;

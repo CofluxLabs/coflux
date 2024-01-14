@@ -389,13 +389,38 @@ defmodule Coflux.Orchestration.Store do
         e.execute_after,
         e.created_at
       FROM executions AS e
+      INNER JOIN step_executions AS se ON se.execution_id = e.id
+      INNER JOIN steps AS s ON s.id = se.step_id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
-      LEFT JOIN step_executions AS se ON se.execution_id = e.id
-      LEFT JOIN steps AS s ON s.id = se.step_id
       LEFT JOIN results AS r ON r.execution_id = e.id
       WHERE a.created_at IS NULL AND r.created_at IS NULL
       ORDER BY e.execute_after, e.created_at, s.priority DESC
       """
+    )
+  end
+
+  def get_repository_executions(db, repository) do
+    query(
+      db,
+      """
+      SELECT
+        e.id,
+        s.target,
+        r.external_id,
+        s.external_id,
+        se.sequence,
+        e.execute_after,
+        e.created_at,
+        a.created_at
+      FROM executions AS e
+      INNER JOIN step_executions AS se ON se.execution_id = e.id
+      INNER JOIN steps AS s ON s.id = se.step_id
+      INNER JOIN runs AS r ON r.id = s.run_id
+      LEFT JOIN assignments AS a ON a.execution_id = e.id
+      LEFT JOIN results AS re ON re.execution_id = e.id
+      WHERE s.repository = ?1 AND re.created_at IS NULL
+      """,
+      {repository}
     )
   end
 

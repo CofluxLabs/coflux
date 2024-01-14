@@ -7,3 +7,4 @@ export { default as TimelinePage } from "./TimelinePage";
 export { default as TargetPage } from "./TargetPage";
 export { default as LogsPage } from "./LogsPage";
 export { default as RunsPage } from "./RunsPage";
+export { default as RepositoryPage } from "./RepositoryPage";

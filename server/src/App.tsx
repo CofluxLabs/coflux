@@ -16,6 +16,7 @@ import {
   RunsPage,
   LogsPage,
   TargetPage,
+  RepositoryPage,
 } from "./pages";
 import NewProjectDialog from "./components/NewProjectDialog";
 import TitleContext from "./components/TitleContext";
@@ -40,6 +41,10 @@ export default function App() {
               </Route>
               <Route path=":project" element={<ProjectLayout />}>
                 <Route index={true} element={<ProjectPage />} />
+                <Route
+                  path="repositories/:repository"
+                  element={<RepositoryPage />}
+                />
                 <Route
                   path="targets/:repository/:target"
                   element={<TargetPage />}

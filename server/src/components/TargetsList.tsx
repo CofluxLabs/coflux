@@ -86,7 +86,14 @@ export default function TargetsList({
             <Fragment key={repository}>
               <div className="flex items-center mt-4 py-1 px-2 gap-2">
                 <h2 className="font-bold uppercase text-slate-400 text-sm">
-                  {repository}
+                  <Link
+                    to={buildUrl(
+                      `/projects/${projectId}/repositories/${repository}`,
+                      { environment: environmentName },
+                    )}
+                  >
+                    {repository}
+                  </Link>
                 </h2>
                 {nextDueDiff && nextDueDiff.toMillis() < -1000 ? (
                   <span
