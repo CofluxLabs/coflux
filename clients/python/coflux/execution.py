@@ -39,11 +39,11 @@ class ExecutingNotification(t.NamedTuple):
 
 
 class RecordCursorRequest(t.NamedTuple):
-    value: tuple[str, str, str]
+    value: Value
 
 
 class RecordResultRequest(t.NamedTuple):
-    value: tuple[str, str, str]
+    value: Value
 
 
 class RecordErrorRequest(t.NamedTuple):
@@ -54,7 +54,7 @@ class ScheduleExecutionRequest(t.NamedTuple):
     schedule_id: int
     repository: str
     target: str
-    arguments: list[tuple[str, str, str]]
+    arguments: list[Value]
     execute_after: dt.datetime | None
     cache_key: str | None
     deduplicate_key: str | None
@@ -109,9 +109,9 @@ def _parse_retries(
 
 
 def _build_key(
-    key: bool | t.Callable[[t.Tuple[t.Any, ...]], str],
-    arguments: t.Tuple[t.Any, ...],
-    serialised_arguments: list[t.Tuple[str, str, str]],
+    key: bool | t.Callable[[tuple[t.Any]], str],
+    arguments: tuple[t.Any, ...],
+    serialised_arguments: list[Value],
     prefix: str | None = None,
 ) -> str | None:
     if not key:
@@ -186,12 +186,12 @@ class Channel:
     def notify_executing(self):
         self._send(ExecutingNotification())
 
-    def record_result(self, value):
+    def record_result(self, value: t.Any):
         self._send(RecordResultRequest(_serialise_value(value, self._blob_store)))
         # TODO: wait for confirmation?
         self._running = False
 
-    def record_cursor(self, value):
+    def record_cursor(self, value: t.Any):
         self._send(RecordCursorRequest(_serialise_value(value, self._blob_store)))
         # TODO: wait for confirmation?
 
@@ -205,7 +205,7 @@ class Channel:
         self,
         repository: str,
         target: str,
-        arguments: t.Tuple[t.Any, ...],
+        arguments: tuple[t.Any, ...],
         *,
         cache: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
         cache_namespace: str | None = None,
@@ -554,7 +554,7 @@ class Manager:
         self,
         execution_id: str,
         target: t.Callable,
-        arguments: list[list[t.Any]],
+        arguments: list[Value],
         loop: asyncio.AbstractEventLoop,
     ):
         if execution_id in self._executions:

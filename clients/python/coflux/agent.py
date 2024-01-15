@@ -113,8 +113,8 @@ class Agent:
                         task.cancel()
                     for task in done:
                         task.result()
-            except websockets.WebSocketException as e:
-                reason = e.reason if hasattr(e, "reason") else None
+            except websockets.ConnectionClosedError as e:
+                reason = e.rcvd.reason if e.rcvd else None
                 if reason == "project_not_found":
                     print("Project not found")
                     return
