@@ -1,5 +1,10 @@
 import { ReactNode, useCallback } from "react";
-import { Link, useLocation, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import classNames from "classnames";
 
 import { buildUrl } from "../utils";
@@ -25,6 +30,7 @@ export default function StepLink({
   children,
 }: Props) {
   const location = useLocation();
+  const { project: projectId } = useParams();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
   const activeStepId = searchParams.get("step") || undefined;
@@ -37,23 +43,30 @@ export default function StepLink({
     (!attemptNumber || activeAttemptNumber == attemptNumber);
   const handleMouseOver = useCallback(
     () => setHovered(runId, stepId, attemptNumber),
-    [setHovered, runId, stepId, attemptNumber]
+    [setHovered, runId, stepId, attemptNumber],
   );
   const handleMouseOut = useCallback(() => setHovered(undefined), []);
+  // TODO: better way to determine page
+  // TODO: switch back to graph page if changing run?
+  const parts = location.pathname.split("/");
+  const page = parts.length == 6 ? parts[5] : undefined;
   return (
     <Link
-      to={buildUrl(location.pathname, {
-        environment: environmentName,
-        step: isActive ? undefined : stepId,
-        attempt: isActive ? undefined : attemptNumber,
-      })}
+      to={buildUrl(
+        `/projects/${projectId}/runs/${runId}${page ? "/" + page : ""}`,
+        {
+          environment: environmentName,
+          step: isActive ? undefined : stepId,
+          attempt: isActive ? undefined : attemptNumber,
+        },
+      )}
       className={classNames(
         className,
         isActive
           ? activeClassName
           : isHovered(runId, stepId, attemptNumber)
           ? hoveredClassName
-          : undefined
+          : undefined,
       )}
       onMouseOver={handleMouseOver}
       onMouseOut={handleMouseOut}

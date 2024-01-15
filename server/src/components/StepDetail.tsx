@@ -9,7 +9,7 @@ import classNames from "classnames";
 import { findKey, sortBy } from "lodash";
 import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTopic } from "@topical/react";
 import { IconChevronDown } from "@tabler/icons-react";
 
@@ -86,28 +86,22 @@ function Result({ runId, run, result }: ResultProps) {
 }
 
 type DependencyProps = {
-  runId: string;
-  run: models.Run;
-  dependency: string;
+  dependency: models.Reference;
 };
 
-function Dependency({ runId, run, dependency }: DependencyProps) {
-  const execution = findExecution(run, dependency);
-  if (execution) {
-    return (
-      <StepLink
-        runId={runId}
-        stepId={execution[0]}
-        attemptNumber={execution[1].sequence}
-        className="border border-slate-300 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
-        hoveredClassName="border-slate-600"
-      >
-        {dependency}
-      </StepLink>
-    );
-  } else {
-    return <span>{dependency}</span>;
-  }
+function Dependency({ dependency }: DependencyProps) {
+  return (
+    <StepLink
+      runId={dependency.runId}
+      stepId={dependency.stepId}
+      attemptNumber={dependency.sequence}
+      className="rounded text-sm ring-offset-1 px-1"
+      hoveredClassName="ring-2 ring-slate-300"
+    >
+      <span className="font-mono">{dependency.target}</span>{" "}
+      <span className="text-slate-500">({dependency.repository})</span>
+    </StepLink>
+  );
 }
 
 type AttemptProps = {
@@ -183,15 +177,17 @@ function Attempt({
         <h3 className="uppercase text-sm font-bold text-slate-400">
           Dependencies
         </h3>
-        {attempt.dependencies.length ? (
-          <ul className="flex flex-wrap gap-1">
-            {attempt.dependencies.map((dependency) => {
-              return (
-                <li key={dependency}>
-                  <Dependency runId={runId} run={run} dependency={dependency} />
-                </li>
-              );
-            })}
+        {Object.keys(attempt.dependencies).length ? (
+          <ul className="">
+            {Object.entries(attempt.dependencies).map(
+              ([dependencyId, dependency]) => {
+                return (
+                  <li key={dependencyId}>
+                    <Dependency dependency={dependency} />
+                  </li>
+                );
+              },
+            )}
           </ul>
         ) : (
           <p>None</p>
@@ -202,24 +198,34 @@ function Attempt({
           <h3 className="uppercase text-sm font-bold text-slate-400">
             De-duplication
           </h3>
-          <p>After: {completedAt!.diff(scheduledAt).toMillis()}ms</p>
+          <p>
+            After:{" "}
+            {formatDiff(
+              scheduledAt.diff(completedAt!, [
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+              ]),
+            )}
+          </p>
           {attempt.retry && (
-            <Fragment>
-              <Link
-                to={buildUrl(
-                  `/projects/${projectId}/runs/${attempt.retry.runId}/graph`,
-                  {
-                    environment: environmentName,
-                    step: attempt.retry.stepId,
-                    attempt: attempt.retry.sequence,
-                  },
-                )}
-                className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
+            <p>
+              To:{" "}
+              <StepLink
+                runId={attempt.retry.runId}
+                stepId={attempt.retry.stepId}
+                attemptNumber={attempt.retry.sequence}
+                className="rounded text-sm ring-offset-1 px-1"
+                hoveredClassName="ring-2 ring-slate-300"
               >
-                Successor
-              </Link>
-              {attempt.retry.runId != runId ? `(${attempt.retry.runId})` : null}
-            </Fragment>
+                <span className="font-mono">{attempt.retry.target}</span>{" "}
+                <span className="text-slate-500">
+                  ({attempt.retry.repository})
+                </span>
+              </StepLink>
+            </p>
           )}
         </div>
       ) : (

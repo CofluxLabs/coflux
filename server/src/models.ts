@@ -64,11 +64,12 @@ export type Argument =
     };
 
 export type Child = Pick<Target, "repository" | "target"> & {
+  stepId: string;
   createdAt: number;
   executionId: string | null;
 };
 
-// TODO: combine with `Execution`?
+// TODO: combine with `Execution` (or `Reference`)?
 export type QueuedExecution = {
   target: string;
   runId: string;
@@ -79,16 +80,24 @@ export type QueuedExecution = {
   assignedAt: number | null;
 };
 
+export type Reference = {
+  runId: string;
+  stepId: string;
+  sequence: number;
+  repository: string;
+  target: string;
+};
+
 export type Execution = {
   sequence: number;
   createdAt: number;
   executeAfter: number | null;
   assignedAt: number | null;
   completedAt: number | null;
-  dependencies: string[];
+  dependencies: Record<string, Reference>;
   result: Result | null;
   children: Record<string, Child>;
-  retry: { runId: string; stepId: string; sequence: number } | null;
+  retry: Reference | null;
 };
 
 export type Step = {
@@ -101,16 +110,10 @@ export type Step = {
   cachedExecutionId: string | null;
 };
 
-export type Parent = Pick<Target, "repository" | "target"> & {
-  runId: string;
-  stepId: string;
-  sequence: number;
-};
-
 export type Run = {
   createdAt: number;
   recurrent: boolean;
-  parent: Parent | null;
+  parent: Reference | null;
   steps: Record<string, Step>;
 };
 

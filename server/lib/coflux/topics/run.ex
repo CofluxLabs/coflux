@@ -62,7 +62,7 @@ defmodule Coflux.Topics.Run do
           executeAfter: execute_after,
           assignedAt: nil,
           completedAt: nil,
-          dependencies: [],
+          dependencies: %{},
           children: %{},
           result: nil,
           retry: nil
@@ -93,20 +93,21 @@ defmodule Coflux.Topics.Run do
     {:ok, topic}
   end
 
-  def handle_info({:topic, _ref, {:dependency, execution_id, dependency_id}}, topic) do
+  def handle_info({:topic, _ref, {:dependency, execution_id, dependency_id, dependency}}, topic) do
     step_id = find_step_id_for_execution(topic, execution_id)
 
     topic =
-      Topic.insert(
+      Topic.set(
         topic,
         [
           :steps,
           step_id,
           :executions,
           Integer.to_string(execution_id),
-          :dependencies
+          :dependencies,
+          Integer.to_string(dependency_id)
         ],
-        Integer.to_string(dependency_id)
+        build_execution(dependency)
       )
 
     {:ok, topic}
@@ -150,7 +151,6 @@ defmodule Coflux.Topics.Run do
         build_result(result)
       )
       |> Topic.set(
-        # TODO
         [
           :steps,
           step_id,
@@ -168,32 +168,27 @@ defmodule Coflux.Topics.Run do
           Integer.to_string(execution_id),
           :retry
         ],
-        build_retry(retry)
+        if(retry, do: build_execution(retry))
       )
 
     {:ok, topic}
   end
 
+  defp build_execution(execution) do
+    %{
+      runId: execution.run_id,
+      stepId: execution.step_id,
+      sequence: execution.sequence,
+      repository: execution.repository,
+      target: execution.target
+    }
+  end
+
   defp build_run(run, parent, steps) do
-    parent =
-      case parent do
-        {run_external_id, step_external_id, sequence, repository, target} ->
-          %{
-            runId: run_external_id,
-            stepId: step_external_id,
-            sequence: sequence,
-            repository: repository,
-            target: target
-          }
-
-        nil ->
-          nil
-      end
-
     %{
       createdAt: run.created_at,
       recurrent: run.recurrent,
-      parent: parent,
+      parent: if(parent, do: build_execution(parent)),
       steps:
         Map.new(steps, fn {step_id, step} ->
           {step_id,
@@ -215,22 +210,28 @@ defmodule Coflux.Topics.Run do
                      executeAfter: execution.execute_after,
                      assignedAt: execution.assigned_at,
                      completedAt: execution.completed_at,
-                     dependencies: Enum.map(execution.dependencies, &Integer.to_string/1),
+                     dependencies:
+                       Map.new(execution.dependencies, fn {dependency_id, dependency} ->
+                         {Integer.to_string(dependency_id), build_execution(dependency)}
+                       end),
                      children:
                        Map.new(
                          execution.children,
-                         fn {external_run_id, created_at, repository, target, execution_id} ->
+                         fn {external_run_id, created_at, external_step_id, repository, target,
+                             execution_id, sequence} ->
                            {external_run_id,
                             %{
                               createdAt: created_at,
                               repository: repository,
                               target: target,
-                              executionId: if(execution_id, do: Integer.to_string(execution_id))
+                              stepId: external_step_id,
+                              executionId: if(execution_id, do: Integer.to_string(execution_id)),
+                              sequence: sequence
                             }}
                          end
                        ),
                      result: build_result(execution.result),
-                     retry: build_retry(execution.retry)
+                     retry: if(execution.retry, do: build_execution(execution.retry))
                    }
                  }
                end)
@@ -277,16 +278,6 @@ defmodule Coflux.Topics.Run do
 
       nil ->
         nil
-    end
-  end
-
-  defp build_retry(retry) do
-    if retry do
-      %{
-        runId: retry.run_id,
-        stepId: retry.step_id,
-        sequence: retry.sequence
-      }
     end
   end
 

@@ -361,10 +361,13 @@ defmodule Coflux.Orchestration.Server do
       :ok = Store.record_dependency(state.db, from_execution_id, execution_id)
       {:ok, step} = Store.get_step_for_execution(state.db, from_execution_id)
 
+      # TODO: only resolve if there are listeners to notify
+      dependency = resolve_execution(state.db, execution_id)
+
       notify_listeners(
         state,
         {:run, step.run_id},
-        {:dependency, from_execution_id, execution_id}
+        {:dependency, from_execution_id, execution_id, dependency}
       )
     end
 
@@ -454,12 +457,9 @@ defmodule Coflux.Orchestration.Server do
         {:reply, {:error, :not_found}, state}
 
       {:ok, run} ->
-        {:ok, parent} =
+        parent =
           if run.parent_id do
-            # TODO: use `resolve_execution`?
-            Store.get_run_by_execution(state.db, run.parent_id)
-          else
-            {:ok, nil}
+            resolve_execution(state.db, run.parent_id)
           end
 
         {:ok, steps} = Store.get_run_steps(state.db, run.id)
@@ -484,12 +484,10 @@ defmodule Coflux.Orchestration.Server do
                                          _session_id, assigned_at} ->
                    {:ok, dependencies} = Store.get_execution_dependencies(state.db, execution_id)
 
+                   # TODO: batch? get `get_execution_dependencies` to resolve?
                    dependencies =
-                     Enum.map(dependencies, fn {dependency_id} ->
-                       # TODO: if execution doesn't belong to this run, resolve it (`resolve_execution`)
-                       # TODO: (and where event is fired)
-                       # TODO: or update `get_execution_dependencies` to do resolving?
-                       dependency_id
+                     Map.new(dependencies, fn {dependency_id} ->
+                       {dependency_id, resolve_execution(state.db, dependency_id)}
                      end)
 
                    {result, retry_id, completed_at} =
@@ -797,13 +795,15 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp resolve_execution(db, execution_id) do
-    {:ok, {external_run_id, external_step_id, step_sequence, _, _}} =
+    {:ok, {external_run_id, external_step_id, step_sequence, repository, target}} =
       Store.get_run_by_execution(db, execution_id)
 
     %{
       run_id: external_run_id,
       step_id: external_step_id,
-      sequence: step_sequence
+      sequence: step_sequence,
+      repository: repository,
+      target: target
     }
   end
 

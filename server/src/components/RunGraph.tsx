@@ -31,7 +31,7 @@ type Node =
     }
   | {
       type: "parent";
-      parent: models.Parent;
+      parent: models.Reference;
     }
   | {
       type: "child";
@@ -86,6 +86,7 @@ function traverseRun(
 
 function buildGraph(
   run: models.Run,
+  runId: string,
   activeStepId: string | undefined,
   activeAttemptNumber: number | undefined,
 ) {
@@ -122,12 +123,9 @@ function buildGraph(
       const step = run.steps[stepId];
       const execution = executionId ? step.executions[executionId] : undefined;
       if (execution) {
-        execution.dependencies.forEach((dependencyId) => {
-          const dependencyStepId = Object.keys(run.steps).find(
-            (id) => dependencyId in run.steps[id].executions,
-          );
-          if (dependencyStepId) {
-            g.setEdge(dependencyStepId, stepId, {
+        Object.values(execution.dependencies).forEach((dependency) => {
+          if (dependency.runId == runId) {
+            g.setEdge(dependency.stepId, stepId, {
               type: "dependency",
               weight: 100,
             });
@@ -161,13 +159,13 @@ function buildGraph(
         const parent = run.steps[parentStepId].executions[parentId];
         if (
           step.cachedExecutionId &&
-          parent.dependencies.includes(step.cachedExecutionId)
+          step.cachedExecutionId in parent.dependencies
         ) {
           g.setEdge(stepId, parentStepId, {
             type: "dependency",
             weight: 100,
           });
-        } else if (executionId && !parent.dependencies.includes(executionId)) {
+        } else if (executionId && !(executionId in parent.dependencies)) {
           g.setEdge(parentStepId, stepId, {
             type: "parent",
             weight: 1,
@@ -196,7 +194,7 @@ function buildGraph(
             });
             if (
               child.executionId &&
-              execution.dependencies.includes(child.executionId)
+              child.executionId in execution.dependencies
             ) {
               g.setEdge(runId, stepId, { type: "dependency", weight: 2 });
             } else {
@@ -315,18 +313,10 @@ function StepNode({
 type ParentNodeProps = {
   node: dagre.Node;
   offset: [number, number];
-  projectId: string;
-  parent: models.Parent;
-  environmentName: string | undefined;
+  parent: models.Reference;
 };
 
-function ParentNode({
-  node,
-  offset,
-  projectId,
-  parent,
-  environmentName,
-}: ParentNodeProps) {
+function ParentNode({ node, offset, parent }: ParentNodeProps) {
   return (
     <div
       className="absolute flex"
@@ -337,11 +327,12 @@ function ParentNode({
         height: node.height,
       }}
     >
-      <Link
-        to={buildUrl(`/projects/${projectId}/runs/${parent.runId}`, {
-          environment: environmentName,
-        })}
-        className="flex-1 flex gap-2 items-center border border-dashed border-slate-300 rounded px-2 py-1 bg-white"
+      <StepLink
+        runId={parent.runId}
+        stepId={parent.stepId}
+        attemptNumber={parent.sequence}
+        className="flex-1 flex gap-2 items-center border border-dashed border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
+        hoveredClassName="ring ring-slate-300"
       >
         <div className="flex-1 flex flex-col truncate">
           <span className="font-mono font-bold text-slate-400 text-sm">
@@ -350,7 +341,7 @@ function ParentNode({
           <span className="text-xs text-slate-400">{parent.runId}</span>
         </div>
         <IconArrowForward size={20} className="text-slate-400" />
-      </Link>
+      </StepLink>
     </div>
   );
 }
@@ -358,20 +349,11 @@ function ParentNode({
 type ChildNodeProps = {
   node: dagre.Node;
   offset: [number, number];
-  projectId: string;
   runId: string;
   child: models.Child;
-  environmentName: string | undefined;
 };
 
-function ChildNode({
-  node,
-  offset,
-  projectId,
-  runId,
-  child,
-  environmentName,
-}: ChildNodeProps) {
+function ChildNode({ node, offset, runId, child }: ChildNodeProps) {
   return (
     <div
       className="absolute flex"
@@ -382,11 +364,12 @@ function ChildNode({
         height: node.height,
       }}
     >
-      <Link
-        to={buildUrl(`/projects/${projectId}/runs/${runId}/graph`, {
-          environment: environmentName,
-        })}
-        className="flex-1 flex gap-2 items-center border border-slate-300 rounded px-2 py-1 bg-white"
+      <StepLink
+        runId={runId}
+        stepId={child.stepId}
+        attemptNumber={1}
+        className="flex-1 flex gap-2 items-center border border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
+        hoveredClassName="ring ring-slate-300"
       >
         <div className="flex-1 flex flex-col truncate">
           <span className="font-mono font-bold text-slate-500 text-sm">
@@ -395,7 +378,7 @@ function ChildNode({
           <span className="text-xs text-slate-400">{runId}</span>
         </div>
         <IconArrowUpRight size={20} className="text-slate-400" />
-      </Link>
+      </StepLink>
     </div>
   );
 }
@@ -480,7 +463,7 @@ export default function RunGraph({
   const [dragging, setDragging] = useState<[number, number]>();
   const [zoomOverride, setZoomOverride] = useState<number>();
   const graph = useMemo(
-    () => buildGraph(run, activeStepId, activeAttemptNumber),
+    () => buildGraph(run, runId, activeStepId, activeAttemptNumber),
     [run, activeStepId, activeAttemptNumber],
   );
   const graphWidth = graph.graph().width || 0;
@@ -612,9 +595,7 @@ export default function RunGraph({
                   <ParentNode
                     key={nodeId}
                     node={node}
-                    projectId={projectId}
                     parent={node.parent}
-                    environmentName={environmentName}
                     offset={[marginX, marginY]}
                   />
                 );
@@ -623,10 +604,8 @@ export default function RunGraph({
                   <ChildNode
                     key={nodeId}
                     node={node}
-                    projectId={projectId}
                     runId={node.runId}
                     child={node.child}
-                    environmentName={environmentName}
                     offset={[marginX, marginY]}
                   />
                 );

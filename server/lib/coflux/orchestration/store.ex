@@ -572,7 +572,7 @@ defmodule Coflux.Orchestration.Store do
     query(
       db,
       """
-      SELECT r.external_id, r.created_at, s.repository, s.target, se.execution_id
+      SELECT r.external_id, r.created_at, s.external_id, s.repository, s.target, se.execution_id, se.sequence
       FROM runs AS r
       INNER JOIN steps AS s ON s.run_id = r.id AND s.parent_id IS NULL
       LEFT JOIN step_executions AS se ON se.step_id = s.id AND se.sequence = 1
