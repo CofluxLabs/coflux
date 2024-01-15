@@ -335,6 +335,8 @@ defmodule Coflux.Orchestration.Server do
         end
       end)
 
+    send(self(), :execute)
+
     {:reply, :ok, state}
   end
 
