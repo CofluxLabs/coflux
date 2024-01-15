@@ -27,6 +27,7 @@ RUN MIX_ENV=prod mix release
 
 FROM debian:bullseye
 WORKDIR /app
+RUN mkdir /app/data
 
 RUN apt-get update -y && apt-get install -y libstdc++6 openssl libncurses5 locales \
   && apt-get clean && rm -f /var/lib/apt/lists/*_*
@@ -37,4 +38,4 @@ ENV LANG=en_US.UTF-8 LANGUAGE=en_US:en LC_ALL=en_US.UTF-8
 
 COPY --from=mix_build /app/_build/prod/rel/coflux ./
 
-CMD /app/bin/coflux start
+CMD [ "/app/bin/coflux", "start" ]
