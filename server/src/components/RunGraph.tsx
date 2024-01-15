@@ -11,7 +11,11 @@ import dagre from "@dagrejs/dagre";
 import classNames from "classnames";
 import { Link } from "react-router-dom";
 import { max, sortBy } from "lodash";
-import { IconArrowForward, IconArrowUpRight } from "@tabler/icons-react";
+import {
+  IconArrowForward,
+  IconArrowUpRight,
+  IconClock,
+} from "@tabler/icons-react";
 
 import * as models from "../models";
 import { buildUrl } from "../utils";
@@ -38,7 +42,7 @@ type Node =
 function chooseStepAttempts(
   run: models.Run,
   activeStepId: string | undefined,
-  activeAttemptNumber: number | undefined
+  activeAttemptNumber: number | undefined,
 ) {
   const stepAttempts: Record<string, number> = {};
   if (activeStepId && activeAttemptNumber) {
@@ -49,7 +53,7 @@ function chooseStepAttempts(
     while (run.steps[stepId].parentId) {
       const parentId = run.steps[stepId].parentId!;
       stepId = Object.keys(run.steps).find(
-        (id) => parentId in run.steps[id].executions
+        (id) => parentId in run.steps[id].executions,
       )!;
       stepAttempts[stepId] = run.steps[stepId].executions[parentId].sequence;
     }
@@ -61,7 +65,7 @@ function traverseRun(
   run: models.Run,
   stepAttempts: Record<string, number>,
   callback: (stepId: string, executionId: string | undefined) => void,
-  parentId?: string
+  parentId?: string,
 ) {
   Object.keys(run.steps)
     .filter((id) => run.steps[id].parentId == parentId)
@@ -71,7 +75,7 @@ function traverseRun(
         stepAttempts[stepId] ||
         max(Object.values(step.executions).map((e) => e.sequence));
       const executionId = Object.keys(step.executions).find(
-        (id) => step.executions[id].sequence == attemptNumber
+        (id) => step.executions[id].sequence == attemptNumber,
       );
       callback(stepId, executionId);
       if (executionId) {
@@ -83,7 +87,7 @@ function traverseRun(
 function buildGraph(
   run: models.Run,
   activeStepId: string | undefined,
-  activeAttemptNumber: number | undefined
+  activeAttemptNumber: number | undefined,
 ) {
   const g = new dagre.graphlib.Graph<Node>();
   g.setGraph({ rankdir: "LR", ranksep: 40, nodesep: 40 });
@@ -91,13 +95,13 @@ function buildGraph(
   const stepAttempts = chooseStepAttempts(
     run,
     activeStepId,
-    activeAttemptNumber
+    activeAttemptNumber,
   );
 
   if (run.parent) {
     const initialStepId = sortBy(
       Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
-      (stepId) => run.steps[stepId].createdAt
+      (stepId) => run.steps[stepId].createdAt,
     )[0];
     g.setNode(run.parent.runId, {
       width: 160,
@@ -120,7 +124,7 @@ function buildGraph(
       if (execution) {
         execution.dependencies.forEach((dependencyId) => {
           const dependencyStepId = Object.keys(run.steps).find(
-            (id) => dependencyId in run.steps[id].executions
+            (id) => dependencyId in run.steps[id].executions,
           );
           if (dependencyStepId) {
             g.setEdge(dependencyStepId, stepId, {
@@ -132,7 +136,7 @@ function buildGraph(
           }
         });
       }
-    }
+    },
   );
 
   traverseRun(
@@ -152,7 +156,7 @@ function buildGraph(
       if (step.parentId) {
         const parentId = step.parentId;
         const parentStepId = Object.keys(run.steps).find(
-          (id) => parentId in run.steps[id].executions
+          (id) => parentId in run.steps[id].executions,
         )!;
         const parent = run.steps[parentStepId].executions[parentId];
         if (
@@ -170,7 +174,7 @@ function buildGraph(
           });
         }
       }
-    }
+    },
   );
 
   traverseRun(
@@ -201,21 +205,22 @@ function buildGraph(
           });
         }
       }
-    }
+    },
   );
 
   dagre.layout(g);
   return g;
 }
 
-function classNameForResult(
-  result: models.Result | undefined,
-  isCached: boolean
+function classNameForStep(
+  step: models.Step,
+  attempt: models.Execution | undefined,
 ) {
-  if (isCached) {
+  const result = attempt?.result;
+  if (step.cachedExecutionId || result?.type == "duplicated") {
     return "border-slate-200 bg-slate-50";
-  } else if (result?.type == "duplicated") {
-    return "border-slate-200 bg-slate-50";
+  } else if (!result && !attempt?.assignedAt) {
+    return "border-blue-200 bg-blue-50";
   } else if (!result) {
     return "border-blue-400 bg-blue-100";
   } else if (result.type == "error") {
@@ -247,12 +252,12 @@ function StepNode({
   isActive,
 }: StepNodeProps) {
   const attempt = Object.values(step.executions).find(
-    (e) => e.sequence == attemptNumber
+    (e) => e.sequence == attemptNumber,
   );
   const { isHovered } = useHoverContext();
   return (
     <div
-      className="absolute"
+      className="absolute flex"
       style={{
         left: node.x - node.width / 2 + offset[0],
         top: node.y - node.height / 2 + offset[1],
@@ -269,7 +274,7 @@ function StepNode({
               : "-top-1 -right-1",
             isHovered(runId, stepId) &&
               !isHovered(runId, stepId, attemptNumber) &&
-              "ring-2 ring-slate-300"
+              "ring-2 ring-slate-300",
           )}
         ></div>
       )}
@@ -278,25 +283,29 @@ function StepNode({
         stepId={stepId}
         attemptNumber={attemptNumber}
         className={classNames(
-          "absolute w-full h-full flex flex-col border rounded px-2 py-1 truncate ring-offset-2",
-          classNameForResult(
-            attempt?.result || undefined,
-            !!step.cachedExecutionId
-          )
+          "absolute w-full h-full flex-1 flex gap-2 items-center border rounded px-2 py-1 ring-offset-2",
+          classNameForStep(step, attempt),
         )}
         activeClassName="ring ring-cyan-400"
         hoveredClassName="ring ring-slate-300"
       >
-        <span
-          className={classNames(
-            "font-mono text-sm",
-            !step.parentId && "font-bold"
+        <span className="flex-1 flex flex-col truncate">
+          <span
+            className={classNames(
+              "font-mono text-sm",
+              !step.parentId && "font-bold",
+            )}
+          >
+            {step.target}
+          </span>
+          {!step.parentId && (
+            <span className="text-xs text-slate-500">{runId}</span>
           )}
-        >
-          {step.target}
         </span>
-        {!step.parentId && (
-          <span className="text-xs text-slate-500">{runId}</span>
+        {attempt && !attempt.result && !attempt.assignedAt && (
+          <span>
+            <IconClock size={20} strokeWidth={1.5} />
+          </span>
         )}
       </StepLink>
     </div>
@@ -425,7 +434,7 @@ function calculateMargins(
   containerWidth: number,
   containerHeight: number,
   graphWidth: number,
-  graphHeight: number
+  graphHeight: number,
 ) {
   const aspect =
     containerWidth && containerHeight ? containerWidth / containerHeight : 1;
@@ -433,13 +442,13 @@ function calculateMargins(
     Math.max(
       100,
       containerWidth - graphWidth,
-      (graphHeight + 100) * aspect - graphWidth
+      (graphHeight + 100) * aspect - graphWidth,
     ) / 2;
   const marginY =
     Math.max(
       100,
       containerHeight - graphHeight,
-      (graphWidth + 100) / aspect - graphHeight
+      (graphWidth + 100) / aspect - graphHeight,
     ) / 2;
   return [marginX, marginY];
 }
@@ -472,7 +481,7 @@ export default function RunGraph({
   const [zoomOverride, setZoomOverride] = useState<number>();
   const graph = useMemo(
     () => buildGraph(run, activeStepId, activeAttemptNumber),
-    [run, activeStepId, activeAttemptNumber]
+    [run, activeStepId, activeAttemptNumber],
   );
   const graphWidth = graph.graph().width || 0;
   const graphHeight = graph.graph().height || 0;
@@ -480,13 +489,13 @@ export default function RunGraph({
     containerWidth,
     containerHeight,
     graphWidth,
-    graphHeight
+    graphHeight,
   );
   const canvasWidth = Math.max(graphWidth + 2 * marginX, containerWidth);
   const canvasHeight = Math.max(graphHeight + 2 * marginY, containerHeight);
   const minZoom = Math.min(
     containerWidth / canvasWidth,
-    containerHeight / canvasHeight
+    containerHeight / canvasHeight,
   );
   const zoom = zoomOverride || Math.max(minZoom, 0.6);
   const maxDragX = -(canvasWidth * zoom - containerWidth);
@@ -512,7 +521,7 @@ export default function RunGraph({
       window.addEventListener("mousemove", handleMove);
       window.addEventListener("mouseup", handleUp);
     },
-    [offsetX, offsetY, maxDragX, maxDragY]
+    [offsetX, offsetY, maxDragX, maxDragY],
   );
   const handleWheel = useCallback(
     (ev: ReactWheelEvent<HTMLDivElement>) => {
@@ -522,7 +531,7 @@ export default function RunGraph({
       const canvasY = (mouseY - offsetY) / zoom;
       const newZoom = Math.max(
         minZoom,
-        Math.min(1.5, zoom * (1 + ev.deltaY / -500))
+        Math.min(1.5, zoom * (1 + ev.deltaY / -500)),
       );
       const delta = newZoom - zoom;
       setZoomOverride(newZoom);
@@ -531,7 +540,7 @@ export default function RunGraph({
         Math.min(0, Math.max(maxDragY, offsetY - canvasY * delta)),
       ]);
     },
-    [offsetX, offsetY, zoom, minZoom, maxDragX, maxDragY]
+    [offsetX, offsetY, zoom, minZoom, maxDragX, maxDragY],
   );
   const [dx, dy] = dragging || [offsetX, offsetY];
   return (
@@ -556,7 +565,7 @@ export default function RunGraph({
               ? "cursor-grabbing"
               : zoom > minZoom
               ? "cursor-grab"
-              : undefined
+              : undefined,
           )}
           onMouseDown={handleMouseDown}
         >
