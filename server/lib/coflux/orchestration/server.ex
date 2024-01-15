@@ -108,6 +108,8 @@ defmodule Coflux.Orchestration.Server do
 
           notify_agent(state, session_id)
 
+          send(self(), :execute)
+
           {:reply, {:ok, external_id}, state}
 
         :error ->
@@ -1103,6 +1105,7 @@ defmodule Coflux.Orchestration.Server do
       |> Map.get(repository, %{})
       |> Map.get(target, MapSet.new())
       |> Enum.reject(&session_at_capacity(state, &1))
+      |> Enum.reject(&is_nil(state.sessions[&1].agent))
 
     if Enum.any?(session_ids) do
       session_id = Enum.random(session_ids)
