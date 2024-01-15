@@ -17,24 +17,63 @@ def _callback(_changes: set[tuple[watchfiles.Change, str]]) -> None:
     print("Change detected. Reloading...")
 
 
-def _get_environ(name: str, parser: t.Callable[[str], T]) -> T | None:
+def _get_environ(name: str, parser: t.Callable[[str], T] = lambda x: x) -> T | None:
     value = os.environ.get(name)
     return parser(value) if value else None
 
 
+@t.overload
 def _get_option(
     argument: T | None,
-    env_name: str,
-    config_name: str | None = None,
-    default: T | None = None,
-    parser: t.Callable[[str], T] = lambda x: x,
+    env_name: tuple[str, t.Callable[[str], T]],
+    config_name: str | None,
 ) -> T | None:
-    return (
-        argument
-        or _get_environ(env_name, parser)
-        or (config_name and config.load().get(config_name))
-        or default
+    ...
+
+
+@t.overload
+def _get_option(
+    argument: T | None,
+    env_name: tuple[str, t.Callable[[str], T]],
+    config_name: str | None = None,
+    default: T = None,
+) -> T:
+    ...
+
+
+def _get_option(
+    argument: T | None,
+    env_name: tuple[str, t.Callable[[str], T]],
+    config_name: str | None = None,
+    default: T = None,
+) -> T | None:
+    if argument is not None:
+        return argument
+    env_value = _get_environ(*env_name)
+    if env_value is not None:
+        return env_value
+    if config_name is not None:
+        config_value = config.load().get(config_name)
+        if config_value is not None:
+            return config_value
+    return default
+
+
+def _get_project(argument: str | None) -> str:
+    project = _get_option(argument, ("COFLUX_PROJECT", str), "project")
+    if not project:
+        raise click.ClickException("No project ID specified.")
+    return project
+
+
+def _get_environment(argument: str | None) -> str:
+    return _get_option(
+        argument, ("COFLUX_ENVIRONMENT", str), "environment", "development"
     )
+
+
+def _get_host(argument: str | None) -> str:
+    return _get_option(argument, ("COFLUX_HOST", str), "host", "localhost:7777")
 
 
 async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
@@ -187,20 +226,14 @@ def agent_run(
     Run the agent.
     """
     if not module_name:
-        # TODO: click error
-        raise Exception("No module(s) specified.")
-    project_ = _get_option(project, "COFLUX_PROJECT", "project")
-    if not project_:
-        # TODO: click error
-        raise Exception("No project ID specified.")
-    environment_ = _get_option(
-        environment, "COFLUX_ENVIRONMENT", "environment", "development"
-    )
-    version_ = _get_option(version, "COFLUX_VERSION")
-    host_ = _get_option(host, "COFLUX_HOST", "host", "localhost:7777")
+        raise click.ClickException("No module(s) specified.")
+    project_ = _get_project(project)
+    environment_ = _get_environment(environment)
+    version_ = _get_option(version, ("COFLUX_VERSION", str))
+    host_ = _get_host(host)
     concurrency_ = _get_option(
         concurrency,
-        "COFLUX_CONCURRENCY",
+        ("COFLUX_CONCURRENCY", int),
         "concurrency",
         min(32, (os.cpu_count() or 4) + 4),
     )
@@ -254,14 +287,9 @@ def task_run(
     """
     Schedule a task run.
     """
-    project_ = _get_option(project, "COFLUX_PROJECT", "project")
-    if not project_:
-        # TODO: click error
-        raise Exception("No project ID specified.")
-    environment_ = _get_option(
-        environment, "COFLUX_ENVIRONMENT", "environment", "development"
-    )
-    host_ = _get_option(host, "COFLUX_HOST", "host", "localhost:7777")
+    project_ = _get_project(project)
+    environment_ = _get_environment(environment)
+    host_ = _get_host(host)
     with httpx.Client() as client:
         response = client.post(
             f"http://{host_}/api/schedule",
