@@ -20,7 +20,7 @@ import { pluralise } from "../utils";
 import Loading from "../components/Loading";
 import { useTitlePart } from "../components/TitleContext";
 
-type Target = { repository: string; target: string };
+type Target = { repository: string; target: string | null };
 
 type ConnectionStatusProps = {
   agents: Record<string, Record<string, string[]>> | undefined;

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useState } from "react";
-import { IconCpu, IconSubtask } from "@tabler/icons-react";
+import { IconBolt, IconCpu, IconSubtask } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
 import * as models from "../models";
@@ -112,7 +112,9 @@ export default function TargetHeader({
         </div>
         {environmentName && (
           <Fragment>
-            <Button onClick={handleRunClick}>Run...</Button>
+            <Button onClick={handleRunClick} left={<IconBolt size={16} />}>
+              Run...
+            </Button>
             <RunDialog
               target={target}
               open={runDialogOpen}

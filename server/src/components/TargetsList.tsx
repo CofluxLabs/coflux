@@ -1,5 +1,5 @@
 import classNames from "classnames";
-import { ComponentType, Fragment } from "react";
+import { ComponentType } from "react";
 import { Link } from "react-router-dom";
 import {
   IconSubtask,
@@ -8,6 +8,7 @@ import {
   IconInnerShadowTopLeft,
   IconAlertCircle,
   IconClock,
+  IconBox,
 } from "@tabler/icons-react";
 import { DateTime } from "luxon";
 
@@ -57,7 +58,7 @@ function Target({ url, icon: Icon, name, isActive, isOnline }: TargetProps) {
 type Props = {
   projectId: string | undefined;
   environmentName: string | undefined;
-  activeTarget: { repository: string; target: string } | undefined;
+  activeTarget: { repository: string; target: string | null } | undefined;
   repositories: Record<string, models.Repository>;
   agents: Record<string, Record<string, string[]>> | undefined;
 };
@@ -82,52 +83,64 @@ export default function TargetsList({
                 "seconds",
               ])
             : undefined;
+          const isActive =
+            !!activeTarget &&
+            activeTarget.repository == repository &&
+            !activeTarget.target;
           return (
             <div key={repository} className="py-2">
-              <div className="flex items-center py-1 px-2 gap-2">
-                <h2 className="font-bold uppercase text-slate-400 text-sm">
-                  <Link
-                    to={buildUrl(
-                      `/projects/${projectId}/repositories/${repository}`,
-                      { environment: environmentName },
-                    )}
-                  >
+              <Link
+                to={buildUrl(
+                  `/projects/${projectId}/repositories/${repository}`,
+                  { environment: environmentName },
+                )}
+                className={classNames(
+                  "block rounded-md",
+                  isActive ? "bg-slate-200" : "hover:bg-slate-200/50",
+                )}
+              >
+                <div className="flex items-center py-1 px-2 gap-2">
+                  <h2 className="font-bold uppercase text-slate-400 text-sm">
                     {repository}
-                  </Link>
-                </h2>
-                {nextDueDiff && nextDueDiff.toMillis() < -1000 ? (
-                  <span
-                    title={`Executions overdue (${formatDiff(
-                      nextDueDiff,
-                      true,
-                    )})`}
-                  >
-                    <IconAlertCircle
-                      size={16}
-                      className={
-                        nextDueDiff.toMillis() < -5000
-                          ? "text-red-700"
-                          : "text-yellow-600"
-                      }
-                    />
-                  </span>
-                ) : executing ? (
-                  <span title={`${pluralise(executing, "execution")} running`}>
-                    <IconInnerShadowTopLeft
-                      size={16}
-                      className="text-cyan-400 animate-spin"
-                    />
-                  </span>
-                ) : scheduled ? (
-                  <span
-                    title={`${pluralise(scheduled, "execution")} scheduled${
-                      nextDueDiff ? ` (${formatDiff(nextDueDiff!, true)})` : ""
-                    }`}
-                  >
-                    <IconClock size={16} className="text-slate-400" />
-                  </span>
-                ) : undefined}
-              </div>
+                  </h2>
+                  {nextDueDiff && nextDueDiff.toMillis() < -1000 ? (
+                    <span
+                      title={`Executions overdue (${formatDiff(
+                        nextDueDiff,
+                        true,
+                      )})`}
+                    >
+                      <IconAlertCircle
+                        size={16}
+                        className={
+                          nextDueDiff.toMillis() < -5000
+                            ? "text-red-700"
+                            : "text-yellow-600"
+                        }
+                      />
+                    </span>
+                  ) : executing ? (
+                    <span
+                      title={`${pluralise(executing, "execution")} running`}
+                    >
+                      <IconInnerShadowTopLeft
+                        size={16}
+                        className="text-cyan-400 animate-spin"
+                      />
+                    </span>
+                  ) : scheduled ? (
+                    <span
+                      title={`${pluralise(scheduled, "execution")} scheduled${
+                        nextDueDiff
+                          ? ` (${formatDiff(nextDueDiff!, true)})`
+                          : ""
+                      }`}
+                    >
+                      <IconClock size={16} className="text-slate-400" />
+                    </span>
+                  ) : undefined}
+                </div>
+              </Link>
               {Object.keys(targets).length ? (
                 <ul>
                   {Object.entries(targets).map(([name, target]) => {

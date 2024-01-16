@@ -1,5 +1,5 @@
 import classNames from "classnames";
-import { ButtonHTMLAttributes } from "react";
+import { ButtonHTMLAttributes, ReactNode } from "react";
 import { Size, Variant } from "./types";
 
 const outlineStyles = {
@@ -90,6 +90,8 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: Variant;
   outline?: boolean;
   size?: Size;
+  left?: ReactNode;
+  right?: ReactNode;
 };
 
 export default function Button({
@@ -98,20 +100,24 @@ export default function Button({
   size = "md",
   className,
   children,
+  left,
+  right,
   ...props
 }: Props) {
   return (
     <button
       className={classNames(
-        "focus:ring focus:outline-none focus:ring-opacity-50 font-medium text-center shadow-sm",
+        "focus:ring focus:outline-none focus:ring-opacity-50 font-medium text-center shadow-sm flex items-center gap-1",
         outlineStyles[outline ? "true" : "false"],
         variantOutlineStyles[variant][outline ? "true" : "false"],
         sizeStyles[size],
-        className
+        className,
       )}
       {...props}
     >
+      {left}
       {children}
+      {right}
     </button>
   );
 }

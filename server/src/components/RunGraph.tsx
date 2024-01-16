@@ -9,7 +9,6 @@ import {
 } from "react";
 import dagre from "@dagrejs/dagre";
 import classNames from "classnames";
-import { Link } from "react-router-dom";
 import { max, sortBy } from "lodash";
 import {
   IconArrowForward,
@@ -18,7 +17,6 @@ import {
 } from "@tabler/icons-react";
 
 import * as models from "../models";
-import { buildUrl } from "../utils";
 import StepLink from "./StepLink";
 import { useHoverContext } from "./HoverContext";
 
@@ -441,8 +439,6 @@ type Props = {
   run: models.Run;
   width: number;
   height: number;
-  projectId: string;
-  environmentName: string | undefined;
   activeStepId: string | undefined;
   activeAttemptNumber: number | undefined;
   minimumMargin?: number;
@@ -453,8 +449,6 @@ export default function RunGraph({
   run,
   width: containerWidth,
   height: containerHeight,
-  projectId,
-  environmentName,
   activeStepId,
   activeAttemptNumber,
 }: Props) {

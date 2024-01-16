@@ -8,6 +8,7 @@ import { useTitlePart } from "../components/TitleContext";
 import Loading from "../components/Loading";
 import RepositoryQueue from "../components/RepositoryQueue";
 import useNow from "../hooks/useNow";
+import { useSetActiveTarget } from "../layouts/ProjectLayout";
 
 function splitExecutions(
   executions: Record<string, models.QueuedExecution>,
@@ -54,6 +55,9 @@ export default function RepositoryPage() {
     repositoryName,
   );
   useTitlePart(repositoryName);
+  useSetActiveTarget(
+    repositoryName ? { repository: repositoryName, target: null } : undefined,
+  );
   const now = useNow(500);
   if (!executions) {
     return <Loading />;
@@ -61,7 +65,7 @@ export default function RepositoryPage() {
     const [executing, overdue, scheduled] = splitExecutions(executions, now);
     return (
       <div className="flex-1 p-4 flex flex-col min-h-0">
-        <div className="flex">
+        <div className="flex py-1 mb-2">
           <h1 className="flex items-center">
             <IconBox
               size={24}
