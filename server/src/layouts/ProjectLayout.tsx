@@ -94,14 +94,14 @@ export default function ProjectLayout() {
     projectId,
     "environments",
     environmentName,
-    "repositories"
+    "repositories",
   );
   const [agents] = useTopic<Record<string, Record<string, string[]>>>(
     "projects",
     projectId,
     "environments",
     environmentName,
-    "agents"
+    "agents",
   );
   const currentEnvironment = searchParams.get("environment") || undefined;
   const project = (projectId && projects && projects[projectId]) || undefined;
@@ -115,7 +115,7 @@ export default function ProjectLayout() {
     }
   }, [navigate, projectId, currentEnvironment, defaultEnvironment]);
   useTitlePart(
-    project && environmentName && `${project.name} (${environmentName})`
+    project && environmentName && `${project.name} (${environmentName})`,
   );
   if (!repositories) {
     return <Loading />;
@@ -168,7 +168,7 @@ export default function ProjectLayout() {
           </div>
           <ConnectionStatus agents={agents} />
         </div>
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col shadow-lg">
           <Outlet context={{ setActiveTarget }} />
         </div>
       </div>

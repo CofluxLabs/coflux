@@ -83,8 +83,8 @@ export default function TargetsList({
               ])
             : undefined;
           return (
-            <Fragment key={repository}>
-              <div className="flex items-center mt-4 py-1 px-2 gap-2">
+            <div key={repository} className="py-2">
+              <div className="flex items-center py-1 px-2 gap-2">
                 <h2 className="font-bold uppercase text-slate-400 text-sm">
                   <Link
                     to={buildUrl(
@@ -153,7 +153,7 @@ export default function TargetsList({
               ) : (
                 <p className="text-slate-300 italic px-2 text-sm">No targets</p>
               )}
-            </Fragment>
+            </div>
           );
         },
       )}
