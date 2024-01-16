@@ -342,16 +342,16 @@ defmodule Coflux.Orchestration.Server do
     {:reply, :ok, state}
   end
 
-  def handle_call({:record_result, execution_id, result}, _from, state) do
-    case record_result(state, execution_id, result) do
-      {:ok, state} ->
+  def handle_call({:record_checkpoint, execution_id, arguments}, _from, state) do
+    case Store.record_checkpoint(state.db, execution_id, arguments) do
+      {:ok, _checkpoint_id, _sequence, _created_at} ->
         {:reply, :ok, state}
     end
   end
 
-  def handle_call({:record_cursor, execution_id, result}, _from, state) do
-    case Store.record_cursor(state.db, execution_id, result) do
-      {:ok, _} ->
+  def handle_call({:record_result, execution_id, result}, _from, state) do
+    case record_result(state, execution_id, result) do
+      {:ok, state} ->
         {:reply, :ok, state}
     end
   end
@@ -615,9 +615,7 @@ defmodule Coflux.Orchestration.Server do
           execution, {state, assigned, unassigned} ->
             {execution_id, step_id, _run_id, repository, target, _, _, _} = execution
 
-            case assign_execution(state, execution_id, repository, target, fn ->
-                   Store.get_step_arguments(state.db, step_id)
-                 end) do
+            case assign_execution(state, execution_id, step_id, repository, target) do
               {:ok, state, {_session_id, assigned_at}} ->
                 {state, [{execution, assigned_at} | assigned], unassigned}
 
@@ -1099,7 +1097,7 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp assign_execution(state, execution_id, repository, target, arguments_fun) do
+  defp assign_execution(state, execution_id, step_id, repository, target) do
     session_ids =
       state.targets
       |> Map.get(repository, %{})
@@ -1110,23 +1108,29 @@ defmodule Coflux.Orchestration.Server do
     if Enum.any?(session_ids) do
       session_id = Enum.random(session_ids)
 
-      case arguments_fun.() do
-        {:ok, arguments} ->
-          {:ok, assigned_at} = Store.assign_execution(state.db, execution_id, session_id)
+      {:ok, arguments} =
+        case Store.get_latest_checkpoint(state.db, step_id) do
+          {:ok, nil} ->
+            Store.get_step_arguments(state.db, step_id)
 
-          state =
-            state
-            |> update_in(
-              [Access.key(:sessions), session_id, :starting],
-              &MapSet.put(&1, execution_id)
-            )
-            |> send_session(
-              session_id,
-              {:execute, execution_id, repository, target, arguments}
-            )
+          {:ok, {checkpoint_id, _, _, _}} ->
+            Store.get_checkpoint_arguments(state.db, checkpoint_id)
+        end
 
-          {:ok, state, {session_id, assigned_at}}
-      end
+      {:ok, assigned_at} = Store.assign_execution(state.db, execution_id, session_id)
+
+      state =
+        state
+        |> update_in(
+          [Access.key(:sessions), session_id, :starting],
+          &MapSet.put(&1, execution_id)
+        )
+        |> send_session(
+          session_id,
+          {:execute, execution_id, repository, target, arguments}
+        )
+
+      {:ok, state, {session_id, assigned_at}}
     else
       {:error, :no_session}
     end

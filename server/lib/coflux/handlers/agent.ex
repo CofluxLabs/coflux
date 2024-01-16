@@ -107,23 +107,24 @@ defmodule Coflux.Handlers.Agent do
 
         {[], state}
 
-      "notify_terminated" ->
-        [execution_ids] = message["params"]
-        :ok = Orchestration.notify_terminated(state.project_id, state.environment, execution_ids)
-        {[], state}
+      "record_checkpoint" ->
+        [execution_id, arguments] = message["params"]
 
-      "put_cursor" ->
-        [execution_id, result] = message["params"]
-        result = parse_result(result)
+        arguments = Enum.map(arguments, &parse_argument/1)
 
         :ok =
-          Orchestration.record_cursor(
+          Orchestration.record_checkpoint(
             state.project_id,
             state.environment,
             execution_id,
-            result
+            arguments
           )
 
+        {[], state}
+
+      "notify_terminated" ->
+        [execution_ids] = message["params"]
+        :ok = Orchestration.notify_terminated(state.project_id, state.environment, execution_ids)
         {[], state}
 
       "put_result" ->

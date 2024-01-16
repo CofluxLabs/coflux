@@ -3,7 +3,6 @@ import multiprocessing
 import threading
 import time
 import enum
-import inspect
 import asyncio
 import datetime as dt
 import hashlib
@@ -38,10 +37,6 @@ class ExecutingNotification(t.NamedTuple):
     pass
 
 
-class RecordCursorRequest(t.NamedTuple):
-    value: Value
-
-
 class RecordResultRequest(t.NamedTuple):
     value: Value
 
@@ -65,6 +60,10 @@ class ScheduleExecutionRequest(t.NamedTuple):
 
 class ResolveReferenceRequest(t.NamedTuple):
     execution_id: str
+
+
+class RecordCheckpointRequest(t.NamedTuple):
+    arguments: list[Value]
 
 
 class LogMessageRequest(t.NamedTuple):
@@ -191,10 +190,6 @@ class Channel:
         # TODO: wait for confirmation?
         self._running = False
 
-    def record_cursor(self, value: t.Any):
-        self._send(RecordCursorRequest(_serialise_value(value, self._blob_store)))
-        # TODO: wait for confirmation?
-
     def record_error(self, exception):
         error = str(exception)[:200]
         self._send(RecordErrorRequest(error))
@@ -261,6 +256,12 @@ class Channel:
             self._send(ResolveReferenceRequest(execution_id))
         value = future.result()
         return _deserialise_value(value, self._blob_store, "reference")
+
+    def record_checkpoint(self, arguments):
+        serialised_arguments = [
+            _serialise_value(a, self._blob_store) for a in arguments
+        ]
+        self._send(RecordCheckpointRequest(serialised_arguments))
 
     def log_message(self, level, message):
         timestamp = time.time() * 1000
@@ -368,13 +369,7 @@ def _execute(
     except Exception as e:
         channel.record_error(e)
     else:
-        if inspect.isgenerator(value):
-            for cursor in value:
-                if cursor is not None:
-                    channel.record_cursor(cursor)
-            channel.record_result(None)
-        else:
-            channel.record_result(value)
+        channel.record_result(value)
     finally:
         channel_context.reset(token)
 
@@ -443,8 +438,6 @@ class Execution:
         match message:
             case ExecutingNotification():
                 self._status = ExecutionStatus.EXECUTING
-            case RecordCursorRequest(value):
-                self._server_notify("put_cursor", (self._id, value))
             case RecordResultRequest(value):
                 self._status = ExecutionStatus.STOPPING
                 self._server_notify("put_result", (self._id, value))
@@ -453,6 +446,8 @@ class Execution:
                 self._status = ExecutionStatus.STOPPING
                 self._server_notify("put_error", (self._id, error, {}))
                 self._process.join()
+            case RecordCheckpointRequest(arguments):
+                self._server_notify("record_checkpoint", (self._id, arguments))
             case ScheduleExecutionRequest(
                 schedule_id,
                 repository,

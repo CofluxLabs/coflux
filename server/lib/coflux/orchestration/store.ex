@@ -297,6 +297,62 @@ defmodule Coflux.Orchestration.Store do
     end)
   end
 
+  def record_checkpoint(db, execution_id, arguments) do
+    with_transaction(db, fn ->
+      sequence =
+        case query_one(
+               db,
+               """
+               SELECT MAX(sequence)
+               FROM checkpoints
+               WHERE execution_id = ?1
+               """,
+               {execution_id}
+             ) do
+          {:ok, {nil}} -> 1
+          {:ok, {max_sequence}} -> max_sequence + 1
+        end
+
+      now = current_timestamp()
+
+      {:ok, checkpoint_id} = insert_checkpoint(db, execution_id, sequence, now)
+      {:ok, _} = insert_checkpoint_arguments(db, checkpoint_id, arguments)
+
+      {:ok, checkpoint_id, sequence, now}
+    end)
+  end
+
+  def get_latest_checkpoint(db, step_id) do
+    query_one(
+      db,
+      """
+      SELECT c.id, c.execution_id, c.sequence, c.created_at
+      FROM checkpoints AS c
+      INNER JOIN step_executions AS se ON se.execution_id = c.execution_id
+      WHERE se.step_id = ?1
+      ORDER BY se.sequence DESC, c.sequence DESC
+      LIMIT 1
+      """,
+      {step_id}
+    )
+  end
+
+  def get_checkpoint_arguments(db, checkpoint_id) do
+    case query(
+           db,
+           """
+           SELECT type, format, value
+           FROM checkpoint_arguments
+           WHERE checkpoint_id = ?1
+           ORDER BY position
+           """,
+           {checkpoint_id}
+         ) do
+      {:ok, rows} ->
+        {:ok, build_arguments(rows)}
+    end
+  end
+
   def record_hearbeats(db, executions) do
     with_transaction(db, fn ->
       now = current_timestamp()
@@ -345,34 +401,6 @@ defmodule Coflux.Orchestration.Store do
       {:ok, nil} ->
         {:ok, nil}
     end
-  end
-
-  def record_cursor(db, execution_id, result) do
-    with_transaction(db, fn ->
-      sequence =
-        case query_one(
-               db,
-               """
-               SELECT MAX(sequence)
-               FROM cursors
-               WHERE execution_id = ?1
-               """,
-               {execution_id}
-             ) do
-          {:ok, {nil}} ->
-            1
-
-          {:ok, {max_sequence}} ->
-            max_sequence + 1
-        end
-
-      now = current_timestamp()
-
-      case insert_cursor(db, execution_id, sequence, result, now) do
-        {:ok, _} ->
-          {:ok, now}
-      end
-    end)
   end
 
   def get_unassigned_executions(db) do
@@ -621,14 +649,7 @@ defmodule Coflux.Orchestration.Store do
            {step_id}
          ) do
       {:ok, rows} ->
-        {:ok,
-         Enum.map(rows, fn {type, format, value} ->
-           case type do
-             1 -> {:reference, value}
-             2 -> {:raw, format, value}
-             3 -> {:blob, format, value}
-           end
-         end)}
+        {:ok, build_arguments(rows)}
     end
   end
 
@@ -727,18 +748,30 @@ defmodule Coflux.Orchestration.Store do
            :arguments,
            {:step_id, :position, :type, :format, :value},
            Enum.map(Enum.with_index(arguments), fn {argument, index} ->
-             {type, format, value} =
-               case argument do
-                 {:reference, execution_id} -> {1, nil, execution_id}
-                 {:raw, format, data} -> {2, format, data}
-                 {:blob, format, hash} -> {3, format, hash}
-               end
-
+             {type, format, value} = parse_argument(argument)
              {step_id, index, type, format, value}
            end)
          ) do
       {:ok, _} -> :ok
     end
+  end
+
+  defp parse_argument(argument) do
+    case argument do
+      {:reference, execution_id} -> {1, nil, execution_id}
+      {:raw, format, data} -> {2, format, data}
+      {:blob, format, hash} -> {3, format, hash}
+    end
+  end
+
+  defp build_arguments(rows) do
+    Enum.map(rows, fn {type, format, value} ->
+      case type do
+        1 -> {:reference, value}
+        2 -> {:raw, format, value}
+        3 -> {:blob, format, value}
+      end
+    end)
   end
 
   defp get_next_step_execution_sequence(db, step_id) do
@@ -788,6 +821,28 @@ defmodule Coflux.Orchestration.Store do
     )
   end
 
+  defp insert_checkpoint(db, execution_id, sequence, created_at) do
+    insert_one(
+      db,
+      :checkpoints,
+      execution_id: execution_id,
+      sequence: sequence,
+      created_at: created_at
+    )
+  end
+
+  defp insert_checkpoint_arguments(db, checkpoint_id, arguments) do
+    insert_many(
+      db,
+      :checkpoint_arguments,
+      {:checkpoint_id, :position, :type, :format, :value},
+      Enum.map(Enum.with_index(arguments), fn {argument, position} ->
+        {type, format, value} = parse_argument(argument)
+        {checkpoint_id, position, type, format, value}
+      end)
+    )
+  end
+
   defp parse_result(result) do
     case result do
       # TODO: handle details
@@ -824,22 +879,6 @@ defmodule Coflux.Orchestration.Store do
       format: format,
       value: value,
       retry_id: retry_id,
-      created_at: created_at
-    )
-  end
-
-  defp insert_cursor(db, execution_id, sequence, result, created_at) do
-    # TODO: check result isn't error/abandoned/cancelled?
-    {type, format, value} = parse_result(result)
-
-    insert_one(
-      db,
-      :cursors,
-      execution_id: execution_id,
-      sequence: sequence,
-      type: type,
-      format: format,
-      value: value,
       created_at: created_at
     )
   end

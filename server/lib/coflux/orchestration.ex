@@ -40,12 +40,12 @@ defmodule Coflux.Orchestration do
     call_server(project_id, environment, {:notify_terminated, execution_ids})
   end
 
-  def record_result(project_id, environment, execution_id, result) do
-    call_server(project_id, environment, {:record_result, execution_id, result})
+  def record_checkpoint(project_id, environment, execution_id, arguments) do
+    call_server(project_id, environment, {:record_checkpoint, execution_id, arguments})
   end
 
-  def record_cursor(project_id, environment, execution_id, result) do
-    call_server(project_id, environment, {:record_cursor, execution_id, result})
+  def record_result(project_id, environment, execution_id, result) do
+    call_server(project_id, environment, {:record_result, execution_id, result})
   end
 
   def get_result(project_id, environment, execution_id, from_execution_id \\ nil, pid) do

@@ -18,7 +18,7 @@ def _get_channel() -> execution.Channel:
 def schedule(
     repository: str,
     target: str,
-    arguments: t.Tuple[t.Any, ...],
+    arguments: tuple[t.Any, ...],
     *,
     cache: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
     cache_namespace: str | None = None,
@@ -46,6 +46,10 @@ def get_result(target_execution_id: str) -> future.Future[t.Any]:
         lambda: channel.resolve_reference(target_execution_id),
         ("reference", target_execution_id),
     )
+
+
+def checkpoint(*arguments: t.Any) -> None:
+    return _get_channel().record_checkpoint(arguments)
 
 
 def log_debug(message: str) -> None:

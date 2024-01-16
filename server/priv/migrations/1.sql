@@ -120,6 +120,25 @@ CREATE TABLE dependencies (
   FOREIGN KEY (dependency_id) REFERENCES executions ON DELETE CASCADE
 );
 
+CREATE TABLE checkpoints(
+  id INTEGER PRIMARY KEY,
+  execution_id INTEGER NOT NULL,
+  sequence INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (execution_id, sequence),
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+);
+
+CREATE TABLE checkpoint_arguments(
+  checkpoint_id INTEGER NOT NULL,
+  position INTEGER NOT NULL,
+  type INTEGER NOT NULL,
+  format TEXT,
+  value BLOB NOT NULL,
+  PRIMARY KEY (checkpoint_id, position),
+  FOREIGN KEY (checkpoint_id) REFERENCES checkpoints ON DELETE CASCADE
+);
+
 CREATE TABLE heartbeats (
   id INTEGER PRIMARY KEY,
   execution_id INTEGER NOT NULL,
@@ -140,13 +159,3 @@ CREATE TABLE results (
   FOREIGN KEY (retry_id) REFERENCES executions ON DELETE CASCADE
 );
 
-CREATE TABLE cursors (
-  execution_id INTEGER NOT NULL,
-  sequence INTEGER NOT NULL,
-  type INTEGER NOT NULL,
-  format TEXT,
-  value BLOB,
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (execution_id, sequence),
-  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
-);

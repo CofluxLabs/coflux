@@ -1,5 +1,5 @@
 from .annotations import step, task, stub, sensor
-from .context import log_debug, log_info, log_warning, log_error
+from .context import checkpoint, log_debug, log_info, log_warning, log_error
 from .future import Future
 from .agent import Agent
 
@@ -8,6 +8,7 @@ __all__ = [
     "task",
     "stub",
     "sensor",
+    "checkpoint",
     "log_debug",
     "log_info",
     "log_warning",
