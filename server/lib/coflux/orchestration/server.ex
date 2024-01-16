@@ -771,12 +771,30 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp rerun_step(state, step, execute_after \\ nil) do
+    # TODO: only get run if needed for notify?
+    {:ok, run} = Store.get_run_by_id(state.db, step.run_id)
+
     case Store.rerun_step(state.db, step.id, execute_after) do
       {:ok, execution_id, sequence, created_at} ->
         notify_listeners(
           state,
           {:run, step.run_id},
           {:execution, execution_id, step.external_id, sequence, created_at, execute_after}
+        )
+
+        execute_at = execute_after || created_at
+
+        notify_listeners(
+          state,
+          :repositories,
+          {:scheduled, step.repository, execution_id, execute_at}
+        )
+
+        notify_listeners(
+          state,
+          {:repository, step.repository},
+          {:scheduled, execution_id, step.target, run.external_id, step.external_id, sequence,
+           execute_after, created_at}
         )
 
         send(self(), :execute)
