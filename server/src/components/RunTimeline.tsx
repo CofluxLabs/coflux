@@ -32,7 +32,7 @@ function loadStepTimes(run: models.Run): { [key: string]: DateTime } {
       ...times,
       [stepId]: DateTime.fromMillis(run.steps[stepId].createdAt),
     }),
-    {}
+    {},
   );
 }
 
@@ -78,7 +78,7 @@ function classNameForResult(result: models.Result | null) {
 
 function isRunning(run: models.Run) {
   return Object.values(run.steps).some((step) =>
-    Object.values(step.executions).some((a) => !a.result)
+    Object.values(step.executions).some((a) => !a.result),
   );
 }
 
@@ -99,9 +99,7 @@ export default function RunTimeline({ runId, run }: Props) {
       .filter((t): t is DateTime => t !== null),
   ];
   const earliestTime = DateTime.min(...times);
-  const latestTime = running
-    ? DateTime.fromJSDate(now)
-    : DateTime.max(...times);
+  const latestTime = running ? now : DateTime.max(...times);
   const elapsedDiff = latestTime.diff(earliestTime, [
     "days",
     "hours",
@@ -112,7 +110,7 @@ export default function RunTimeline({ runId, run }: Props) {
   const totalMillis = elapsedDiff.toMillis();
   const stepIds = sortBy(
     Object.keys(run.steps).filter((id) => !run.steps[id].cachedExecutionId),
-    (id) => run.steps[id].createdAt
+    (id) => run.steps[id].createdAt,
   );
   return (
     <div className="px-4">
@@ -125,7 +123,7 @@ export default function RunTimeline({ runId, run }: Props) {
           <div>
             <span
               title={latestTime.toLocaleString(
-                DateTime.DATETIME_FULL_WITH_SECONDS
+                DateTime.DATETIME_FULL_WITH_SECONDS,
               )}
             >
               +{formatDiff(elapsedDiff)}

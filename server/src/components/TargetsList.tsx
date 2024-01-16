@@ -75,7 +75,7 @@ export default function TargetsList({
       {Object.entries(repositories).map(
         ([repository, { targets, executing, nextDueAt, scheduled }]) => {
           const nextDueDiff = nextDueAt
-            ? DateTime.fromMillis(nextDueAt).diff(DateTime.fromJSDate(now), [
+            ? DateTime.fromMillis(nextDueAt).diff(now, [
                 "days",
                 "hours",
                 "minutes",

@@ -153,7 +153,16 @@ function Attempt({
         </p>
         {assignedAt && completedAt ? (
           <p>
-            Duration: {completedAt.diff(assignedAt).toMillis()}ms{" "}
+            Duration:{" "}
+            {formatDiff(
+              completedAt.diff(assignedAt, [
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+              ]),
+            )}{" "}
             <span className="text-slate-500 text-sm">
               (+
               {formatDiff(

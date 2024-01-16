@@ -1,11 +1,45 @@
 import { useParams, useSearchParams } from "react-router-dom";
 import { useTopic } from "@topical/react";
+import { IconBox } from "@tabler/icons-react";
+import { DateTime } from "luxon";
 
 import * as models from "../models";
 import { useTitlePart } from "../components/TitleContext";
 import Loading from "../components/Loading";
-import { IconBox } from "@tabler/icons-react";
 import RepositoryQueue from "../components/RepositoryQueue";
+import useNow from "../hooks/useNow";
+
+function splitExecutions(
+  executions: Record<string, models.QueuedExecution>,
+  now: DateTime,
+) {
+  return Object.entries(executions).reduce(
+    ([executing, overdue, scheduled], [executionId, execution]) => {
+      if (execution.assignedAt) {
+        return [{ ...executing, [executionId]: execution }, overdue, scheduled];
+      } else {
+        const executeAt = DateTime.fromMillis(
+          execution.executeAfter || execution.createdAt,
+        );
+        const dueDiff = executeAt.diff(now);
+        if (dueDiff.toMillis() < 0) {
+          return [
+            executing,
+            { ...overdue, [executionId]: execution },
+            scheduled,
+          ];
+        } else {
+          return [
+            executing,
+            overdue,
+            { ...scheduled, [executionId]: execution },
+          ];
+        }
+      }
+    },
+    [{}, {}, {}],
+  );
+}
 
 export default function RepositoryPage() {
   const { project: projectId, repository: repositoryName } = useParams();
@@ -20,11 +54,13 @@ export default function RepositoryPage() {
     repositoryName,
   );
   useTitlePart(repositoryName);
+  const now = useNow(500);
   if (!executions) {
     return <Loading />;
   } else {
+    const [executing, overdue, scheduled] = splitExecutions(executions, now);
     return (
-      <div className="p-4">
+      <div className="flex-1 p-4 flex flex-col min-h-0">
         <div className="flex">
           <h1 className="flex items-center">
             <IconBox
@@ -37,11 +73,32 @@ export default function RepositoryPage() {
             </span>
           </h1>
         </div>
-        <RepositoryQueue
-          projectId={projectId!}
-          environmentName={environmentName!}
-          executions={executions}
-        />
+        <div className="flex-1 flex gap-2">
+          <RepositoryQueue
+            projectId={projectId!}
+            environmentName={environmentName!}
+            title="Executing"
+            executions={executing}
+            now={now}
+            emptyText="No executions running"
+          />
+          <RepositoryQueue
+            projectId={projectId!}
+            environmentName={environmentName!}
+            title="Due"
+            executions={overdue}
+            now={now}
+            emptyText="No executions due"
+          />
+          <RepositoryQueue
+            projectId={projectId!}
+            environmentName={environmentName!}
+            title="Scheduled"
+            executions={scheduled}
+            now={now}
+            emptyText="No executions scheduled"
+          />
+        </div>
       </div>
     );
   }
