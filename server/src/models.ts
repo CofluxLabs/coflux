@@ -10,7 +10,7 @@ export type Parameter = {
 };
 
 export type Target = {
-  type: "task" | "step" | "sensor";
+  type: "workflow" | "task" | "sensor";
   repository: string;
   target: string;
   parameters: Parameter[];

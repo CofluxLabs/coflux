@@ -10,7 +10,7 @@ P = t.ParamSpec("P")
 
 
 def _decorate(
-    type: t.Literal["step", "task", None] = None,
+    type: t.Literal["workflow", "task", None] = None,
     *,
     repository: str | None = None,
     name: str | None = None,
@@ -62,26 +62,6 @@ def _decorate(
     return decorator
 
 
-def step(
-    *,
-    name: str | None = None,
-    cache: bool | t.Callable[P, str] = False,
-    cache_namespace: str | None = None,
-    retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    deduplicate: bool | t.Callable[P, str] = False,
-    delay: int = 0,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
-    return _decorate(
-        "step",
-        name=name,
-        cache=cache,
-        cache_namespace=cache_namespace,
-        retries=retries,
-        deduplicate=deduplicate,
-        delay=delay,
-    )
-
-
 def task(
     *,
     name: str | None = None,
@@ -93,6 +73,26 @@ def task(
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     return _decorate(
         "task",
+        name=name,
+        cache=cache,
+        cache_namespace=cache_namespace,
+        retries=retries,
+        deduplicate=deduplicate,
+        delay=delay,
+    )
+
+
+def workflow(
+    *,
+    name: str | None = None,
+    cache: bool | t.Callable[P, str] = False,
+    cache_namespace: str | None = None,
+    retries: int | tuple[int, int] | tuple[int, int, int] = 0,
+    deduplicate: bool | t.Callable[P, str] = False,
+    delay: int = 0,
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
+    return _decorate(
+        "workflow",
         name=name,
         cache=cache,
         cache_namespace=cache_namespace,

@@ -1,10 +1,10 @@
-from .annotations import step, task, stub, sensor
+from .annotations import workflow, task, stub, sensor
 from .context import checkpoint, log_debug, log_info, log_warning, log_error
 from .future import Future
 from .agent import Agent
 
 __all__ = [
-    "step",
+    "workflow",
     "task",
     "stub",
     "sensor",

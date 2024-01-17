@@ -87,7 +87,7 @@ defmodule Coflux.Topics.Repositories do
 
   defp filter_targets(targets) do
     Map.filter(targets, fn {_, target} ->
-      target.type in [:task, :sensor]
+      target.type in [:workflow, :sensor]
     end)
   end
 

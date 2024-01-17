@@ -252,8 +252,8 @@ defmodule Coflux.Handlers.Agent do
 
   defp parse_type(type) do
     case type do
+      "workflow" -> :workflow
       "task" -> :task
-      "step" -> :step
       "sensor" -> :sensor
     end
   end

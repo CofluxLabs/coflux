@@ -176,7 +176,7 @@ defmodule Coflux.Orchestration.Server do
     result =
       case Keyword.get(opts, :parent_id) do
         nil ->
-          if target.type in [:task, :sensor] do
+          if target.type in [:workflow, :sensor] do
             start_run(state, repository, target_name, arguments, opts)
           else
             {:error, :invalid_target}
@@ -186,7 +186,7 @@ defmodule Coflux.Orchestration.Server do
           {:ok, step} = Store.get_step_for_execution(state.db, parent_id)
 
           case target.type do
-            :task ->
+            :workflow ->
               start_run(
                 state,
                 repository,
@@ -196,7 +196,7 @@ defmodule Coflux.Orchestration.Server do
                 {step.run_id, parent_id}
               )
 
-            :step ->
+            :task ->
               schedule_step(
                 state,
                 step.run_id,
@@ -442,7 +442,7 @@ defmodule Coflux.Orchestration.Server do
   def handle_call({:subscribe_target, repository, target_name, pid}, _from, state) do
     target = get_target(state.db, repository, target_name)
 
-    if target && target.type in [:task, :sensor] do
+    if target && target.type in [:workflow, :sensor] do
       {:ok, runs} = Store.get_target_runs(state.db, repository, target_name)
       {:ok, ref, state} = add_listener(state, {:target, repository, target_name}, pid)
       {:reply, {:ok, target, runs, ref}, state}

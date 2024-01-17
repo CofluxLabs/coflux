@@ -144,10 +144,10 @@ export default function ProjectLayout() {
             <CodeBlock code={`coflux agent.run ${packageName}.repo --reload`} />
           </li>
           <li className="my-4">
-            Edit <code>{`${packageName}/repo.py`}</code> to add a task to your
-            repository:
+            Edit <code>{`${packageName}/repo.py`}</code> to add a workflow to
+            your repository:
             <CodeBlock
-              code={`import coflux\n\n@coflux.task()\ndef hello(name: str):\n    coflux.context.log_info(f"Hello, {name}")\n    return 42`}
+              code={`import coflux\n\n@coflux.workflow()\ndef hello(name: str):\n    coflux.context.log_info(f"Hello, {name}")\n    return 42`}
             />
           </li>
         </ol>

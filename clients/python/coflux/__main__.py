@@ -257,7 +257,7 @@ def agent_run(
         _init(*args, **kwargs)
 
 
-@cli.command("task.run")
+@cli.command("workflow.run")
 @click.option(
     "-p",
     "--project",
@@ -276,7 +276,7 @@ def agent_run(
 @click.argument("repository")
 @click.argument("target")
 @click.argument("argument", nargs=-1)
-def task_run(
+def workflow_run(
     project: str,
     environment: str,
     host: str,
@@ -285,7 +285,7 @@ def task_run(
     argument: tuple[str],
 ) -> None:
     """
-    Schedule a task run.
+    Schedule a workflow run.
     """
     project_ = _get_project(project)
     environment_ = _get_environment(environment)

@@ -62,8 +62,8 @@ defmodule Coflux.Orchestration.Store do
         Enum.map(targets, fn {name, data} ->
           type =
             case data.type do
-              :task -> 0
-              :step -> 1
+              :workflow -> 0
+              :task -> 1
               :sensor -> 2
             end
 
@@ -511,8 +511,8 @@ defmodule Coflux.Orchestration.Store do
 
            type =
              case type do
-               0 -> :task
-               1 -> :step
+               0 -> :workflow
+               1 -> :task
                2 -> :sensor
              end
 

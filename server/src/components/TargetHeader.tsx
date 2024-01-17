@@ -33,7 +33,7 @@ function CancelButton({ onCancel }: CancelButtonProps) {
 
 function iconForTarget(target: models.Target) {
   switch (target.type) {
-    case "task":
+    case "workflow":
       return IconSubtask;
     case "sensor":
       return IconCpu;
