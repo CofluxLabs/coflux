@@ -85,25 +85,6 @@ function Result({ runId, run, result }: ResultProps) {
   }
 }
 
-type DependencyProps = {
-  dependency: models.Reference;
-};
-
-function Dependency({ dependency }: DependencyProps) {
-  return (
-    <StepLink
-      runId={dependency.runId}
-      stepId={dependency.stepId}
-      attemptNumber={dependency.sequence}
-      className="rounded text-sm ring-offset-1 px-1"
-      hoveredClassName="ring-2 ring-slate-300"
-    >
-      <span className="font-mono">{dependency.target}</span>{" "}
-      <span className="text-slate-500">({dependency.repository})</span>
-    </StepLink>
-  );
-}
-
 type AttemptProps = {
   attempt: models.Execution;
   executionId: string;
@@ -192,7 +173,18 @@ function Attempt({
               ([dependencyId, dependency]) => {
                 return (
                   <li key={dependencyId}>
-                    <Dependency dependency={dependency} />
+                    <StepLink
+                      runId={dependency.runId}
+                      stepId={dependency.stepId}
+                      attemptNumber={dependency.sequence}
+                      className="rounded text-sm ring-offset-1 px-1"
+                      hoveredClassName="ring-2 ring-slate-300"
+                    >
+                      <span className="font-mono">{dependency.target}</span>{" "}
+                      <span className="text-slate-500">
+                        ({dependency.repository})
+                      </span>
+                    </StepLink>
                   </li>
                 );
               },
@@ -202,6 +194,54 @@ function Attempt({
           <p>None</p>
         )}
       </div>
+      <div>
+        <h3 className="uppercase text-sm font-bold text-slate-400">Children</h3>
+        {attempt.children.length ? (
+          <ul className="">
+            {attempt.children.map((child) => {
+              if (typeof child == "string") {
+                const step = run.steps[child];
+                return (
+                  <li key={child}>
+                    <StepLink
+                      runId={runId}
+                      stepId={child}
+                      attemptNumber={1}
+                      className="rounded text-sm ring-offset-1 px-1"
+                      hoveredClassName="ring-2 ring-slate-300"
+                    >
+                      <span className="font-mono">{step.target}</span>{" "}
+                      <span className="text-slate-500">
+                        ({step.repository})
+                      </span>
+                    </StepLink>
+                  </li>
+                );
+              } else {
+                return (
+                  <li key={child.stepId}>
+                    <StepLink
+                      runId={child.runId}
+                      stepId={child.stepId}
+                      attemptNumber={1}
+                      className="rounded text-sm ring-offset-1 px-1"
+                      hoveredClassName="ring-2 ring-slate-300"
+                    >
+                      <span className="font-mono">{child.target}</span>{" "}
+                      <span className="text-slate-500">
+                        ({child.repository})
+                      </span>
+                    </StepLink>
+                  </li>
+                );
+              }
+            })}
+          </ul>
+        ) : (
+          <p>None</p>
+        )}
+      </div>
+
       {attempt.result?.type == "duplicated" ? (
         <div>
           <h3 className="uppercase text-sm font-bold text-slate-400">

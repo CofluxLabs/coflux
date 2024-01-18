@@ -64,6 +64,7 @@ export type Argument =
     };
 
 export type Child = Pick<Target, "repository" | "target"> & {
+  runId: string;
   stepId: string;
   createdAt: number;
   executionId: string | null;
@@ -96,14 +97,14 @@ export type Execution = {
   completedAt: number | null;
   dependencies: Record<string, Reference>;
   result: Result | null;
-  children: Record<string, Child>;
+  children: (string | Child)[];
   retry: Reference | null;
 };
 
 export type Step = {
   repository: string;
   target: string;
-  parentId: string | null;
+  type: 0 | 1;
   createdAt: number;
   executions: Record<string, Execution>;
   arguments: Argument[];

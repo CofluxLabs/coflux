@@ -131,7 +131,7 @@ export default function RunLayout() {
     : undefined;
   const environmentName = searchParams.get("environment") || undefined;
   const run = useRunTopic(projectId, environmentName, runId);
-  const initialStep = run && Object.values(run.steps).find((j) => !j.parentId);
+  const initialStep = run && Object.values(run.steps).find((s) => s.type == 0);
   const target = useTargetTopic(
     projectId,
     environmentName,

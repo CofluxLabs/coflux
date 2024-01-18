@@ -52,7 +52,7 @@ CREATE TABLE steps (
   id INTEGER PRIMARY KEY,
   external_id TEXT NOT NULL UNIQUE,
   run_id INTEGER NOT NULL,
-  parent_id INTEGER,
+  type INTEGER NOT NULL,
   repository TEXT NOT NULL,
   target TEXT NOT NULL,
   priority INTEGER NOT NULL, -- TODO: move to executions?
@@ -62,12 +62,10 @@ CREATE TABLE steps (
   retry_delay_min INTEGER NOT NULL,
   retry_delay_max INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE,
-  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE
 );
 
-CREATE INDEX steps_repository_target ON steps (repository, target) WHERE parent_id IS NULL;
-CREATE UNIQUE INDEX steps_initial_step ON steps (run_id) WHERE parent_id IS NULL;
+CREATE UNIQUE INDEX steps_initial_step ON steps (run_id) WHERE type = 0;
 CREATE INDEX steps_cache_key ON steps (cache_key);
 
 CREATE TABLE arguments (
@@ -101,6 +99,16 @@ CREATE TABLE cached_executions (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+);
+
+-- TODO: add 'type' (e.g., 'regular', cached, memoised)
+CREATE TABLE children (
+  parent_id INTEGER NOT NULL,
+  child_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (parent_id, child_id),
+  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (child_id) REFERENCES executions ON DELETE CASCADE
 );
 
 CREATE TABLE assignments (

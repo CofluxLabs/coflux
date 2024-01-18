@@ -25,7 +25,7 @@ function classForLevel(level: models.LogMessageLevel) {
 function iconForLevel(
   level: models.LogMessageLevel,
   className: string,
-  size = 16
+  size = 16,
 ) {
   switch (level) {
     case 2:
@@ -124,7 +124,7 @@ export default function RunLogs({
                               "border-b  mt-1 block",
                               darkerTimestampRule
                                 ? "border-slate-200"
-                                : "border-slate-100"
+                                : "border-slate-100",
                             )}
                           />
                         </span>

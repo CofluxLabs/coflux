@@ -19,7 +19,7 @@ defmodule Coflux.Orchestration.Store.Models do
       :id,
       :external_id,
       :run_id,
-      :parent_id,
+      :type,
       :repository,
       :target,
       :priority,

@@ -465,7 +465,7 @@ defmodule Coflux.Orchestration.Server do
         {:ok, steps} = Store.get_run_steps(state.db, run.id)
 
         steps =
-          Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, created_at,
+          Map.new(steps, fn {step_id, step_external_id, type, repository, target, created_at,
                              cached_execution_id} ->
             # TODO: skip if cached
             {:ok, executions} = Store.get_step_executions(state.db, step_id)
@@ -475,7 +475,7 @@ defmodule Coflux.Orchestration.Server do
              %{
                repository: repository,
                target: target,
-               parent_id: parent_id,
+               type: type,
                created_at: created_at,
                cached_execution_id: cached_execution_id,
                arguments: arguments,
@@ -499,12 +499,12 @@ defmodule Coflux.Orchestration.Server do
                          {nil, nil, nil}
                      end
 
+                   {:ok, children} = Store.get_execution_children(state.db, execution_id)
+
                    retry =
                      if retry_id do
                        resolve_execution(state.db, retry_id)
                      end
-
-                   {:ok, children} = Store.get_runs_by_parent(state.db, execution_id)
 
                    {execution_id,
                     %{
@@ -872,7 +872,7 @@ defmodule Coflux.Orchestration.Server do
           {nil, state}
         end
       else
-        if is_nil(step.parent_id) do
+        if step.type == 0 do
           {:ok, run} = Store.get_run_by_id(state.db, step.run_id)
 
           if run.recurrent do
@@ -1004,13 +1004,13 @@ defmodule Coflux.Orchestration.Server do
       {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, sequence,
        created_at, is_cached} ->
         if parent do
-          {run_id, parent_id} = parent
+          {parent_run_id, parent_id} = parent
 
           notify_listeners(
             state,
-            {:run, run_id},
-            {:child, parent_id, external_run_id, created_at, repository, target_name,
-             execution_id}
+            {:run, parent_run_id},
+            {:child, parent_id, external_run_id, external_step_id, execution_id, repository,
+             target_name, created_at}
           )
         end
 
@@ -1060,11 +1060,19 @@ defmodule Coflux.Orchestration.Server do
       {:ok, _step_id, external_step_id, execution_id, sequence, created_at, is_cached} ->
         cached_execution_id = if is_cached, do: execution_id
 
+        # TODO: batch notifications?
         notify_listeners(
           state,
           {:run, run_id},
-          {:step, external_step_id, parent_id, repository, target_name, created_at, arguments,
+          {:step, external_step_id, repository, target_name, created_at, arguments,
            cached_execution_id}
+        )
+
+        notify_listeners(
+          state,
+          {:run, run_id},
+          {:child, parent_id, run.external_id, external_step_id, execution_id, repository,
+           target_name, created_at}
         )
 
         unless is_cached do

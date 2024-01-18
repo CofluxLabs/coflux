@@ -30,7 +30,7 @@ export default function RunsPage() {
                   <td>
                     <span className="text-sm text-slate-400">
                       {createdAt.toLocaleString(
-                        DateTime.DATETIME_SHORT_WITH_SECONDS
+                        DateTime.DATETIME_SHORT_WITH_SECONDS,
                       )}
                     </span>
                   </td>
@@ -48,7 +48,7 @@ export default function RunsPage() {
                   </td>
                 </tr>
               );
-            }
+            },
           )}
         </tbody>
       </table>

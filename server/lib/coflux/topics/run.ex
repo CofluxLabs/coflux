@@ -30,15 +30,14 @@ defmodule Coflux.Topics.Run do
 
   def handle_info(
         {:topic, _ref,
-         {:step, step_id, parent_id, repository, target, created_at, arguments,
-          cached_execution_id}},
+         {:step, step_id, repository, target, created_at, arguments, cached_execution_id}},
         topic
       ) do
     topic =
       Topic.set(topic, [:steps, step_id], %{
         repository: repository,
         target: target,
-        parentId: if(parent_id, do: Integer.to_string(parent_id)),
+        type: 1,
         createdAt: created_at,
         cachedExecutionId: if(cached_execution_id, do: Integer.to_string(cached_execution_id)),
         arguments: Enum.map(arguments, &build_argument/1),
@@ -63,7 +62,7 @@ defmodule Coflux.Topics.Run do
           assignedAt: nil,
           completedAt: nil,
           dependencies: %{},
-          children: %{},
+          children: [],
           result: nil,
           retry: nil
         }
@@ -115,21 +114,37 @@ defmodule Coflux.Topics.Run do
 
   def handle_info(
         {:topic, _ref,
-         {:child, parent_id, external_run_id, created_at, repository, target, execution_id}},
+         {:child, parent_id, external_run_id, external_step_id, execution_id, repository, target,
+          created_at}},
         topic
       ) do
-    step_id = find_step_id_for_execution(topic, parent_id)
+    parent_step_id = find_step_id_for_execution(topic, parent_id)
 
-    topic =
-      Topic.set(
-        topic,
-        [:steps, step_id, :executions, Integer.to_string(parent_id), :children, external_run_id],
+    value =
+      if external_run_id == topic.state.external_run_id do
+        external_step_id
+      else
         %{
-          createdAt: created_at,
+          runId: external_run_id,
+          stepId: external_step_id,
+          executionId: execution_id,
           repository: repository,
           target: target,
-          executionId: if(execution_id, do: Integer.to_string(execution_id))
+          createdAt: created_at
         }
+      end
+
+    topic =
+      Topic.insert(
+        topic,
+        [
+          :steps,
+          parent_step_id,
+          :executions,
+          Integer.to_string(parent_id),
+          :children
+        ],
+        value
       )
 
     {:ok, topic}
@@ -195,7 +210,7 @@ defmodule Coflux.Topics.Run do
            %{
              repository: step.repository,
              target: step.target,
-             parentId: if(step.parent_id, do: Integer.to_string(step.parent_id)),
+             type: step.type,
              createdAt: step.created_at,
              cachedExecutionId:
                if(step.cached_execution_id, do: Integer.to_string(step.cached_execution_id)),
@@ -215,19 +230,22 @@ defmodule Coflux.Topics.Run do
                          {Integer.to_string(dependency_id), build_execution(dependency)}
                        end),
                      children:
-                       Map.new(
+                       Enum.map(
                          execution.children,
-                         fn {external_run_id, created_at, external_step_id, repository, target,
-                             execution_id, sequence} ->
-                           {external_run_id,
-                            %{
-                              createdAt: created_at,
-                              repository: repository,
-                              target: target,
-                              stepId: external_step_id,
-                              executionId: if(execution_id, do: Integer.to_string(execution_id)),
-                              sequence: sequence
-                            }}
+                         fn {external_run_id, external_step_id, execution_id, repository, target,
+                             created_at} ->
+                           if external_run_id == run.external_id do
+                             external_step_id
+                           else
+                             %{
+                               runId: external_run_id,
+                               stepId: external_step_id,
+                               executionId: execution_id,
+                               repository: repository,
+                               target: target,
+                               createdAt: created_at
+                             }
+                           end
                          end
                        ),
                      result: build_result(execution.result),

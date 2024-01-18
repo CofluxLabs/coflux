@@ -132,7 +132,7 @@ defmodule Coflux.Orchestration.Store do
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
       {:ok, step_id, external_step_id, execution_id, sequence, now, is_cached} =
-        do_schedule_step(db, run_id, nil, repository, target, arguments, now, opts)
+        do_schedule_step(db, run_id, parent_id, repository, target, arguments, true, now, opts)
 
       {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, sequence, now,
        is_cached}
@@ -144,19 +144,19 @@ defmodule Coflux.Orchestration.Store do
       db,
       """
       SELECT
-        s.id,
-        s.external_id,
-        s.run_id,
-        s.parent_id,
-        s.repository,
-        s.target,
-        s.priority,
-        s.cache_key,
-        s.retry_count,
-        s.retry_delay_min,
-        s.retry_delay_max,
-        s.created_at
-      FROM steps as s
+        id,
+        external_id,
+        run_id,
+        type,
+        repository,
+        target,
+        priority,
+        cache_key,
+        retry_count,
+        retry_delay_min,
+        retry_delay_max,
+        created_at
+      FROM steps
       WHERE external_id = ?1
       """,
       {external_id},
@@ -172,7 +172,7 @@ defmodule Coflux.Orchestration.Store do
         s.id,
         s.external_id,
         s.run_id,
-        s.parent_id,
+        s.type,
         s.repository,
         s.target,
         s.priority,
@@ -194,11 +194,21 @@ defmodule Coflux.Orchestration.Store do
     now = current_timestamp()
 
     with_transaction(db, fn ->
-      do_schedule_step(db, run_id, parent_id, repository, target, arguments, now, opts)
+      do_schedule_step(db, run_id, parent_id, repository, target, arguments, false, now, opts)
     end)
   end
 
-  defp do_schedule_step(db, run_id, parent_id, repository, target, arguments, now, opts) do
+  defp do_schedule_step(
+         db,
+         run_id,
+         parent_id,
+         repository,
+         target,
+         arguments,
+         is_initial,
+         now,
+         opts
+       ) do
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
     cache_key = Keyword.get(opts, :cache_key)
@@ -220,7 +230,7 @@ defmodule Coflux.Orchestration.Store do
       insert_step(
         db,
         run_id,
-        parent_id,
+        if(is_initial, do: 0, else: 1),
         repository,
         target,
         priority,
@@ -244,6 +254,10 @@ defmodule Coflux.Orchestration.Store do
         {:ok, _} = insert_step_execution(db, step_id, sequence, execution_id)
         {execution_id, sequence, false}
       end
+
+    if parent_id do
+      {:ok, _} = insert_child(db, parent_id, execution_id, now)
+    end
 
     {:ok, step_id, external_step_id, execution_id, sequence, now, is_cached}
   end
@@ -527,7 +541,7 @@ defmodule Coflux.Orchestration.Store do
       INNER JOIN steps AS s ON s.run_id = r.id
       WHERE s.repository = ?1
         AND s.target = ?2
-        AND s.parent_id IS NULL
+        AND s.type = 0
       ORDER BY r.created_at DESC
       LIMIT ?3
       """,
@@ -569,7 +583,7 @@ defmodule Coflux.Orchestration.Store do
       SELECT r.external_id, s1.external_id, se.sequence, s2.repository, s2.target
       FROM step_executions AS se
       INNER JOIN steps AS s1 ON s1.id = se.step_id
-      INNER JOIN steps AS s2 ON s2.run_id = s1.run_id AND s2.parent_id IS NULL
+      INNER JOIN steps AS s2 ON s2.run_id = s1.run_id AND s2.type = 0
       INNER JOIN runs AS r ON r.id = s1.run_id
       WHERE se.execution_id = ?1
       """,
@@ -591,25 +605,11 @@ defmodule Coflux.Orchestration.Store do
     )
   end
 
-  def get_runs_by_parent(db, execution_id) do
-    query(
-      db,
-      """
-      SELECT r.external_id, r.created_at, s.external_id, s.repository, s.target, se.execution_id, se.sequence
-      FROM runs AS r
-      INNER JOIN steps AS s ON s.run_id = r.id AND s.parent_id IS NULL
-      LEFT JOIN step_executions AS se ON se.step_id = s.id AND se.sequence = 1
-      WHERE r.parent_id = ?1
-      """,
-      {execution_id}
-    )
-  end
-
   def get_run_steps(db, run_id) do
     query(
       db,
       """
-      SELECT s.id, s.external_id, s.parent_id, s.repository, s.target, s.created_at, ce.execution_id
+      SELECT s.id, s.external_id, s.type, s.repository, s.target, s.created_at, ce.execution_id
       FROM steps AS s
       LEFT JOIN cached_executions AS ce ON ce.step_id = s.id
       WHERE s.run_id = ?1
@@ -646,6 +646,21 @@ defmodule Coflux.Orchestration.Store do
       {:ok, rows} ->
         {:ok, build_arguments(rows)}
     end
+  end
+
+  def get_execution_children(db, execution_id) do
+    query(
+      db,
+      """
+      SELECT r.external_id, s.external_id, c.child_id, s.repository, s.target, c.created_at
+      FROM children AS c
+      INNER JOIN step_executions AS se ON se.execution_id = c.child_id
+      INNER JOIN steps AS s ON s.id = se.step_id
+      INNER JOIN runs AS r ON r.id = s.run_id
+      WHERE c.parent_id = ?1
+      """,
+      {execution_id}
+    )
   end
 
   def get_execution_dependencies(db, execution_id) do
@@ -702,7 +717,7 @@ defmodule Coflux.Orchestration.Store do
   defp insert_step(
          db,
          run_id,
-         parent_id,
+         type,
          repository,
          target,
          priority,
@@ -720,7 +735,7 @@ defmodule Coflux.Orchestration.Store do
                :steps,
                external_id: external_id,
                run_id: run_id,
-               parent_id: parent_id,
+               type: type,
                repository: repository,
                target: target,
                priority: priority,
@@ -812,6 +827,16 @@ defmodule Coflux.Orchestration.Store do
       :cached_executions,
       step_id: step_id,
       execution_id: cached_execution_id,
+      created_at: created_at
+    )
+  end
+
+  defp insert_child(db, parent_id, child_id, created_at) do
+    insert_one(
+      db,
+      :children,
+      parent_id: parent_id,
+      child_id: child_id,
       created_at: created_at
     )
   end
