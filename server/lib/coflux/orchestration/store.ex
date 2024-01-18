@@ -39,12 +39,6 @@ defmodule Coflux.Orchestration.Store do
     end
   end
 
-  defp hash_targets(targets) do
-    targets
-    |> Enum.sort_by(fn {name, _} -> name end)
-    |> :erlang.phash2()
-  end
-
   defp insert_manifest(db, repository, targets, targets_hash) do
     {:ok, manifest_id} =
       insert_one(
@@ -91,7 +85,8 @@ defmodule Coflux.Orchestration.Store do
   end
 
   def get_or_create_manifest(db, repository, targets) do
-    targets_hash = hash_targets(targets)
+    targets = Enum.sort_by(targets, fn {name, _} -> name end)
+    targets_hash = :erlang.phash2(targets)
 
     with_transaction(db, fn ->
       case query_one(
@@ -957,9 +952,7 @@ defmodule Coflux.Orchestration.Store do
           Enum.reduce_while(values, {:ok, []}, fn row, {:ok, ids} ->
             :ok = Sqlite3.bind(db, statement, Tuple.to_list(row))
 
-            result = Sqlite3.step(db, statement)
-
-            case result do
+            case Sqlite3.step(db, statement) do
               :done ->
                 {:ok, id} = Sqlite3.last_insert_rowid(db)
                 {:cont, {:ok, ids ++ [id]}}
