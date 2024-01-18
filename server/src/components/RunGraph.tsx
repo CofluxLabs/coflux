@@ -25,7 +25,7 @@ type Node =
       type: "step";
       step: models.Step;
       stepId: string;
-      attemptNumber: number | undefined;
+      attemptNumber: number;
     }
   | {
       type: "parent";
@@ -48,9 +48,10 @@ function chooseStepAttempts(
     const process = (stepId: string) => {
       Object.keys(run.steps).forEach((sId) => {
         if (!(sId in stepAttempts)) {
-          Object.values(run.steps[sId].executions).forEach((e) => {
-            if (e.children.includes(stepId)) {
-              stepAttempts[sId] = e.sequence;
+          Object.entries(run.steps[sId].attempts).forEach(([sequence, a]) => {
+            if (a.children.includes(stepId)) {
+              // TODO: keep as string?
+              stepAttempts[sId] = parseInt(sequence, 10);
               process(sId);
             }
           });
@@ -62,22 +63,28 @@ function chooseStepAttempts(
   return stepAttempts;
 }
 
+function stepAttemptNumber(
+  run: models.Run,
+  stepAttempts: Record<string, number | undefined>,
+  stepId: string,
+) {
+  const step = run.steps[stepId];
+  return (
+    stepAttempts[stepId] ||
+    max(Object.keys(step.attempts).map((s) => parseInt(s, 10)))
+  );
+}
+
 function traverseRun(
   run: models.Run,
   stepAttempts: Record<string, number | undefined>,
   stepId: string,
-  callback: (stepId: string, executionId: string | undefined) => void,
+  callback: (stepId: string, attemptNumber: number) => void,
 ) {
-  const step = run.steps[stepId];
-  const attemptNumber =
-    stepAttempts[stepId] ||
-    max(Object.values(step.executions).map((e) => e.sequence));
-  const executionId = Object.keys(step.executions).find(
-    (id) => step.executions[id].sequence == attemptNumber,
-  );
-  callback(stepId, executionId);
-  if (executionId) {
-    const execution = step.executions[executionId];
+  const attemptNumber = stepAttemptNumber(run, stepAttempts, stepId);
+  if (attemptNumber) {
+    callback(stepId, attemptNumber);
+    const execution = run.steps[stepId].attempts[attemptNumber];
     execution.children.forEach((child) => {
       if (typeof child == "string") {
         traverseRun(run, stepAttempts, child, callback);
@@ -123,44 +130,53 @@ function buildGraph(
     run,
     stepAttempts,
     initialStepId,
-    (stepId: string, executionId: string | undefined) => {
+    (stepId: string, attemptNumber: number) => {
       const step = run.steps[stepId];
-      const execution = executionId ? step.executions[executionId] : undefined;
+      const attempt = step.attempts[attemptNumber];
       g.setNode(stepId, {
         width: 160,
         height: 50,
         type: "step",
         step,
         stepId,
-        attemptNumber: execution?.sequence,
+        attemptNumber,
       });
-      if (execution) {
-        Object.entries(execution.dependencies).forEach(
-          ([dependencyId, dependency]) => {
-            if (dependency.runId == runId) {
-              if (
-                !execution.children.some(
-                  (c) =>
-                    typeof c == "string" &&
-                    run.steps[c].cachedExecutionId == dependencyId,
-                )
-              ) {
-                g.setEdge(dependency.stepId, stepId, { type: "dependency" });
-              }
-            } else {
-              // TODO: connect to node for (child/parent) run? (if it exists?)
+      Object.entries(attempt.dependencies).forEach(
+        ([dependencyId, dependency]) => {
+          if (dependency.runId == runId) {
+            if (
+              !attempt.children.some(
+                (c) =>
+                  typeof c == "string" &&
+                  Object.values(run.steps[c].attempts).some(
+                    (a) => a.type == 1 && a.executionId == dependencyId,
+                  ),
+              )
+            ) {
+              g.setEdge(dependency.stepId, stepId, { type: "dependency" });
             }
-          },
-        );
-        execution.children.forEach((child) => {
-          if (typeof child == "string") {
-            const childStep = run.steps[child];
-            const cachedExecutionId = childStep.cachedExecutionId;
-            if (cachedExecutionId) {
-              const cachedStepId = Object.keys(run.steps).find(
-                (sId) => cachedExecutionId in run.steps[sId].executions,
+          } else {
+            // TODO: connect to node for (child/parent) run? (if it exists?)
+          }
+        },
+      );
+      attempt.children.forEach((child) => {
+        if (typeof child == "string") {
+          const childAttemptNumber = stepAttemptNumber(
+            run,
+            stepAttempts,
+            child,
+          );
+          if (childAttemptNumber) {
+            const childAttempt = run.steps[child].attempts[childAttemptNumber];
+            if (childAttempt.type == 1) {
+              const cachedExecutionId = childAttempt.executionId;
+              const cachedStepId = Object.keys(run.steps).find((sId) =>
+                Object.values(run.steps[sId].attempts).some(
+                  (a) => a.type == 0 && a.executionId == cachedExecutionId,
+                ),
               );
-              if (cachedExecutionId in execution.dependencies) {
+              if (cachedExecutionId in attempt.dependencies) {
                 g.setEdge(child, stepId, { type: "dependency" });
                 if (cachedStepId) {
                   g.setEdge(cachedStepId, child, { type: "transitive" });
@@ -172,31 +188,30 @@ function buildGraph(
                 }
               }
             } else if (
-              !Object.values(execution.dependencies).some(
+              !Object.values(attempt.dependencies).some(
                 (d) => d.stepId == child,
               )
             ) {
-              g.setEdge(stepId, child, { type: "child", weight: 2 });
+              g.setEdge(stepId, child, { type: "child" });
             }
           } else {
-            g.setNode(child.runId, {
-              width: 160,
-              height: 50,
-              type: "child",
-              child,
-              runId: child.runId,
-            });
-            if (
-              child.executionId &&
-              child.executionId in execution.dependencies
-            ) {
-              g.setEdge(child.runId, stepId, { type: "dependency", weight: 2 });
-            } else {
-              g.setEdge(stepId, child.runId, { type: "child", weight: 2 });
-            }
+            // TODO
           }
-        });
-      }
+        } else {
+          g.setNode(child.runId, {
+            width: 160,
+            height: 50,
+            type: "child",
+            child,
+            runId: child.runId,
+          });
+          if (child.executionId && child.executionId in attempt.dependencies) {
+            g.setEdge(child.runId, stepId, { type: "dependency" });
+          } else {
+            g.setEdge(stepId, child.runId, { type: "child" });
+          }
+        }
+      });
     },
   );
 
@@ -204,12 +219,9 @@ function buildGraph(
   return g;
 }
 
-function classNameForStep(
-  step: models.Step,
-  attempt: models.Execution | undefined,
-) {
-  const result = attempt?.result;
-  if (step.cachedExecutionId || result?.type == "duplicated") {
+function classNameForAttempt(attempt: models.Attempt) {
+  const result = attempt.result;
+  if (attempt.type == 1 || result?.type == "duplicated") {
     return "border-slate-200 bg-slate-50";
   } else if (!result && !attempt?.assignedAt) {
     return "border-blue-200 bg-blue-50";
@@ -229,7 +241,7 @@ type StepNodeProps = {
   offset: [number, number];
   stepId: string;
   step: models.Step;
-  attemptNumber: number | undefined;
+  attemptNumber: number;
   runId: string;
   isActive: boolean;
 };
@@ -243,9 +255,7 @@ function StepNode({
   runId,
   isActive,
 }: StepNodeProps) {
-  const attempt = Object.values(step.executions).find(
-    (e) => e.sequence == attemptNumber,
-  );
+  const attempt = step.attempts[attemptNumber];
   const { isHovered } = useHoverContext();
   return (
     <div
@@ -257,7 +267,7 @@ function StepNode({
         height: node.height,
       }}
     >
-      {Object.keys(step.executions).length > 1 && (
+      {Object.keys(step.attempts).length > 1 && (
         <div
           className={classNames(
             "absolute w-full h-full border border-slate-300 bg-white rounded ring-offset-2",
@@ -276,7 +286,7 @@ function StepNode({
         attemptNumber={attemptNumber}
         className={classNames(
           "absolute w-full h-full flex-1 flex gap-2 items-center border rounded px-2 py-1 ring-offset-2",
-          classNameForStep(step, attempt),
+          classNameForAttempt(attempt),
         )}
         activeClassName="ring ring-cyan-400"
         hoveredClassName="ring ring-slate-300"
@@ -294,11 +304,14 @@ function StepNode({
             <span className="text-xs text-slate-500">{runId}</span>
           )}
         </span>
-        {attempt && !attempt.result && !attempt.assignedAt && (
-          <span>
-            <IconClock size={20} strokeWidth={1.5} />
-          </span>
-        )}
+        {attempt &&
+          attempt.type == 0 &&
+          !attempt.result &&
+          !attempt.assignedAt && (
+            <span>
+              <IconClock size={20} strokeWidth={1.5} />
+            </span>
+          )}
       </StepLink>
     </div>
   );

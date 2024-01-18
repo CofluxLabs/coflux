@@ -89,15 +89,16 @@ export type Reference = {
   target: string;
 };
 
-export type Execution = {
-  sequence: number;
+export type Attempt = {
+  type: 0 | 1;
+  executionId: string;
   createdAt: number;
   executeAfter: number | null;
   assignedAt: number | null;
   completedAt: number | null;
   dependencies: Record<string, Reference>;
-  result: Result | null;
   children: (string | Child)[];
+  result: Result | null;
   retry: Reference | null;
 };
 
@@ -106,9 +107,8 @@ export type Step = {
   target: string;
   type: 0 | 1;
   createdAt: number;
-  executions: Record<string, Execution>;
+  attempts: Record<string, Attempt>;
   arguments: Argument[];
-  cachedExecutionId: string | null;
 };
 
 export type Run = {

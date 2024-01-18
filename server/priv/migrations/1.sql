@@ -84,22 +84,18 @@ CREATE TABLE executions (
   created_at INTEGER NOT NULL
 );
 
-CREATE TABLE step_executions (
+CREATE TABLE attempts (
   step_id INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
-  execution_id INTEGER NOT NULL UNIQUE,
+  type INTEGER NOT NULL,
+  execution_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
   PRIMARY KEY (step_id, sequence),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
 );
 
-CREATE TABLE cached_executions (
-  step_id INTEGER PRIMARY KEY,
-  execution_id INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE,
-  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
-);
+CREATE UNIQUE INDEX attempts_execution_id ON attempts (execution_id) WHERE type = 0;
 
 -- TODO: add 'type' (e.g., 'regular', cached, memoised)
 CREATE TABLE children (
@@ -108,7 +104,7 @@ CREATE TABLE children (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (parent_id, child_id),
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (child_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (child_id) REFERENCES steps ON DELETE CASCADE
 );
 
 CREATE TABLE assignments (

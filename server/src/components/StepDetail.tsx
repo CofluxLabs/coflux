@@ -21,14 +21,21 @@ import Button from "./common/Button";
 import RunLogs from "./RunLogs";
 import StepLink from "./StepLink";
 
-function findExecution(
+function findAttempt(
   run: models.Run,
   executionId: string,
-): [string, models.Execution] | null {
-  const stepId = findKey(run.steps, (j) => executionId in j.executions);
+): [string, number] | null {
+  const stepId = findKey(run.steps, (s) =>
+    Object.values(s.attempts).some(
+      (a) => a.type == 0 && a.executionId == executionId,
+    ),
+  );
   if (stepId) {
-    const attempt = run.steps[stepId].executions[executionId];
-    return [stepId, attempt];
+    const attemptNumber = findKey(
+      run.steps[stepId].attempts,
+      (a) => a.type == 0 && a.executionId == executionId,
+    );
+    return [stepId, parseInt(attemptNumber!, 10)];
   } else {
     return null;
   }
@@ -58,14 +65,14 @@ function Result({ runId, run, result }: ResultProps) {
         </a>
       );
     case "reference":
-      const stepAttempt = findExecution(run, result.executionId);
+      const stepAttempt = findAttempt(run, result.executionId);
       if (stepAttempt) {
-        const [stepId, attempt] = stepAttempt;
+        const [stepId, attemptNumber] = stepAttempt;
         return (
           <StepLink
             runId={runId}
             stepId={stepId}
-            attemptNumber={attempt.sequence}
+            attemptNumber={attemptNumber}
             className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
           >
             Result
@@ -86,8 +93,7 @@ function Result({ runId, run, result }: ResultProps) {
 }
 
 type AttemptProps = {
-  attempt: models.Execution;
-  executionId: string;
+  attempt: models.Attempt;
   runId: string;
   run: models.Run;
   projectId: string;
@@ -96,7 +102,6 @@ type AttemptProps = {
 
 function Attempt({
   attempt,
-  executionId,
   runId,
   run,
   projectId,
@@ -121,7 +126,7 @@ function Attempt({
     runId,
     "logs",
   );
-  const attemptLogs = logs && logs.filter((l) => l[0] == executionId);
+  const attemptLogs = logs && logs.filter((l) => l[0] == attempt.executionId);
   return (
     <Fragment>
       <div>
@@ -309,10 +314,11 @@ function Attempt({
 
 type AttemptSelectorProps = {
   selectedNumber: number;
-  attempts: Record<number, models.Execution>;
+  attempts: Record<number, models.Attempt>;
   onChange: (number: number) => void;
   children: (
-    attempt: models.Execution,
+    sequence: number,
+    attempt: models.Attempt,
     selected: boolean,
     active: boolean,
   ) => ReactNode;
@@ -324,14 +330,13 @@ function AttemptSelector({
   onChange,
   children,
 }: AttemptSelectorProps) {
-  const selectedAttempt = Object.values(attempts).find(
-    (a) => a.sequence == selectedNumber,
-  );
+  const selectedAttempt = attempts[selectedNumber];
   return (
     <Listbox value={selectedNumber} onChange={onChange}>
       <div className="relative">
         <Listbox.Button className="flex items-center gap-1 relative p-1 pl-2 bg-white text-left text-slate-600 border border-slate-300 rounded-md shadow-sm font-bold">
-          {selectedAttempt && children(selectedAttempt, true, false)}
+          {selectedAttempt &&
+            children(selectedNumber, selectedAttempt, true, false)}
           <IconChevronDown size={16} className="opacity-40" />
         </Listbox.Button>
         <Transition
@@ -344,21 +349,28 @@ function AttemptSelector({
           leaveTo="opacity-0 scale-95"
         >
           <Listbox.Options className="absolute p-1 mt-1 overflow-auto text-base bg-white rounded shadow-lg max-h-60">
-            {sortBy(Object.values(attempts), "sequence").map((attempt) => (
-              <Listbox.Option key={attempt.sequence} value={attempt.sequence}>
-                {({ selected, active }) => (
-                  <div
-                    className={classNames(
-                      "p-1 cursor-default rounded",
-                      selected && "font-bold",
-                      active && "bg-slate-100",
-                    )}
-                  >
-                    {children(attempt, selected, active)}
-                  </div>
-                )}
-              </Listbox.Option>
-            ))}
+            {sortBy(Object.entries(attempts), "sequence").map(
+              ([attemptNumber, attempt]) => (
+                <Listbox.Option key={attemptNumber} value={attemptNumber}>
+                  {({ selected, active }) => (
+                    <div
+                      className={classNames(
+                        "p-1 cursor-default rounded",
+                        selected && "font-bold",
+                        active && "bg-slate-100",
+                      )}
+                    >
+                      {children(
+                        parseInt(attemptNumber, 10),
+                        attempt,
+                        selected,
+                        active,
+                      )}
+                    </div>
+                  )}
+                </Listbox.Option>
+              ),
+            )}
           </Listbox.Options>
         </Transition>
       </div>
@@ -377,14 +389,14 @@ function Argument({ runId, run, argument }: ArgumentProps) {
     case "raw":
       return <span className="font-mono truncate">{argument.value}</span>;
     case "reference":
-      const stepAttempt = findExecution(run, argument.executionId);
+      const stepAttempt = findAttempt(run, argument.executionId);
       if (stepAttempt) {
-        const [stepId, attempt] = stepAttempt;
+        const [stepId, attemptNumber] = stepAttempt;
         return (
           <StepLink
             runId={runId}
             stepId={stepId}
-            attemptNumber={attempt.sequence}
+            attemptNumber={attemptNumber}
             className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-1 py-0.5 my-0.5 inline-block"
           >
             Result
@@ -456,10 +468,7 @@ export default function StepDetail({
       changeAttempt(sequence);
     });
   }, [onRerunStep, stepId, environmentName, changeAttempt]);
-  const executionId = Object.keys(step.executions).find(
-    (id) => step.executions[id].sequence == sequence,
-  );
-  const attempt = executionId && step.executions[executionId];
+  const attempt = step.attempts[sequence];
   return (
     <div
       className={classNames("overflow-hidden flex flex-col", className)}
@@ -471,53 +480,48 @@ export default function StepDetail({
             <span className="font-mono text-xl">{step.target}</span>{" "}
             <span className="text-slate-500">({step.repository})</span>
           </h2>
-          {!step.cachedExecutionId && (
-            <div className="flex items-center gap-1 mt-1">
-              <AttemptSelector
-                selectedNumber={sequence}
-                attempts={step.executions}
-                onChange={changeAttempt}
-              >
-                {(attempt) => (
-                  <div className="flex items-center gap-2">
-                    <span className="flex-1 text-sm">#{attempt.sequence}</span>
-                    {attempt.result?.type == "duplicated" ? (
-                      <Badge intent="none" label="Duplicated" />
-                    ) : !attempt.assignedAt ? (
-                      <Badge intent="info" label="Assigning" />
-                    ) : !attempt.result ? (
-                      <Badge intent="info" label="Running" />
-                    ) : ["reference", "raw", "blob"].includes(
-                        attempt.result.type,
-                      ) ? (
-                      <Badge intent="success" label="Completed" />
-                    ) : attempt.result.type == "error" ? (
-                      <Badge intent="danger" label="Failed" />
-                    ) : attempt.result.type == "abandoned" ? (
-                      <Badge intent="warning" label="Abandoned" />
-                    ) : attempt.result.type == "cancelled" ? (
-                      <Badge intent="warning" label="Cancelled" />
-                    ) : null}
-                  </div>
-                )}
-              </AttemptSelector>
+          <div className="flex items-center gap-1 mt-1">
+            <AttemptSelector
+              selectedNumber={sequence}
+              attempts={step.attempts}
+              onChange={changeAttempt}
+            >
+              {(attemptNumber, attempt) => (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-sm">#{attemptNumber}</span>
+                  {attempt.type == 1 ? (
+                    <Badge intent="none" label="Cached" />
+                  ) : attempt.result?.type == "duplicated" ? (
+                    <Badge intent="none" label="Duplicated" />
+                  ) : !attempt.assignedAt ? (
+                    <Badge intent="info" label="Assigning" />
+                  ) : !attempt.result ? (
+                    <Badge intent="info" label="Running" />
+                  ) : ["reference", "raw", "blob"].includes(
+                      attempt.result.type,
+                    ) ? (
+                    <Badge intent="success" label="Completed" />
+                  ) : attempt.result.type == "error" ? (
+                    <Badge intent="danger" label="Failed" />
+                  ) : attempt.result.type == "abandoned" ? (
+                    <Badge intent="warning" label="Abandoned" />
+                  ) : attempt.result.type == "cancelled" ? (
+                    <Badge intent="warning" label="Cancelled" />
+                  ) : null}
+                </div>
+              )}
+            </AttemptSelector>
 
-              <Button
-                disabled={rerunning}
-                outline={true}
-                size="sm"
-                onClick={handleRetryClick}
-              >
-                Retry
-              </Button>
-            </div>
-          )}
+            <Button
+              disabled={rerunning}
+              outline={true}
+              size="sm"
+              onClick={handleRetryClick}
+            >
+              Retry
+            </Button>
+          </div>
         </div>
-        {step.cachedExecutionId ? (
-          <Badge intent="none" label="Cached" />
-        ) : !Object.keys(step.executions).length ? (
-          <Badge intent="info" label="Scheduling" />
-        ) : null}
       </div>
       <div className="flex flex-col overflow-auto p-4 gap-5">
         {step.arguments?.length > 0 && (
@@ -534,17 +538,17 @@ export default function StepDetail({
             </ol>
           </div>
         )}
-        {attempt && (
+        {attempt.type == 0 ? (
           <Attempt
-            key={attempt.sequence}
             attempt={attempt}
-            executionId={executionId}
             runId={runId}
             run={run}
             projectId={projectId}
             environmentName={environmentName}
           />
-        )}
+        ) : attempt.type == 1 ? (
+          <div>{/* TODO: link to execution */}</div>
+        ) : undefined}
       </div>
     </div>
   );

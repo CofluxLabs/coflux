@@ -29,8 +29,7 @@ defmodule Coflux.Topics.Run do
   end
 
   def handle_info(
-        {:topic, _ref,
-         {:step, step_id, repository, target, created_at, arguments, cached_execution_id}},
+        {:topic, _ref, {:step, step_id, repository, target, created_at, arguments}},
         topic
       ) do
     topic =
@@ -39,24 +38,25 @@ defmodule Coflux.Topics.Run do
         target: target,
         type: 1,
         createdAt: created_at,
-        cachedExecutionId: if(cached_execution_id, do: Integer.to_string(cached_execution_id)),
         arguments: Enum.map(arguments, &build_argument/1),
-        executions: %{}
+        attempts: %{}
       })
 
     {:ok, topic}
   end
 
   def handle_info(
-        {:topic, _ref, {:execution, execution_id, step_id, sequence, created_at, execute_after}},
+        {:topic, _ref,
+         {:attempt, step_id, sequence, execution_type, execution_id, created_at, execute_after}},
         topic
       ) do
     topic =
       Topic.set(
         topic,
-        [:steps, step_id, :executions, Integer.to_string(execution_id)],
+        [:steps, step_id, :attempts, Integer.to_string(sequence)],
         %{
-          sequence: sequence,
+          type: execution_type,
+          executionId: Integer.to_string(execution_id),
           createdAt: created_at,
           executeAfter: execute_after,
           assignedAt: nil,
@@ -74,39 +74,28 @@ defmodule Coflux.Topics.Run do
   def handle_info({:topic, _ref, {:assigned, assigned}}, topic) do
     topic =
       Enum.reduce(assigned, topic, fn {execution_id, assigned_at}, topic ->
-        step_id = find_step_id_for_execution(topic, execution_id)
-
-        Topic.set(
-          topic,
-          [
-            :steps,
-            step_id,
-            :executions,
-            Integer.to_string(execution_id),
-            :assignedAt
-          ],
-          assigned_at
-        )
+        update_attempt(topic, execution_id, fn topic, base_path ->
+          Topic.set(topic, base_path ++ [:assignedAt], assigned_at)
+        end)
       end)
 
     {:ok, topic}
   end
 
   def handle_info({:topic, _ref, {:dependency, execution_id, dependency_id, dependency}}, topic) do
-    step_id = find_step_id_for_execution(topic, execution_id)
+    dependency = build_execution(dependency)
 
     topic =
-      Topic.set(
+      update_attempt(
         topic,
-        [
-          :steps,
-          step_id,
-          :executions,
-          Integer.to_string(execution_id),
-          :dependencies,
-          Integer.to_string(dependency_id)
-        ],
-        build_execution(dependency)
+        execution_id,
+        fn topic, base_path ->
+          Topic.set(
+            topic,
+            base_path ++ [:dependencies, Integer.to_string(dependency_id)],
+            dependency
+          )
+        end
       )
 
     {:ok, topic}
@@ -118,8 +107,6 @@ defmodule Coflux.Topics.Run do
           created_at}},
         topic
       ) do
-    parent_step_id = find_step_id_for_execution(topic, parent_id)
-
     value =
       if external_run_id == topic.state.external_run_id do
         external_step_id
@@ -135,56 +122,24 @@ defmodule Coflux.Topics.Run do
       end
 
     topic =
-      Topic.insert(
-        topic,
-        [
-          :steps,
-          parent_step_id,
-          :executions,
-          Integer.to_string(parent_id),
-          :children
-        ],
-        value
-      )
+      update_attempt(topic, parent_id, fn topic, base_path ->
+        Topic.insert(topic, base_path ++ [:children], value)
+      end)
 
     {:ok, topic}
   end
 
   def handle_info({:topic, _ref, {:result, execution_id, result, retry, created_at}}, topic) do
-    step_id = find_step_id_for_execution(topic, execution_id)
+    result = build_result(result)
+    retry = if(retry, do: build_execution(retry))
 
     topic =
-      topic
-      |> Topic.set(
-        [
-          :steps,
-          step_id,
-          :executions,
-          Integer.to_string(execution_id),
-          :result
-        ],
-        build_result(result)
-      )
-      |> Topic.set(
-        [
-          :steps,
-          step_id,
-          :executions,
-          Integer.to_string(execution_id),
-          :completedAt
-        ],
-        created_at
-      )
-      |> Topic.set(
-        [
-          :steps,
-          step_id,
-          :executions,
-          Integer.to_string(execution_id),
-          :retry
-        ],
-        if(retry, do: build_execution(retry))
-      )
+      update_attempt(topic, execution_id, fn topic, base_path ->
+        topic
+        |> Topic.set(base_path ++ [:result], result)
+        |> Topic.set(base_path ++ [:completedAt], created_at)
+        |> Topic.set(base_path ++ [:retry], retry)
+      end)
 
     {:ok, topic}
   end
@@ -212,46 +167,43 @@ defmodule Coflux.Topics.Run do
              target: step.target,
              type: step.type,
              createdAt: step.created_at,
-             cachedExecutionId:
-               if(step.cached_execution_id, do: Integer.to_string(step.cached_execution_id)),
              arguments: Enum.map(step.arguments, &build_argument/1),
-             executions:
-               Map.new(step.executions, fn {execution_id, execution} ->
-                 {
-                   Integer.to_string(execution_id),
-                   %{
-                     sequence: execution.sequence,
-                     createdAt: execution.created_at,
-                     executeAfter: execution.execute_after,
-                     assignedAt: execution.assigned_at,
-                     completedAt: execution.completed_at,
-                     dependencies:
-                       Map.new(execution.dependencies, fn {dependency_id, dependency} ->
-                         {Integer.to_string(dependency_id), build_execution(dependency)}
-                       end),
-                     children:
-                       Enum.map(
-                         execution.children,
-                         fn {external_run_id, external_step_id, execution_id, repository, target,
-                             created_at} ->
-                           if external_run_id == run.external_id do
-                             external_step_id
-                           else
-                             %{
-                               runId: external_run_id,
-                               stepId: external_step_id,
-                               executionId: execution_id,
-                               repository: repository,
-                               target: target,
-                               createdAt: created_at
-                             }
-                           end
-                         end
-                       ),
-                     result: build_result(execution.result),
-                     retry: if(execution.retry, do: build_execution(execution.retry))
-                   }
-                 }
+             attempts:
+               Map.new(step.attempts, fn {sequence, execution} ->
+                 {Integer.to_string(sequence),
+                  %{
+                    type: execution.type,
+                    executionId: Integer.to_string(execution.execution_id),
+                    createdAt: execution.created_at,
+                    executeAfter: execution.execute_after,
+                    assignedAt: execution.assigned_at,
+                    completedAt: execution.completed_at,
+                    dependencies:
+                      Map.new(execution.dependencies, fn {dependency_id, dependency} ->
+                        {Integer.to_string(dependency_id), build_execution(dependency)}
+                      end),
+                    children:
+                      Enum.map(
+                        execution.children,
+                        fn {external_run_id, external_step_id, execution_id, repository, target,
+                            created_at} ->
+                          if external_run_id == run.external_id do
+                            external_step_id
+                          else
+                            %{
+                              runId: external_run_id,
+                              stepId: external_step_id,
+                              executionId: Integer.to_string(execution_id),
+                              repository: repository,
+                              target: target,
+                              createdAt: created_at
+                            }
+                          end
+                        end
+                      ),
+                    result: build_result(execution.result),
+                    retry: if(execution.retry, do: build_execution(execution.retry))
+                  }}
                end)
            }}
         end)
@@ -299,13 +251,17 @@ defmodule Coflux.Topics.Run do
     end
   end
 
-  defp find_step_id_for_execution(topic, execution_id) do
+  def update_attempt(topic, execution_id, fun) do
     execution_id_s = Integer.to_string(execution_id)
 
-    case Enum.find(topic.value.steps, fn {_, step} ->
-           Map.has_key?(step.executions, execution_id_s)
-         end) do
-      {step_id, _} -> step_id
-    end
+    Enum.reduce(topic.value.steps, topic, fn {step_id, step}, topic ->
+      Enum.reduce(step.attempts, topic, fn {sequence, attempt}, topic ->
+        if attempt.executionId == execution_id_s do
+          fun.(topic, [:steps, step_id, :attempts, sequence])
+        else
+          topic
+        end
+      end)
+    end)
   end
 end

@@ -14,17 +14,25 @@ type StepIdentifierProps = {
 };
 
 function StepIdentifier({ runId, run, executionId }: StepIdentifierProps) {
-  const stepId = Object.keys(run.steps).find(
-    (id) => executionId in run.steps[id].executions
+  const stepId = Object.keys(run.steps).find((id) =>
+    Object.values(run.steps[id].attempts).some(
+      (a) => a.type == 0 && a.executionId == executionId,
+    ),
   );
   const step = stepId && run.steps[stepId];
-  const attempt = stepId && run.steps[stepId].executions[executionId];
-  if (step && attempt) {
+  const attemptNumber =
+    step &&
+    Object.keys(step.attempts).find(
+      (n) =>
+        step.attempts[n].type == 0 &&
+        step.attempts[n].executionId == executionId,
+    );
+  if (step && attemptNumber) {
     return (
       <StepLink
         runId={runId}
         stepId={stepId}
-        attemptNumber={attempt.sequence}
+        attemptNumber={parseInt(attemptNumber, 10)}
         className="block truncate w-40 max-w-full rounded text-sm ring-offset-1"
         activeClassName="ring-2 ring-cyan-400"
         hoveredClassName="ring-2 ring-slate-300"
@@ -50,7 +58,7 @@ export default function LogsPage() {
     environmentName,
     "runs",
     runId,
-    "logs"
+    "logs",
   );
   if (runId && logs) {
     return (

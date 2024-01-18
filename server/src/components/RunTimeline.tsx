@@ -1,7 +1,7 @@
 import { CSSProperties } from "react";
 import { DateTime } from "luxon";
 import classNames from "classnames";
-import { maxBy, sortBy } from "lodash";
+import { max, sortBy } from "lodash";
 
 import * as models from "../models";
 import useNow from "../hooks/useNow";
@@ -13,16 +13,20 @@ function loadExecutionTimes(run: models.Run): {
 } {
   return Object.keys(run.steps).reduce((times, stepId) => {
     const step = run.steps[stepId];
-    return Object.values(step.executions).reduce((times, attempt) => {
-      return {
-        ...times,
-        [`${stepId}:${attempt.sequence}`]: [
-          DateTime.fromMillis(attempt.executeAfter || attempt.createdAt),
-          attempt.assignedAt ? DateTime.fromMillis(attempt.assignedAt) : null,
-          attempt.completedAt ? DateTime.fromMillis(attempt.completedAt) : null,
-        ],
-      };
-    }, times);
+    return Object.entries(step.attempts)
+      .filter(([_, a]) => a.type == 0)
+      .reduce((times, [attemptNumber, attempt]) => {
+        return {
+          ...times,
+          [`${stepId}:${attemptNumber}`]: [
+            DateTime.fromMillis(attempt.executeAfter || attempt.createdAt),
+            attempt.assignedAt ? DateTime.fromMillis(attempt.assignedAt) : null,
+            attempt.completedAt
+              ? DateTime.fromMillis(attempt.completedAt)
+              : null,
+          ],
+        };
+      }, times);
   }, {});
 }
 
@@ -78,7 +82,7 @@ function classNameForResult(result: models.Result | null) {
 
 function isRunning(run: models.Run) {
   return Object.values(run.steps).some((step) =>
-    Object.values(step.executions).some((a) => !a.result),
+    Object.values(step.attempts).some((a) => a.type == 0 && !a.result),
   );
 }
 
@@ -109,7 +113,7 @@ export default function RunTimeline({ runId, run }: Props) {
   ]);
   const totalMillis = elapsedDiff.toMillis();
   const stepIds = sortBy(
-    Object.keys(run.steps).filter((id) => !run.steps[id].cachedExecutionId),
+    Object.keys(run.steps),
     (id) => run.steps[id].createdAt,
   );
   return (
@@ -131,77 +135,83 @@ export default function RunTimeline({ runId, run }: Props) {
           </div>
         </div>
       </div>
-      {stepIds.map((stepId) => {
-        const step = run.steps[stepId];
-        const latestAttempt = maxBy(Object.values(step.executions), "sequence");
-        const stepFinishedAt =
-          (latestAttempt
-            ? executionTimes[`${stepId}:${latestAttempt.sequence}`][2]
-            : null) || latestTime;
-        return (
-          <div key={stepId} className="flex">
-            <div className="w-40 py-0.5">
-              <StepLink
-                runId={runId}
-                stepId={stepId}
-                attemptNumber={latestAttempt?.sequence}
-                className="block max-w-full rounded truncate leading-none text-sm ring-offset-1"
-                activeClassName="ring-2 ring-cyan-400"
-                hoveredClassName="ring-2 ring-slate-300"
-              >
-                <span className="font-mono">{step.target}</span>{" "}
-                <span className="text-slate-500 text-sm">
-                  ({step.repository})
-                </span>
-              </StepLink>
-            </div>
-            <div className="flex-1 flex ml-2 pl-3 pr-1 border-x border-slate-200">
-              <div className="flex-1 flex items-center">
-                <div className="flex-1 relative h-2">
-                  <Bar
-                    x1={stepTimes[stepId]}
-                    x2={stepFinishedAt}
-                    x0={earliestTime}
-                    d={totalMillis}
-                    style={{ boxShadow: "inset 0 0 3px rgb(226, 232, 240)" }}
-                  />
-                  {Object.values(step.executions)
-                    .reverse()
-                    .map((attempt) => {
-                      const [executeAt, assignedAt, resultAt] =
-                        executionTimes[`${stepId}:${attempt.sequence}`];
-                      return (
-                        <StepLink
-                          runId={runId}
-                          stepId={stepId}
-                          attemptNumber={attempt.sequence}
-                          key={attempt.sequence}
-                        >
-                          <Bar
-                            x1={executeAt}
-                            x2={resultAt || latestTime}
-                            x0={earliestTime}
-                            d={totalMillis}
-                            className="bg-slate-200"
-                          />
-                          {assignedAt && (
+      {stepIds
+        .filter((stepId) =>
+          Object.values(run.steps[stepId].attempts).some((a) => a.type == 0),
+        )
+        .map((stepId) => {
+          const step = run.steps[stepId];
+          const latestAttemptNumber = max(
+            Object.keys(step.attempts).map((s) => parseInt(s, 10)),
+          );
+          const stepFinishedAt =
+            (latestAttemptNumber
+              ? executionTimes[`${stepId}:${latestAttemptNumber}`][2]
+              : null) || latestTime;
+          return (
+            <div key={stepId} className="flex">
+              <div className="w-40 py-0.5">
+                <StepLink
+                  runId={runId}
+                  stepId={stepId}
+                  attemptNumber={latestAttemptNumber}
+                  className="block max-w-full rounded truncate leading-none text-sm ring-offset-1"
+                  activeClassName="ring-2 ring-cyan-400"
+                  hoveredClassName="ring-2 ring-slate-300"
+                >
+                  <span className="font-mono">{step.target}</span>{" "}
+                  <span className="text-slate-500 text-sm">
+                    ({step.repository})
+                  </span>
+                </StepLink>
+              </div>
+              <div className="flex-1 flex ml-2 pl-3 pr-1 border-x border-slate-200">
+                <div className="flex-1 flex items-center">
+                  <div className="flex-1 relative h-2">
+                    <Bar
+                      x1={stepTimes[stepId]}
+                      x2={stepFinishedAt}
+                      x0={earliestTime}
+                      d={totalMillis}
+                      style={{ boxShadow: "inset 0 0 3px rgb(226, 232, 240)" }}
+                    />
+                    {Object.entries(step.attempts)
+                      .reverse()
+                      .map(([attemptNumber, attempt]) => {
+                        const [executeAt, assignedAt, resultAt] =
+                          executionTimes[`${stepId}:${attemptNumber}`];
+                        return (
+                          <StepLink
+                            runId={runId}
+                            stepId={stepId}
+                            attemptNumber={parseInt(attemptNumber, 10)}
+                            key={attemptNumber}
+                          >
                             <Bar
-                              x1={assignedAt}
+                              x1={executeAt}
                               x2={resultAt || latestTime}
                               x0={earliestTime}
                               d={totalMillis}
-                              className={classNameForResult(attempt.result)}
+                              className="bg-slate-200"
                             />
-                          )}
-                        </StepLink>
-                      );
-                    })}
+                            {assignedAt && (
+                              <Bar
+                                x1={assignedAt}
+                                x2={resultAt || latestTime}
+                                x0={earliestTime}
+                                d={totalMillis}
+                                className={classNameForResult(attempt.result)}
+                              />
+                            )}
+                          </StepLink>
+                        );
+                      })}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
     </div>
   );
 }

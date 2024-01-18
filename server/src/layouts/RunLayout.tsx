@@ -75,7 +75,9 @@ function DetailPanel({
   className,
 }: DetailPanelProps) {
   const previousStepId = usePrevious(stepId);
+  const previousAttemptNumber = usePrevious(attemptNumber);
   const stepIdOrPrevious = stepId || previousStepId;
+  const attemptNumberOrPrevious = attemptNumber || previousAttemptNumber;
   const handleRerunStep = useCallback(
     (stepId: string) => {
       return api.rerunStep(projectId, environmentName, stepId);
@@ -103,7 +105,7 @@ function DetailPanel({
           <StepDetail
             runId={runId}
             stepId={stepIdOrPrevious}
-            sequence={attemptNumber || 0}
+            sequence={attemptNumberOrPrevious || 1}
             run={run}
             projectId={projectId}
             environmentName={environmentName}
@@ -147,7 +149,7 @@ export default function RunLayout() {
     return <Loading />;
   } else {
     const isRunning = Object.values(run.steps).some((s) =>
-      Object.values(s.executions).some((e) => !e.result),
+      Object.values(s.attempts).some((a) => a.type == 0 && !a.result),
     );
     return (
       <HoverContext>
@@ -184,7 +186,7 @@ export default function RunLayout() {
             run={run}
             projectId={projectId!}
             environmentName={environmentName!}
-            className="w-[400px]"
+            className="w-[400px] shrink-0"
           />
         </div>
       </HoverContext>

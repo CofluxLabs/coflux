@@ -1,6 +1,6 @@
 import { Fragment, ReactNode } from "react";
 import { sortBy } from "lodash";
-import { DateTime, Duration, DurationObjectUnits } from "luxon";
+import { DateTime } from "luxon";
 import classNames from "classnames";
 import {
   IconAlertHexagon,
@@ -9,7 +9,7 @@ import {
 } from "@tabler/icons-react";
 
 import * as models from "../models";
-import { formatDiff, pluralise } from "../utils";
+import { formatDiff } from "../utils";
 
 function classForLevel(level: models.LogMessageLevel) {
   switch (level) {
@@ -113,7 +113,7 @@ export default function RunLogs({
                         <span
                           className="text-slate-400/70 relative pr-2 text-sm"
                           title={createdAt.toLocaleString(
-                            DateTime.DATETIME_SHORT_WITH_SECONDS
+                            DateTime.DATETIME_SHORT_WITH_SECONDS,
                           )}
                         >
                           +{formatDiff(diff)}
