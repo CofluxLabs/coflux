@@ -38,6 +38,12 @@ CREATE TABLE parameters (
   FOREIGN KEY (target_id) REFERENCES targets ON DELETE CASCADE
 );
 
+CREATE TABLE executions (
+  id INTEGER PRIMARY KEY,
+  execute_after INTEGER,
+  created_at INTEGER NOT NULL
+);
+
 CREATE TABLE runs (
   id INTEGER PRIMARY KEY,
   external_id TEXT NOT NULL UNIQUE,
@@ -58,6 +64,7 @@ CREATE TABLE steps (
   priority INTEGER NOT NULL, -- TODO: move to executions?
   cache_key TEXT,
   deduplicate_key TEXT,
+  memo_key TEXT,
   retry_count INTEGER NOT NULL,
   retry_delay_min INTEGER NOT NULL,
   retry_delay_max INTEGER NOT NULL,
@@ -78,12 +85,6 @@ CREATE TABLE arguments (
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
 );
 
-CREATE TABLE executions (
-  id INTEGER PRIMARY KEY,
-  execute_after INTEGER,
-  created_at INTEGER NOT NULL
-);
-
 CREATE TABLE attempts (
   step_id INTEGER NOT NULL,
   sequence INTEGER NOT NULL,
@@ -91,7 +92,7 @@ CREATE TABLE attempts (
   execution_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   PRIMARY KEY (step_id, sequence),
-  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
 );
 

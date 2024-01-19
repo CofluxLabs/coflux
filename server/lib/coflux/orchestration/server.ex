@@ -489,7 +489,8 @@ defmodule Coflux.Orchestration.Server do
         {:ok, steps} = Store.get_run_steps(state.db, run.id)
 
         steps =
-          Map.new(steps, fn {step_id, step_external_id, type, repository, target, created_at} ->
+          Map.new(steps, fn {step_id, step_external_id, type, repository, target, memo_key,
+                             created_at} ->
             {:ok, attempts} = Store.get_step_attempts(state.db, step_id)
             {:ok, arguments} = Store.get_step_arguments(state.db, step_id)
 
@@ -498,6 +499,7 @@ defmodule Coflux.Orchestration.Server do
                repository: repository,
                target: target,
                type: type,
+               memo_key: memo_key,
                created_at: created_at,
                arguments: arguments,
                attempts:
@@ -1119,13 +1121,20 @@ defmodule Coflux.Orchestration.Server do
            arguments,
            opts
          ) do
-      {:ok, _step_id, external_step_id, execution_id, sequence, execution_type, created_at} ->
+      {:ok, _step_id, external_step_id, execution_id, sequence, execution_type, created_at,
+       memoised} ->
         state =
-          notify_listeners(
-            state,
-            {:run, run_id},
-            {:step, external_step_id, repository, target_name, created_at, arguments}
-          )
+          if !memoised do
+            memo_key = Keyword.get(opts, :memo_key)
+
+            notify_listeners(
+              state,
+              {:run, run_id},
+              {:step, external_step_id, repository, target_name, memo_key, created_at, arguments}
+            )
+          else
+            state
+          end
 
         state =
           notify_listeners(
@@ -1137,15 +1146,20 @@ defmodule Coflux.Orchestration.Server do
 
         execute_after = Keyword.get(opts, :execute_after)
 
-        notify_listeners(
-          state,
-          {:run, run_id},
-          {:attempt, external_step_id, sequence, execution_type, execution_id, created_at,
-           execute_after}
-        )
+        state =
+          if !memoised do
+            notify_listeners(
+              state,
+              {:run, run_id},
+              {:attempt, external_step_id, sequence, execution_type, execution_id, created_at,
+               execute_after}
+            )
+          else
+            state
+          end
 
         state =
-          if execution_type == 0 do
+          if execution_type == 0 && !memoised do
             execute_at = execute_after || created_at
 
             state =

@@ -14,6 +14,7 @@ import {
   IconArrowForward,
   IconArrowUpRight,
   IconClock,
+  IconPinned,
 } from "@tabler/icons-react";
 
 import * as models from "../models";
@@ -80,14 +81,18 @@ function traverseRun(
   stepAttempts: Record<string, number | undefined>,
   stepId: string,
   callback: (stepId: string, attemptNumber: number) => void,
+  seen: Record<string, true> = {},
 ) {
   const attemptNumber = stepAttemptNumber(run, stepAttempts, stepId);
   if (attemptNumber) {
     callback(stepId, attemptNumber);
-    const execution = run.steps[stepId].attempts[attemptNumber];
-    execution.children.forEach((child) => {
-      if (typeof child == "string") {
-        traverseRun(run, stepAttempts, child, callback);
+    const attempt = run.steps[stepId].attempts[attemptNumber];
+    attempt?.children.forEach((child) => {
+      if (typeof child == "string" && !(child in seen)) {
+        traverseRun(run, stepAttempts, child, callback, {
+          ...seen,
+          [child]: true,
+        });
       }
     });
   }
@@ -289,8 +294,8 @@ function StepNode({
         activeClassName="ring ring-cyan-400"
         hoveredClassName="ring ring-slate-400"
       >
-        <span className="flex-1 flex flex-col overflow-hidden">
-          <span className="truncate text-sm">
+        <span className="flex-1 flex items-center overflow-hidden">
+          <span className="flex-1 truncate text-sm">
             <span
               className={classNames(
                 "font-mono",
@@ -309,6 +314,11 @@ function StepNode({
               ({step.repository})
             </span>
           </span>
+          {step.isMemoised && (
+            <span className="text-slate-500" title="Memoised">
+              <IconPinned size={12} />
+            </span>
+          )}
         </span>
         {attempt &&
           attempt.type == 0 &&

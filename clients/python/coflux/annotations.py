@@ -19,6 +19,7 @@ def _decorate(
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     deduplicate: bool | t.Callable[P, str] = False,
     delay: int = 0,
+    memo: bool | t.Callable[P, str] = False,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     def decorator(fn: t.Callable[P, T]) -> t.Callable[P, future.Future[T]]:
         name_ = name or fn.__name__
@@ -37,6 +38,7 @@ def _decorate(
                     cache_namespace=cache_namespace,
                     retries=retries,
                     deduplicate=deduplicate,
+                    memo=memo,
                     delay=delay,
                 )
                 return context.get_result(execution_id)
@@ -70,6 +72,7 @@ def task(
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     deduplicate: bool | t.Callable[P, str] = False,
     delay: int = 0,
+    memo: bool | t.Callable[P, str] = False,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     return _decorate(
         "task",
@@ -79,6 +82,7 @@ def task(
         retries=retries,
         deduplicate=deduplicate,
         delay=delay,
+        memo=memo,
     )
 
 
@@ -111,6 +115,7 @@ def stub(
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     deduplicate: bool | t.Callable[P, str] = False,
     delay: int = 0,
+    memo: bool | t.Callable[P, str] = False,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     return _decorate(
         repository=repository,
@@ -120,6 +125,7 @@ def stub(
         retries=retries,
         deduplicate=deduplicate,
         delay=delay,
+        memo=memo,
     )
 
 

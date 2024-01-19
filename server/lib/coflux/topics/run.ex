@@ -35,12 +35,13 @@ defmodule Coflux.Topics.Run do
 
   defp process_notification(
          topic,
-         {:step, step_id, repository, target, created_at, arguments}
+         {:step, step_id, repository, target, memo_key, created_at, arguments}
        ) do
     Topic.set(topic, [:steps, step_id], %{
       repository: repository,
       target: target,
       type: 1,
+      isMemoised: !is_nil(memo_key),
       createdAt: created_at,
       arguments: Enum.map(arguments, &build_argument/1),
       attempts: %{}
@@ -151,6 +152,7 @@ defmodule Coflux.Topics.Run do
              repository: step.repository,
              target: step.target,
              type: step.type,
+             isMemoised: !is_nil(step.memo_key),
              createdAt: step.created_at,
              arguments: Enum.map(step.arguments, &build_argument/1),
              attempts:

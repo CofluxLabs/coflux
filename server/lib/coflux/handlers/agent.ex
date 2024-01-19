@@ -68,6 +68,7 @@ defmodule Coflux.Handlers.Agent do
           execute_after,
           cache_key,
           deduplicate_key,
+          memo_key,
           retry_count,
           retry_delay_min,
           retry_delay_max
@@ -87,7 +88,8 @@ defmodule Coflux.Handlers.Agent do
                retry_delay_min: retry_delay_min,
                retry_delay_max: retry_delay_max,
                deduplicate_key: deduplicate_key,
-               execute_after: execute_after
+               execute_after: execute_after,
+               memo_key: memo_key
              ) do
           {:ok, _run_id, _step_id, execution_id} ->
             {[result_message(message["id"], execution_id)], state}

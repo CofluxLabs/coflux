@@ -26,6 +26,7 @@ def schedule(
     deduplicate: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
     execute_after: dt.datetime | None = None,
     delay: int | float | dt.timedelta = 0,
+    memo: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
 ) -> str:
     return _get_channel().schedule_execution(
         repository,
@@ -37,6 +38,7 @@ def schedule(
         deduplicate=deduplicate,
         execute_after=execute_after,
         delay=delay,
+        memo=memo,
     )
 
 

@@ -53,6 +53,7 @@ class ScheduleExecutionRequest(t.NamedTuple):
     execute_after: dt.datetime | None
     cache_key: str | None
     deduplicate_key: str | None
+    memo_key: str | None
     retry_count: int
     retry_delay_min: int
     retry_delay_max: int
@@ -208,6 +209,7 @@ class Channel:
         deduplicate: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
         execute_after: dt.datetime | None = None,
         delay: int | float | dt.timedelta = 0,
+        memo: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
     ) -> str:
         if delay:
             delay = (
@@ -220,13 +222,17 @@ class Channel:
         serialised_arguments = [
             _serialise_value(a, self._blob_store) for a in arguments
         ]
+        default_namespace = f"{repository}:{target}"
         cache_key = _build_key(
             cache,
             arguments,
             serialised_arguments,
-            cache_namespace or f"{repository}:{target}",
+            cache_namespace or default_namespace,
         )
-        deduplicate_key = _build_key(deduplicate, arguments, serialised_arguments)
+        deduplicate_key = _build_key(
+            deduplicate, arguments, serialised_arguments, default_namespace
+        )
+        memo_key = _build_key(memo, arguments, serialised_arguments, default_namespace)
         retry_count, retry_delay_min, retry_delay_max = _parse_retries(retries)
 
         schedule_id = self._next_schedule_id()
@@ -241,6 +247,7 @@ class Channel:
                 execute_after,
                 cache_key,
                 deduplicate_key,
+                memo_key,
                 retry_count,
                 retry_delay_min,
                 retry_delay_max,
@@ -456,6 +463,7 @@ class Execution:
                 execute_after,
                 cache_key,
                 deduplicate_key,
+                memo_key,
                 retry_count,
                 retry_delay_min,
                 retry_delay_max,
@@ -471,6 +479,7 @@ class Execution:
                         execute_after_ms,
                         cache_key,
                         deduplicate_key,
+                        memo_key,
                         retry_count,
                         retry_delay_min,
                         retry_delay_max,

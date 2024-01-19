@@ -106,6 +106,7 @@ export type Step = {
   repository: string;
   target: string;
   type: 0 | 1;
+  isMemoised: boolean;
   createdAt: number;
   attempts: Record<string, Attempt>;
   arguments: Argument[];

@@ -19,10 +19,10 @@ defmodule Coflux.Orchestration.Store do
     with_transaction(db, fn ->
       case generate_external_id(db, :sessions, 30) do
         {:ok, external_id} ->
-          case insert_one(db, :sessions,
+          case insert_one(db, :sessions, %{
                  external_id: external_id,
                  created_at: current_timestamp()
-               ) do
+               }) do
             {:ok, session_id} ->
               {:ok, session_id, external_id}
           end
@@ -41,12 +41,10 @@ defmodule Coflux.Orchestration.Store do
 
   defp insert_manifest(db, repository, targets, targets_hash) do
     {:ok, manifest_id} =
-      insert_one(
-        db,
-        :manifests,
+      insert_one(db, :manifests, %{
         repository: repository,
         targets_hash: targets_hash
-      )
+      })
 
     {:ok, target_ids} =
       insert_many(
@@ -112,11 +110,11 @@ defmodule Coflux.Orchestration.Store do
       now = current_timestamp()
 
       {:ok, _} =
-        insert_one(db, :session_manifests,
+        insert_one(db, :session_manifests, %{
           session_id: session_id,
           manifest_id: manifest_id,
           created_at: now
-        )
+        })
 
       :ok
     end)
@@ -131,7 +129,7 @@ defmodule Coflux.Orchestration.Store do
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
-      {:ok, step_id, external_step_id, execution_id, sequence, execution_type, now} =
+      {:ok, step_id, external_step_id, execution_id, sequence, execution_type, now, false} =
         do_schedule_step(db, run_id, parent_id, repository, target, arguments, true, now, opts)
 
       {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, sequence,
@@ -213,55 +211,73 @@ defmodule Coflux.Orchestration.Store do
     execute_after = Keyword.get(opts, :execute_after)
     cache_key = Keyword.get(opts, :cache_key)
     deduplicate_key = Keyword.get(opts, :deduplicate_key)
+    memo_key = Keyword.get(opts, :memo_key)
     retry_count = Keyword.get(opts, :retry_count, 0)
     retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
     retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
 
-    cached_execution_id =
-      if cache_key do
-        case find_cached_execution(db, cache_key) do
-          {:ok, cached_execution_id} ->
-            cached_execution_id
+    memoised_execution =
+      if memo_key do
+        case find_memoised_execution(db, run_id, memo_key) do
+          {:ok, memoised_execution} -> memoised_execution
         end
       end
 
-    # TODO: validate parent belongs to run?
-    {:ok, step_id, external_step_id} =
-      insert_step(
-        db,
-        run_id,
-        if(is_initial, do: 0, else: 1),
-        repository,
-        target,
-        priority,
-        cache_key,
-        deduplicate_key,
-        retry_count,
-        retry_delay_min,
-        retry_delay_max,
-        now
-      )
+    {step_id, external_step_id, execution_id, sequence, execution_type, now, memoised} =
+      case memoised_execution do
+        {step_id, external_step_id, execution_id, sequence, execution_type, now} ->
+          {step_id, external_step_id, execution_id, sequence, execution_type, now, true}
 
-    :ok = insert_arguments(db, step_id, arguments)
+        nil ->
+          cached_execution_id =
+            if cache_key do
+              case find_cached_execution(db, cache_key) do
+                {:ok, cached_execution_id} ->
+                  cached_execution_id
+              end
+            end
 
-    sequence = 1
+          # TODO: validate parent belongs to run?
+          {:ok, step_id, external_step_id} =
+            insert_step(
+              db,
+              run_id,
+              if(is_initial, do: 0, else: 1),
+              repository,
+              target,
+              priority,
+              cache_key,
+              deduplicate_key,
+              memo_key,
+              retry_count,
+              retry_delay_min,
+              retry_delay_max,
+              now
+            )
 
-    {execution_id, execution_type} =
-      if cached_execution_id do
-        {cached_execution_id, 1}
-      else
-        {:ok, execution_id} = insert_execution(db, execute_after, now)
-        {execution_id, 0}
+          :ok = insert_arguments(db, step_id, arguments)
+
+          sequence = 1
+
+          {execution_id, execution_type} =
+            if cached_execution_id do
+              {cached_execution_id, 1}
+            else
+              {:ok, execution_id} = insert_execution(db, execute_after, now)
+              {execution_id, 0}
+            end
+
+          {:ok, _} =
+            insert_attempt(db, step_id, sequence, execution_id, execution_type, now)
+
+          {step_id, external_step_id, execution_id, sequence, execution_type, now, false}
       end
-
-    {:ok, _} =
-      insert_attempt(db, step_id, sequence, execution_id, execution_type, now)
 
     if parent_id do
       {:ok, _} = insert_child(db, parent_id, step_id, now)
     end
 
-    {:ok, step_id, external_step_id, execution_id, sequence, execution_type, now}
+    {:ok, step_id, external_step_id, execution_id, sequence, execution_type, now, memoised}
   end
 
   def rerun_step(db, step_id, execute_after \\ nil) do
@@ -281,13 +297,11 @@ defmodule Coflux.Orchestration.Store do
       now = current_timestamp()
 
       {:ok, _} =
-        insert_one(
-          db,
-          :assignments,
+        insert_one(db, :assignments, %{
           execution_id: execution_id,
           session_id: session_id,
           created_at: now
-        )
+        })
 
       {:ok, now}
     end)
@@ -300,9 +314,12 @@ defmodule Coflux.Orchestration.Store do
         insert_one(
           db,
           :dependencies,
-          execution_id: execution_id,
-          dependency_id: dependency_id,
-          created_at: current_timestamp()
+          %{
+            execution_id: execution_id,
+            dependency_id: dependency_id,
+            created_at: current_timestamp()
+          },
+          on_conflict: "DO NOTHING"
         )
 
       :ok
@@ -627,7 +644,7 @@ defmodule Coflux.Orchestration.Store do
     query(
       db,
       """
-      SELECT id, external_id, type, repository, target, created_at
+      SELECT id, external_id, type, repository, target, memo_key, created_at
       FROM steps
       WHERE run_id = ?1
       """,
@@ -691,17 +708,38 @@ defmodule Coflux.Orchestration.Store do
     )
   end
 
+  defp find_memoised_execution(db, run_id, memo_key) do
+    case query(
+           db,
+           """
+           SELECT s.id, s.external_id, a.execution_id, a.sequence, a.type, a.created_at
+           FROM steps AS s
+           INNER JOIN attempts AS a ON a.step_id = s.id
+           LEFT JOIN results AS r ON r.execution_id = a.execution_id
+           WHERE s.run_id = ?1 AND s.memo_key = ?2 AND a.type = 0 AND (r.type IS NULL OR r.type IN (1, 2, 3))
+           ORDER BY a.created_at DESC
+           LIMIT 1
+           """,
+           {run_id, memo_key}
+         ) do
+      {:ok, [row]} ->
+        {:ok, row}
+
+      {:ok, []} ->
+        {:ok, nil}
+    end
+  end
+
   defp find_cached_execution(db, cache_key) do
     case query(
            db,
            """
-           SELECT e.id
+           SELECT a.execution_id
            FROM steps AS s
            INNER JOIN attempts AS a ON a.step_id = s.id
-           INNER JOIN executions AS e ON e.id = a.execution_id
-           LEFT JOIN results AS r ON r.execution_id = e.id
+           LEFT JOIN results AS r ON r.execution_id = a.execution_id
            WHERE s.cache_key = ?1 AND a.type = 0 AND (r.type IS NULL OR r.type IN (1, 2, 3))
-           ORDER BY e.created_at DESC
+           ORDER BY a.created_at DESC
            LIMIT 1
            """,
            {cache_key}
@@ -717,13 +755,13 @@ defmodule Coflux.Orchestration.Store do
   defp insert_run(db, parent_id, idempotency_key, recurrent, created_at) do
     case generate_external_id(db, :runs, 2, "R") do
       {:ok, external_id} ->
-        case insert_one(db, :runs,
+        case insert_one(db, :runs, %{
                external_id: external_id,
                parent_id: parent_id,
                idempotency_key: idempotency_key,
                recurrent: if(recurrent, do: 1, else: 0),
                created_at: created_at
-             ) do
+             }) do
           {:ok, run_id} ->
             {:ok, run_id, external_id}
         end
@@ -739,6 +777,7 @@ defmodule Coflux.Orchestration.Store do
          priority,
          cache_key,
          deduplicate_key,
+         memo_key,
          retry_count,
          retry_delay_min,
          retry_delay_max,
@@ -746,9 +785,7 @@ defmodule Coflux.Orchestration.Store do
        ) do
     case generate_external_id(db, :steps, 3, "S") do
       {:ok, external_id} ->
-        case insert_one(
-               db,
-               :steps,
+        case insert_one(db, :steps, %{
                external_id: external_id,
                run_id: run_id,
                type: type,
@@ -757,11 +794,12 @@ defmodule Coflux.Orchestration.Store do
                priority: priority,
                cache_key: cache_key,
                deduplicate_key: deduplicate_key,
+               memo_key: memo_key,
                retry_count: retry_count,
                retry_delay_min: retry_delay_min,
                retry_delay_max: retry_delay_max,
                created_at: now
-             ) do
+             }) do
           {:ok, step_id} ->
             {:ok, step_id, external_id}
         end
@@ -819,44 +857,41 @@ defmodule Coflux.Orchestration.Store do
   end
 
   defp insert_execution(db, execute_after, created_at) do
-    insert_one(
-      db,
-      :executions,
+    insert_one(db, :executions, %{
       execute_after: execute_after,
       created_at: created_at
-    )
+    })
   end
 
   defp insert_attempt(db, step_id, sequence, execution_id, type, created_at) do
-    insert_one(
-      db,
-      :attempts,
+    insert_one(db, :attempts, %{
       step_id: step_id,
       sequence: sequence,
       execution_id: execution_id,
       type: type,
       created_at: created_at
-    )
+    })
   end
 
   defp insert_child(db, parent_id, child_id, created_at) do
     insert_one(
       db,
       :children,
-      parent_id: parent_id,
-      child_id: child_id,
-      created_at: created_at
+      %{
+        parent_id: parent_id,
+        child_id: child_id,
+        created_at: created_at
+      },
+      on_conflict: "DO NOTHING"
     )
   end
 
   defp insert_checkpoint(db, execution_id, sequence, created_at) do
-    insert_one(
-      db,
-      :checkpoints,
+    insert_one(db, :checkpoints, %{
       execution_id: execution_id,
       sequence: sequence,
       created_at: created_at
-    )
+    })
   end
 
   defp insert_checkpoint_arguments(db, checkpoint_id, arguments) do
@@ -899,16 +934,14 @@ defmodule Coflux.Orchestration.Store do
   defp insert_result(db, execution_id, result, retry_id, created_at) do
     {type, format, value} = parse_result(result)
 
-    insert_one(
-      db,
-      :results,
+    insert_one(db, :results, %{
       execution_id: execution_id,
       type: type,
       format: format,
       value: value,
       retry_id: retry_id,
       created_at: created_at
-    )
+    })
   end
 
   defp current_timestamp() do
@@ -959,16 +992,16 @@ defmodule Coflux.Orchestration.Store do
     end
   end
 
-  defp insert_one(db, table, values) do
+  defp insert_one(db, table, values, opts \\ nil) do
     {fields, values} = Enum.unzip(values)
 
-    case insert_many(db, table, List.to_tuple(fields), [List.to_tuple(values)]) do
+    case insert_many(db, table, List.to_tuple(fields), [List.to_tuple(values)], opts) do
       {:ok, [id]} -> {:ok, id}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp insert_many(db, table, fields, values) do
+  defp insert_many(db, table, fields, values, opts \\ nil) do
     if Enum.any?(values) do
       {fields, indexes} =
         fields
@@ -978,7 +1011,14 @@ defmodule Coflux.Orchestration.Store do
 
       fields = Enum.join(fields, ", ")
       placeholders = Enum.map_join(indexes, ", ", fn index -> "?#{index}" end)
-      sql = "INSERT INTO #{table} (#{fields}) VALUES (#{placeholders})"
+
+      sql_parts = [
+        "INSERT INTO #{table} (#{fields})",
+        "VALUES (#{placeholders})",
+        if(opts[:on_conflict], do: "ON CONFLICT #{opts[:on_conflict]}")
+      ]
+
+      sql = sql_parts |> Enum.reject(&is_nil/1) |> Enum.join(" ")
 
       with_prepare(db, sql, fn statement ->
         with_snapshot(db, fn ->

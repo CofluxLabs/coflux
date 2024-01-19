@@ -11,7 +11,7 @@ import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTopic } from "@topical/react";
-import { IconChevronDown } from "@tabler/icons-react";
+import { IconChevronDown, IconPinned } from "@tabler/icons-react";
 
 import * as models from "../models";
 import Badge from "./Badge";
@@ -474,7 +474,7 @@ export default function StepDetail({
       className={classNames("overflow-hidden flex flex-col", className)}
       style={style}
     >
-      <div className="p-4 pt-5 flex items-center border-b border-slate-200">
+      <div className="p-4 pt-5 flex items-start border-b border-slate-200">
         <div className="flex-1">
           <h2>
             <span
@@ -529,6 +529,11 @@ export default function StepDetail({
             </Button>
           </div>
         </div>
+        {step.isMemoised && (
+          <span className="text-slate-500" title="Memoised">
+            <IconPinned size={20} />
+          </span>
+        )}
       </div>
       <div className="flex flex-col overflow-auto p-4 gap-5">
         {step.arguments?.length > 0 && (
