@@ -205,7 +205,11 @@ function buildGraph(
             child,
             runId: child.runId,
           });
-          if (child.executionId && child.executionId in attempt.dependencies) {
+          if (
+            Object.values(attempt.dependencies).some(
+              (d) => d.runId == child.runId,
+            )
+          ) {
             g.setEdge(child.runId, stepId, { type: "dependency" });
           } else {
             g.setEdge(stepId, child.runId, { type: "child" });
