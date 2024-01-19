@@ -545,7 +545,7 @@ export default function StepDetail({
             </ol>
           </div>
         )}
-        {attempt.type == 0 ? (
+        {attempt?.type == 0 ? (
           <Attempt
             attempt={attempt}
             runId={runId}
@@ -553,7 +553,7 @@ export default function StepDetail({
             projectId={projectId}
             environmentName={environmentName}
           />
-        ) : attempt.type == 1 ? (
+        ) : attempt?.type == 1 ? (
           <div>{/* TODO: link to execution */}</div>
         ) : undefined}
       </div>

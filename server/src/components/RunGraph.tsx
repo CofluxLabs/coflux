@@ -132,7 +132,6 @@ function buildGraph(
     initialStepId,
     (stepId: string, attemptNumber: number) => {
       const step = run.steps[stepId];
-      const attempt = step.attempts[attemptNumber];
       g.setNode(stepId, {
         width: 160,
         height: 50,
@@ -141,6 +140,10 @@ function buildGraph(
         stepId,
         attemptNumber,
       });
+      const attempt = step.attempts[attemptNumber];
+      if (!attempt) {
+        return;
+      }
       Object.entries(attempt.dependencies).forEach(
         ([dependencyId, dependency]) => {
           if (dependency.runId == runId) {
@@ -167,8 +170,9 @@ function buildGraph(
             stepAttempts,
             child,
           );
-          if (childAttemptNumber) {
-            const childAttempt = run.steps[child].attempts[childAttemptNumber];
+          const childAttempt =
+            childAttemptNumber && run.steps[child].attempts[childAttemptNumber];
+          if (childAttempt) {
             if (childAttempt.type == 1) {
               const cachedExecutionId = childAttempt.executionId;
               const cachedStepId = Object.keys(run.steps).find((sId) =>
@@ -257,7 +261,8 @@ function StepNode({
 }: StepNodeProps) {
   const attempt = step.attempts[attemptNumber];
   const { isHovered } = useHoverContext();
-  const isDeferred = attempt.type == 1 || attempt.result?.type == "duplicated";
+  const isDeferred =
+    attempt?.type == 1 || attempt?.result?.type == "duplicated";
   return (
     <Fragment>
       {Object.keys(step.attempts).length > 1 && (
@@ -279,7 +284,7 @@ function StepNode({
         attemptNumber={attemptNumber}
         className={classNames(
           "absolute w-full h-full flex-1 flex gap-2 items-center border rounded px-2 py-1 ring-offset-2",
-          classNameForAttempt(attempt),
+          attempt && classNameForAttempt(attempt),
         )}
         activeClassName="ring ring-cyan-400"
         hoveredClassName="ring ring-slate-400"
