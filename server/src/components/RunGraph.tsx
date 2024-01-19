@@ -237,8 +237,6 @@ function classNameForAttempt(attempt: models.Attempt) {
 }
 
 type StepNodeProps = {
-  node: dagre.Node;
-  offset: [number, number];
   stepId: string;
   step: models.Step;
   attemptNumber: number;
@@ -247,8 +245,6 @@ type StepNodeProps = {
 };
 
 function StepNode({
-  node,
-  offset,
   stepId,
   step,
   attemptNumber,
@@ -258,15 +254,7 @@ function StepNode({
   const attempt = step.attempts[attemptNumber];
   const { isHovered } = useHoverContext();
   return (
-    <div
-      className="absolute flex"
-      style={{
-        left: node.x - node.width / 2 + offset[0],
-        top: node.y - node.height / 2 + offset[1],
-        width: node.width,
-        height: node.height,
-      }}
-    >
+    <Fragment>
       {Object.keys(step.attempts).length > 1 && (
         <div
           className={classNames(
@@ -276,7 +264,7 @@ function StepNode({
               : "-top-1 -right-1",
             isHovered(runId, stepId) &&
               !isHovered(runId, stepId, attemptNumber) &&
-              "ring-2 ring-slate-300",
+              "ring-2 ring-slate-400",
           )}
         ></div>
       )}
@@ -289,7 +277,7 @@ function StepNode({
           classNameForAttempt(attempt),
         )}
         activeClassName="ring ring-cyan-400"
-        hoveredClassName="ring ring-slate-300"
+        hoveredClassName="ring ring-slate-400"
       >
         <span className="flex-1 flex flex-col truncate">
           <span
@@ -313,114 +301,83 @@ function StepNode({
             </span>
           )}
       </StepLink>
-    </div>
+    </Fragment>
   );
 }
 
 type ParentNodeProps = {
-  node: dagre.Node;
-  offset: [number, number];
   parent: models.Reference;
 };
 
-function ParentNode({ node, offset, parent }: ParentNodeProps) {
+function ParentNode({ parent }: ParentNodeProps) {
   return (
-    <div
-      className="absolute flex"
-      style={{
-        left: node.x - node.width / 2 + offset[0],
-        top: node.y - node.height / 2 + offset[1],
-        width: node.width,
-        height: node.height,
-      }}
+    <StepLink
+      runId={parent.runId}
+      stepId={parent.stepId}
+      attemptNumber={parent.sequence}
+      className="flex-1 flex gap-2 items-center border border-dashed border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
+      hoveredClassName="ring ring-slate-400"
     >
-      <StepLink
-        runId={parent.runId}
-        stepId={parent.stepId}
-        attemptNumber={parent.sequence}
-        className="flex-1 flex gap-2 items-center border border-dashed border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
-        hoveredClassName="ring ring-slate-300"
-      >
-        <div className="flex-1 flex flex-col truncate">
-          <span className="font-mono font-bold text-slate-400 text-sm">
-            {parent.target}
-          </span>
-          <span className="text-xs text-slate-400">{parent.runId}</span>
-        </div>
-        <IconArrowForward size={20} className="text-slate-400" />
-      </StepLink>
-    </div>
+      <div className="flex-1 flex flex-col truncate">
+        <span className="font-mono font-bold text-slate-400 text-sm">
+          {parent.target}
+        </span>
+        <span className="text-xs text-slate-400">{parent.runId}</span>
+      </div>
+      <IconArrowForward size={20} className="text-slate-400" />
+    </StepLink>
   );
 }
 
 type ChildNodeProps = {
-  node: dagre.Node;
-  offset: [number, number];
   runId: string;
   child: models.Child;
 };
 
-function ChildNode({ node, offset, runId, child }: ChildNodeProps) {
+function ChildNode({ runId, child }: ChildNodeProps) {
   return (
-    <div
-      className="absolute flex"
-      style={{
-        left: node.x - node.width / 2 + offset[0],
-        top: node.y - node.height / 2 + offset[1],
-        width: node.width,
-        height: node.height,
-      }}
+    <StepLink
+      runId={runId}
+      stepId={child.stepId}
+      attemptNumber={1}
+      className="flex-1 flex gap-2 items-center border border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
+      hoveredClassName="ring ring-slate-400"
     >
-      <StepLink
-        runId={runId}
-        stepId={child.stepId}
-        attemptNumber={1}
-        className="flex-1 flex gap-2 items-center border border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
-        hoveredClassName="ring ring-slate-300"
-      >
-        <div className="flex-1 flex flex-col truncate">
-          <span className="font-mono font-bold text-slate-500 text-sm">
-            {child.target}
-          </span>
-          <span className="text-xs text-slate-400">{runId}</span>
-        </div>
-        <IconArrowUpRight size={20} className="text-slate-400" />
-      </StepLink>
-    </div>
+      <div className="flex-1 flex flex-col truncate">
+        <span className="font-mono font-bold text-slate-500 text-sm">
+          {child.target}
+        </span>
+        <span className="text-xs text-slate-400">{runId}</span>
+      </div>
+      <IconArrowUpRight size={20} className="text-slate-400" />
+    </StepLink>
   );
 }
 
 type EdgeProps = {
   edge: dagre.GraphEdge;
   offset: [number, number];
+  highlight?: boolean;
 };
 
-function Edge({ edge, offset }: EdgeProps) {
+function Edge({ edge, offset, highlight }: EdgeProps) {
   const { points, type } = edge;
   return (
-    <Fragment>
-      <path
-        className={
-          type == "dependency"
-            ? "stroke-slate-300"
-            : type == "transitive"
-            ? "stroke-slate-100"
-            : "stroke-slate-300"
-        }
-        fill="none"
-        strokeWidth={2}
-        strokeDasharray={type == "child" ? "5" : undefined}
-        d={`M ${points
-          .map(({ x, y }) => `${x + offset[0]} ${y + offset[1]}`)
-          .join(" ")}`}
-      />
-      <circle
-        cx={points[points.length - 1].x + offset[0]}
-        cy={points[points.length - 1].y + offset[1]}
-        r={3}
-        className={type == "dependency" ? "fill-slate-300" : "fill-slate-200"}
-      />
-    </Fragment>
+    <path
+      className={
+        highlight
+          ? "stroke-slate-400"
+          : type == "transitive"
+          ? "stroke-slate-100"
+          : "stroke-slate-200"
+      }
+      fill="none"
+      strokeWidth={highlight ? 3 : 3}
+      strokeDasharray={type == "child" ? "5" : undefined}
+      d={`M ${points
+        .map(({ x, y }) => `${x + offset[0]} ${y + offset[1]}`)
+        .join(" ")}`}
+    />
   );
 }
 
@@ -469,6 +426,7 @@ export default function RunGraph({
   const [offsetOverride, setOffsetOverride] = useState<[number, number]>();
   const [dragging, setDragging] = useState<[number, number]>();
   const [zoomOverride, setZoomOverride] = useState<number>();
+  const { isHovered } = useHoverContext();
   const graph = useMemo(
     () => buildGraph(run, runId, activeStepId, activeAttemptNumber),
     [run, activeStepId, activeAttemptNumber],
@@ -571,11 +529,17 @@ export default function RunGraph({
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
           {graph.edges().flatMap((edge) => {
+            const highlight =
+              isHovered(edge.v) ||
+              isHovered(edge.w) ||
+              isHovered(runId, edge.v) ||
+              isHovered(runId, edge.w);
             return (
               <Edge
                 key={`${edge.v}-${edge.w}`}
                 offset={[marginX, marginY]}
                 edge={graph.edge(edge)}
+                highlight={highlight}
               />
             );
           })}
@@ -583,40 +547,36 @@ export default function RunGraph({
         <div className="absolute">
           {graph.nodes().map((nodeId) => {
             const node = graph.node(nodeId);
-            switch (node.type) {
-              case "step":
-                return (
+            return (
+              <div
+                className="absolute flex"
+                style={{
+                  left: node.x - node.width / 2 + marginX,
+                  top: node.y - node.height / 2 + marginY,
+                  width: node.width,
+                  height: node.height,
+                }}
+              >
+                {node.type == "step" ? (
                   <StepNode
                     key={nodeId}
-                    node={node}
                     stepId={node.stepId}
                     step={node.step}
                     attemptNumber={node.attemptNumber}
                     runId={runId}
                     isActive={nodeId == activeStepId}
-                    offset={[marginX, marginY]}
                   />
-                );
-              case "parent":
-                return (
-                  <ParentNode
-                    key={nodeId}
-                    node={node}
-                    parent={node.parent}
-                    offset={[marginX, marginY]}
-                  />
-                );
-              case "child":
-                return (
+                ) : node.type == "parent" ? (
+                  <ParentNode key={nodeId} parent={node.parent} />
+                ) : node.type == "child" ? (
                   <ChildNode
                     key={nodeId}
-                    node={node}
                     runId={node.runId}
                     child={node.child}
-                    offset={[marginX, marginY]}
                   />
-                );
-            }
+                ) : undefined}
+              </div>
+            );
           })}
         </div>
       </div>
