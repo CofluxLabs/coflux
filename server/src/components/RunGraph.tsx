@@ -354,6 +354,36 @@ function ChildNode({ runId, child }: ChildNodeProps) {
   );
 }
 
+function buildPath(points: { x: number; y: number }[]): string {
+  const parts = [`M ${points[0].x} ${points[0].y}`];
+
+  if (points.length === 2) {
+    parts.push(`L ${points[1].x} ${points[1].y}`);
+  } else if (points.length === 3) {
+    parts.push(`Q ${points[1].x} ${points[1].y} ${points[2].x} ${points[2].y}`);
+  } else {
+    for (let i = 1; i < points.length - 2; i++) {
+      const p0 = points[i - 1];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[i + 2];
+
+      const x1 = p1.x + (p2.x - p0.x) / 6;
+      const y1 = p1.y + (p2.y - p0.y) / 6;
+
+      const x2 = p2.x - (p3.x - p1.x) / 6;
+      const y2 = p2.y - (p3.y - p1.y) / 6;
+
+      parts.push(`C ${x1} ${y1} ${x2} ${y2} ${p2.x} ${p2.y}`);
+    }
+
+    const q0 = points[points.length - 2];
+    const q1 = points[points.length - 1];
+    parts.push(`S ${q0.x} ${q0.y} ${q1.x} ${q1.y}`);
+  }
+
+  return parts.join(" ");
+}
 type EdgeProps = {
   edge: dagre.GraphEdge;
   offset: [number, number];
@@ -374,9 +404,9 @@ function Edge({ edge, offset, highlight }: EdgeProps) {
       fill="none"
       strokeWidth={highlight ? 3 : 3}
       strokeDasharray={type == "child" ? "5" : undefined}
-      d={`M ${points
-        .map(({ x, y }) => `${x + offset[0]} ${y + offset[1]}`)
-        .join(" ")}`}
+      d={buildPath(
+        points.map(({ x, y }) => ({ x: x + offset[0], y: y + offset[1] })),
+      )}
     />
   );
 }
@@ -549,6 +579,7 @@ export default function RunGraph({
             const node = graph.node(nodeId);
             return (
               <div
+                key={nodeId}
                 className="absolute flex"
                 style={{
                   left: node.x - node.width / 2 + marginX,
@@ -559,7 +590,6 @@ export default function RunGraph({
               >
                 {node.type == "step" ? (
                   <StepNode
-                    key={nodeId}
                     stepId={node.stepId}
                     step={node.step}
                     attemptNumber={node.attemptNumber}
@@ -567,13 +597,9 @@ export default function RunGraph({
                     isActive={nodeId == activeStepId}
                   />
                 ) : node.type == "parent" ? (
-                  <ParentNode key={nodeId} parent={node.parent} />
+                  <ParentNode parent={node.parent} />
                 ) : node.type == "child" ? (
-                  <ChildNode
-                    key={nodeId}
-                    runId={node.runId}
-                    child={node.child}
-                  />
+                  <ChildNode runId={node.runId} child={node.child} />
                 ) : undefined}
               </div>
             );
