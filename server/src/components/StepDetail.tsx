@@ -477,7 +477,14 @@ export default function StepDetail({
       <div className="p-4 pt-5 flex items-center border-b border-slate-200">
         <div className="flex-1">
           <h2>
-            <span className="font-mono text-xl">{step.target}</span>{" "}
+            <span
+              className={classNames(
+                "font-mono text-xl",
+                step.type == 0 && "font-bold",
+              )}
+            >
+              {step.target}
+            </span>{" "}
             <span className="text-slate-500">({step.repository})</span>
           </h2>
           <div className="flex items-center gap-1 mt-1">

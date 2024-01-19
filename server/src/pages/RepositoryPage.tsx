@@ -77,7 +77,7 @@ export default function RepositoryPage() {
             </span>
           </h1>
         </div>
-        <div className="flex-1 flex gap-2">
+        <div className="flex-1 flex gap-2 min-h-0">
           <RepositoryQueue
             projectId={projectId!}
             environmentName={environmentName!}

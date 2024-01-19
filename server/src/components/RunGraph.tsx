@@ -115,8 +115,8 @@ function buildGraph(
 
   if (run.parent) {
     g.setNode(run.parent.runId, {
-      width: 160,
-      height: 50,
+      width: 100,
+      height: 30,
       type: "parent",
       parent: run.parent,
     });
@@ -257,6 +257,7 @@ function StepNode({
 }: StepNodeProps) {
   const attempt = step.attempts[attemptNumber];
   const { isHovered } = useHoverContext();
+  const isDeferred = attempt.type == 1 || attempt.result?.type == "duplicated";
   return (
     <Fragment>
       {Object.keys(step.attempts).length > 1 && (
@@ -283,18 +284,26 @@ function StepNode({
         activeClassName="ring ring-cyan-400"
         hoveredClassName="ring ring-slate-400"
       >
-        <span className="flex-1 flex flex-col truncate">
-          <span
-            className={classNames(
-              "font-mono text-sm",
-              step.type == 0 && "font-bold",
-            )}
-          >
-            {step.target}
+        <span className="flex-1 flex flex-col overflow-hidden">
+          <span className="truncate text-sm">
+            <span
+              className={classNames(
+                "font-mono",
+                step.type == 0 && "font-bold",
+                isDeferred && "text-slate-500",
+              )}
+            >
+              {step.target}
+            </span>{" "}
+            <span
+              className={classNames(
+                "text-xs",
+                isDeferred ? "text-slate-400" : "text-slate-500",
+              )}
+            >
+              ({step.repository})
+            </span>
           </span>
-          {step.type == 0 && (
-            <span className="text-xs text-slate-500">{runId}</span>
-          )}
         </span>
         {attempt &&
           attempt.type == 0 &&
@@ -319,14 +328,11 @@ function ParentNode({ parent }: ParentNodeProps) {
       runId={parent.runId}
       stepId={parent.stepId}
       attemptNumber={parent.sequence}
-      className="flex-1 flex gap-2 items-center border border-dashed border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
+      className="flex-1 w-full h-full flex gap-2 items-center px-2 py-1 border border-slate-300 rounded-full bg-white ring-offset-2"
       hoveredClassName="ring ring-slate-400"
     >
-      <div className="flex-1 flex flex-col truncate">
-        <span className="font-mono font-bold text-slate-400 text-sm">
-          {parent.target}
-        </span>
-        <span className="text-xs text-slate-400">{parent.runId}</span>
+      <div className="flex-1 flex flex-col overflow-hidden text-center">
+        <span className="text-slate-500 font-bold">{parent.runId}</span>
       </div>
       <IconArrowForward size={20} className="text-slate-400" />
     </StepLink>
@@ -344,14 +350,14 @@ function ChildNode({ runId, child }: ChildNodeProps) {
       runId={runId}
       stepId={child.stepId}
       attemptNumber={1}
-      className="flex-1 flex gap-2 items-center border border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
+      className="flex-1 flex w-full h-full gap-2 items-center border border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
       hoveredClassName="ring ring-slate-400"
     >
-      <div className="flex-1 flex flex-col truncate">
-        <span className="font-mono font-bold text-slate-500 text-sm">
-          {child.target}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <span className="truncate text-slate-700 text-sm">
+          <span className="font-mono">{child.target}</span>{" "}
+          <span className="text-slate-500 text-xs">({child.repository})</span>
         </span>
-        <span className="text-xs text-slate-400">{runId}</span>
       </div>
       <IconArrowUpRight size={20} className="text-slate-400" />
     </StepLink>
