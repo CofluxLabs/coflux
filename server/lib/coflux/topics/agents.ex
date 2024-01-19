@@ -17,15 +17,17 @@ defmodule Coflux.Topics.Agents do
     {:ok, Topic.new(agents, %{ref: ref})}
   end
 
-  def handle_info({:topic, _ref, {:agent, session_id, targets}}, topic) do
-    topic =
-      if is_nil(targets) do
-        Topic.unset(topic, [], Integer.to_string(session_id))
-      else
-        Topic.set(topic, [Integer.to_string(session_id)], build_targets(targets))
-      end
-
+  def handle_info({:topic, _ref, notifications}, topic) do
+    topic = Enum.reduce(notifications, topic, &process_notification(&2, &1))
     {:ok, topic}
+  end
+
+  defp process_notification(topic, {:agent, session_id, targets}) do
+    if is_nil(targets) do
+      Topic.unset(topic, [], Integer.to_string(session_id))
+    else
+      Topic.set(topic, [Integer.to_string(session_id)], build_targets(targets))
+    end
   end
 
   defp build_targets(targets) do

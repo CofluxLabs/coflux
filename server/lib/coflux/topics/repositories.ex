@@ -45,44 +45,39 @@ defmodule Coflux.Topics.Repositories do
     {:ok, Topic.new(value, %{ref: ref, executions: executions})}
   end
 
-  def handle_info({:topic, _ref, {:targets, repository, targets}}, topic) do
+  def handle_info({:topic, _ref, notifications}, topic) do
+    topic = Enum.reduce(notifications, topic, &process_notification(&2, &1))
+    {:ok, topic}
+  end
+
+  defp process_notification(topic, {:targets, repository, targets}) do
     targets = targets |> filter_targets() |> Map.new(&build_target/1)
-    topic = Topic.set(topic, [repository, :targets], targets)
-    {:ok, topic}
+    Topic.set(topic, [repository, :targets], targets)
   end
 
-  def handle_info({:topic, _ref, {:scheduled, repository, execution_id, execute_at}}, topic) do
-    topic =
+  defp process_notification(topic, {:scheduled, repository, execution_id, execute_at}) do
+    update_executing(topic, repository, fn {executing, scheduled} ->
+      scheduled = Map.put(scheduled, execution_id, execute_at)
+      {executing, scheduled}
+    end)
+  end
+
+  defp process_notification(topic, {:assigned, executions}) do
+    Enum.reduce(executions, topic, fn {repository, execution_ids}, topic ->
       update_executing(topic, repository, fn {executing, scheduled} ->
-        scheduled = Map.put(scheduled, execution_id, execute_at)
+        executing = MapSet.union(executing, execution_ids)
+        scheduled = Map.drop(scheduled, MapSet.to_list(execution_ids))
         {executing, scheduled}
       end)
-
-    {:ok, topic}
+    end)
   end
 
-  def handle_info({:topic, _ref, {:assigned, executions}}, topic) do
-    topic =
-      Enum.reduce(executions, topic, fn {repository, execution_ids}, topic ->
-        update_executing(topic, repository, fn {executing, scheduled} ->
-          executing = MapSet.union(executing, execution_ids)
-          scheduled = Map.drop(scheduled, MapSet.to_list(execution_ids))
-          {executing, scheduled}
-        end)
-      end)
-
-    {:ok, topic}
-  end
-
-  def handle_info({:topic, _ref, {:completed, repository, execution_id}}, topic) do
-    topic =
-      update_executing(topic, repository, fn {executing, scheduled} ->
-        executing = MapSet.delete(executing, execution_id)
-        scheduled = Map.delete(scheduled, execution_id)
-        {executing, scheduled}
-      end)
-
-    {:ok, topic}
+  defp process_notification(topic, {:completed, repository, execution_id}) do
+    update_executing(topic, repository, fn {executing, scheduled} ->
+      executing = MapSet.delete(executing, execution_id)
+      scheduled = Map.delete(scheduled, execution_id)
+      {executing, scheduled}
+    end)
   end
 
   defp filter_targets(targets) do

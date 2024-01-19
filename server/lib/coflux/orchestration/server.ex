@@ -31,6 +31,9 @@ defmodule Coflux.Orchestration.Server do
               # topic -> %{ref -> pid}
               topics: %{},
 
+              # topic -> [notification]
+              notifications: %{},
+
               # execution_id -> [{pid, ref}]
               waiting: %{}
   end
@@ -69,73 +72,82 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:connect, external_id, concurrency, pid}, _from, state) do
-    if external_id do
-      case Map.fetch(state.session_ids, external_id) do
-        {:ok, session_id} ->
-          session = Map.fetch!(state.sessions, session_id)
+    result =
+      if external_id do
+        case Map.fetch(state.session_ids, external_id) do
+          {:ok, session_id} ->
+            session = Map.fetch!(state.sessions, session_id)
 
-          if session.expire_timer do
-            Process.cancel_timer(session.expire_timer)
-          end
-
-          state =
-            if session.agent do
-              {{pid, ^session_id}, state} = pop_in(state.agents[session.agent])
-              # TODO: better reason?
-              Process.exit(pid, :kill)
-              state
-            else
-              state
+            if session.expire_timer do
+              Process.cancel_timer(session.expire_timer)
             end
 
-          ref = Process.monitor(pid)
+            state =
+              if session.agent do
+                {{pid, ^session_id}, state} = pop_in(state.agents[session.agent])
+                # TODO: better reason?
+                Process.exit(pid, :kill)
+                state
+              else
+                state
+              end
 
-          state.sessions[session_id].queue
-          |> Enum.reverse()
-          |> Enum.each(&send(pid, &1))
+            ref = Process.monitor(pid)
 
-          state =
-            state
-            |> put_in([Access.key(:agents), ref], {pid, session_id})
-            |> update_in(
-              [Access.key(:sessions), session_id],
-              &Map.merge(&1, %{
-                agent: ref,
-                queue: [],
-                concurrency: concurrency
-              })
-            )
+            state.sessions[session_id].queue
+            |> Enum.reverse()
+            |> Enum.each(&send(pid, &1))
 
-          notify_agent(state, session_id)
+            state =
+              state
+              |> put_in([Access.key(:agents), ref], {pid, session_id})
+              |> update_in(
+                [Access.key(:sessions), session_id],
+                &Map.merge(&1, %{
+                  agent: ref,
+                  queue: [],
+                  concurrency: concurrency
+                })
+              )
 
-          send(self(), :execute)
+            state = notify_agent(state, session_id)
 
-          {:reply, {:ok, external_id}, state}
+            send(self(), :execute)
 
-        :error ->
-          {:reply, {:error, :no_session}, state}
+            {:ok, external_id, state}
+
+          :error ->
+            {:error, :no_session}
+        end
+      else
+        case Store.start_session(state.db) do
+          {:ok, session_id, external_id} ->
+            ref = Process.monitor(pid)
+
+            session =
+              external_id
+              |> build_session()
+              |> Map.put(:agent, ref)
+              |> Map.put(:concurrency, concurrency)
+
+            state =
+              state
+              |> put_in([Access.key(:agents), ref], {pid, session_id})
+              |> put_in([Access.key(:sessions), session_id], session)
+              |> put_in([Access.key(:session_ids), external_id], session_id)
+              |> notify_agent(session_id)
+
+            {:ok, external_id, state}
+        end
       end
-    else
-      case Store.start_session(state.db) do
-        {:ok, session_id, external_id} ->
-          ref = Process.monitor(pid)
 
-          session =
-            external_id
-            |> build_session()
-            |> Map.put(:agent, ref)
-            |> Map.put(:concurrency, concurrency)
+    case result do
+      {:ok, external_id, state} ->
+        state = flush_notifications(state)
+        {:reply, {:ok, external_id}, state}
 
-          state =
-            state
-            |> put_in([Access.key(:agents), ref], {pid, session_id})
-            |> put_in([Access.key(:sessions), session_id], session)
-            |> put_in([Access.key(:session_ids), external_id], session_id)
-
-          notify_agent(state, session_id)
-
-          {:reply, {:ok, external_id}, state}
-      end
+      {:error, error} ->
+        {:reply, {:error, error}, state}
     end
   end
 
@@ -145,19 +157,26 @@ defmodule Coflux.Orchestration.Server do
     case Store.get_or_create_manifest(state.db, repository, targets) do
       {:ok, manifest_id} ->
         :ok = Store.record_session_manifest(state.db, session_id, manifest_id)
-        state = register_targets(state, repository, targets, session_id)
-        notify_listeners(state, :repositories, {:targets, repository, targets})
-        notify_agent(state, session_id)
 
-        Enum.each(targets, fn {target_name, target} ->
-          notify_listeners(
-            state,
-            {:target, repository, target_name},
-            {:target, target.type, target.parameters}
-          )
-        end)
+        state =
+          state
+          |> register_targets(repository, targets, session_id)
+          |> notify_listeners(:repositories, {:targets, repository, targets})
+          |> notify_agent(session_id)
+
+        state =
+          targets
+          |> Enum.reduce(state, fn {target_name, target}, state ->
+            notify_listeners(
+              state,
+              {:target, repository, target_name},
+              {:target, target.type, target.parameters}
+            )
+          end)
+          |> flush_notifications()
 
         send(self(), :execute)
+
         {:reply, :ok, state}
     end
   end
@@ -173,13 +192,13 @@ defmodule Coflux.Orchestration.Server do
 
     opts = Keyword.put(opts, :recurrent, target.type == :sensor)
 
-    result =
+    {result, state} =
       case Keyword.get(opts, :parent_id) do
         nil ->
           if target.type in [:workflow, :sensor] do
             start_run(state, repository, target_name, arguments, opts)
           else
-            {:error, :invalid_target}
+            {{:error, :invalid_target}, state}
           end
 
         parent_id ->
@@ -208,17 +227,13 @@ defmodule Coflux.Orchestration.Server do
               )
 
             _ ->
-              {:error, :invalid_target}
+              {{:error, :invalid_target}, state}
           end
       end
 
-    case result do
-      {:ok, external_run_id, external_step_id, execution_id, state} ->
-        {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
+    state = flush_notifications(state)
 
-      {:error, error} ->
-        {:reply, {:error, error}, state}
-    end
+    {:reply, result, state}
   end
 
   def handle_call({:cancel_run, external_run_id}, _from, state) do
@@ -256,6 +271,8 @@ defmodule Coflux.Orchestration.Server do
             end
           end)
 
+        state = flush_notifications(state)
+
         {:reply, :ok, state}
     end
   end
@@ -264,6 +281,7 @@ defmodule Coflux.Orchestration.Server do
     {:ok, step} = Store.get_step_by_external_id(state.db, external_step_id)
     # TODO: abort/cancel any running/scheduled retry? (and reference this retry?)
     {:ok, execution_id, sequence, state} = rerun_step(state, step)
+    state = flush_notifications(state)
     {:reply, {:ok, execution_id, sequence}, state}
   end
 
@@ -349,41 +367,50 @@ defmodule Coflux.Orchestration.Server do
   def handle_call({:record_result, execution_id, result}, _from, state) do
     case record_result(state, execution_id, result) do
       {:ok, state} ->
+        state = flush_notifications(state)
         {:reply, :ok, state}
     end
   end
 
   def handle_call({:get_result, execution_id, from_execution_id, pid}, _from, state) do
-    if from_execution_id do
-      :ok = Store.record_dependency(state.db, from_execution_id, execution_id)
-      {:ok, step} = Store.get_step_for_execution(state.db, from_execution_id)
+    state =
+      if from_execution_id do
+        :ok = Store.record_dependency(state.db, from_execution_id, execution_id)
+        {:ok, step} = Store.get_step_for_execution(state.db, from_execution_id)
 
-      # TODO: only resolve if there are listeners to notify
-      dependency = resolve_execution(state.db, execution_id)
+        # TODO: only resolve if there are listeners to notify
+        dependency = resolve_execution(state.db, execution_id)
 
-      notify_listeners(
-        state,
-        {:run, step.run_id},
-        {:dependency, from_execution_id, execution_id, dependency}
-      )
-    end
+        notify_listeners(
+          state,
+          {:run, step.run_id},
+          {:dependency, from_execution_id, execution_id, dependency}
+        )
+      else
+        state
+      end
 
-    case resolve_result(execution_id, state.db) do
-      {:pending, execution_id} ->
-        ref = make_ref()
+    {result, state} =
+      case resolve_result(execution_id, state.db) do
+        {:pending, execution_id} ->
+          ref = make_ref()
 
-        state =
-          update_in(
-            state,
-            [Access.key(:waiting), Access.key(execution_id, [])],
-            &[{pid, ref} | &1]
-          )
+          state =
+            update_in(
+              state,
+              [Access.key(:waiting), Access.key(execution_id, [])],
+              &[{pid, ref} | &1]
+            )
 
-        {:reply, {:wait, ref}, state}
+          {{:wait, ref}, state}
 
-      {:ok, result} ->
-        {:reply, {:ok, result}, state}
-    end
+        {:ok, result} ->
+          {{:ok, result}, state}
+      end
+
+    state = flush_notifications(state)
+
+    {:reply, result, state}
   end
 
   def handle_call({:subscribe_repositories, pid}, _from, state) do
@@ -575,6 +602,8 @@ defmodule Coflux.Orchestration.Server do
         end)
         |> Map.update!(:session_ids, &Map.delete(&1, session.external_id))
 
+      state = flush_notifications(state)
+
       {:noreply, state}
     end
   end
@@ -630,16 +659,17 @@ defmodule Coflux.Orchestration.Server do
         end
       )
 
-    assigned
-    |> Enum.group_by(fn {execution, _assigned_at} -> elem(execution, 2) end)
-    |> Enum.each(fn {run_id, executions} ->
-      assigned =
-        Map.new(executions, fn {execution, assigned_at} ->
-          {elem(execution, 0), assigned_at}
-        end)
+    state =
+      assigned
+      |> Enum.group_by(fn {execution, _assigned_at} -> elem(execution, 2) end)
+      |> Enum.reduce(state, fn {run_id, executions}, state ->
+        assigned =
+          Map.new(executions, fn {execution, assigned_at} ->
+            {elem(execution, 0), assigned_at}
+          end)
 
-      notify_listeners(state, {:run, run_id}, {:assigned, assigned})
-    end)
+        notify_listeners(state, {:run, run_id}, {:assigned, assigned})
+      end)
 
     assigned_by_repository =
       assigned
@@ -649,9 +679,9 @@ defmodule Coflux.Orchestration.Server do
       )
       |> Map.new(fn {k, v} -> {k, MapSet.new(v)} end)
 
-    notify_listeners(state, :repositories, {:assigned, assigned_by_repository})
+    state = notify_listeners(state, :repositories, {:assigned, assigned_by_repository})
 
-    Enum.each(assigned_by_repository, fn {repository, execution_ids} ->
+    Enum.reduce(assigned_by_repository, state, fn {repository, execution_ids}, state ->
       repository_executions =
         Enum.reduce(assigned, %{}, fn {execution, assigned_at}, repository_executions ->
           execution_id = elem(execution, 0)
@@ -690,6 +720,8 @@ defmodule Coflux.Orchestration.Server do
         state
       end
 
+    state = flush_notifications(state)
+
     {:noreply, state}
   end
 
@@ -704,12 +736,13 @@ defmodule Coflux.Orchestration.Server do
           Process.send_after(self(), {:expire_session, session_id}, @session_timeout_ms)
 
         state =
-          update_in(
-            state.sessions[session_id],
+          state
+          |> update_in(
+            [Access.key(:sessions), session_id],
             &Map.merge(&1, %{agent: nil, expire_timer: expire_timer})
           )
-
-        notify_agent(state, session_id)
+          |> notify_agent(session_id)
+          |> flush_notifications()
 
         {:noreply, state}
 
@@ -781,27 +814,27 @@ defmodule Coflux.Orchestration.Server do
 
     case Store.rerun_step(state.db, step.id, execute_after) do
       {:ok, execution_id, sequence, execution_type, created_at} ->
-        notify_listeners(
-          state,
-          {:run, step.run_id},
-          {:attempt, step.external_id, sequence, execution_type, execution_id, created_at,
-           execute_after}
-        )
+        state =
+          notify_listeners(
+            state,
+            {:run, step.run_id},
+            {:attempt, step.external_id, sequence, execution_type, execution_id, created_at,
+             execute_after}
+          )
 
         execute_at = execute_after || created_at
 
-        notify_listeners(
-          state,
-          :repositories,
-          {:scheduled, step.repository, execution_id, execute_at}
-        )
-
-        notify_listeners(
-          state,
-          {:repository, step.repository},
-          {:scheduled, execution_id, step.target, run.external_id, step.external_id, sequence,
-           execute_after, created_at}
-        )
+        state =
+          state
+          |> notify_listeners(
+            :repositories,
+            {:scheduled, step.repository, execution_id, execute_at}
+          )
+          |> notify_listeners(
+            {:repository, step.repository},
+            {:scheduled, execution_id, step.target, run.external_id, step.external_id, sequence,
+             execute_after, created_at}
+          )
 
         send(self(), :execute)
         {:ok, execution_id, sequence, state}
@@ -839,14 +872,14 @@ defmodule Coflux.Orchestration.Server do
             resolve_execution(state.db, retry_id)
           end
 
-        notify_listeners(
-          state,
-          {:run, run_id},
-          {:result, execution_id, result, retry, created_at}
-        )
-
-        notify_listeners(state, :repositories, {:completed, repository, execution_id})
-        notify_listeners(state, {:repository, repository}, {:completed, execution_id})
+        state =
+          state
+          |> notify_listeners(
+            {:run, run_id},
+            {:result, execution_id, result, retry, created_at}
+          )
+          |> notify_listeners(:repositories, {:completed, repository, execution_id})
+          |> notify_listeners({:repository, repository}, {:completed, execution_id})
 
         {:ok, state}
 
@@ -981,11 +1014,25 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp notify_listeners(state, topic, payload) do
-    state.topics
-    |> Map.get(topic, %{})
-    |> Enum.each(fn {ref, pid} ->
-      send(pid, {:topic, ref, payload})
+    if Map.has_key?(state.topics, topic) do
+      update_in(state.notifications[topic], &[payload | &1 || []])
+    else
+      state
+    end
+  end
+
+  defp flush_notifications(state) do
+    Enum.each(state.notifications, fn {topic, notifications} ->
+      notifications = Enum.reverse(notifications)
+
+      state.topics
+      |> Map.get(topic, %{})
+      |> Enum.each(fn {ref, pid} ->
+        send(pid, {:topic, ref, notifications})
+      end)
     end)
+
+    Map.put(state, :notifications, %{})
   end
 
   defp notify_agent(state, session_id) do
@@ -1010,45 +1057,53 @@ defmodule Coflux.Orchestration.Server do
     case Store.start_run(state.db, repository, target_name, arguments, opts) do
       {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, sequence,
        execution_type, created_at} ->
-        if parent do
-          {parent_run_id, parent_id} = parent
+        state =
+          if parent do
+            {parent_run_id, parent_id} = parent
 
+            notify_listeners(
+              state,
+              {:run, parent_run_id},
+              {:child, parent_id, external_run_id, external_step_id, execution_id, repository,
+               target_name, created_at}
+            )
+          else
+            state
+          end
+
+        state =
           notify_listeners(
             state,
-            {:run, parent_run_id},
-            {:child, parent_id, external_run_id, external_step_id, execution_id, repository,
-             target_name, created_at}
-          )
-        end
-
-        notify_listeners(
-          state,
-          {:target, repository, target_name},
-          {:run, external_run_id, created_at}
-        )
-
-        if execution_type == 0 do
-          # TODO: neater way to get execute_after?
-          execute_after = Keyword.get(opts, :execute_after)
-          execute_at = execute_after || created_at
-
-          notify_listeners(
-            state,
-            :repositories,
-            {:scheduled, repository, execution_id, execute_at}
+            {:target, repository, target_name},
+            {:run, external_run_id, created_at}
           )
 
-          notify_listeners(
-            state,
-            {:repository, repository},
-            {:scheduled, execution_id, target_name, external_run_id, external_step_id, sequence,
-             execute_after, created_at}
-          )
+        state =
+          if execution_type == 0 do
+            # TODO: neater way to get execute_after?
+            execute_after = Keyword.get(opts, :execute_after)
+            execute_at = execute_after || created_at
 
-          send(self(), :execute)
-        end
+            state =
+              state
+              |> notify_listeners(
+                :repositories,
+                {:scheduled, repository, execution_id, execute_at}
+              )
+              |> notify_listeners(
+                {:repository, repository},
+                {:scheduled, execution_id, target_name, external_run_id, external_step_id,
+                 sequence, execute_after, created_at}
+              )
 
-        {:ok, external_run_id, external_step_id, execution_id, state}
+            send(self(), :execute)
+
+            state
+          else
+            state
+          end
+
+        {{:ok, external_run_id, external_step_id, execution_id}, state}
     end
   end
 
@@ -1065,19 +1120,20 @@ defmodule Coflux.Orchestration.Server do
            opts
          ) do
       {:ok, _step_id, external_step_id, execution_id, sequence, execution_type, created_at} ->
-        # TODO: batch notifications?
-        notify_listeners(
-          state,
-          {:run, run_id},
-          {:step, external_step_id, repository, target_name, created_at, arguments}
-        )
+        state =
+          notify_listeners(
+            state,
+            {:run, run_id},
+            {:step, external_step_id, repository, target_name, created_at, arguments}
+          )
 
-        notify_listeners(
-          state,
-          {:run, run_id},
-          {:child, parent_id, run.external_id, external_step_id, execution_id, repository,
-           target_name, created_at}
-        )
+        state =
+          notify_listeners(
+            state,
+            {:run, run_id},
+            {:child, parent_id, run.external_id, external_step_id, execution_id, repository,
+             target_name, created_at}
+          )
 
         execute_after = Keyword.get(opts, :execute_after)
 
@@ -1088,26 +1144,29 @@ defmodule Coflux.Orchestration.Server do
            execute_after}
         )
 
-        if execution_type == 0 do
-          execute_at = execute_after || created_at
+        state =
+          if execution_type == 0 do
+            execute_at = execute_after || created_at
 
-          notify_listeners(
-            state,
-            :repositories,
-            {:scheduled, repository, execution_id, execute_at}
-          )
+            state =
+              state
+              |> notify_listeners(
+                :repositories,
+                {:scheduled, repository, execution_id, execute_at}
+              )
+              |> notify_listeners(
+                {:repository, repository},
+                {:scheduled, execution_id, target_name, run.external_id, external_step_id,
+                 sequence, execute_after, created_at}
+              )
 
-          notify_listeners(
-            state,
-            {:repository, repository},
-            {:scheduled, execution_id, target_name, run.external_id, external_step_id, sequence,
-             execute_after, created_at}
-          )
+            send(self(), :execute)
+            state
+          else
+            state
+          end
 
-          send(self(), :execute)
-        end
-
-        {:ok, run.external_id, external_step_id, execution_id, state}
+        {{:ok, run.external_id, external_step_id, execution_id}, state}
     end
   end
 

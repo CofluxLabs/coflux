@@ -28,85 +28,76 @@ defmodule Coflux.Topics.Run do
     end
   end
 
-  def handle_info(
-        {:topic, _ref, {:step, step_id, repository, target, created_at, arguments}},
-        topic
-      ) do
-    topic =
-      Topic.set(topic, [:steps, step_id], %{
-        repository: repository,
-        target: target,
-        type: 1,
+  def handle_info({:topic, _ref, notifications}, topic) do
+    topic = Enum.reduce(notifications, topic, &process_notification(&2, &1))
+    {:ok, topic}
+  end
+
+  defp process_notification(
+         topic,
+         {:step, step_id, repository, target, created_at, arguments}
+       ) do
+    Topic.set(topic, [:steps, step_id], %{
+      repository: repository,
+      target: target,
+      type: 1,
+      createdAt: created_at,
+      arguments: Enum.map(arguments, &build_argument/1),
+      attempts: %{}
+    })
+  end
+
+  defp process_notification(
+         topic,
+         {:attempt, step_id, sequence, execution_type, execution_id, created_at, execute_after}
+       ) do
+    Topic.set(
+      topic,
+      [:steps, step_id, :attempts, Integer.to_string(sequence)],
+      %{
+        type: execution_type,
+        executionId: Integer.to_string(execution_id),
         createdAt: created_at,
-        arguments: Enum.map(arguments, &build_argument/1),
-        attempts: %{}
-      })
-
-    {:ok, topic}
+        executeAfter: execute_after,
+        assignedAt: nil,
+        completedAt: nil,
+        dependencies: %{},
+        children: [],
+        result: nil,
+        retry: nil
+      }
+    )
   end
 
-  def handle_info(
-        {:topic, _ref,
-         {:attempt, step_id, sequence, execution_type, execution_id, created_at, execute_after}},
-        topic
-      ) do
-    topic =
-      Topic.set(
-        topic,
-        [:steps, step_id, :attempts, Integer.to_string(sequence)],
-        %{
-          type: execution_type,
-          executionId: Integer.to_string(execution_id),
-          createdAt: created_at,
-          executeAfter: execute_after,
-          assignedAt: nil,
-          completedAt: nil,
-          dependencies: %{},
-          children: [],
-          result: nil,
-          retry: nil
-        }
-      )
-
-    {:ok, topic}
-  end
-
-  def handle_info({:topic, _ref, {:assigned, assigned}}, topic) do
-    topic =
-      Enum.reduce(assigned, topic, fn {execution_id, assigned_at}, topic ->
-        update_attempt(topic, execution_id, fn topic, base_path ->
-          Topic.set(topic, base_path ++ [:assignedAt], assigned_at)
-        end)
+  defp process_notification(topic, {:assigned, assigned}) do
+    Enum.reduce(assigned, topic, fn {execution_id, assigned_at}, topic ->
+      update_attempt(topic, execution_id, fn topic, base_path ->
+        Topic.set(topic, base_path ++ [:assignedAt], assigned_at)
       end)
-
-    {:ok, topic}
+    end)
   end
 
-  def handle_info({:topic, _ref, {:dependency, execution_id, dependency_id, dependency}}, topic) do
+  defp process_notification(topic, {:dependency, execution_id, dependency_id, dependency}) do
     dependency = build_execution(dependency)
 
-    topic =
-      update_attempt(
-        topic,
-        execution_id,
-        fn topic, base_path ->
-          Topic.set(
-            topic,
-            base_path ++ [:dependencies, Integer.to_string(dependency_id)],
-            dependency
-          )
-        end
-      )
-
-    {:ok, topic}
+    update_attempt(
+      topic,
+      execution_id,
+      fn topic, base_path ->
+        Topic.set(
+          topic,
+          base_path ++ [:dependencies, Integer.to_string(dependency_id)],
+          dependency
+        )
+      end
+    )
   end
 
-  def handle_info(
-        {:topic, _ref,
+  defp process_notification(
+         topic,
          {:child, parent_id, external_run_id, external_step_id, execution_id, repository, target,
-          created_at}},
-        topic
-      ) do
+          created_at}
+       ) do
     value =
       if external_run_id == topic.state.external_run_id do
         external_step_id
@@ -121,27 +112,21 @@ defmodule Coflux.Topics.Run do
         }
       end
 
-    topic =
-      update_attempt(topic, parent_id, fn topic, base_path ->
-        Topic.insert(topic, base_path ++ [:children], value)
-      end)
-
-    {:ok, topic}
+    update_attempt(topic, parent_id, fn topic, base_path ->
+      Topic.insert(topic, base_path ++ [:children], value)
+    end)
   end
 
-  def handle_info({:topic, _ref, {:result, execution_id, result, retry, created_at}}, topic) do
+  defp process_notification(topic, {:result, execution_id, result, retry, created_at}) do
     result = build_result(result)
     retry = if(retry, do: build_execution(retry))
 
-    topic =
-      update_attempt(topic, execution_id, fn topic, base_path ->
-        topic
-        |> Topic.set(base_path ++ [:result], result)
-        |> Topic.set(base_path ++ [:completedAt], created_at)
-        |> Topic.set(base_path ++ [:retry], retry)
-      end)
-
-    {:ok, topic}
+    update_attempt(topic, execution_id, fn topic, base_path ->
+      topic
+      |> Topic.set(base_path ++ [:result], result)
+      |> Topic.set(base_path ++ [:completedAt], created_at)
+      |> Topic.set(base_path ++ [:retry], retry)
+    end)
   end
 
   defp build_execution(execution) do
@@ -251,7 +236,7 @@ defmodule Coflux.Topics.Run do
     end
   end
 
-  def update_attempt(topic, execution_id, fun) do
+  defp update_attempt(topic, execution_id, fun) do
     execution_id_s = Integer.to_string(execution_id)
 
     Enum.reduce(topic.value.steps, topic, fn {step_id, step}, topic ->

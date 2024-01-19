@@ -46,24 +46,23 @@ defmodule Coflux.Topics.Target do
     end
   end
 
-  def handle_info({:topic, _ref, {:target, type, parameters}}, topic) do
-    topic =
-      topic
-      |> Topic.set([:type], type)
-      |> Topic.set([:parameters], build_parameters(parameters))
-
+  def handle_info({:topic, _ref, notifications}, topic) do
+    topic = Enum.reduce(notifications, topic, &process_notification/2)
     {:ok, topic}
   end
 
-  def handle_info({:topic, _ref, {:run, external_run_id, created_at}}, topic) do
-    topic =
-      Topic.set(
-        topic,
-        [:runs, external_run_id],
-        %{id: external_run_id, createdAt: created_at}
-      )
+  defp process_notification({:target, type, parameters}, topic) do
+    topic
+    |> Topic.set([:type], type)
+    |> Topic.set([:parameters], build_parameters(parameters))
+  end
 
-    {:ok, topic}
+  defp process_notification({:run, external_run_id, created_at}, topic) do
+    Topic.set(
+      topic,
+      [:runs, external_run_id],
+      %{id: external_run_id, createdAt: created_at}
+    )
   end
 
   defp build_parameters(parameters) do
