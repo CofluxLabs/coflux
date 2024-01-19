@@ -41,7 +41,7 @@ def _decorate(
                     memo=memo,
                     delay=delay,
                 )
-                return context.get_result(execution_id)
+                return context.resolve(execution_id)
             except context.NotInContextException:
                 result = fn(*args)
                 return (
