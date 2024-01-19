@@ -188,52 +188,54 @@ defmodule Coflux.Orchestration.Server do
       ) do
     target = get_target(state.db, repository, target_name)
 
-    # TODO: handle unrecognised target (return {:error, :invalid_target}?)
+    if target do
+      opts = Keyword.put(opts, :recurrent, target.type == :sensor)
 
-    opts = Keyword.put(opts, :recurrent, target.type == :sensor)
-
-    {result, state} =
-      case Keyword.get(opts, :parent_id) do
-        nil ->
-          if target.type in [:workflow, :sensor] do
-            start_run(state, repository, target_name, arguments, opts)
-          else
-            {{:error, :invalid_target}, state}
-          end
-
-        parent_id ->
-          {:ok, step} = Store.get_step_for_execution(state.db, parent_id)
-
-          case target.type do
-            :workflow ->
-              start_run(
-                state,
-                repository,
-                target_name,
-                arguments,
-                opts,
-                {step.run_id, parent_id}
-              )
-
-            :task ->
-              schedule_step(
-                state,
-                step.run_id,
-                parent_id,
-                repository,
-                target_name,
-                arguments,
-                opts
-              )
-
-            _ ->
+      {result, state} =
+        case Keyword.get(opts, :parent_id) do
+          nil ->
+            if target.type in [:workflow, :sensor] do
+              start_run(state, repository, target_name, arguments, opts)
+            else
               {{:error, :invalid_target}, state}
-          end
-      end
+            end
 
-    state = flush_notifications(state)
+          parent_id ->
+            {:ok, step} = Store.get_step_for_execution(state.db, parent_id)
 
-    {:reply, result, state}
+            case target.type do
+              :workflow ->
+                start_run(
+                  state,
+                  repository,
+                  target_name,
+                  arguments,
+                  opts,
+                  {step.run_id, parent_id}
+                )
+
+              :task ->
+                schedule_step(
+                  state,
+                  step.run_id,
+                  parent_id,
+                  repository,
+                  target_name,
+                  arguments,
+                  opts
+                )
+
+              _ ->
+                {{:error, :invalid_target}, state}
+            end
+        end
+
+      state = flush_notifications(state)
+
+      {:reply, result, state}
+    else
+      {:reply, {:error, :invalid_target}, state}
+    end
   end
 
   def handle_call({:cancel_run, external_run_id}, _from, state) do

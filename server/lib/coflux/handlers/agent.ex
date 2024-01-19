@@ -93,6 +93,9 @@ defmodule Coflux.Handlers.Agent do
              ) do
           {:ok, _run_id, _step_id, execution_id} ->
             {[result_message(message["id"], execution_id)], state}
+
+          {:error, error} ->
+            {[error_message(message["id"], error)], state}
         end
 
       "record_heartbeats" ->
@@ -221,6 +224,10 @@ defmodule Coflux.Handlers.Agent do
 
   defp result_message(id, result) do
     {:text, Jason.encode!([2, %{"id" => id, "result" => result}])}
+  end
+
+  defp error_message(id, result) do
+    {:text, Jason.encode!([2, %{"id" => id, "error" => result}])}
   end
 
   defp get_query_param(qs, key, fun \\ nil) do
