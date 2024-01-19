@@ -13,6 +13,7 @@ import { max, sortBy } from "lodash";
 import {
   IconArrowForward,
   IconArrowUpRight,
+  IconBolt,
   IconClock,
   IconPinned,
 } from "@tabler/icons-react";
@@ -118,18 +119,16 @@ function buildGraph(
     (stepId) => run.steps[stepId].createdAt,
   )[0];
 
-  if (run.parent) {
-    g.setNode(run.parent.runId, {
-      width: 100,
-      height: 30,
-      type: "parent",
-      parent: run.parent,
-    });
-    g.setEdge(run.parent.runId, initialStepId, {
-      type: "parent",
-      weight: 1000,
-    });
-  }
+  g.setNode(run.parent?.runId || "start", {
+    width: run.parent ? 100 : 30,
+    height: 30,
+    type: "parent",
+    parent: run.parent || null,
+  });
+  g.setEdge(run.parent?.runId || "start", initialStepId, {
+    type: "parent",
+    weight: 1000,
+  });
 
   traverseRun(
     run,
@@ -334,24 +333,35 @@ function StepNode({
 }
 
 type ParentNodeProps = {
-  parent: models.Reference;
+  parent: models.Reference | null;
 };
 
 function ParentNode({ parent }: ParentNodeProps) {
-  return (
-    <StepLink
-      runId={parent.runId}
-      stepId={parent.stepId}
-      attemptNumber={parent.sequence}
-      className="flex-1 w-full h-full flex gap-2 items-center px-2 py-1 border border-slate-300 rounded-full bg-white ring-offset-2"
-      hoveredClassName="ring ring-slate-400"
-    >
-      <div className="flex-1 flex flex-col overflow-hidden text-center">
-        <span className="text-slate-500 font-bold">{parent.runId}</span>
+  if (parent) {
+    return (
+      <StepLink
+        runId={parent.runId}
+        stepId={parent.stepId}
+        attemptNumber={parent.sequence}
+        className="flex-1 w-full h-full flex gap-2 items-center px-2 py-1 border border-slate-300 rounded-full bg-white ring-offset-2"
+        hoveredClassName="ring ring-slate-400"
+      >
+        <div className="flex-1 flex flex-col overflow-hidden text-center">
+          <span className="text-slate-500 font-bold">{parent.runId}</span>
+        </div>
+        <IconArrowForward size={20} className="text-slate-400" />
+      </StepLink>
+    );
+  } else {
+    return (
+      <div
+        className="flex-1 w-full h-full flex items-center justify-center border border-slate-300 rounded-full bg-white"
+        title="Manual initalisation"
+      >
+        <IconBolt className="text-slate-500" size={20} />
       </div>
-      <IconArrowForward size={20} className="text-slate-400" />
-    </StepLink>
-  );
+    );
+  }
 }
 
 type ChildNodeProps = {
@@ -428,7 +438,7 @@ function Edge({ edge, offset, highlight }: EdgeProps) {
       }
       fill="none"
       strokeWidth={highlight ? 3 : 3}
-      strokeDasharray={type == "child" ? "5" : undefined}
+      strokeDasharray={type != "dependency" ? "5" : undefined}
       d={buildPath(
         points.map(({ x, y }) => ({ x: x + offset[0], y: y + offset[1] })),
       )}
