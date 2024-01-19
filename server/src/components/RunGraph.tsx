@@ -356,7 +356,7 @@ function ParentNode({ parent }: ParentNodeProps) {
     return (
       <div
         className="flex-1 w-full h-full flex items-center justify-center border border-slate-300 rounded-full bg-white"
-        title="Manual initalisation"
+        title="Manual initialisation"
       >
         <IconBolt className="text-slate-500" size={20} />
       </div>
