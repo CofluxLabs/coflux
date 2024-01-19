@@ -611,15 +611,13 @@ defmodule Coflux.Orchestration.Store do
   end
 
   def get_run_by_execution(db, execution_id) do
-    # TODO: include 'recurrent'?
     query_one(
       db,
       """
-      SELECT r.external_id, s1.external_id, a.sequence, s2.repository, s2.target
+      SELECT r.external_id, s.external_id, a.sequence, s.repository, s.target
       FROM attempts AS a
-      INNER JOIN steps AS s1 ON s1.id = a.step_id
-      INNER JOIN steps AS s2 ON s2.run_id = s1.run_id AND s2.type = 0
-      INNER JOIN runs AS r ON r.id = s1.run_id
+      INNER JOIN steps AS s ON s.id = a.step_id
+      INNER JOIN runs AS r ON r.id = s.run_id
       WHERE a.execution_id = ?1 AND a.type = 0
       """,
       {execution_id}
