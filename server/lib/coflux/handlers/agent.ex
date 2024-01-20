@@ -19,13 +19,14 @@ defmodule Coflux.Handlers.Agent do
         if Enum.member?(project.environments, environment) do
           # TODO: monitor server?
           case Orchestration.connect(project_id, environment, session_id, concurrency, self()) do
-            {:ok, session_id} ->
+            {:ok, session_id, executions} ->
               {[session_message(session_id)],
                %{
                  project_id: project_id,
                  environment: environment,
                  session_id: session_id,
-                 requests: %{}
+                 requests: %{},
+                 executions: executions
                }}
 
             {:error, :no_session} ->
@@ -76,105 +77,140 @@ defmodule Coflux.Handlers.Agent do
 
         arguments = Enum.map(arguments, &parse_argument/1)
 
-        case Orchestration.schedule(
-               state.project_id,
-               state.environment,
-               repository,
-               target,
-               arguments,
-               parent_id: parent_id,
-               cache_key: cache_key,
-               retry_count: retry_count,
-               retry_delay_min: retry_delay_min,
-               retry_delay_max: retry_delay_max,
-               deduplicate_key: deduplicate_key,
-               execute_after: execute_after,
-               memo_key: memo_key
-             ) do
-          {:ok, _run_id, _step_id, execution_id} ->
-            {[result_message(message["id"], execution_id)], state}
+        if is_nil(parent_id) || is_recognised_execution?(parent_id, state) do
+          case Orchestration.schedule(
+                 state.project_id,
+                 state.environment,
+                 repository,
+                 target,
+                 arguments,
+                 parent_id: parent_id,
+                 cache_key: cache_key,
+                 retry_count: retry_count,
+                 retry_delay_min: retry_delay_min,
+                 retry_delay_max: retry_delay_max,
+                 deduplicate_key: deduplicate_key,
+                 execute_after: execute_after,
+                 memo_key: memo_key
+               ) do
+            {:ok, _run_id, _step_id, execution_id} ->
+              {[result_message(message["id"], execution_id)], state}
 
-          {:error, error} ->
-            {[error_message(message["id"], error)], state}
+            {:error, error} ->
+              {[error_message(message["id"], error)], state}
+          end
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
         end
 
       "record_heartbeats" ->
         [executions] = message["params"]
         executions = Map.new(executions, fn {k, v} -> {String.to_integer(k), v} end)
 
-        :ok =
-          Orchestration.record_heartbeats(
-            state.project_id,
-            state.environment,
-            executions,
-            state.session_id
-          )
+        if Enum.all?(Map.keys(executions), &is_recognised_execution?(&1, state)) do
+          :ok =
+            Orchestration.record_heartbeats(
+              state.project_id,
+              state.environment,
+              executions,
+              state.session_id
+            )
 
-        {[], state}
+          {[], state}
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
+        end
 
       "record_checkpoint" ->
         [execution_id, arguments] = message["params"]
 
-        arguments = Enum.map(arguments, &parse_argument/1)
+        if is_recognised_execution?(execution_id, state) do
+          arguments = Enum.map(arguments, &parse_argument/1)
 
-        :ok =
-          Orchestration.record_checkpoint(
-            state.project_id,
-            state.environment,
-            execution_id,
-            arguments
-          )
+          :ok =
+            Orchestration.record_checkpoint(
+              state.project_id,
+              state.environment,
+              execution_id,
+              arguments
+            )
 
-        {[], state}
+          {[], state}
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
+        end
 
       "notify_terminated" ->
         [execution_ids] = message["params"]
-        :ok = Orchestration.notify_terminated(state.project_id, state.environment, execution_ids)
-        {[], state}
+
+        # TODO: just ignore?
+        if Enum.all?(execution_ids, &is_recognised_execution?(&1, state)) do
+          :ok =
+            Orchestration.notify_terminated(state.project_id, state.environment, execution_ids)
+
+          state = Map.update!(state, :executions, &Map.drop(&1, execution_ids))
+
+          {[], state}
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
+        end
 
       "put_result" ->
         [execution_id, result] = message["params"]
-        result = parse_result(result)
 
-        :ok =
-          Orchestration.record_result(
-            state.project_id,
-            state.environment,
-            execution_id,
-            result
-          )
+        if is_recognised_execution?(execution_id, state) do
+          result = parse_result(result)
 
-        {[], state}
+          :ok =
+            Orchestration.record_result(
+              state.project_id,
+              state.environment,
+              execution_id,
+              result
+            )
+
+          {[], state}
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
+        end
 
       "put_error" ->
         [execution_id, error, details] = message["params"]
 
-        :ok =
-          Orchestration.record_result(
-            state.project_id,
-            state.environment,
-            execution_id,
-            {:error, error, details}
-          )
+        if is_recognised_execution?(execution_id, state) do
+          :ok =
+            Orchestration.record_result(
+              state.project_id,
+              state.environment,
+              execution_id,
+              {:error, error, details}
+            )
 
-        {[], state}
+          {[], state}
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
+        end
 
       "get_result" ->
         [execution_id, from_execution_id] = message["params"]
 
-        case Orchestration.get_result(
-               state.project_id,
-               state.environment,
-               execution_id,
-               from_execution_id,
-               self()
-             ) do
-          {:ok, result} ->
-            {[result_message(message["id"], compose_result(result))], state}
+        if is_recognised_execution?(from_execution_id, state) do
+          case Orchestration.get_result(
+                 state.project_id,
+                 state.environment,
+                 execution_id,
+                 from_execution_id,
+                 self()
+               ) do
+            {:ok, result} ->
+              {[result_message(message["id"], compose_result(result))], state}
 
-          {:wait, ref} ->
-            state = put_in(state.requests[ref], message["id"])
-            {[], state}
+            {:wait, ref} ->
+              state = put_in(state.requests[ref], message["id"])
+              {[], state}
+          end
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
         end
 
       "log_messages" ->
@@ -184,15 +220,20 @@ defmodule Coflux.Handlers.Agent do
           end)
 
         execution_ids = Enum.map(messages, fn {execution_id, _, _, _} -> execution_id end)
-        run_ids = Orchestration.lookup_runs(state.project_id, state.environment, execution_ids)
 
-        messages
-        |> Enum.group_by(fn {execution_id, _, _, _} -> Map.fetch!(run_ids, execution_id) end)
-        |> Enum.each(fn {run_id, messages} ->
-          Logging.write(state.project_id, state.environment, run_id, messages)
-        end)
+        if Enum.all?(execution_ids, &is_recognised_execution?(&1, state)) do
+          messages
+          |> Enum.group_by(fn {execution_id, _, _, _} ->
+            Map.fetch!(state.executions, execution_id)
+          end)
+          |> Enum.each(fn {run_id, messages} ->
+            Logging.write(state.project_id, state.environment, run_id, messages)
+          end)
 
-        {[], state}
+          {[], state}
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
+        end
     end
   end
 
@@ -200,8 +241,9 @@ defmodule Coflux.Handlers.Agent do
     {[], state}
   end
 
-  def websocket_info({:execute, execution_id, repository, target, arguments}, state) do
+  def websocket_info({:execute, execution_id, repository, target, arguments, run_id}, state) do
     arguments = Enum.map(arguments, &compose_argument/1)
+    state = put_in(state.executions[execution_id], run_id)
     {[command_message("execute", [execution_id, repository, target, arguments])], state}
   end
 
@@ -212,6 +254,10 @@ defmodule Coflux.Handlers.Agent do
 
   def websocket_info({:abort, execution_id}, state) do
     {[command_message("abort", [execution_id])], state}
+  end
+
+  defp is_recognised_execution?(execution_id, state) do
+    Map.has_key?(state.executions, execution_id)
   end
 
   defp session_message(session_id) do

@@ -442,6 +442,7 @@ defmodule Coflux.Orchestration.Store do
         e.id,
         s.id,
         s.run_id,
+        run.external_id,
         s.repository,
         s.target,
         s.deduplicate_key,
@@ -450,6 +451,7 @@ defmodule Coflux.Orchestration.Store do
       FROM executions AS e
       INNER JOIN attempts AS at ON at.execution_id = e.id
       INNER JOIN steps AS s ON s.id = at.step_id
+      INNER JOIN runs AS run ON run.id = s.run_id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN results AS r ON r.execution_id = e.id
       WHERE at.type = 0 AND a.created_at IS NULL AND r.created_at IS NULL

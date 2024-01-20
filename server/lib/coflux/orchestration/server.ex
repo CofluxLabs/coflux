@@ -109,12 +109,22 @@ defmodule Coflux.Orchestration.Server do
                   concurrency: concurrency
                 })
               )
+              |> notify_agent(session_id)
 
-            state = notify_agent(state, session_id)
+            executions =
+              session.executing
+              |> MapSet.union(session.starting)
+              |> Map.new(fn execution_id ->
+                # TODO: more efficient way to load run IDs?
+                {:ok, external_run_id} =
+                  Store.get_external_run_id_for_execution(state.db, execution_id)
+
+                {execution_id, external_run_id}
+              end)
 
             send(self(), :execute)
 
-            {:ok, external_id, state}
+            {:ok, external_id, executions, state}
 
           :error ->
             {:error, :no_session}
@@ -137,14 +147,14 @@ defmodule Coflux.Orchestration.Server do
               |> put_in([Access.key(:session_ids), external_id], session_id)
               |> notify_agent(session_id)
 
-            {:ok, external_id, state}
+            {:ok, external_id, %{}, state}
         end
       end
 
     case result do
-      {:ok, external_id, state} ->
+      {:ok, external_id, executions, state} ->
         state = flush_notifications(state)
-        {:reply, {:ok, external_id}, state}
+        {:reply, {:ok, external_id, executions}, state}
 
       {:error, error} ->
         {:reply, {:error, error}, state}
@@ -315,6 +325,7 @@ defmodule Coflux.Orchestration.Server do
         end
       end)
 
+    # TODO: notify agent (so it can remove executions)?
     state =
       execution_ids
       |> MapSet.difference(session.starting)
@@ -435,7 +446,7 @@ defmodule Coflux.Orchestration.Server do
 
     executions =
       Enum.reduce(executions, %{}, fn execution, executions ->
-        {execution_id, _, _, repository, _, _, execute_after, created_at} = execution
+        {execution_id, _, _, _, repository, _, _, execute_after, created_at} = execution
 
         executions
         |> Map.put_new(repository, {MapSet.new(), %{}})
@@ -568,16 +579,6 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:lookup_runs, execution_ids}, _from, state) do
-    result =
-      Map.new(execution_ids, fn execution_id ->
-        {:ok, {external_id}} = Store.get_external_run_id_for_execution(state.db, execution_id)
-        {execution_id, external_id}
-      end)
-
-    {:reply, result, state}
-  end
-
   def handle_cast({:unsubscribe, ref}, state) do
     Process.demonitor(ref, [:flush])
     state = remove_listener(state, ref)
@@ -656,9 +657,16 @@ defmodule Coflux.Orchestration.Server do
         {state, [], []},
         fn
           execution, {state, assigned, unassigned} ->
-            {execution_id, step_id, _run_id, repository, target, _, _, _} = execution
+            {execution_id, step_id, _, external_run_id, repository, target, _, _, _} = execution
 
-            case assign_execution(state, execution_id, step_id, repository, target) do
+            case assign_execution(
+                   state,
+                   execution_id,
+                   step_id,
+                   repository,
+                   target,
+                   external_run_id
+                 ) do
               {:ok, state, {_session_id, assigned_at}} ->
                 {state, [{execution, assigned_at} | assigned], unassigned}
 
@@ -683,7 +691,7 @@ defmodule Coflux.Orchestration.Server do
     assigned_by_repository =
       assigned
       |> Enum.group_by(
-        fn {execution, _} -> elem(execution, 3) end,
+        fn {execution, _} -> elem(execution, 4) end,
         fn {execution, _} -> elem(execution, 0) end
       )
       |> Map.new(fn {k, v} -> {k, MapSet.new(v)} end)
@@ -788,7 +796,7 @@ defmodule Coflux.Orchestration.Server do
       |> Enum.reduce(
         {[], [], [], %{}},
         fn execution, {due, future, duplicated, duplications} ->
-          {execution_id, _, run_id, repository, target, duplication_key, execute_after, _} =
+          {execution_id, _, run_id, _, repository, target, duplication_key, execute_after, _} =
             execution
 
           duplication_key = duplication_key && {repository, target, duplication_key}
@@ -1212,7 +1220,7 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp assign_execution(state, execution_id, step_id, repository, target) do
+  defp assign_execution(state, execution_id, step_id, repository, target, external_run_id) do
     session_ids =
       state.targets
       |> Map.get(repository, %{})
@@ -1242,7 +1250,7 @@ defmodule Coflux.Orchestration.Server do
         )
         |> send_session(
           session_id,
-          {:execute, execution_id, repository, target, arguments}
+          {:execute, execution_id, repository, target, arguments, external_run_id}
         )
 
       {:ok, state, {session_id, assigned_at}}

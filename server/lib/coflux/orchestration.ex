@@ -52,10 +52,6 @@ defmodule Coflux.Orchestration do
     call_server(project_id, environment, {:get_result, execution_id, from_execution_id, pid})
   end
 
-  def lookup_runs(project_id, environment, execution_ids) do
-    call_server(project_id, environment, {:lookup_runs, execution_ids})
-  end
-
   def subscribe_repositories(project_id, environment, pid) do
     call_server(project_id, environment, {:subscribe_repositories, pid})
   end
