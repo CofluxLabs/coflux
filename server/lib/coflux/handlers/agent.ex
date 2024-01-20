@@ -215,17 +215,15 @@ defmodule Coflux.Handlers.Agent do
 
       "log_messages" ->
         messages =
-          Enum.map(message["params"], fn [execution_id, timestamp, level, message] ->
-            {execution_id, timestamp, parse_level(level), message}
+          Enum.map(message["params"], fn [execution_id, timestamp, level, template, labels] ->
+            {execution_id, timestamp, parse_level(level), template, labels}
           end)
 
-        execution_ids = Enum.map(messages, fn {execution_id, _, _, _} -> execution_id end)
+        execution_ids = Enum.map(messages, &elem(&1, 0))
 
         if Enum.all?(execution_ids, &is_recognised_execution?(&1, state)) do
           messages
-          |> Enum.group_by(fn {execution_id, _, _, _} ->
-            Map.fetch!(state.executions, execution_id)
-          end)
+          |> Enum.group_by(&Map.fetch!(state.executions, elem(&1, 0)))
           |> Enum.each(fn {run_id, messages} ->
             Logging.write(state.project_id, state.environment, run_id, messages)
           end)

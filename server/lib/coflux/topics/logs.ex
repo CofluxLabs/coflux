@@ -29,8 +29,8 @@ defmodule Coflux.Topics.Logs do
     {:ok, topic}
   end
 
-  defp encode_message({execution_id, timestamp, level, content}) do
-    [execution_id, timestamp, encode_level(level), content]
+  defp encode_message({execution_id, timestamp, level, template, labels}) do
+    [execution_id, timestamp, encode_level(level), template, labels]
   end
 
   defp encode_level(level) do

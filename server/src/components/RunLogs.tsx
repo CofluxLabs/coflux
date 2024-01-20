@@ -54,17 +54,42 @@ function iconForLevel(
   }
 }
 
+function substituteLabels(template: string, labels: Record<string, any>) {
+  return Object.entries(labels).reduce(
+    ([message, extra], [key, value]) => {
+      const placeholder = `{${key}}`;
+      if (message.includes(placeholder)) {
+        return [message.replaceAll(placeholder, value), extra];
+      } else {
+        return [message, { ...extra, [key]: value }];
+      }
+    },
+    [template, {}],
+  );
+}
+
 type LogMessageProps = {
   level: models.LogMessageLevel;
-  content: string;
+  template: string;
+  labels: Record<string, any>;
   className?: string;
 };
 
-function LogMessage({ level, content, className }: LogMessageProps) {
+function LogMessage({ level, template, labels, className }: LogMessageProps) {
+  const [message, extra] = substituteLabels(template, labels);
   return (
     <div className={classNames(className, classForLevel(level))}>
       {iconForLevel(level, "inline-block mr-1 mt-[-2px]")}
-      <span className="whitespace-pre-wrap">{content}</span>
+      <span className="whitespace-pre-wrap">{message}</span>
+      {Object.entries(extra).map(([key, value]) => (
+        <Fragment key={key}>
+          {" "}
+          <span className="bg-slate-200/50 rounded text-slate-400 text-xs px-1 whitespace-nowrap">
+            {key}:{" "}
+            <span className="text-slate-500">{JSON.stringify(value)}</span>
+          </span>
+        </Fragment>
+      ))}
     </div>
   );
 }
@@ -88,7 +113,7 @@ export default function RunLogs({
       <table className="w-full">
         <tbody>
           {sortBy(logs, (l) => l[1]).map((message, index) => {
-            const [executionId, timestamp, level, content] = message;
+            const [executionId, timestamp, level, template, labels] = message;
             const createdAt = DateTime.fromMillis(timestamp);
             const diff = createdAt.diff(lastTimestamp, [
               "days",
@@ -139,7 +164,11 @@ export default function RunLogs({
                     </td>
                   )}
                   <td className="align-top px-1">
-                    <LogMessage level={level} content={content} />
+                    <LogMessage
+                      level={level}
+                      template={template}
+                      labels={labels}
+                    />
                   </td>
                 </tr>
               </Fragment>

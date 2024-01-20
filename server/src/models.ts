@@ -121,4 +121,10 @@ export type Run = {
 
 export type LogMessageLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
-export type LogMessage = [string, number, LogMessageLevel, string];
+export type LogMessage = [
+  string,
+  number,
+  LogMessageLevel,
+  string,
+  Record<string, any>,
+];

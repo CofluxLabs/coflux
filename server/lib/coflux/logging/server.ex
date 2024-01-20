@@ -17,8 +17,8 @@ defmodule Coflux.Logging.Server do
 
   def handle_cast({:write, messages}, state) do
     content =
-      Enum.map(messages, fn {execution_id, timestamp, level, content} ->
-        [Jason.encode!([execution_id, timestamp, encode_level(level), content]), "\n"]
+      Enum.map(messages, fn {execution_id, timestamp, level, template, labels} ->
+        [Jason.encode!([execution_id, timestamp, encode_level(level), template, labels]), "\n"]
       end)
 
     File.write!(state.path, content, [:append])
@@ -44,11 +44,11 @@ defmodule Coflux.Logging.Server do
         |> File.stream!()
         |> Enum.map(fn line ->
           case Jason.decode!(line) do
-            [execution_id_, timestamp, level, content] ->
-              {execution_id_, timestamp, decode_level(level), content}
+            [execution_id_, timestamp, level, template, labels] ->
+              {execution_id_, timestamp, decode_level(level), template, labels}
           end
         end)
-        |> Enum.filter(fn {execution_id_, _, _, _} ->
+        |> Enum.filter(fn {execution_id_, _, _, _, _} ->
           is_nil(execution_id) or execution_id_ == execution_id
         end)
       else

@@ -69,7 +69,8 @@ class RecordCheckpointRequest(t.NamedTuple):
 
 class LogMessageRequest(t.NamedTuple):
     level: int
-    message: str
+    template: str
+    labels: dict[str, t.Any]
     timestamp: int
 
 
@@ -270,9 +271,9 @@ class Channel:
         ]
         self._send(RecordCheckpointRequest(serialised_arguments))
 
-    def log_message(self, level, message):
+    def log_message(self, level, template, **kwargs):
         timestamp = time.time() * 1000
-        self._send(LogMessageRequest(level, message, int(timestamp)))
+        self._send(LogMessageRequest(level, template, kwargs, int(timestamp)))
 
 
 def get_channel() -> Channel:
@@ -503,9 +504,9 @@ class Execution:
                         ResultResolveFailedResponse(execution_id, error)
                     ),
                 )
-            case LogMessageRequest(level, message, timestamp):
+            case LogMessageRequest(level, template, labels, timestamp):
                 self._server_notify(
-                    "log_messages", ([self._id, timestamp, level, message],)
+                    "log_messages", ([self._id, timestamp, level, template, labels],)
                 )
             case other:
                 raise Exception(f"Received unhandled message: {other!r}")
