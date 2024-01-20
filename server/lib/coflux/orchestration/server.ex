@@ -377,17 +377,22 @@ defmodule Coflux.Orchestration.Server do
   def handle_call({:get_result, execution_id, from_execution_id, pid}, _from, state) do
     state =
       if from_execution_id do
-        :ok = Store.record_dependency(state.db, from_execution_id, execution_id)
-        {:ok, step} = Store.get_step_for_execution(state.db, from_execution_id)
+        {:ok, id} = Store.record_dependency(state.db, from_execution_id, execution_id)
 
-        # TODO: only resolve if there are listeners to notify
-        dependency = resolve_execution(state.db, execution_id)
+        if id do
+          {:ok, step} = Store.get_step_for_execution(state.db, from_execution_id)
 
-        notify_listeners(
-          state,
-          {:run, step.run_id},
-          {:dependency, from_execution_id, execution_id, dependency}
-        )
+          # TODO: only resolve if there are listeners to notify
+          dependency = resolve_execution(state.db, execution_id)
+
+          notify_listeners(
+            state,
+            {:run, step.run_id},
+            {:dependency, from_execution_id, execution_id, dependency}
+          )
+        else
+          state
+        end
       else
         state
       end
@@ -1060,9 +1065,9 @@ defmodule Coflux.Orchestration.Server do
   defp start_run(state, repository, target_name, arguments, opts, parent \\ nil) do
     case Store.start_run(state.db, repository, target_name, arguments, opts) do
       {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, sequence,
-       execution_type, created_at} ->
+       execution_type, created_at, child_added} ->
         state =
-          if parent do
+          if child_added do
             {parent_run_id, parent_id} = parent
 
             notify_listeners(
@@ -1124,7 +1129,7 @@ defmodule Coflux.Orchestration.Server do
            opts
          ) do
       {:ok, _step_id, external_step_id, execution_id, sequence, execution_type, created_at,
-       memoised} ->
+       memoised, child_added} ->
         state =
           if !memoised do
             memo_key = Keyword.get(opts, :memo_key)
@@ -1139,12 +1144,16 @@ defmodule Coflux.Orchestration.Server do
           end
 
         state =
-          notify_listeners(
-            state,
-            {:run, run_id},
-            {:child, parent_id, run.external_id, external_step_id, execution_id, repository,
-             target_name, created_at}
-          )
+          if child_added do
+            notify_listeners(
+              state,
+              {:run, run_id},
+              {:child, parent_id, run.external_id, external_step_id, execution_id, repository,
+               target_name, created_at}
+            )
+          else
+            state
+          end
 
         execute_after = Keyword.get(opts, :execute_after)
 

@@ -129,11 +129,12 @@ defmodule Coflux.Orchestration.Store do
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
-      {:ok, step_id, external_step_id, execution_id, sequence, execution_type, now, false} =
+      {:ok, step_id, external_step_id, execution_id, sequence, execution_type, now, false,
+       child_added} =
         do_schedule_step(db, run_id, parent_id, repository, target, arguments, true, now, opts)
 
       {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, sequence,
-       execution_type, now}
+       execution_type, now, child_added}
     end)
   end
 
@@ -273,11 +274,16 @@ defmodule Coflux.Orchestration.Store do
           {step_id, external_step_id, execution_id, sequence, execution_type, now, false}
       end
 
-    if parent_id do
-      {:ok, _} = insert_child(db, parent_id, step_id, now)
-    end
+    child_added =
+      if parent_id do
+        {:ok, id} = insert_child(db, parent_id, step_id, now)
+        !is_nil(id)
+      else
+        false
+      end
 
-    {:ok, step_id, external_step_id, execution_id, sequence, execution_type, now, memoised}
+    {:ok, step_id, external_step_id, execution_id, sequence, execution_type, now, memoised,
+     child_added}
   end
 
   def rerun_step(db, step_id, execute_after \\ nil) do
@@ -308,21 +314,17 @@ defmodule Coflux.Orchestration.Store do
   end
 
   def record_dependency(db, execution_id, dependency_id) do
-    # TODO: ignore duplicate?
     with_transaction(db, fn ->
-      {:ok, _} =
-        insert_one(
-          db,
-          :dependencies,
-          %{
-            execution_id: execution_id,
-            dependency_id: dependency_id,
-            created_at: current_timestamp()
-          },
-          on_conflict: "DO NOTHING"
-        )
-
-      :ok
+      insert_one(
+        db,
+        :dependencies,
+        %{
+          execution_id: execution_id,
+          dependency_id: dependency_id,
+          created_at: current_timestamp()
+        },
+        on_conflict: "DO NOTHING"
+      )
     end)
   end
 
@@ -1025,7 +1027,14 @@ defmodule Coflux.Orchestration.Store do
 
             case Sqlite3.step(db, statement) do
               :done ->
-                {:ok, id} = Sqlite3.last_insert_rowid(db)
+                {:ok, changes} = Sqlite3.changes(db)
+
+                {:ok, id} =
+                  case changes do
+                    0 -> {:ok, nil}
+                    1 -> Sqlite3.last_insert_rowid(db)
+                  end
+
                 {:cont, {:ok, ids ++ [id]}}
 
               {:error, reason} ->
