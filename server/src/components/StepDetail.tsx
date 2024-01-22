@@ -49,8 +49,8 @@ function AttemptSelectorOption({
       <span className="flex-1 text-sm">#{attemptNumber}</span>
       {attempt.type == 1 ? (
         <Badge intent="none" label="Cached" />
-      ) : attempt.result?.type == "duplicated" ? (
-        <Badge intent="none" label="Duplicated" />
+      ) : attempt.result?.type == "deferred" ? (
+        <Badge intent="none" label="Deferred" />
       ) : !attempt.assignedAt ? (
         <Badge intent="info" label="Assigning" />
       ) : !attempt.result ? (
@@ -437,11 +437,11 @@ function ChildrenSection({ runId, run, attempt }: ChildrenSectionProps) {
   );
 }
 
-type DeduplicationSectionProps = {
+type DeferredSectionProps = {
   attempt: models.Attempt;
 };
 
-function DeduplicationSection({ attempt }: DeduplicationSectionProps) {
+function DeferredSection({ attempt }: DeferredSectionProps) {
   const scheduledAt = DateTime.fromMillis(
     attempt.executeAfter || attempt.createdAt,
   );
@@ -451,9 +451,7 @@ function DeduplicationSection({ attempt }: DeduplicationSectionProps) {
       : null;
   return (
     <div>
-      <h3 className="uppercase text-sm font-bold text-slate-400">
-        De-duplication
-      </h3>
+      <h3 className="uppercase text-sm font-bold text-slate-400">Deferred</h3>
       <p>
         After:{" "}
         {formatDiff(
@@ -466,18 +464,20 @@ function DeduplicationSection({ attempt }: DeduplicationSectionProps) {
           ]),
         )}
       </p>
-      {attempt.retry && (
+      {attempt.reference && (
         <p>
           To:{" "}
           <StepLink
-            runId={attempt.retry.runId}
-            stepId={attempt.retry.stepId}
-            attemptNumber={attempt.retry.sequence}
+            runId={attempt.reference.runId}
+            stepId={attempt.reference.stepId}
+            attemptNumber={attempt.reference.sequence}
             className="rounded text-sm ring-offset-1 px-1"
             hoveredClassName="ring-2 ring-slate-300"
           >
-            <span className="font-mono">{attempt.retry.target}</span>{" "}
-            <span className="text-slate-500">({attempt.retry.repository})</span>
+            <span className="font-mono">{attempt.reference.target}</span>{" "}
+            <span className="text-slate-500">
+              ({attempt.reference.repository})
+            </span>
           </StepLink>
         </p>
       )}
@@ -638,8 +638,8 @@ export default function StepDetail({
             <ExecutionSection attempt={attempt} />
             <DependenciesSection attempt={attempt} />
             <ChildrenSection runId={runId} run={run} attempt={attempt} />
-            {attempt.result?.type == "duplicated" ? (
-              <DeduplicationSection attempt={attempt} />
+            {attempt.result?.type == "deferred" ? (
+              <DeferredSection attempt={attempt} />
             ) : (
               <Fragment>
                 {attempt.result &&

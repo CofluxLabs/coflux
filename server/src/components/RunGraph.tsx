@@ -233,7 +233,7 @@ function buildGraph(
 
 function classNameForAttempt(attempt: models.Attempt) {
   const result = attempt.result;
-  if (attempt.type == 1 || result?.type == "duplicated") {
+  if (attempt.type == 1 || result?.type == "deferred") {
     return "border-slate-200 bg-slate-50";
   } else if (!result && !attempt?.assignedAt) {
     return "border-blue-200 bg-blue-50";
@@ -265,8 +265,7 @@ function StepNode({
 }: StepNodeProps) {
   const attempt = step.attempts[attemptNumber];
   const { isHovered } = useHoverContext();
-  const isDeferred =
-    attempt?.type == 1 || attempt?.result?.type == "duplicated";
+  const isDeferred = attempt?.type == 1 || attempt?.result?.type == "deferred";
   return (
     <Fragment>
       {Object.keys(step.attempts).length > 1 && (

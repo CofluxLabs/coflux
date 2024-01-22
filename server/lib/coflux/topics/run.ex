@@ -230,8 +230,8 @@ defmodule Coflux.Topics.Run do
       :cancelled ->
         %{type: "cancelled"}
 
-      :duplicated ->
-        %{type: "duplicated"}
+      :deferred ->
+        %{type: "deferred"}
 
       nil ->
         nil

@@ -63,7 +63,7 @@ CREATE TABLE steps (
   target TEXT NOT NULL,
   priority INTEGER NOT NULL, -- TODO: move to executions?
   cache_key TEXT,
-  deduplicate_key TEXT,
+  defer_key TEXT,
   memo_key TEXT,
   retry_count INTEGER NOT NULL,
   retry_delay_min INTEGER NOT NULL,
@@ -217,7 +217,7 @@ CREATE TABLE results (
       WHEN 3 THEN blob_id AND NOT (value_id OR reference_id OR error_id)
       WHEN 4 THEN NOT (error_id OR value_id OR blob_id)
       WHEN 5 THEN NOT (error_id OR reference_id OR value_id OR blob_id)
-      WHEN 6 THEN NOT (error_id OR reference_id OR value_id OR blob_id)
+      WHEN 6 THEN NOT (error_id OR value_id OR blob_id)
       ELSE FALSE
     END
   )

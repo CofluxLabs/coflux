@@ -631,18 +631,18 @@ defmodule Coflux.Orchestration.Server do
     {:ok, executions} = Store.get_unassigned_executions(state.db)
     now = System.os_time(:millisecond)
 
-    {executions_due, executions_future, executions_duplicated} =
+    {executions_due, executions_future, executions_defer} =
       split_executions(executions, now)
 
     state =
-      executions_duplicated
+      executions_defer
       |> Enum.reverse()
-      |> Enum.reduce(state, fn {execution_id, duplication_id, run_id, repository}, state ->
+      |> Enum.reduce(state, fn {execution_id, defer_id, run_id, repository}, state ->
         case record_and_notify_result(
                state,
                execution_id,
-               :duplicated,
-               duplication_id,
+               :deferred,
+               defer_id,
                run_id,
                repository
              ) do
@@ -720,7 +720,7 @@ defmodule Coflux.Orchestration.Server do
 
     next_execute_after =
       executions_future
-      |> Enum.map(&elem(&1, 6))
+      |> Enum.map(&elem(&1, 7))
       |> Enum.min(fn -> nil end)
 
     state =
@@ -791,39 +791,38 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp split_executions(executions, now) do
-    {executions_due, executions_future, executions_duplicated, _} =
+    {executions_due, executions_future, executions_defer, _} =
       executions
       |> Enum.reverse()
       |> Enum.reduce(
         {[], [], [], %{}},
-        fn execution, {due, future, duplicated, duplications} ->
-          {execution_id, _, run_id, _, repository, target, duplication_key, execute_after, _} =
+        fn execution, {due, future, defer, defer_keys} ->
+          {execution_id, _, run_id, _, repository, target, defer_key, execute_after, _} =
             execution
 
-          duplication_key = duplication_key && {repository, target, duplication_key}
-          duplication_id = duplication_key && Map.get(duplications, duplication_key)
+          defer_key = defer_key && {repository, target, defer_key}
+          defer_id = defer_key && Map.get(defer_keys, defer_key)
 
-          if duplication_id do
-            {due, future, [{execution_id, duplication_id, run_id, repository} | duplicated],
-             duplications}
+          if defer_id do
+            {due, future, [{execution_id, defer_id, run_id, repository} | defer], defer_keys}
           else
-            duplications =
-              if duplication_key do
-                Map.put(duplications, duplication_key, execution_id)
+            defer_keys =
+              if defer_key do
+                Map.put(defer_keys, defer_key, execution_id)
               else
-                duplications
+                defer_keys
               end
 
             if is_nil(execute_after) || execute_after <= now do
-              {[execution | due], future, duplicated, duplications}
+              {[execution | due], future, defer, defer_keys}
             else
-              {due, [execution | future], duplicated, duplications}
+              {due, [execution | future], defer, defer_keys}
             end
           end
         end
       )
 
-    {executions_due, executions_future, executions_duplicated}
+    {executions_due, executions_future, executions_defer}
   end
 
   defp rerun_step(state, step, execute_after \\ nil) do

@@ -68,7 +68,7 @@ defmodule Coflux.Handlers.Agent do
           parent_id,
           execute_after,
           cache_key,
-          deduplicate_key,
+          defer_key,
           memo_key,
           retry_count,
           retry_delay_min,
@@ -89,7 +89,7 @@ defmodule Coflux.Handlers.Agent do
                  retry_count: retry_count,
                  retry_delay_min: retry_delay_min,
                  retry_delay_max: retry_delay_max,
-                 deduplicate_key: deduplicate_key,
+                 defer_key: defer_key,
                  execute_after: execute_after,
                  memo_key: memo_key
                ) do
@@ -353,7 +353,7 @@ defmodule Coflux.Handlers.Agent do
       {:error, error, _details} -> ["error", error]
       :abandoned -> ["abandoned"]
       :cancelled -> ["cancelled"]
-      :duplicated -> ["duplicated"]
+      :deferred -> ["deferred"]
     end
   end
 

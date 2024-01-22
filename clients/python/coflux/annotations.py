@@ -17,7 +17,7 @@ def _decorate(
     cache: bool | t.Callable[P, str] = False,
     cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    deduplicate: bool | t.Callable[P, str] = False,
+    defer: bool | t.Callable[P, str] = False,
     delay: int = 0,
     memo: bool | t.Callable[P, str] = False,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
@@ -37,7 +37,7 @@ def _decorate(
                     cache=cache,
                     cache_namespace=cache_namespace,
                     retries=retries,
-                    deduplicate=deduplicate,
+                    defer=defer,
                     memo=memo,
                     delay=delay,
                 )
@@ -70,7 +70,7 @@ def task(
     cache: bool | t.Callable[P, str] = False,
     cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    deduplicate: bool | t.Callable[P, str] = False,
+    defer: bool | t.Callable[P, str] = False,
     delay: int = 0,
     memo: bool | t.Callable[P, str] = False,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
@@ -80,7 +80,7 @@ def task(
         cache=cache,
         cache_namespace=cache_namespace,
         retries=retries,
-        deduplicate=deduplicate,
+        defer=defer,
         delay=delay,
         memo=memo,
     )
@@ -92,7 +92,7 @@ def workflow(
     cache: bool | t.Callable[P, str] = False,
     cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    deduplicate: bool | t.Callable[P, str] = False,
+    defer: bool | t.Callable[P, str] = False,
     delay: int = 0,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     return _decorate(
@@ -101,7 +101,7 @@ def workflow(
         cache=cache,
         cache_namespace=cache_namespace,
         retries=retries,
-        deduplicate=deduplicate,
+        defer=defer,
         delay=delay,
     )
 
@@ -113,7 +113,7 @@ def stub(
     cache: bool | t.Callable[P, str] = False,
     cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    deduplicate: bool | t.Callable[P, str] = False,
+    defer: bool | t.Callable[P, str] = False,
     delay: int = 0,
     memo: bool | t.Callable[P, str] = False,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
@@ -123,7 +123,7 @@ def stub(
         cache=cache,
         cache_namespace=cache_namespace,
         retries=retries,
-        deduplicate=deduplicate,
+        defer=defer,
         delay=delay,
         memo=memo,
     )

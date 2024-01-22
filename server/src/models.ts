@@ -46,7 +46,7 @@ export type Result =
   | { type: "error"; error: string }
   | { type: "abandoned" }
   | { type: "cancelled" }
-  | { type: "duplicated" };
+  | { type: "deferred" };
 
 export type Child = Pick<Target, "repository" | "target"> & {
   runId: string;
@@ -84,7 +84,7 @@ export type Attempt = {
   dependencies: Record<string, Reference>;
   children: (string | Child)[];
   result: Result | null;
-  retry: Reference | null;
+  reference: Reference | null;
 };
 
 export type Step = {

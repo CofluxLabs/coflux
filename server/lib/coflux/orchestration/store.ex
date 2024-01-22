@@ -211,7 +211,7 @@ defmodule Coflux.Orchestration.Store do
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
     cache_key = Keyword.get(opts, :cache_key)
-    deduplicate_key = Keyword.get(opts, :deduplicate_key)
+    defer_key = Keyword.get(opts, :defer_key)
     memo_key = Keyword.get(opts, :memo_key)
     retry_count = Keyword.get(opts, :retry_count, 0)
     retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
@@ -248,7 +248,7 @@ defmodule Coflux.Orchestration.Store do
               target,
               priority,
               cache_key,
-              deduplicate_key,
+              defer_key,
               memo_key,
               retry_count,
               retry_delay_min,
@@ -430,7 +430,7 @@ defmodule Coflux.Orchestration.Store do
           {:cancelled, reference_id} ->
             {5, nil, reference_id, nil, nil}
 
-          {:duplicated, reference_id} ->
+          {:deferred, reference_id} ->
             {6, nil, reference_id, nil, nil}
         end
 
@@ -493,7 +493,7 @@ defmodule Coflux.Orchestration.Store do
               {:cancelled, reference_id}
 
             {6, nil, reference_id, nil, nil} ->
-              {:duplicated, reference_id}
+              {:deferred, reference_id}
           end
 
         {:ok, {result, reference_id, created_at}}
@@ -514,7 +514,7 @@ defmodule Coflux.Orchestration.Store do
         run.external_id,
         s.repository,
         s.target,
-        s.deduplicate_key,
+        s.defer_key,
         e.execute_after,
         e.created_at
       FROM executions AS e
@@ -847,7 +847,7 @@ defmodule Coflux.Orchestration.Store do
          target,
          priority,
          cache_key,
-         deduplicate_key,
+         defer_key,
          memo_key,
          retry_count,
          retry_delay_min,
@@ -864,7 +864,7 @@ defmodule Coflux.Orchestration.Store do
                target: target,
                priority: priority,
                cache_key: cache_key,
-               deduplicate_key: deduplicate_key,
+               defer_key: defer_key,
                memo_key: memo_key,
                retry_count: retry_count,
                retry_delay_min: retry_delay_min,
