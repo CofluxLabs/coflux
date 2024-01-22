@@ -1,22 +1,25 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
-
-import { useContext } from "../layouts/RunLayout";
-import { sortBy } from "lodash";
-import { buildUrl } from "../utils";
 import { DateTime } from "luxon";
+import { sortBy } from "lodash";
+
+import * as models from "../models";
+import { useContext } from "../layouts/RunLayout";
+import { buildUrl } from "../utils";
 
 // TODO: better name for page
 export default function RunsPage() {
   const { run } = useContext();
-  const { project: projectId, run: runId } = useParams();
+  const { project: projectId } = useParams();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
-  const runs = Object.assign(
-    {},
-    ...Object.values(run.steps)
-      .flatMap((s) => Object.values(s.executions))
-      .map((e) => e.children)
-  );
+  const runs = Object.values(run.steps)
+    .flatMap((s) => Object.values(s.attempts))
+    .flatMap((a) => a.children)
+    .filter((c): c is models.Child => typeof c != "string")
+    .reduce<Record<string, models.Child>>(
+      (runs, child) => ({ ...runs, [child.runId]: child }),
+      {},
+    );
   return (
     <div className="p-4">
       <table className="w-full">

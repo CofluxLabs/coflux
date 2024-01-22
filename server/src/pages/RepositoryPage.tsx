@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useTopic } from "@topical/react";
 import { IconBox } from "@tabler/icons-react";
@@ -55,9 +56,12 @@ export default function RepositoryPage() {
     repositoryName,
   );
   useTitlePart(repositoryName);
-  useSetActiveTarget(
-    repositoryName ? { repository: repositoryName, target: null } : undefined,
+  const target = useMemo(
+    () =>
+      repositoryName ? { repository: repositoryName, target: null } : undefined,
+    [repositoryName],
   );
+  useSetActiveTarget(target);
   const now = useNow(500);
   if (!executions) {
     return <Loading />;
