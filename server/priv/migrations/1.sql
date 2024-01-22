@@ -78,11 +78,22 @@ CREATE INDEX steps_cache_key ON steps (cache_key);
 CREATE TABLE arguments (
   step_id INTEGER NOT NULL,
   position INTEGER NOT NULL,
-  type INTEGER NOT NULL,
-  format TEXT,
-  value BLOB NOT NULL,
+  reference_id INTEGER,
+  value_id INTEGER,
+  blob_id INTEGER,
   PRIMARY KEY (step_id, position),
-  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
+  FOREIGN KEY (step_id) REFERENCES steps ON DELETE RESTRICT,
+  FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT,
+  FOREIGN KEY (value_id) REFERENCES `values` ON DELETE RESTRICT,
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
+  CHECK (
+    CASE
+      WHEN reference_id THEN NOT (value_id OR blob_id)
+      WHEN value_id THEN NOT (reference_id OR blob_id)
+      WHEN blob_id THEN NOT (reference_id OR value_id)
+      ELSE FALSE
+    END
+  )
 );
 
 CREATE TABLE attempts (
@@ -137,11 +148,22 @@ CREATE TABLE checkpoints(
 CREATE TABLE checkpoint_arguments(
   checkpoint_id INTEGER NOT NULL,
   position INTEGER NOT NULL,
-  type INTEGER NOT NULL,
-  format TEXT,
-  value BLOB NOT NULL,
+  reference_id INTEGER,
+  value_id INTEGER,
+  blob_id INTEGER,
   PRIMARY KEY (checkpoint_id, position),
-  FOREIGN KEY (checkpoint_id) REFERENCES checkpoints ON DELETE CASCADE
+  FOREIGN KEY (checkpoint_id) REFERENCES checkpoints ON DELETE CASCADE,
+  FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT,
+  FOREIGN KEY (value_id) REFERENCES `values` ON DELETE RESTRICT,
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
+  CHECK (
+    CASE
+      WHEN reference_id THEN NOT (value_id OR blob_id)
+      WHEN value_id THEN NOT (reference_id OR blob_id)
+      WHEN blob_id THEN NOT (reference_id OR value_id)
+      ELSE FALSE
+    END
+  )
 );
 
 CREATE TABLE heartbeats (
@@ -152,15 +174,52 @@ CREATE TABLE heartbeats (
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
 );
 
+CREATE TABLE `values` (
+  id INTEGER PRIMARY KEY,
+  format TEXT NOT NULL,
+  value BLOB,
+  UNIQUE (format, value)
+);
+
+CREATE TABLE blobs (
+  id INTEGER PRIMARY KEY,
+  format TEXT NOT NULL,
+  key TEXT NOT NULL,
+  metadata BLOB,
+  UNIQUE (format, key, metadata)
+);
+
+-- TODO: other fields (stack trace, etc)
+CREATE TABLE errors (
+  id INTEGER PRIMARY KEY,
+  message TEXT,
+  UNIQUE (message)
+);
+
 CREATE TABLE results (
   execution_id INTEGER PRIMARY KEY,
   type INTEGER NOT NULL,
-  format TEXT,
-  value BLOB,
-  retry_id INTEGER, -- TODO: rename to support de-duplication? successor_id? defer_id?
-  -- TODO: metadata? (for serialising errors)
+  error_id INTEGER,
+  reference_id INTEGER,
+  value_id INTEGER,
+  blob_id INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (retry_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (value_id) REFERENCES `values` ON DELETE RESTRICT,
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
+  FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT,
+  FOREIGN KEY (error_id) REFERENCES errors ON DELETE RESTRICT,
+  CHECK (
+    CASE type
+      WHEN 0 THEN error_id AND NOT (value_id OR blob_id)
+      WHEN 1 THEN reference_id AND NOT (value_id OR blob_id OR error_id)
+      WHEN 2 THEN value_id AND NOT (blob_id OR reference_id OR error_id)
+      WHEN 3 THEN blob_id AND NOT (value_id OR reference_id OR error_id)
+      WHEN 4 THEN NOT (error_id OR value_id OR blob_id)
+      WHEN 5 THEN NOT (error_id OR reference_id OR value_id OR blob_id)
+      WHEN 6 THEN NOT (error_id OR reference_id OR value_id OR blob_id)
+      ELSE FALSE
+    END
+  )
 );
 

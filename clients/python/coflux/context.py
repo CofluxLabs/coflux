@@ -46,7 +46,7 @@ def resolve(target_execution_id: str) -> future.Future[t.Any]:
     channel = _get_channel()
     return future.Future(
         lambda: channel.resolve_reference(target_execution_id),
-        ("reference", target_execution_id),
+        target_execution_id,
     )
 
 

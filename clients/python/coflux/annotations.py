@@ -45,7 +45,7 @@ def _decorate(
             except context.NotInContextException:
                 result = fn(*args)
                 return (
-                    future.Future(lambda: result)
+                    future.Future(lambda: result, None)
                     if not isinstance(result, future.Future)
                     else result
                 )

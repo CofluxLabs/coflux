@@ -272,6 +272,7 @@ defmodule Coflux.Orchestration.Server do
                      state,
                      execution_id,
                      :cancelled,
+                     nil,
                      run.id,
                      repository
                    ) do
@@ -315,12 +316,12 @@ defmodule Coflux.Orchestration.Server do
       session.executing
       |> MapSet.difference(execution_ids)
       |> Enum.reduce(state, fn execution_id, state ->
-        case Store.get_execution_result(state.db, execution_id) do
-          {:ok, nil} ->
+        case Store.has_result?(state.db, execution_id) do
+          {:ok, false} ->
             {:ok, state} = record_result(state, execution_id, :abandoned)
             state
 
-          {:ok, _other} ->
+          {:ok, true} ->
             state
         end
       end)
@@ -331,11 +332,11 @@ defmodule Coflux.Orchestration.Server do
       |> MapSet.difference(session.starting)
       |> MapSet.difference(session.executing)
       |> Enum.reduce(state, fn execution_id, state ->
-        case Store.get_execution_result(state.db, execution_id) do
-          {:ok, nil} ->
+        case Store.has_result?(state.db, execution_id) do
+          {:ok, false} ->
             state
 
-          {:ok, _other} ->
+          {:ok, true} ->
             send_session(state, session_id, {:abort, execution_id})
         end
       end)
@@ -377,8 +378,8 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:record_result, execution_id, result}, _from, state) do
-    case record_result(state, execution_id, result) do
+  def handle_call({:record_result, execution_id, result, reference_id}, _from, state) do
+    case record_result(state, execution_id, result, reference_id) do
       {:ok, state} ->
         state = flush_notifications(state)
         {:reply, :ok, state}
@@ -536,10 +537,10 @@ defmodule Coflux.Orchestration.Server do
                        {dependency_id, resolve_execution(state.db, dependency_id)}
                      end)
 
-                   {result, retry_id, completed_at} =
-                     case Store.get_execution_result(state.db, execution_id) do
-                       {:ok, {result, retry_id, completed_at}} ->
-                         {result, retry_id, completed_at}
+                   {result, reference_id, completed_at} =
+                     case Store.get_result(state.db, execution_id) do
+                       {:ok, {result, reference_id, completed_at}} ->
+                         {result, reference_id, completed_at}
 
                        {:ok, nil} ->
                          {nil, nil, nil}
@@ -552,9 +553,9 @@ defmodule Coflux.Orchestration.Server do
                        {:ok, []}
                      end
 
-                   retry =
-                     if retry_id do
-                       resolve_execution(state.db, retry_id)
+                   reference =
+                     if reference_id do
+                       resolve_execution(state.db, reference_id)
                      end
 
                    {sequence,
@@ -568,7 +569,7 @@ defmodule Coflux.Orchestration.Server do
                       dependencies: dependencies,
                       result: result,
                       children: children,
-                      retry: retry
+                      reference: reference
                     }}
                  end)
              }}
@@ -641,9 +642,9 @@ defmodule Coflux.Orchestration.Server do
                state,
                execution_id,
                :duplicated,
+               duplication_id,
                run_id,
-               repository,
-               duplication_id
+               repository
              ) do
           {:ok, state} -> state
           {:error, :already_recorded} -> state
@@ -879,21 +880,21 @@ defmodule Coflux.Orchestration.Server do
     }
   end
 
-  defp record_and_notify_result(state, execution_id, result, run_id, repository, retry_id \\ nil) do
-    case Store.record_result(state.db, execution_id, result, retry_id) do
+  defp record_and_notify_result(state, execution_id, result, reference_id, run_id, repository) do
+    case Store.record_result(state.db, execution_id, result, reference_id) do
       {:ok, created_at} ->
         state = notify_waiting(state, execution_id)
 
-        retry =
-          if retry_id do
-            resolve_execution(state.db, retry_id)
+        reference =
+          if reference_id do
+            resolve_execution(state.db, reference_id)
           end
 
         state =
           state
           |> notify_listeners(
             {:run, run_id},
-            {:result, execution_id, result, retry, created_at}
+            {:result, execution_id, result, reference, created_at}
           )
           |> notify_listeners(:repositories, {:completed, repository, execution_id})
           |> notify_listeners({:repository, repository}, {:completed, execution_id})
@@ -905,11 +906,11 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp record_result(state, execution_id, result) do
+  defp record_result(state, execution_id, result, reference_id \\ nil) do
     {:ok, step} = Store.get_step_for_execution(state.db, execution_id)
 
-    {retry_id, state} =
-      if result_retryable?(result) && step.retry_count > 0 do
+    {reference_id, state} =
+      if is_nil(reference_id) && result_retryable?(result) && step.retry_count > 0 do
         {:ok, executions} = Store.get_step_attempts(state.db, step.id)
 
         attempts = Enum.count(executions)
@@ -923,13 +924,13 @@ defmodule Coflux.Orchestration.Server do
 
           execute_after = System.os_time(:millisecond) + delay_s * 1000
           # TODO: do cache lookup?
-          {:ok, retry_id, _, state} = rerun_step(state, step, execute_after)
-          {retry_id, state}
+          {:ok, reference_id, _, state} = rerun_step(state, step, execute_after)
+          {reference_id, state}
         else
-          {nil, state}
+          {reference_id, state}
         end
       else
-        if step.type == 0 do
+        if is_nil(reference_id) && step.type == 0 do
           {:ok, run} = Store.get_run_by_id(state.db, step.run_id)
 
           if run.recurrent do
@@ -946,16 +947,16 @@ defmodule Coflux.Orchestration.Server do
                   last_assigned_at + @recurrent_rate_limit_ms
                 end
 
-              {:ok, retry_id, _, state} = rerun_step(state, step, execute_after)
-              {retry_id, state}
+              {:ok, reference_id, _, state} = rerun_step(state, step, execute_after)
+              {reference_id, state}
             else
-              {nil, state}
+              {reference_id, state}
             end
           else
-            {nil, state}
+            {reference_id, state}
           end
         else
-          {nil, state}
+          {reference_id, state}
         end
       end
 
@@ -964,9 +965,9 @@ defmodule Coflux.Orchestration.Server do
              state,
              execution_id,
              result,
+             reference_id,
              step.run_id,
-             step.repository,
-             retry_id
+             step.repository
            ) do
         {:ok, state} -> state
         {:error, :already_recorded} -> state
@@ -977,15 +978,12 @@ defmodule Coflux.Orchestration.Server do
 
   defp resolve_result(execution_id, db) do
     # TODO: check execution exists?
-    case Store.get_execution_result(db, execution_id) do
+    case Store.get_result(db, execution_id) do
       {:ok, nil} ->
         {:pending, execution_id}
 
-      {:ok, {_, retry_id, _}} when not is_nil(retry_id) ->
-        resolve_result(retry_id, db)
-
-      {:ok, {{:reference, execution_id}, nil, _}} ->
-        resolve_result(execution_id, db)
+      {:ok, {_, reference_id, _}} when not is_nil(reference_id) ->
+        resolve_result(reference_id, db)
 
       {:ok, {other, nil, _}} ->
         {:ok, other}

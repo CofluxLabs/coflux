@@ -12,8 +12,8 @@ import contextvars
 import contextlib
 import concurrent.futures as cf
 
-from . import server, future, blobs
-from .types import Value
+from . import server, future, blobs, models
+
 
 _BLOB_THRESHOLD = 100
 _EXECUTION_THRESHOLD_S = 1.0
@@ -38,7 +38,7 @@ class ExecutingNotification(t.NamedTuple):
 
 
 class RecordResultRequest(t.NamedTuple):
-    value: Value
+    value: models.Value
 
 
 class RecordErrorRequest(t.NamedTuple):
@@ -49,7 +49,7 @@ class ScheduleExecutionRequest(t.NamedTuple):
     schedule_id: int
     repository: str
     target: str
-    arguments: list[Value]
+    arguments: list[models.Value]
     execute_after: dt.datetime | None
     cache_key: str | None
     deduplicate_key: str | None
@@ -64,7 +64,7 @@ class ResolveReferenceRequest(t.NamedTuple):
 
 
 class RecordCheckpointRequest(t.NamedTuple):
-    arguments: list[Value]
+    arguments: list[models.Value]
 
 
 class LogMessageRequest(t.NamedTuple):
@@ -109,10 +109,20 @@ def _parse_retries(
             raise ValueError(other)
 
 
+def _value_key(value: models.Value) -> str:
+    match value:
+        case ["raw", format, content]:
+            return f"raw:{format}:{content}"
+        case ["blob", format, key, _]:
+            return f"blob:{format}:{key}"
+        case ["reference", execution_id]:
+            return f"reference:{execution_id}"
+
+
 def _build_key(
     key: bool | t.Callable[[tuple[t.Any]], str],
     arguments: tuple[t.Any, ...],
-    serialised_arguments: list[Value],
+    serialised_arguments: list[models.Value],
     prefix: str | None = None,
 ) -> str | None:
     if not key:
@@ -120,7 +130,7 @@ def _build_key(
     cache_key = (
         key(*arguments)
         if callable(key)
-        else "\0".join(x for a in serialised_arguments for x in a)
+        else "\0".join(_value_key(a) for a in serialised_arguments)
     )
     if prefix is not None:
         cache_key = prefix + "\0" + cache_key
@@ -131,21 +141,23 @@ def _json_dumps(obj: t.Any) -> str:
     return json.dumps(obj, separators=(",", ":"))
 
 
-def _serialise_value(value: t.Any, blob_store: blobs.Store) -> Value:
+def _serialise_value(value: t.Any, blob_store: blobs.Store) -> models.Value:
     if isinstance(value, future.Future):
-        return value.serialise()
+        assert value.execution_id
+        return ("reference", value.execution_id)
     try:
         json_value = _json_dumps(value)
     except TypeError:
         pass
     else:
         if len(json_value) >= _BLOB_THRESHOLD:
-            key = blob_store.put(json_value.encode())
-            return ("blob", "json", key)
+            json_bytes = json_value.encode()
+            key = blob_store.put(json_bytes)
+            return ("blob", "json", key, {"size": len(json_bytes)})
         return ("raw", "json", json_value)
     pickle_value = pickle.dumps(value)
     key = blob_store.put(pickle_value)
-    return ("blob", "pickle", key)
+    return ("blob", "pickle", key, {"size": len(pickle_value)})
 
 
 class Channel:
@@ -289,14 +301,14 @@ def _deserialise(
         raise Exception(f"Failed to deserialise {description}") from e
 
 
-def _deserialise_value(value: Value, blob_store: blobs.Store, description: str):
+def _deserialise_value(value: models.Result, blob_store: blobs.Store, description: str):
     match value:
         case ("raw", "json", data):
             return _deserialise(data, json.loads, description)
-        case ("blob", "json", key):
+        case ("blob", "json", key, _):
             content = blob_store.get(key)
             return _deserialise(content, json.loads, description)
-        case ("blob", "pickle", key):
+        case ("blob", "pickle", key, _):
             content = blob_store.get(key)
             return _deserialise(content, pickle.loads, description)
         case ("error", error):
@@ -310,26 +322,28 @@ def _deserialise_value(value: Value, blob_store: blobs.Store, description: str):
             raise Exception(f"unexeptected result ({result})")
 
 
-def _resolve_argument(argument: Value, channel: Channel, description: str) -> t.Any:
+def _resolve_argument(
+    argument: models.Value, channel: Channel, description: str
+) -> t.Any:
     match argument:
         case ("raw", "json", value):
             return _deserialise(value, json.loads, description)
-        case ("blob", "json", key):
+        case ("blob", "json", key, _):
             content = channel.get_blob(key)
             return _deserialise(content, json.loads, description)
-        case ("blob", "pickle", key):
+        case ("blob", "pickle", key, _):
             content = channel.get_blob(key)
             return _deserialise(content, pickle.loads, description)
         case ("reference", execution_id):
             return future.Future(
                 lambda: channel.resolve_reference(execution_id),
-                argument,
+                execution_id,
             )
         case _:
             raise Exception(f"unrecognised argument ({argument})")
 
 
-def _resolve_arguments(arguments: list[Value], channel: Channel) -> list[t.Any]:
+def _resolve_arguments(arguments: list[models.Value], channel: Channel) -> list[t.Any]:
     # TODO: parallelise
     return [
         _resolve_argument(a, channel, f"argument {i}") for i, a in enumerate(arguments)
@@ -357,7 +371,7 @@ class Capture(t.IO[str]):
 
 def _execute(
     target: t.Callable,
-    arguments: list[Value],
+    arguments: list[models.Value],
     execution_id: str,
     server_host: str,
     conn,
@@ -387,7 +401,7 @@ class Execution:
         self,
         execution_id: str,
         target: t.Callable,
-        arguments: list[Value],
+        arguments: list[models.Value],
         server_host: str,
         server_connection: server.Connection,
         loop: asyncio.AbstractEventLoop,
@@ -559,7 +573,7 @@ class Manager:
         self,
         execution_id: str,
         target: t.Callable,
-        arguments: list[Value],
+        arguments: list[models.Value],
         loop: asyncio.AbstractEventLoop,
     ):
         if execution_id in self._executions:

@@ -9,7 +9,7 @@ import { IconChevronDown, IconPinned } from "@tabler/icons-react";
 
 import * as models from "../models";
 import Badge from "./Badge";
-import { buildUrl, formatDiff } from "../utils";
+import { buildUrl, formatDiff, humanSize } from "../utils";
 import Loading from "./Loading";
 import Button from "./common/Button";
 import RunLogs from "./RunLogs";
@@ -210,8 +210,30 @@ function Header({
   );
 }
 
+type BlobLinkProps = {
+  value: Extract<models.Value, { type: "blob" }>;
+};
+
+function BlobLink({ value }: BlobLinkProps) {
+  const hints = [value.format];
+  if (value.metadata.size) {
+    hints.push(humanSize(value.metadata.size));
+  }
+  return (
+    <span className="">
+      <a
+        href={`/blobs/${value.key}`}
+        className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
+      >
+        Blob
+      </a>
+      <span className="text-slate-500 text-xs ml-1">({hints.join("; ")})</span>
+    </span>
+  );
+}
+
 type ArgumentProps = {
-  argument: models.Argument;
+  argument: models.Value;
   runId: string;
   run: models.Run;
 };
@@ -238,17 +260,7 @@ function Argument({ runId, run, argument }: ArgumentProps) {
         return <em>Unrecognised execution</em>;
       }
     case "blob":
-      return (
-        <span>
-          <a
-            href={`/blobs/${argument.key}`}
-            className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-1 py-0.5 my-0.5 inline-block"
-          >
-            Blob
-          </a>
-          ({argument.format})
-        </span>
-      );
+      return <BlobLink value={argument} />;
     default:
       throw new Error(`Unhandled argument type (${argument})`);
   }
@@ -257,7 +269,7 @@ function Argument({ runId, run, argument }: ArgumentProps) {
 type ArgumentsSectionProps = {
   runId: string;
   run: models.Run;
-  arguments_: models.Argument[];
+  arguments_: models.Value[];
 };
 
 function ArgumentsSection({ runId, run, arguments_ }: ArgumentsSectionProps) {
@@ -488,14 +500,7 @@ function Result({ runId, run, result }: ResultProps) {
         </div>
       );
     case "blob":
-      return (
-        <a
-          href={`/blobs/${result.key}`}
-          className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
-        >
-          Blob
-        </a>
-      );
+      return <BlobLink value={result} />;
     case "reference":
       const stepAttempt = findAttempt(run, result.executionId);
       if (stepAttempt) {

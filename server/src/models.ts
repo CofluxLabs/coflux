@@ -24,11 +24,7 @@ export type Repository = {
   scheduled: number;
 };
 
-export type Result =
-  | {
-      type: "error";
-      error: string;
-    }
+export type Value =
   | {
       type: "reference";
       executionId: string;
@@ -42,26 +38,15 @@ export type Result =
       type: "blob";
       format: string;
       key: string;
-    }
+      metadata: Record<string, any>;
+    };
+
+export type Result =
+  | Value
+  | { type: "error"; error: string }
   | { type: "abandoned" }
   | { type: "cancelled" }
   | { type: "duplicated" };
-
-export type Argument =
-  | {
-      type: "reference";
-      executionId: string;
-    }
-  | {
-      type: "raw";
-      format: string;
-      value: string;
-    }
-  | {
-      type: "blob";
-      format: string;
-      key: string;
-    };
 
 export type Child = Pick<Target, "repository" | "target"> & {
   runId: string;
@@ -109,7 +94,7 @@ export type Step = {
   isMemoised: boolean;
   createdAt: number;
   attempts: Record<string, Attempt>;
-  arguments: Argument[];
+  arguments: Value[];
 };
 
 export type Run = {

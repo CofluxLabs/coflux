@@ -159,14 +159,15 @@ defmodule Coflux.Handlers.Agent do
         [execution_id, result] = message["params"]
 
         if is_recognised_execution?(execution_id, state) do
-          result = parse_result(result)
+          {result, reference_id} = parse_result(result)
 
           :ok =
             Orchestration.record_result(
               state.project_id,
               state.environment,
               execution_id,
-              result
+              result,
+              reference_id
             )
 
           {[], state}
@@ -322,7 +323,7 @@ defmodule Coflux.Handlers.Agent do
   defp parse_argument(argument) do
     case argument do
       ["raw", format, value] -> {:raw, format, value}
-      ["blob", format, key] -> {:blob, format, key}
+      ["blob", format, key, metadata] -> {:blob, format, key, metadata}
       ["reference", execution_id] -> {:reference, execution_id}
     end
   end
@@ -330,15 +331,16 @@ defmodule Coflux.Handlers.Agent do
   defp compose_argument(result) do
     case result do
       {:raw, format, value} -> ["raw", format, value]
-      {:blob, format, key} -> ["blob", format, key]
+      # TODO: strip metadata?
+      {:blob, format, key, metadata} -> ["blob", format, key, metadata]
       {:reference, execution_id} -> ["reference", execution_id]
     end
   end
 
   defp parse_result(result) do
     case result do
-      ["raw", format, value] -> {:raw, format, value}
-      ["blob", format, key] -> {:blob, format, key}
+      ["raw", format, value] -> {{:raw, format, value}, nil}
+      ["blob", format, key, metadata] -> {{:blob, format, key, metadata}, nil}
       ["reference", execution_id] -> {:reference, execution_id}
     end
   end
@@ -346,8 +348,8 @@ defmodule Coflux.Handlers.Agent do
   defp compose_result(result) do
     case result do
       {:raw, format, value} -> ["raw", format, value]
-      {:blob, format, key} -> ["blob", format, key]
-      {:reference, execution_id} -> ["reference", execution_id]
+      # TODO: strip metadata?
+      {:blob, format, key, metadata} -> ["blob", format, key, metadata]
       {:error, error, _details} -> ["error", error]
       :abandoned -> ["abandoned"]
       :cancelled -> ["cancelled"]

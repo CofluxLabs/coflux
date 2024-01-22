@@ -256,7 +256,7 @@ defmodule Coflux.Orchestration.Store do
               now
             )
 
-          :ok = insert_arguments(db, step_id, arguments)
+          :ok = insert_arguments(db, step_id, get_or_create_arguments(db, arguments))
 
           sequence = 1
 
@@ -347,7 +347,9 @@ defmodule Coflux.Orchestration.Store do
       now = current_timestamp()
 
       {:ok, checkpoint_id} = insert_checkpoint(db, execution_id, sequence, now)
-      {:ok, _} = insert_checkpoint_arguments(db, checkpoint_id, arguments)
+
+      {:ok, _} =
+        insert_checkpoint_arguments(db, checkpoint_id, get_or_create_arguments(db, arguments))
 
       {:ok, checkpoint_id, sequence, now}
     end)
@@ -372,7 +374,7 @@ defmodule Coflux.Orchestration.Store do
     case query(
            db,
            """
-           SELECT type, format, value
+           SELECT reference_id, value_id, blob_id
            FROM checkpoint_arguments
            WHERE checkpoint_id = ?1
            ORDER BY position
@@ -380,7 +382,7 @@ defmodule Coflux.Orchestration.Store do
            {checkpoint_id}
          ) do
       {:ok, rows} ->
-        {:ok, build_arguments(rows)}
+        {:ok, resolve_arguments(db, rows)}
     end
   end
 
@@ -401,11 +403,38 @@ defmodule Coflux.Orchestration.Store do
     end)
   end
 
-  def record_result(db, execution_id, result, retry_id \\ nil) do
+  def record_result(db, execution_id, result, reference_id) do
     with_transaction(db, fn ->
       now = current_timestamp()
 
-      case insert_result(db, execution_id, result, retry_id, now) do
+      {type, error_id, reference_id, value_id, blob_id} =
+        case {result, reference_id} do
+          {{:error, message, _}, reference_id} ->
+            {:ok, error_id} = get_or_create_error(db, message)
+            {0, error_id, reference_id, nil, nil}
+
+          {:reference, reference_id} when not is_nil(reference_id) ->
+            {1, nil, reference_id, nil, nil}
+
+          {{:raw, format, value}, nil} ->
+            {:ok, value_id} = get_or_create_value(db, format, value)
+            {2, nil, nil, value_id, nil}
+
+          {{:blob, format, key, metadata}, nil} ->
+            {:ok, blob_id} = get_or_create_blob(db, format, key, metadata)
+            {3, nil, nil, nil, blob_id}
+
+          {:abandoned, reference_id} ->
+            {4, nil, reference_id, nil, nil}
+
+          {:cancelled, reference_id} ->
+            {5, nil, reference_id, nil, nil}
+
+          {:duplicated, reference_id} ->
+            {6, nil, reference_id, nil, nil}
+        end
+
+      case insert_result(db, execution_id, type, error_id, reference_id, value_id, blob_id, now) do
         {:ok, _} ->
           {:ok, now}
 
@@ -415,19 +444,59 @@ defmodule Coflux.Orchestration.Store do
     end)
   end
 
-  def get_execution_result(db, execution_id) do
+  def has_result?(db, execution_id) do
+    case query_one(db, "SELECT COUNT(*) FROM results WHERE execution_id = ?1", {execution_id}) do
+      {:ok, {0}} -> {:ok, false}
+      {:ok, {1}} -> {:ok, true}
+    end
+  end
+
+  def get_result(db, execution_id) do
     case query_one(
            db,
            """
-           SELECT type, format, value, retry_id, created_at
+           SELECT type, error_id, reference_id, value_id, blob_id, created_at
            FROM results
            WHERE execution_id = ?1
            """,
            {execution_id}
          ) do
-      {:ok, {type, format, value, retry_id, created_at}} ->
-        result = build_result(type, format, value)
-        {:ok, {result, retry_id, created_at}}
+      {:ok, {type, error_id, reference_id, value_id, blob_id, created_at}} ->
+        {result, reference_id} =
+          case {type, error_id, reference_id, value_id, blob_id} do
+            {0, error_id, reference_id, nil, nil} ->
+              case get_error_by_id(db, error_id) do
+                {:ok, {message}} ->
+                  {{:error, message, nil}, reference_id}
+              end
+
+            {1, nil, reference_id, nil, nil} ->
+              {:reference, reference_id}
+
+            {2, nil, nil, value_id, nil} ->
+              case get_value_by_id(db, value_id) do
+                {:ok, {format, value}} ->
+                  {{:raw, format, value}, nil}
+              end
+
+            {3, nil, nil, nil, blob_id} ->
+              case get_blob_by_id(db, blob_id) do
+                {:ok, {format, key, encoded_metadata}} ->
+                  metadata = decode_metadata(encoded_metadata)
+                  {{:blob, format, key, metadata}, nil}
+              end
+
+            {4, nil, reference_id, nil, nil} ->
+              {:abandoned, reference_id}
+
+            {5, nil, reference_id, nil, nil} ->
+              {:cancelled, reference_id}
+
+            {6, nil, reference_id, nil, nil} ->
+              {:duplicated, reference_id}
+          end
+
+        {:ok, {result, reference_id, created_at}}
 
       {:ok, nil} ->
         {:ok, nil}
@@ -672,7 +741,7 @@ defmodule Coflux.Orchestration.Store do
     case query(
            db,
            """
-           SELECT type, format, value
+           SELECT reference_id, value_id, blob_id
            FROM arguments
            WHERE step_id = ?1
            ORDER BY position
@@ -680,7 +749,7 @@ defmodule Coflux.Orchestration.Store do
            {step_id}
          ) do
       {:ok, rows} ->
-        {:ok, build_arguments(rows)}
+        {:ok, resolve_arguments(db, rows)}
     end
   end
 
@@ -812,31 +881,46 @@ defmodule Coflux.Orchestration.Store do
     case insert_many(
            db,
            :arguments,
-           {:step_id, :position, :type, :format, :value},
-           Enum.map(Enum.with_index(arguments), fn {argument, index} ->
-             {type, format, value} = parse_argument(argument)
-             {step_id, index, type, format, value}
+           {:step_id, :position, :reference_id, :value_id, :blob_id},
+           Enum.map(Enum.with_index(arguments), fn {{reference_id, value_id, blob_id}, index} ->
+             {step_id, index, reference_id, value_id, blob_id}
            end)
          ) do
       {:ok, _} -> :ok
     end
   end
 
-  defp parse_argument(argument) do
-    case argument do
-      {:reference, execution_id} -> {1, nil, execution_id}
-      {:raw, format, data} -> {2, format, data}
-      {:blob, format, hash} -> {3, format, hash}
-    end
+  defp get_or_create_arguments(db, arguments) do
+    Enum.map(arguments, fn
+      {:reference, execution_id} ->
+        {execution_id, nil, nil}
+
+      {:raw, format, value} ->
+        {:ok, value_id} = get_or_create_value(db, format, value)
+        {nil, value_id, nil}
+
+      {:blob, format, key, metadata} ->
+        {:ok, blob_id} = get_or_create_blob(db, format, key, metadata)
+        {nil, nil, blob_id}
+    end)
   end
 
-  defp build_arguments(rows) do
-    Enum.map(rows, fn {type, format, value} ->
-      case type do
-        1 -> {:reference, value}
-        2 -> {:raw, format, value}
-        3 -> {:blob, format, value}
-      end
+  defp resolve_arguments(db, arguments) do
+    Enum.map(arguments, fn
+      {execution_id, nil, nil} ->
+        {:reference, execution_id}
+
+      {nil, value_id, nil} ->
+        case get_value_by_id(db, value_id) do
+          {:ok, {format, value}} -> {:raw, format, value}
+        end
+
+      {nil, nil, blob_id} ->
+        case get_blob_by_id(db, blob_id) do
+          {:ok, {format, key, encoded_metadata}} ->
+            metadata = decode_metadata(encoded_metadata)
+            {:blob, format, key, metadata}
+        end
     end)
   end
 
@@ -900,48 +984,113 @@ defmodule Coflux.Orchestration.Store do
     insert_many(
       db,
       :checkpoint_arguments,
-      {:checkpoint_id, :position, :type, :format, :value},
-      Enum.map(Enum.with_index(arguments), fn {argument, position} ->
-        {type, format, value} = parse_argument(argument)
-        {checkpoint_id, position, type, format, value}
+      {:checkpoint_id, :position, :reference_id, :value_id, :blob_id},
+      Enum.map(Enum.with_index(arguments), fn {{reference_id, value_id, blob_id}, position} ->
+        {checkpoint_id, position, reference_id, value_id, blob_id}
       end)
     )
   end
 
-  defp parse_result(result) do
-    case result do
-      # TODO: handle details
-      {:error, error, _details} -> {0, nil, error}
-      {:reference, execution_id} -> {1, nil, execution_id}
-      {:raw, format, data} -> {2, format, data}
-      {:blob, format, hash} -> {3, format, hash}
-      :abandoned -> {4, nil, nil}
-      :cancelled -> {5, nil, nil}
-      :duplicated -> {6, nil, nil}
+  defp get_error_by_id(db, error_id) do
+    query_one!(db, "SELECT message FROM errors WHERE id = ?1", {error_id})
+  end
+
+  defp get_value_by_id(db, value_id) do
+    query_one!(db, "SELECT format, value FROM `values` WHERE id = ?1", {value_id})
+  end
+
+  defp get_blob_by_id(db, blob_id) do
+    query_one!(db, "SELECT format, key, metadata FROM blobs WHERE id = ?1", {blob_id})
+  end
+
+  defp get_or_create_value(db, format, value) do
+    case query_one(
+           db,
+           "SELECT id FROM `values` WHERE format = ?1 AND value = ?2",
+           {format, value}
+         ) do
+      {:ok, {id}} -> {:ok, id}
+      {:ok, nil} -> insert_value(db, format, value)
     end
   end
 
-  defp build_result(type, format, value) do
-    case type do
-      0 -> {:error, value, nil}
-      1 -> {:reference, value}
-      2 -> {:raw, format, value}
-      3 -> {:blob, format, value}
-      4 -> :abandoned
-      5 -> :cancelled
-      6 -> :duplicated
+  defp insert_value(db, format, value) do
+    insert_one(db, :values, %{
+      format: format,
+      value: value
+    })
+  end
+
+  defp encode_metadata(metadata) do
+    # TODO: better encoding?
+    metadata
+    |> Enum.sort_by(fn {key, _value} -> key end)
+    |> Enum.map_join("\n", fn {key, value} -> "#{key}=#{Jason.encode!(value)}" end)
+  end
+
+  defp decode_metadata(encoded) do
+    encoded
+    |> String.split("\n")
+    |> Enum.map(&String.split(&1, "=", parts: 2))
+    |> Map.new(fn [key, value] -> {key, Jason.decode!(value)} end)
+  end
+
+  defp get_or_create_blob(db, format, key, metadata) do
+    encoded_metadata = encode_metadata(metadata)
+
+    case query_one(
+           db,
+           "SELECT id FROM blobs WHERE format = ?1 AND key = ?2 AND metadata = ?3",
+           {format, key, encoded_metadata}
+         ) do
+      {:ok, {id}} -> {:ok, id}
+      {:ok, nil} -> insert_blob(db, format, key, encoded_metadata)
     end
   end
 
-  defp insert_result(db, execution_id, result, retry_id, created_at) do
-    {type, format, value} = parse_result(result)
+  defp insert_blob(db, format, key, encoded_metadata) do
+    insert_one(db, :blobs, %{
+      format: format,
+      key: key,
+      metadata: encoded_metadata
+    })
+  end
 
+  defp get_or_create_error(db, message) do
+    # TODO: other fields
+    case query_one(
+           db,
+           "SELECT id FROM errors WHERE message = ?1",
+           {message}
+         ) do
+      {:ok, {id}} -> {:ok, id}
+      {:ok, nil} -> insert_error(db, message)
+    end
+  end
+
+  defp insert_error(db, message) do
+    insert_one(db, :errors, %{
+      message: message
+    })
+  end
+
+  defp insert_result(
+         db,
+         execution_id,
+         type,
+         error_id,
+         reference_id,
+         value_id,
+         blob_id,
+         created_at
+       ) do
     insert_one(db, :results, %{
       execution_id: execution_id,
       type: type,
-      format: format,
-      value: value,
-      retry_id: retry_id,
+      error_id: error_id,
+      reference_id: reference_id,
+      value_id: value_id,
+      blob_id: blob_id,
       created_at: created_at
     })
   end
@@ -1011,11 +1160,11 @@ defmodule Coflux.Orchestration.Store do
         |> Enum.with_index(1)
         |> Enum.unzip()
 
-      fields = Enum.join(fields, ", ")
-      placeholders = Enum.map_join(indexes, ", ", fn index -> "?#{index}" end)
+      fields = Enum.map_join(fields, ", ", &"`#{&1}`")
+      placeholders = Enum.map_join(indexes, ", ", &"?#{&1}")
 
       sql_parts = [
-        "INSERT INTO #{table} (#{fields})",
+        "INSERT INTO `#{table}` (#{fields})",
         "VALUES (#{placeholders})",
         if(opts[:on_conflict], do: "ON CONFLICT #{opts[:on_conflict]}")
       ]
@@ -1086,7 +1235,7 @@ defmodule Coflux.Orchestration.Store do
     end
   end
 
-  defp query_one!(db, sql, args, model) do
+  defp query_one!(db, sql, args, model \\ nil) do
     case query(db, sql, args, model) do
       {:ok, [row]} ->
         {:ok, row}

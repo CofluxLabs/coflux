@@ -65,7 +65,7 @@ defmodule Coflux.Topics.Run do
         dependencies: %{},
         children: [],
         result: nil,
-        retry: nil
+        reference: nil
       }
     )
   end
@@ -118,15 +118,15 @@ defmodule Coflux.Topics.Run do
     end)
   end
 
-  defp process_notification(topic, {:result, execution_id, result, retry, created_at}) do
+  defp process_notification(topic, {:result, execution_id, result, reference, created_at}) do
     result = build_result(result)
-    retry = if(retry, do: build_execution(retry))
+    reference = if(reference, do: build_execution(reference))
 
     update_attempt(topic, execution_id, fn topic, base_path ->
       topic
       |> Topic.set(base_path ++ [:result], result)
       |> Topic.set(base_path ++ [:completedAt], created_at)
-      |> Topic.set(base_path ++ [:retry], retry)
+      |> Topic.set(base_path ++ [:reference], reference)
     end)
   end
 
@@ -189,7 +189,7 @@ defmodule Coflux.Topics.Run do
                         end
                       ),
                     result: build_result(execution.result),
-                    retry: if(execution.retry, do: build_execution(execution.retry))
+                    reference: if(execution.reference, do: build_execution(execution.reference))
                   }}
                end)
            }}
@@ -205,8 +205,8 @@ defmodule Coflux.Topics.Run do
       {:raw, format, value} ->
         %{type: "raw", format: format, value: value}
 
-      {:blob, format, key} ->
-        %{type: "blob", format: format, key: key}
+      {:blob, format, key, metadata} ->
+        %{type: "blob", format: format, key: key, metadata: metadata}
     end
   end
 
@@ -215,14 +215,14 @@ defmodule Coflux.Topics.Run do
       {:error, error, _details} ->
         %{type: "error", error: error}
 
-      {:reference, execution_id} ->
-        %{type: "reference", executionId: execution_id}
+      :reference ->
+        %{type: "reference"}
 
       {:raw, format, value} ->
         %{type: "raw", format: format, value: value}
 
-      {:blob, format, key} ->
-        %{type: "blob", format: format, key: key}
+      {:blob, format, key, metadata} ->
+        %{type: "blob", format: format, key: key, metadata: metadata}
 
       :abandoned ->
         %{type: "abandoned"}

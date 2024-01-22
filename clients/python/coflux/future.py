@@ -1,6 +1,5 @@
 import typing as t
 
-from .types import Value
 
 T = t.TypeVar("T")
 
@@ -9,14 +8,14 @@ class Future(t.Generic[T]):
     def __init__(
         self,
         resolve_fn: t.Callable[[], T],
-        serialised: Value | None = None,
+        execution_id: str | None,
     ):
         self._resolve_fn = resolve_fn
-        self._serialised = serialised
+        self._execution_id = execution_id
 
-    def serialise(self) -> Value:
-        assert self._serialised is not None
-        return self._serialised
+    @property
+    def execution_id(self) -> str | None:
+        return self._execution_id
 
     def result(self) -> T:
         return self._resolve_fn()
