@@ -44,8 +44,8 @@ defmodule Coflux.Orchestration do
     call_server(project_id, environment, {:record_checkpoint, execution_id, arguments})
   end
 
-  def record_result(project_id, environment, execution_id, result, reference_id \\ nil) do
-    call_server(project_id, environment, {:record_result, execution_id, result, reference_id})
+  def record_result(project_id, environment, execution_id, result) do
+    call_server(project_id, environment, {:record_result, execution_id, result})
   end
 
   def get_result(project_id, environment, execution_id, from_execution_id \\ nil, pid) do

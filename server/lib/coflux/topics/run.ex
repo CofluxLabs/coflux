@@ -94,50 +94,22 @@ defmodule Coflux.Topics.Run do
     )
   end
 
-  defp process_notification(
-         topic,
-         {:child, parent_id, external_run_id, external_step_id, execution_id, repository, target,
-          created_at}
-       ) do
-    value =
-      if external_run_id == topic.state.external_run_id do
-        external_step_id
-      else
-        %{
-          runId: external_run_id,
-          stepId: external_step_id,
-          executionId: execution_id,
-          repository: repository,
-          target: target,
-          createdAt: created_at
-        }
-      end
+  defp process_notification(topic, {:child, parent_id, child}) do
+    value = build_child(child, topic.state.external_run_id)
 
     update_attempt(topic, parent_id, fn topic, base_path ->
       Topic.insert(topic, base_path ++ [:children], value)
     end)
   end
 
-  defp process_notification(topic, {:result, execution_id, result, reference, created_at}) do
+  defp process_notification(topic, {:result, execution_id, result, created_at}) do
     result = build_result(result)
-    reference = if(reference, do: build_execution(reference))
 
     update_attempt(topic, execution_id, fn topic, base_path ->
       topic
       |> Topic.set(base_path ++ [:result], result)
       |> Topic.set(base_path ++ [:completedAt], created_at)
-      |> Topic.set(base_path ++ [:reference], reference)
     end)
-  end
-
-  defp build_execution(execution) do
-    %{
-      runId: execution.run_id,
-      stepId: execution.step_id,
-      sequence: execution.sequence,
-      repository: execution.repository,
-      target: execution.target
-    }
   end
 
   defp build_run(run, parent, steps) do
@@ -169,27 +141,8 @@ defmodule Coflux.Topics.Run do
                       Map.new(execution.dependencies, fn {dependency_id, dependency} ->
                         {Integer.to_string(dependency_id), build_execution(dependency)}
                       end),
-                    children:
-                      Enum.map(
-                        execution.children,
-                        fn {external_run_id, external_step_id, execution_id, repository, target,
-                            created_at} ->
-                          if external_run_id == run.external_id do
-                            external_step_id
-                          else
-                            %{
-                              runId: external_run_id,
-                              stepId: external_step_id,
-                              executionId: Integer.to_string(execution_id),
-                              repository: repository,
-                              target: target,
-                              createdAt: created_at
-                            }
-                          end
-                        end
-                      ),
-                    result: build_result(execution.result),
-                    reference: if(execution.reference, do: build_execution(execution.reference))
+                    children: Enum.map(execution.children, &build_child(&1, run.external_id)),
+                    result: build_result(execution.result)
                   }}
                end)
            }}
@@ -197,10 +150,20 @@ defmodule Coflux.Topics.Run do
     }
   end
 
+  defp build_execution(execution) do
+    %{
+      runId: execution.run_id,
+      stepId: execution.step_id,
+      sequence: execution.sequence,
+      repository: execution.repository,
+      target: execution.target
+    }
+  end
+
   defp build_argument(argument) do
     case argument do
-      {:reference, execution_id} ->
-        %{type: "reference", executionId: execution_id}
+      {:reference, execution_id, execution} ->
+        %{type: "reference", executionId: execution_id, execution: build_execution(execution)}
 
       {:raw, format, value} ->
         %{type: "raw", format: format, value: value}
@@ -212,11 +175,11 @@ defmodule Coflux.Topics.Run do
 
   defp build_result(result) do
     case result do
-      {:error, error, _details} ->
-        %{type: "error", error: error}
+      {:error, error, _details, retry_id} ->
+        %{type: "error", error: error, retryId: retry_id}
 
-      :reference ->
-        %{type: "reference"}
+      {:reference, execution_id, execution} ->
+        %{type: "reference", executionId: execution_id, execution: build_execution(execution)}
 
       {:raw, format, value} ->
         %{type: "raw", format: format, value: value}
@@ -224,17 +187,35 @@ defmodule Coflux.Topics.Run do
       {:blob, format, key, metadata} ->
         %{type: "blob", format: format, key: key, metadata: metadata}
 
-      :abandoned ->
-        %{type: "abandoned"}
+      {:abandoned, retry_id} ->
+        %{type: "abandoned", retryId: retry_id}
 
       :cancelled ->
         %{type: "cancelled"}
 
-      :deferred ->
-        %{type: "deferred"}
+      {:deferred, execution_id, execution} ->
+        %{type: "deferred", executionId: execution_id, execution: build_execution(execution)}
 
       nil ->
         nil
+    end
+  end
+
+  defp build_child(
+         {external_run_id, external_step_id, execution_id, repository, target, created_at},
+         run_external_id
+       ) do
+    if external_run_id == run_external_id do
+      external_step_id
+    else
+      %{
+        runId: external_run_id,
+        stepId: external_step_id,
+        executionId: if(execution_id, do: Integer.to_string(execution_id)),
+        repository: repository,
+        target: target,
+        createdAt: created_at
+      }
     end
   end
 

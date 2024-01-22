@@ -403,32 +403,32 @@ defmodule Coflux.Orchestration.Store do
     end)
   end
 
-  def record_result(db, execution_id, result, reference_id) do
+  def record_result(db, execution_id, result) do
     with_transaction(db, fn ->
       now = current_timestamp()
 
       {type, error_id, reference_id, value_id, blob_id} =
-        case {result, reference_id} do
-          {{:error, message, _}, reference_id} ->
+        case result do
+          {:error, message, _, reference_id} ->
             {:ok, error_id} = get_or_create_error(db, message)
             {0, error_id, reference_id, nil, nil}
 
-          {:reference, reference_id} when not is_nil(reference_id) ->
+          {:reference, reference_id} ->
             {1, nil, reference_id, nil, nil}
 
-          {{:raw, format, value}, nil} ->
+          {:raw, format, value} ->
             {:ok, value_id} = get_or_create_value(db, format, value)
             {2, nil, nil, value_id, nil}
 
-          {{:blob, format, key, metadata}, nil} ->
+          {:blob, format, key, metadata} ->
             {:ok, blob_id} = get_or_create_blob(db, format, key, metadata)
             {3, nil, nil, nil, blob_id}
 
           {:abandoned, reference_id} ->
             {4, nil, reference_id, nil, nil}
 
-          {:cancelled, reference_id} ->
-            {5, nil, reference_id, nil, nil}
+          :cancelled ->
+            {5, nil, nil, nil, nil}
 
           {:deferred, reference_id} ->
             {6, nil, reference_id, nil, nil}
@@ -462,12 +462,12 @@ defmodule Coflux.Orchestration.Store do
            {execution_id}
          ) do
       {:ok, {type, error_id, reference_id, value_id, blob_id, created_at}} ->
-        {result, reference_id} =
+        result =
           case {type, error_id, reference_id, value_id, blob_id} do
             {0, error_id, reference_id, nil, nil} ->
               case get_error_by_id(db, error_id) do
                 {:ok, {message}} ->
-                  {{:error, message, nil}, reference_id}
+                  {:error, message, nil, reference_id}
               end
 
             {1, nil, reference_id, nil, nil} ->
@@ -476,27 +476,27 @@ defmodule Coflux.Orchestration.Store do
             {2, nil, nil, value_id, nil} ->
               case get_value_by_id(db, value_id) do
                 {:ok, {format, value}} ->
-                  {{:raw, format, value}, nil}
+                  {:raw, format, value}
               end
 
             {3, nil, nil, nil, blob_id} ->
               case get_blob_by_id(db, blob_id) do
                 {:ok, {format, key, encoded_metadata}} ->
                   metadata = decode_metadata(encoded_metadata)
-                  {{:blob, format, key, metadata}, nil}
+                  {:blob, format, key, metadata}
               end
 
             {4, nil, reference_id, nil, nil} ->
               {:abandoned, reference_id}
 
-            {5, nil, reference_id, nil, nil} ->
-              {:cancelled, reference_id}
+            {5, nil, nil, nil, nil} ->
+              :cancelled
 
             {6, nil, reference_id, nil, nil} ->
               {:deferred, reference_id}
           end
 
-        {:ok, {result, reference_id, created_at}}
+        {:ok, {result, created_at}}
 
       {:ok, nil} ->
         {:ok, nil}

@@ -159,15 +159,12 @@ defmodule Coflux.Handlers.Agent do
         [execution_id, result] = message["params"]
 
         if is_recognised_execution?(execution_id, state) do
-          {result, reference_id} = parse_result(result)
-
           :ok =
             Orchestration.record_result(
               state.project_id,
               state.environment,
               execution_id,
-              result,
-              reference_id
+              parse_result(result)
             )
 
           {[], state}
@@ -339,8 +336,8 @@ defmodule Coflux.Handlers.Agent do
 
   defp parse_result(result) do
     case result do
-      ["raw", format, value] -> {{:raw, format, value}, nil}
-      ["blob", format, key, metadata] -> {{:blob, format, key, metadata}, nil}
+      ["raw", format, value] -> {:raw, format, value}
+      ["blob", format, key, metadata] -> {:blob, format, key, metadata}
       ["reference", execution_id] -> {:reference, execution_id}
     end
   end
@@ -350,10 +347,10 @@ defmodule Coflux.Handlers.Agent do
       {:raw, format, value} -> ["raw", format, value]
       # TODO: strip metadata?
       {:blob, format, key, metadata} -> ["blob", format, key, metadata]
-      {:error, error, _details} -> ["error", error]
-      :abandoned -> ["abandoned"]
+      {:error, error, _details, nil} -> ["error", error]
+      {:abandoned, nil} -> ["abandoned"]
       :cancelled -> ["cancelled"]
-      :deferred -> ["deferred"]
+      {:deferred, nil} -> ["deferred"]
     end
   end
 

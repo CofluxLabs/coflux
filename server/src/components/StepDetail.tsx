@@ -449,6 +449,7 @@ function DeferredSection({ attempt }: DeferredSectionProps) {
     attempt.completedAt !== null
       ? DateTime.fromMillis(attempt.completedAt)
       : null;
+  const result = attempt.result as Extract<models.Result, { type: "deferred" }>;
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Deferred</h3>
@@ -464,19 +465,19 @@ function DeferredSection({ attempt }: DeferredSectionProps) {
           ]),
         )}
       </p>
-      {attempt.reference && (
+      {result.execution && (
         <p>
           To:{" "}
           <StepLink
-            runId={attempt.reference.runId}
-            stepId={attempt.reference.stepId}
-            attemptNumber={attempt.reference.sequence}
+            runId={result.execution.runId}
+            stepId={result.execution.stepId}
+            attemptNumber={result.execution.sequence}
             className="rounded text-sm ring-offset-1 px-1"
             hoveredClassName="ring-2 ring-slate-300"
           >
-            <span className="font-mono">{attempt.reference.target}</span>{" "}
+            <span className="font-mono">{result.execution.target}</span>{" "}
             <span className="text-slate-500">
-              ({attempt.reference.repository})
+              ({result.execution.repository})
             </span>
           </StepLink>
         </p>
