@@ -510,16 +510,9 @@ defmodule Coflux.Orchestration.Server do
           Map.new(steps, fn {step_id, step_external_id, type, repository, target, memo_key,
                              created_at} ->
             {:ok, attempts} = Store.get_step_attempts(state.db, step_id)
-            {:ok, arguments} = Store.get_step_arguments(state.db, step_id)
+            {:ok, arguments} = Store.get_step_arguments(state.db, step_id, true)
 
-            arguments =
-              Enum.map(arguments, fn
-                {:reference, execution_id} ->
-                  {:reference, execution_id, resolve_execution(state.db, execution_id)}
-
-                other ->
-                  other
-              end)
+            arguments = Enum.map(arguments, &build_value(&1, state))
 
             {step_external_id,
              %{
@@ -546,7 +539,7 @@ defmodule Coflux.Orchestration.Server do
                      end)
 
                    {result, completed_at} =
-                     case Store.get_result(state.db, execution_id) do
+                     case Store.get_result(state.db, execution_id, true) do
                        {:ok, {result, completed_at}} ->
                          {result, completed_at}
 
@@ -554,17 +547,7 @@ defmodule Coflux.Orchestration.Server do
                          {nil, nil}
                      end
 
-                   result =
-                     case result do
-                       {:reference, reference_id} ->
-                         {:reference, reference_id, resolve_execution(state.db, reference_id)}
-
-                       {:deferred, defer_id} ->
-                         {:deferred, defer_id, resolve_execution(state.db, defer_id)}
-
-                       other ->
-                         other
-                     end
+                   result = build_result(result, state)
 
                    {:ok, children} =
                      if execution_type == 0 do
@@ -892,23 +875,40 @@ defmodule Coflux.Orchestration.Server do
     }
   end
 
+  defp resolve_references(references, state) do
+    Map.new(references, fn {placeholder, execution_id} ->
+      {placeholder, {execution_id, resolve_execution(state.db, execution_id)}}
+    end)
+  end
+
+  defp build_value(value, state) do
+    case value do
+      {:raw, format, content, references, metadata} ->
+        {:raw, format, content, resolve_references(references, state), metadata}
+
+      {:blob, format, key, references, metadata} ->
+        {:blob, format, key, resolve_references(references, state), metadata}
+    end
+  end
+
+  defp build_result(result, state) do
+    case result do
+      {:value, value} ->
+        {:value, build_value(value, state)}
+
+      {:deferred, defer_id} ->
+        {:deferred, defer_id, resolve_execution(state.db, defer_id)}
+
+      other ->
+        other
+    end
+  end
+
   defp record_and_notify_result(state, execution_id, result, run_id, repository) do
     case Store.record_result(state.db, execution_id, result) do
       {:ok, created_at} ->
         state = notify_waiting(state, execution_id)
-
-        # TODO: remove duplication (subscribe_run)
-        result =
-          case result do
-            {:reference, reference_id} ->
-              {:reference, reference_id, resolve_execution(state.db, reference_id)}
-
-            {:deferred, defer_id} ->
-              {:deferred, defer_id, resolve_execution(state.db, defer_id)}
-
-            other ->
-              other
-          end
+        result = build_result(result, state)
 
         state =
           state
@@ -1179,16 +1179,7 @@ defmodule Coflux.Orchestration.Server do
         state =
           if !memoised do
             memo_key = Keyword.get(opts, :memo_key)
-
-            # TODO: remove duplication (subscribe_run)
-            arguments =
-              Enum.map(arguments, fn
-                {:reference, execution_id} ->
-                  {:reference, execution_id, resolve_execution(state.db, execution_id)}
-
-                other ->
-                  other
-              end)
+            arguments = Enum.map(arguments, &build_value(&1, state))
 
             notify_listeners(
               state,

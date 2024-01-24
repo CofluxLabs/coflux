@@ -24,38 +24,35 @@ export type Repository = {
   scheduled: number;
 };
 
-// TODO: rename `Reference`?
-export type Execution = Pick<Target, "repository" | "target"> & {
+export type Reference = {
   runId: string;
   stepId: string;
   sequence: number;
-  executionId: string | null;
+  repository: string;
+  target: string;
 };
 
-export type Value =
-  | {
-      type: "reference";
-      executionId: string;
-      execution: Execution;
-    }
+export type Value = {
+  format: string;
+  references: Record<string, [string, Reference]>;
+  metadata: Record<string, any>;
+} & (
   | {
       type: "raw";
-      format: string;
-      value: string;
+      content: string;
     }
   | {
       type: "blob";
-      format: string;
       key: string;
-      metadata: Record<string, any>;
-    };
+    }
+);
 
 export type Result =
-  | Value
+  | { type: "value"; value: Value }
   | { type: "error"; error: string; retryId: string | null }
   | { type: "abandoned"; retryId: string | null }
   | { type: "cancelled" }
-  | { type: "deferred"; executionId: string; execution: Execution };
+  | { type: "deferred"; executionId: string; execution: Reference };
 
 export type Child = Pick<Target, "repository" | "target"> & {
   runId: string;
@@ -73,14 +70,6 @@ export type QueuedExecution = {
   executeAfter: number | null;
   createdAt: number;
   assignedAt: number | null;
-};
-
-export type Reference = {
-  runId: string;
-  stepId: string;
-  sequence: number;
-  repository: string;
-  target: string;
 };
 
 export type Attempt = {

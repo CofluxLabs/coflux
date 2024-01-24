@@ -43,7 +43,7 @@ defmodule Coflux.Topics.Run do
       type: 1,
       isMemoised: !is_nil(memo_key),
       createdAt: created_at,
-      arguments: Enum.map(arguments, &build_argument/1),
+      arguments: Enum.map(arguments, &build_value/1),
       attempts: %{}
     })
   end
@@ -126,7 +126,7 @@ defmodule Coflux.Topics.Run do
              type: step.type,
              isMemoised: !is_nil(step.memo_key),
              createdAt: step.created_at,
-             arguments: Enum.map(step.arguments, &build_argument/1),
+             arguments: Enum.map(step.arguments, &build_value/1),
              attempts:
                Map.new(step.attempts, fn {sequence, execution} ->
                  {Integer.to_string(sequence),
@@ -160,17 +160,32 @@ defmodule Coflux.Topics.Run do
     }
   end
 
-  defp build_argument(argument) do
-    case argument do
-      {:reference, execution_id, execution} ->
-        %{type: "reference", executionId: execution_id, execution: build_execution(execution)}
+  defp build_value(value) do
+    case value do
+      {:raw, format, content, references, metadata} ->
+        %{
+          type: "raw",
+          format: format,
+          content: content,
+          references: build_references(references),
+          metadata: metadata
+        }
 
-      {:raw, format, value} ->
-        %{type: "raw", format: format, value: value}
-
-      {:blob, format, key, metadata} ->
-        %{type: "blob", format: format, key: key, metadata: metadata}
+      {:blob, format, key, references, metadata} ->
+        %{
+          type: "blob",
+          format: format,
+          key: key,
+          references: build_references(references),
+          metadata: metadata
+        }
     end
+  end
+
+  defp build_references(references) do
+    Map.new(references, fn {placeholder, {execution_id, execution}} ->
+      {placeholder, [execution_id, build_execution(execution)]}
+    end)
   end
 
   defp build_result(result) do
@@ -178,14 +193,8 @@ defmodule Coflux.Topics.Run do
       {:error, error, _details, retry_id} ->
         %{type: "error", error: error, retryId: retry_id}
 
-      {:reference, execution_id, execution} ->
-        %{type: "reference", executionId: execution_id, execution: build_execution(execution)}
-
-      {:raw, format, value} ->
-        %{type: "raw", format: format, value: value}
-
-      {:blob, format, key, metadata} ->
-        %{type: "blob", format: format, key: key, metadata: metadata}
+      {:value, value} ->
+        %{type: "value", value: build_value(value)}
 
       {:abandoned, retry_id} ->
         %{type: "abandoned", retryId: retry_id}

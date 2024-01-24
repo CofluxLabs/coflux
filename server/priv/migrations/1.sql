@@ -16,7 +16,7 @@ CREATE TABLE session_manifests (
   manifest_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   PRIMARY KEY (session_id, manifest_id),
-  FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE
+  FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE,
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
@@ -75,25 +75,13 @@ CREATE TABLE steps (
 CREATE UNIQUE INDEX steps_initial_step ON steps (run_id) WHERE type = 0;
 CREATE INDEX steps_cache_key ON steps (cache_key);
 
-CREATE TABLE arguments (
+CREATE TABLE step_arguments (
   step_id INTEGER NOT NULL,
   position INTEGER NOT NULL,
-  reference_id INTEGER,
-  value_id INTEGER,
-  blob_id INTEGER,
+  value_id INTEGER NOT NULL,
   PRIMARY KEY (step_id, position),
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE RESTRICT,
-  FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT,
-  FOREIGN KEY (value_id) REFERENCES `values` ON DELETE RESTRICT,
-  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
-  CHECK (
-    CASE
-      WHEN reference_id THEN NOT (value_id OR blob_id)
-      WHEN value_id THEN NOT (reference_id OR blob_id)
-      WHEN blob_id THEN NOT (reference_id OR value_id)
-      ELSE FALSE
-    END
-  )
+  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
 );
 
 CREATE TABLE attempts (
@@ -148,22 +136,10 @@ CREATE TABLE checkpoints(
 CREATE TABLE checkpoint_arguments(
   checkpoint_id INTEGER NOT NULL,
   position INTEGER NOT NULL,
-  reference_id INTEGER,
-  value_id INTEGER,
-  blob_id INTEGER,
+  value_id INTEGER NOT NULL,
   PRIMARY KEY (checkpoint_id, position),
   FOREIGN KEY (checkpoint_id) REFERENCES checkpoints ON DELETE CASCADE,
-  FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT,
-  FOREIGN KEY (value_id) REFERENCES `values` ON DELETE RESTRICT,
-  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
-  CHECK (
-    CASE
-      WHEN reference_id THEN NOT (value_id OR blob_id)
-      WHEN value_id THEN NOT (reference_id OR blob_id)
-      WHEN blob_id THEN NOT (reference_id OR value_id)
-      ELSE FALSE
-    END
-  )
+  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
 );
 
 CREATE TABLE heartbeats (
@@ -174,19 +150,33 @@ CREATE TABLE heartbeats (
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
 );
 
-CREATE TABLE `values` (
+CREATE TABLE values_ (
   id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL,
   format TEXT NOT NULL,
-  value BLOB,
-  UNIQUE (format, value)
+  content BLOB,
+  blob_key TEXT,
+  UNIQUE (hash),
+  CHECK ((content IS NULL) != (blob_key IS NULL))
 );
 
-CREATE TABLE blobs (
-  id INTEGER PRIMARY KEY,
-  format TEXT NOT NULL,
+CREATE INDEX values_hash ON values_ (hash);
+
+CREATE TABLE value_references (
+  value_id INTEGER NOT NULL,
+  number INTEGER NOT NULL,
+  reference_id INTEGER NOT NULL,
+  PRIMARY KEY (value_id, number),
+  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE,
+  FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT
+);
+
+CREATE TABLE value_metadata (
+  value_id INTEGER NOT NULL,
   key TEXT NOT NULL,
-  metadata BLOB,
-  UNIQUE (format, key, metadata)
+  value TEXT NOT NULL,
+  PRIMARY KEY (value_id, key),
+  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE
 );
 
 -- TODO: other fields (stack trace, etc)
@@ -200,24 +190,20 @@ CREATE TABLE results (
   execution_id INTEGER PRIMARY KEY,
   type INTEGER NOT NULL,
   error_id INTEGER,
-  reference_id INTEGER,
   value_id INTEGER,
-  blob_id INTEGER,
+  successor_id INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (value_id) REFERENCES `values` ON DELETE RESTRICT,
-  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
-  FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT,
   FOREIGN KEY (error_id) REFERENCES errors ON DELETE RESTRICT,
+  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT,
+  FOREIGN KEY (successor_id) REFERENCES executions ON DELETE RESTRICT,
   CHECK (
     CASE type
-      WHEN 0 THEN error_id AND NOT (value_id OR blob_id)
-      WHEN 1 THEN reference_id AND NOT (value_id OR blob_id OR error_id)
-      WHEN 2 THEN value_id AND NOT (blob_id OR reference_id OR error_id)
-      WHEN 3 THEN blob_id AND NOT (value_id OR reference_id OR error_id)
-      WHEN 4 THEN NOT (error_id OR value_id OR blob_id)
-      WHEN 5 THEN NOT (error_id OR reference_id OR value_id OR blob_id)
-      WHEN 6 THEN NOT (error_id OR value_id OR blob_id)
+      WHEN 0 THEN error_id AND NOT value_id
+      WHEN 1 THEN value_id AND NOT (successor_id OR error_id)
+      WHEN 2 THEN NOT (error_id OR value_id)
+      WHEN 3 THEN NOT (error_id OR successor_id OR value_id)
+      WHEN 4 THEN successor_id AND NOT (error_id OR value_id)
       ELSE FALSE
     END
   )

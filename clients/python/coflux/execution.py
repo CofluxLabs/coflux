@@ -6,13 +6,11 @@ import enum
 import asyncio
 import datetime as dt
 import hashlib
-import json
-import pickle
 import contextvars
 import contextlib
 import concurrent.futures as cf
 
-from . import server, future, blobs, models
+from . import server, blobs, models, serialisation
 
 
 _BLOB_THRESHOLD = 100
@@ -86,7 +84,7 @@ class ExecutionScheduleFailedResponse(t.NamedTuple):
 
 class ResultResolvedResponse(t.NamedTuple):
     execution_id: str
-    result: tuple[str, str, str]
+    result: models.Result
 
 
 class ResultResolveFailedResponse(t.NamedTuple):
@@ -110,13 +108,14 @@ def _parse_retries(
 
 
 def _value_key(value: models.Value) -> str:
+    # TODO: tidy
     match value:
-        case ["raw", format, content]:
-            return f"raw:{format}:{content}"
-        case ["blob", format, key, _]:
-            return f"blob:{format}:{key}"
-        case ["reference", execution_id]:
-            return f"reference:{execution_id}"
+        case ["raw", format, content, references, _metadata]:
+            refs = ";".join(f"{k}={v}" for k, v in sorted(references.items()))
+            return f"raw:{format}:{refs}:{content}"
+        case ["blob", format, key, references, _metadata]:
+            refs = ";".join(f"{k}={v}" for k, v in sorted(references.items()))
+            return f"blob:{format}:{refs}:{key}"
 
 
 def _build_key(
@@ -130,41 +129,26 @@ def _build_key(
     cache_key = (
         key(*arguments)
         if callable(key)
-        else "\0".join(_value_key(a) for a in serialised_arguments)
+        else "\0".join(_value_key(v) for v in serialised_arguments)
     )
     if prefix is not None:
         cache_key = prefix + "\0" + cache_key
     return hashlib.sha256(cache_key.encode()).hexdigest()
 
 
-def _json_dumps(obj: t.Any) -> str:
-    return json.dumps(obj, separators=(",", ":"))
-
-
 def _serialise_value(value: t.Any, blob_store: blobs.Store) -> models.Value:
-    if isinstance(value, future.Future):
-        assert value.execution_id
-        return ("reference", value.execution_id)
-    try:
-        json_value = _json_dumps(value)
-    except TypeError:
-        pass
-    else:
-        if len(json_value) >= _BLOB_THRESHOLD:
-            json_bytes = json_value.encode()
-            key = blob_store.put(json_bytes)
-            return ("blob", "json", key, {"size": len(json_bytes)})
-        return ("raw", "json", json_value)
-    pickle_value = pickle.dumps(value)
-    key = blob_store.put(pickle_value)
-    return ("blob", "pickle", key, {"size": len(pickle_value)})
+    format, serialised, references, metadata = serialisation.serialise(value)
+    if format != "json" or len(serialised) > _BLOB_THRESHOLD:
+        key = blob_store.put(serialised)
+        return ("blob", format, key, references, metadata)
+    return ("raw", format, serialised, references, metadata)
 
 
 class Channel:
-    def __init__(self, execution_id: str, server_host: str, connection):
+    def __init__(self, execution_id: str, blob_store: blobs.Store, connection):
         self._execution_id = execution_id
         self._connection = connection
-        self._blob_store = blobs.Store(server_host)
+        self._blob_store = blob_store
         self._last_schedule_id = 0
         self._schedules: dict[int, cf.Future] = {}
         self._resolves: dict[str, cf.Future] = {}
@@ -186,9 +170,6 @@ class Channel:
                     case other:
                         raise Exception(f"Received unhandled response: {other}")
 
-    def get_blob(self, key: str):
-        return self._blob_store.get(key)
-
     def _next_schedule_id(self):
         self._last_schedule_id += 1
         return self._last_schedule_id
@@ -199,8 +180,9 @@ class Channel:
     def notify_executing(self):
         self._send(ExecutingNotification())
 
-    def record_result(self, value: t.Any):
-        self._send(RecordResultRequest(_serialise_value(value, self._blob_store)))
+    def record_result(self, data: t.Any):
+        value = _serialise_value(data, self._blob_store)
+        self._send(RecordResultRequest(value))
         # TODO: wait for confirmation?
         self._running = False
 
@@ -274,8 +256,8 @@ class Channel:
             future = cf.Future()
             self._resolves[execution_id] = future
             self._send(ResolveReferenceRequest(execution_id))
-        value = future.result()
-        return _deserialise_value(value, self._blob_store, "reference")
+        result = future.result()
+        return _deserialise_result(result, self._blob_store, self, "reference")
 
     def record_checkpoint(self, arguments):
         serialised_arguments = [
@@ -301,52 +283,50 @@ def _deserialise(
         raise Exception(f"Failed to deserialise {description}") from e
 
 
-def _deserialise_value(value: models.Result, blob_store: blobs.Store, description: str):
-    match value:
-        case ("raw", "json", data):
-            return _deserialise(data, json.loads, description)
-        case ("blob", "json", key, _):
-            content = blob_store.get(key)
-            return _deserialise(content, json.loads, description)
-        case ("blob", "pickle", key, _):
-            content = blob_store.get(key)
-            return _deserialise(content, pickle.loads, description)
-        case ("error", error):
+def _deserialise_result(
+    result: models.Result, blob_store: blobs.Store, channel: Channel, description: str
+):
+    match result:
+        case ["value", value]:
+            return _deserialise_value(value, blob_store, channel, description)
+        case ["error", error]:
             # TODO: reconstruct exception state
             raise Exception(error)
-        case ("abandoned"):
+        case ["abandoned"]:
             raise Exception("abandoned")
-        case ("cancelled"):
+        case ["cancelled"]:
             raise Exception("cancelled")
         case result:
             raise Exception(f"unexeptected result ({result})")
 
 
-def _resolve_argument(
-    argument: models.Value, channel: Channel, description: str
+def _deserialise_value(
+    value: models.Value,
+    blob_store: blobs.Store,
+    channel: Channel,
+    description: str,
 ) -> t.Any:
-    match argument:
-        case ("raw", "json", value):
-            return _deserialise(value, json.loads, description)
-        case ("blob", "json", key, _):
-            content = channel.get_blob(key)
-            return _deserialise(content, json.loads, description)
-        case ("blob", "pickle", key, _):
-            content = channel.get_blob(key)
-            return _deserialise(content, pickle.loads, description)
-        case ("reference", execution_id):
-            return future.Future(
-                lambda: channel.resolve_reference(execution_id),
-                execution_id,
+    match value:
+        case ("raw", format, content, references, _metadata):
+            return serialisation.deserialise(
+                format, content, references, channel.resolve_reference
             )
-        case _:
-            raise Exception(f"unrecognised argument ({argument})")
+        case ("blob", format, blob_key, references, _metadata):
+            content = blob_store.get(blob_key)
+            return serialisation.deserialise(
+                format, content, references, channel.resolve_reference
+            )
 
 
-def _resolve_arguments(arguments: list[models.Value], channel: Channel) -> list[t.Any]:
+def _resolve_arguments(
+    arguments: list[models.Value],
+    blob_store: blobs.Store,
+    channel: Channel,
+) -> list[t.Any]:
     # TODO: parallelise
     return [
-        _resolve_argument(a, channel, f"argument {i}") for i, a in enumerate(arguments)
+        _deserialise_value(v, blob_store, channel, f"argument {i}")
+        for i, v in enumerate(arguments)
     ]
 
 
@@ -376,12 +356,13 @@ def _execute(
     server_host: str,
     conn,
 ):
-    channel = Channel(execution_id, server_host, conn)
+    blob_store = blobs.Store(server_host)
+    channel = Channel(execution_id, blob_store, conn)
     thread = threading.Thread(target=channel.run)
     thread.start()
     token = channel_context.set(channel)
     try:
-        resolved_arguments = _resolve_arguments(arguments, channel)
+        resolved_arguments = _resolve_arguments(arguments, blob_store, channel)
         channel.notify_executing()
         with contextlib.redirect_stdout(Capture(channel, 1)) as stdout_capture:
             with contextlib.redirect_stderr(Capture(channel, 3)) as stderr_capture:
@@ -394,6 +375,43 @@ def _execute(
         channel.record_result(value)
     finally:
         channel_context.reset(token)
+
+
+def _json_safe_value(value: models.Value):
+    # TODO: tidy
+    match value:
+        case ("raw", format, content, references, metadata):
+            return ["raw", format, content.decode(), references, metadata]
+        case ("blob", format, key, references, metadata):
+            return ["blob", format, key, references, metadata]
+
+
+def _json_safe_arguments(arguments: list[models.Value]):
+    return [_json_safe_value(v) for v in arguments]
+
+
+def _parse_value(value: t.Any) -> models.Value:
+    match value:
+        case ["raw", format, content, references, metadata]:
+            return ("raw", format, content.encode(), references, metadata)
+        case ["blob", format, key, references, metadata]:
+            return ("blob", format, key, references, metadata)
+        case other:
+            raise Exception(f"unrecognised value: {other}")
+
+
+def _parse_result(result: t.Any) -> models.Result:
+    match result:
+        case ["error", message]:
+            return ("error", message)
+        case ["value", value]:
+            return ("value", _parse_value(value))
+        case ["abandoned"]:
+            return ("abandoned",)
+        case ["cancelled"]:
+            return ("cancelled",)
+        case other:
+            raise Exception(f"unrecognised result: {other}")
 
 
 class Execution:
@@ -462,14 +480,20 @@ class Execution:
                 self._status = ExecutionStatus.EXECUTING
             case RecordResultRequest(value):
                 self._status = ExecutionStatus.STOPPING
-                self._server_notify("put_result", (self._id, value))
+                self._server_notify(
+                    "put_result",
+                    (self._id, _json_safe_value(value)),
+                )
                 self._process.join()
             case RecordErrorRequest(error):
                 self._status = ExecutionStatus.STOPPING
                 self._server_notify("put_error", (self._id, error, {}))
                 self._process.join()
             case RecordCheckpointRequest(arguments):
-                self._server_notify("record_checkpoint", (self._id, arguments))
+                self._server_notify(
+                    "record_checkpoint",
+                    (self._id, _json_safe_arguments(arguments)),
+                )
             case ScheduleExecutionRequest(
                 schedule_id,
                 repository,
@@ -489,7 +513,7 @@ class Execution:
                     (
                         repository,
                         target,
-                        arguments,
+                        _json_safe_arguments(arguments),
                         self._id,
                         execute_after_ms,
                         cache_key,
@@ -512,7 +536,7 @@ class Execution:
                     "get_result",
                     (execution_id, self._id),
                     lambda result: self._try_send(
-                        ResultResolvedResponse(execution_id, result)
+                        ResultResolvedResponse(execution_id, _parse_result(result))
                     ),
                     lambda error: self._try_send(
                         ResultResolveFailedResponse(execution_id, error)

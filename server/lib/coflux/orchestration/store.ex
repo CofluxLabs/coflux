@@ -256,7 +256,12 @@ defmodule Coflux.Orchestration.Store do
               now
             )
 
-          :ok = insert_arguments(db, step_id, get_or_create_arguments(db, arguments))
+          arguments
+          |> Enum.with_index()
+          |> Enum.each(fn {value, position} ->
+            {:ok, value_id} = get_or_create_value(db, value)
+            {:ok, _} = insert_step_argument(db, step_id, position, value_id)
+          end)
 
           sequence = 1
 
@@ -348,8 +353,12 @@ defmodule Coflux.Orchestration.Store do
 
       {:ok, checkpoint_id} = insert_checkpoint(db, execution_id, sequence, now)
 
-      {:ok, _} =
-        insert_checkpoint_arguments(db, checkpoint_id, get_or_create_arguments(db, arguments))
+      arguments
+      |> Enum.with_index()
+      |> Enum.each(fn {value, position} ->
+        {:ok, value_id} = get_or_create_value(db, value)
+        {:ok, _} = insert_checkpoint_argument(db, checkpoint_id, position, value_id)
+      end)
 
       {:ok, checkpoint_id, sequence, now}
     end)
@@ -370,11 +379,11 @@ defmodule Coflux.Orchestration.Store do
     )
   end
 
-  def get_checkpoint_arguments(db, checkpoint_id) do
+  def get_checkpoint_arguments(db, checkpoint_id, load_metadata \\ false) do
     case query(
            db,
            """
-           SELECT reference_id, value_id, blob_id
+           SELECT value_id
            FROM checkpoint_arguments
            WHERE checkpoint_id = ?1
            ORDER BY position
@@ -382,7 +391,14 @@ defmodule Coflux.Orchestration.Store do
            {checkpoint_id}
          ) do
       {:ok, rows} ->
-        {:ok, resolve_arguments(db, rows)}
+        values =
+          Enum.map(rows, fn {value_id} ->
+            case get_value_by_id(db, value_id, load_metadata) do
+              {:ok, value} -> value
+            end
+          end)
+
+        {:ok, values}
     end
   end
 
@@ -407,34 +423,27 @@ defmodule Coflux.Orchestration.Store do
     with_transaction(db, fn ->
       now = current_timestamp()
 
-      {type, error_id, reference_id, value_id, blob_id} =
+      {type, error_id, value_id, successor_id} =
         case result do
-          {:error, message, _, reference_id} ->
+          {:error, message, _, retry_id} ->
             {:ok, error_id} = get_or_create_error(db, message)
-            {0, error_id, reference_id, nil, nil}
+            {0, error_id, nil, retry_id}
 
-          {:reference, reference_id} ->
-            {1, nil, reference_id, nil, nil}
+          {:value, value} ->
+            {:ok, value_id} = get_or_create_value(db, value)
+            {1, nil, value_id, nil}
 
-          {:raw, format, value} ->
-            {:ok, value_id} = get_or_create_value(db, format, value)
-            {2, nil, nil, value_id, nil}
-
-          {:blob, format, key, metadata} ->
-            {:ok, blob_id} = get_or_create_blob(db, format, key, metadata)
-            {3, nil, nil, nil, blob_id}
-
-          {:abandoned, reference_id} ->
-            {4, nil, reference_id, nil, nil}
+          {:abandoned, retry_id} ->
+            {2, nil, nil, retry_id}
 
           :cancelled ->
-            {5, nil, nil, nil, nil}
+            {3, nil, nil, nil}
 
-          {:deferred, reference_id} ->
-            {6, nil, reference_id, nil, nil}
+          {:deferred, defer_id} ->
+            {4, nil, nil, defer_id}
         end
 
-      case insert_result(db, execution_id, type, error_id, reference_id, value_id, blob_id, now) do
+      case insert_result(db, execution_id, type, error_id, value_id, successor_id, now) do
         {:ok, _} ->
           {:ok, now}
 
@@ -451,49 +460,39 @@ defmodule Coflux.Orchestration.Store do
     end
   end
 
-  def get_result(db, execution_id) do
+  def get_result(db, execution_id, load_metadata \\ false) do
     case query_one(
            db,
            """
-           SELECT type, error_id, reference_id, value_id, blob_id, created_at
+           SELECT type, error_id, value_id, successor_id, created_at
            FROM results
            WHERE execution_id = ?1
            """,
            {execution_id}
          ) do
-      {:ok, {type, error_id, reference_id, value_id, blob_id, created_at}} ->
+      {:ok, {type, error_id, value_id, successor_id, created_at}} ->
         result =
-          case {type, error_id, reference_id, value_id, blob_id} do
-            {0, error_id, reference_id, nil, nil} ->
+          case {type, error_id, value_id, successor_id} do
+            {0, error_id, nil, retry_id} ->
               case get_error_by_id(db, error_id) do
                 {:ok, {message}} ->
-                  {:error, message, nil, reference_id}
+                  # TODO: {:error, message, retry_id}?
+                  {:error, message, nil, retry_id}
               end
 
-            {1, nil, reference_id, nil, nil} ->
-              {:reference, reference_id}
-
-            {2, nil, nil, value_id, nil} ->
-              case get_value_by_id(db, value_id) do
-                {:ok, {format, value}} ->
-                  {:raw, format, value}
+            {1, nil, value_id, nil} ->
+              case get_value_by_id(db, value_id, load_metadata) do
+                {:ok, value} -> {:value, value}
               end
 
-            {3, nil, nil, nil, blob_id} ->
-              case get_blob_by_id(db, blob_id) do
-                {:ok, {format, key, encoded_metadata}} ->
-                  metadata = decode_metadata(encoded_metadata)
-                  {:blob, format, key, metadata}
-              end
+            {2, nil, nil, retry_id} ->
+              {:abandoned, retry_id}
 
-            {4, nil, reference_id, nil, nil} ->
-              {:abandoned, reference_id}
-
-            {5, nil, nil, nil, nil} ->
+            {3, nil, nil, nil} ->
               :cancelled
 
-            {6, nil, reference_id, nil, nil} ->
-              {:deferred, reference_id}
+            {4, nil, nil, defer_id} ->
+              {:deferred, defer_id}
           end
 
         {:ok, {result, created_at}}
@@ -737,19 +736,26 @@ defmodule Coflux.Orchestration.Store do
     )
   end
 
-  def get_step_arguments(db, step_id) do
+  def get_step_arguments(db, step_id, load_metadata \\ false) do
     case query(
            db,
            """
-           SELECT reference_id, value_id, blob_id
-           FROM arguments
+           SELECT value_id
+           FROM step_arguments
            WHERE step_id = ?1
            ORDER BY position
            """,
            {step_id}
          ) do
       {:ok, rows} ->
-        {:ok, resolve_arguments(db, rows)}
+        values =
+          Enum.map(rows, fn {value_id} ->
+            case get_value_by_id(db, value_id, load_metadata) do
+              {:ok, value} -> value
+            end
+          end)
+
+        {:ok, values}
     end
   end
 
@@ -877,51 +883,12 @@ defmodule Coflux.Orchestration.Store do
     end
   end
 
-  defp insert_arguments(db, step_id, arguments) do
-    case insert_many(
-           db,
-           :arguments,
-           {:step_id, :position, :reference_id, :value_id, :blob_id},
-           Enum.map(Enum.with_index(arguments), fn {{reference_id, value_id, blob_id}, index} ->
-             {step_id, index, reference_id, value_id, blob_id}
-           end)
-         ) do
-      {:ok, _} -> :ok
-    end
-  end
-
-  defp get_or_create_arguments(db, arguments) do
-    Enum.map(arguments, fn
-      {:reference, execution_id} ->
-        {execution_id, nil, nil}
-
-      {:raw, format, value} ->
-        {:ok, value_id} = get_or_create_value(db, format, value)
-        {nil, value_id, nil}
-
-      {:blob, format, key, metadata} ->
-        {:ok, blob_id} = get_or_create_blob(db, format, key, metadata)
-        {nil, nil, blob_id}
-    end)
-  end
-
-  defp resolve_arguments(db, arguments) do
-    Enum.map(arguments, fn
-      {execution_id, nil, nil} ->
-        {:reference, execution_id}
-
-      {nil, value_id, nil} ->
-        case get_value_by_id(db, value_id) do
-          {:ok, {format, value}} -> {:raw, format, value}
-        end
-
-      {nil, nil, blob_id} ->
-        case get_blob_by_id(db, blob_id) do
-          {:ok, {format, key, encoded_metadata}} ->
-            metadata = decode_metadata(encoded_metadata)
-            {:blob, format, key, metadata}
-        end
-    end)
+  defp insert_step_argument(db, step_id, position, value_id) do
+    insert_one(db, :step_arguments, %{
+      step_id: step_id,
+      position: position,
+      value_id: value_id
+    })
   end
 
   defp get_next_attempt_sequence(db, step_id) do
@@ -980,80 +947,122 @@ defmodule Coflux.Orchestration.Store do
     })
   end
 
-  defp insert_checkpoint_arguments(db, checkpoint_id, arguments) do
-    insert_many(
-      db,
-      :checkpoint_arguments,
-      {:checkpoint_id, :position, :reference_id, :value_id, :blob_id},
-      Enum.map(Enum.with_index(arguments), fn {{reference_id, value_id, blob_id}, position} ->
-        {checkpoint_id, position, reference_id, value_id, blob_id}
-      end)
-    )
+  defp insert_checkpoint_argument(db, checkpoint_id, position, value_id) do
+    insert_one(db, :checkpoint_arguments, %{
+      checkpoint_id: checkpoint_id,
+      position: position,
+      value_id: value_id
+    })
   end
 
   defp get_error_by_id(db, error_id) do
     query_one!(db, "SELECT message FROM errors WHERE id = ?1", {error_id})
   end
 
-  defp get_value_by_id(db, value_id) do
-    query_one!(db, "SELECT format, value FROM `values` WHERE id = ?1", {value_id})
-  end
-
-  defp get_blob_by_id(db, blob_id) do
-    query_one!(db, "SELECT format, key, metadata FROM blobs WHERE id = ?1", {blob_id})
-  end
-
-  defp get_or_create_value(db, format, value) do
-    case query_one(
+  defp get_value_by_id(db, value_id, load_metadata) do
+    case query_one!(
            db,
-           "SELECT id FROM `values` WHERE format = ?1 AND value = ?2",
-           {format, value}
+           "SELECT format, content, blob_key FROM values_ WHERE id = ?1",
+           {value_id}
          ) do
-      {:ok, {id}} -> {:ok, id}
-      {:ok, nil} -> insert_value(db, format, value)
+      {:ok, {format, content, blob_key}} ->
+        references =
+          case query(
+                 db,
+                 "SELECT number, reference_id FROM value_references WHERE value_id = ?1",
+                 {value_id}
+               ) do
+            {:ok, rows} -> Map.new(rows)
+          end
+
+        metadata =
+          if load_metadata do
+            case query(
+                   db,
+                   "SELECT key, value FROM value_metadata WHERE value_id = ?1",
+                   {value_id}
+                 ) do
+              {:ok, rows} ->
+                Map.new(rows, fn {k, v} -> {k, Jason.decode!(v)} end)
+            end
+          end
+
+        value =
+          case {content, blob_key} do
+            {content, nil} ->
+              {:raw, format, content, references, metadata}
+
+            {nil, blob_key} ->
+              {:blob, format, blob_key, references, metadata}
+          end
+
+        {:ok, value}
     end
   end
 
-  defp insert_value(db, format, value) do
-    insert_one(db, :values, %{
-      format: format,
-      value: value
-    })
+  defp hash_value(format, content, blob_key, metadata, references) do
+    metadata_parts =
+      metadata
+      |> Enum.sort()
+      |> Enum.flat_map(fn {k, v} -> [k, Jason.encode!(v)] end)
+
+    references_parts =
+      references
+      |> Enum.sort()
+      |> Enum.flat_map(fn {k, v} -> [Integer.to_string(k), Integer.to_string(v)] end)
+
+    parts = [format, content || 0, blob_key || 0, references_parts, metadata_parts]
+    :crypto.hash(:sha256, Enum.intersperse(parts, 0))
   end
 
-  defp encode_metadata(metadata) do
-    # TODO: better encoding?
-    metadata
-    |> Enum.sort_by(fn {key, _value} -> key end)
-    |> Enum.map_join("\n", fn {key, value} -> "#{key}=#{Jason.encode!(value)}" end)
-  end
+  defp get_or_create_value(db, value) do
+    {format, content, blob_key, references, metadata} =
+      case value do
+        {:raw, format, content, references, metadata} ->
+          {format, content, nil, references, metadata}
 
-  defp decode_metadata(encoded) do
-    encoded
-    |> String.split("\n")
-    |> Enum.map(&String.split(&1, "=", parts: 2))
-    |> Map.new(fn [key, value] -> {key, Jason.decode!(value)} end)
-  end
+        {:blob, format, blob_key, references, metadata} ->
+          {format, nil, blob_key, references, metadata}
+      end
 
-  defp get_or_create_blob(db, format, key, metadata) do
-    encoded_metadata = encode_metadata(metadata)
+    hash = hash_value(format, content, blob_key, metadata, references)
 
-    case query_one(
-           db,
-           "SELECT id FROM blobs WHERE format = ?1 AND key = ?2 AND metadata = ?3",
-           {format, key, encoded_metadata}
-         ) do
-      {:ok, {id}} -> {:ok, id}
-      {:ok, nil} -> insert_blob(db, format, key, encoded_metadata)
+    # TODO: don't assume hash is unique?
+    case query_one(db, "SELECT id FROM values_ WHERE hash = ?1", {hash}) do
+      {:ok, {id}} ->
+        {:ok, id}
+
+      {:ok, nil} ->
+        {:ok, value_id} =
+          insert_one(db, :values_, %{
+            hash: hash,
+            format: format,
+            content: content,
+            blob_key: blob_key
+          })
+
+        {:ok, _} =
+          insert_many(
+            db,
+            :value_references,
+            {:value_id, :number, :reference_id},
+            Enum.map(references, fn {number, reference_id} ->
+              {value_id, number, reference_id}
+            end)
+          )
+
+        {:ok, _} =
+          insert_many(
+            db,
+            :value_metadata,
+            {:value_id, :key, :value},
+            Enum.map(metadata, fn {k, v} ->
+              {value_id, k, Jason.encode!(v)}
+            end)
+          )
+
+        {:ok, value_id}
     end
-  end
-
-  defp insert_blob(db, format, key, encoded_metadata) do
-    insert_one(db, :blobs, %{
-      format: format,
-      key: key,
-      metadata: encoded_metadata
-    })
   end
 
   defp get_or_create_error(db, message) do
@@ -1079,18 +1088,16 @@ defmodule Coflux.Orchestration.Store do
          execution_id,
          type,
          error_id,
-         reference_id,
          value_id,
-         blob_id,
+         successor_id,
          created_at
        ) do
     insert_one(db, :results, %{
       execution_id: execution_id,
       type: type,
       error_id: error_id,
-      reference_id: reference_id,
       value_id: value_id,
-      blob_id: blob_id,
+      successor_id: successor_id,
       created_at: created_at
     })
   end

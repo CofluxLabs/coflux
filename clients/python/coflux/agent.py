@@ -8,7 +8,7 @@ import urllib.parse
 import websockets
 import traceback
 
-from . import server, execution, annotations
+from . import server, execution, annotations, models
 
 
 def _load_module(module: types.ModuleType) -> dict:
@@ -48,6 +48,15 @@ def _build_manifest(targets: dict) -> dict:
     }
 
 
+def _parse_value(value: list) -> models.Value:
+    match value:
+        case ["raw", format, content, references, metadata]:
+            return ("raw", format, content.encode(), references, metadata)
+        case ["blob", format, key, references, metadata]:
+            return ("blob", format, key, references, metadata)
+    raise Exception(f"unexpected value: {value}")
+
+
 class Agent:
     def __init__(
         self,
@@ -72,6 +81,7 @@ class Agent:
         (execution_id, repository, target_name, arguments) = args
         print(f"Handling execute '{target_name}' ({execution_id})...")
         target = self._modules[repository][target_name][1]
+        arguments = [_parse_value(a) for a in arguments]
         loop = asyncio.get_running_loop()
         self._execution_manager.execute(execution_id, target, arguments, loop)
 

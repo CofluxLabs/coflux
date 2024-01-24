@@ -1,11 +1,12 @@
 import { CSSProperties, Fragment, useCallback, useState } from "react";
 import classNames from "classnames";
-import { findKey, sortBy } from "lodash";
+import { sortBy } from "lodash";
 import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTopic } from "@topical/react";
 import { IconChevronDown, IconPinned } from "@tabler/icons-react";
+import reactStringReplace from "react-string-replace";
 
 import * as models from "../models";
 import Badge from "./Badge";
@@ -14,26 +15,6 @@ import Loading from "./Loading";
 import Button from "./common/Button";
 import RunLogs from "./RunLogs";
 import StepLink from "./StepLink";
-
-function findAttempt(
-  run: models.Run,
-  executionId: string,
-): [string, number] | null {
-  const stepId = findKey(run.steps, (s) =>
-    Object.values(s.attempts).some(
-      (a) => a.type == 0 && a.executionId == executionId,
-    ),
-  );
-  if (stepId) {
-    const attemptNumber = findKey(
-      run.steps[stepId].attempts,
-      (a) => a.type == 0 && a.executionId == executionId,
-    );
-    return [stepId, parseInt(attemptNumber!, 10)];
-  } else {
-    return null;
-  }
-}
 
 type AttemptSelectorOptionProps = {
   attemptNumber: number;
@@ -55,7 +36,7 @@ function AttemptSelectorOption({
         <Badge intent="info" label="Assigning" />
       ) : !attempt.result ? (
         <Badge intent="info" label="Running" />
-      ) : ["reference", "raw", "blob"].includes(attempt.result.type) ? (
+      ) : ["value"].includes(attempt.result.type) ? (
         <Badge intent="success" label="Completed" />
       ) : attempt.result.type == "error" ? (
         <Badge intent="danger" label="Failed" />
@@ -232,33 +213,51 @@ function BlobLink({ value }: BlobLinkProps) {
   );
 }
 
-type ArgumentProps = {
-  argument: models.Value;
-  runId: string;
-  run: models.Run;
+type ValueProps = {
+  value: Extract<models.Value, { type: "raw" }>;
+  className?: string;
 };
 
-function Argument({ runId, run, argument }: ArgumentProps) {
+function Value({ value, className }: ValueProps) {
+  return (
+    <span className={classNames("font-mono text-sm", className)}>
+      {reactStringReplace(value.content, /"\{(\d+)\}"/g, (match, index) => {
+        const referenceNumber = parseInt(match, 10);
+        if (referenceNumber in value.references) {
+          const [_, reference] = value.references[referenceNumber];
+          return (
+            <StepLink
+              key={index}
+              runId={reference.runId}
+              stepId={reference.stepId}
+              attemptNumber={reference.sequence}
+              className="font-sans text-base px-1 bg-slate-200 ring-offset-1 text-slate-600 text-sm rounded"
+              hoveredClassName="ring-2 ring-slate-300"
+            >
+              ...
+            </StepLink>
+          );
+        } else {
+          return `{${match}}`;
+        }
+      })}
+    </span>
+  );
+}
+
+type ArgumentProps = {
+  argument: models.Value;
+};
+
+function Argument({ argument }: ArgumentProps) {
   switch (argument.type) {
     case "raw":
-      return <span className="font-mono truncate">{argument.value}</span>;
-    case "reference":
-      const stepAttempt = findAttempt(run, argument.executionId);
-      if (stepAttempt) {
-        const [stepId, attemptNumber] = stepAttempt;
-        return (
-          <StepLink
-            runId={runId}
-            stepId={stepId}
-            attemptNumber={attemptNumber}
-            className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-1 py-0.5 my-0.5 inline-block"
-          >
-            Result
-          </StepLink>
-        );
-      } else {
-        return <em>Unrecognised execution</em>;
-      }
+      return (
+        <Value
+          value={argument}
+          className="bg-white px-0.5 border border-slate-300 rounded"
+        />
+      );
     case "blob":
       return <BlobLink value={argument} />;
     default:
@@ -267,19 +266,17 @@ function Argument({ runId, run, argument }: ArgumentProps) {
 }
 
 type ArgumentsSectionProps = {
-  runId: string;
-  run: models.Run;
   arguments_: models.Value[];
 };
 
-function ArgumentsSection({ runId, run, arguments_ }: ArgumentsSectionProps) {
+function ArgumentsSection({ arguments_ }: ArgumentsSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Arguments</h3>
       <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs">
         {arguments_.map((argument, index) => (
           <li key={index}>
-            <Argument runId={runId} run={run} argument={argument} />
+            <Argument argument={argument} />
           </li>
         ))}
       </ol>
@@ -487,37 +484,23 @@ function DeferredSection({ attempt }: DeferredSectionProps) {
 }
 
 type ResultProps = {
-  runId: string;
-  run: models.Run;
   result: models.Result;
 };
 
-function Result({ runId, run, result }: ResultProps) {
+function Result({ result }: ResultProps) {
   switch (result.type) {
-    case "raw":
-      return (
-        <div className="font-mono p-2 mt-2 rounded bg-white border border-slate-200">
-          {result.value}
-        </div>
-      );
-    case "blob":
-      return <BlobLink value={result} />;
-    case "reference":
-      const stepAttempt = findAttempt(run, result.executionId);
-      if (stepAttempt) {
-        const [stepId, attemptNumber] = stepAttempt;
-        return (
-          <StepLink
-            runId={runId}
-            stepId={stepId}
-            attemptNumber={attemptNumber}
-            className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
-          >
-            Result
-          </StepLink>
-        );
-      } else {
-        return <em>Unrecognised execution</em>;
+    case "value":
+      const value = result.value;
+      switch (value.type) {
+        case "raw":
+          return (
+            <div className="bg-white rounded block p-1 border border-slate-300 break-all whitespace-break-spaces">
+              {" "}
+              <Value value={value} />
+            </div>
+          );
+        case "blob":
+          return <BlobLink value={value} />;
       }
     case "error":
       return (
@@ -531,16 +514,14 @@ function Result({ runId, run, result }: ResultProps) {
 }
 
 type ResultSectionProps = {
-  runId: string;
-  run: models.Run;
   result: models.Result;
 };
 
-function ResultSection({ runId, run, result }: ResultSectionProps) {
+function ResultSection({ result }: ResultSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
-      <Result result={result} runId={runId} run={run} />
+      <Result result={result} />
     </div>
   );
 }
@@ -628,11 +609,7 @@ export default function StepDetail({
       />
       <div className="flex flex-col overflow-auto p-4 gap-5">
         {step.arguments?.length > 0 && (
-          <ArgumentsSection
-            runId={runId}
-            run={run}
-            arguments_={step.arguments}
-          />
+          <ArgumentsSection arguments_={step.arguments} />
         )}
         {attempt?.type == 0 ? (
           <Fragment>
@@ -643,15 +620,7 @@ export default function StepDetail({
               <DeferredSection attempt={attempt} />
             ) : (
               <Fragment>
-                {attempt.result &&
-                  attempt.result?.type != "abandoned" &&
-                  attempt.result?.type != "cancelled" && (
-                    <ResultSection
-                      runId={runId}
-                      run={run}
-                      result={attempt.result}
-                    />
-                  )}
+                {attempt.result && <ResultSection result={attempt.result} />}
                 <LogsSection
                   projectId={projectId}
                   environmentName={environmentName}

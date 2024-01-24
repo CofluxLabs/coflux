@@ -75,7 +75,7 @@ defmodule Coflux.Handlers.Agent do
           retry_delay_max
         ] = message["params"]
 
-        arguments = Enum.map(arguments, &parse_argument/1)
+        arguments = Enum.map(arguments, &parse_value/1)
 
         if is_nil(parent_id) || is_recognised_execution?(parent_id, state) do
           case Orchestration.schedule(
@@ -125,7 +125,7 @@ defmodule Coflux.Handlers.Agent do
         [execution_id, arguments] = message["params"]
 
         if is_recognised_execution?(execution_id, state) do
-          arguments = Enum.map(arguments, &parse_argument/1)
+          arguments = Enum.map(arguments, &parse_value/1)
 
           :ok =
             Orchestration.record_checkpoint(
@@ -156,7 +156,7 @@ defmodule Coflux.Handlers.Agent do
         end
 
       "put_result" ->
-        [execution_id, result] = message["params"]
+        [execution_id, value] = message["params"]
 
         if is_recognised_execution?(execution_id, state) do
           :ok =
@@ -164,7 +164,7 @@ defmodule Coflux.Handlers.Agent do
               state.project_id,
               state.environment,
               execution_id,
-              parse_result(result)
+              {:value, parse_value(value)}
             )
 
           {[], state}
@@ -238,7 +238,7 @@ defmodule Coflux.Handlers.Agent do
   end
 
   def websocket_info({:execute, execution_id, repository, target, arguments, run_id}, state) do
-    arguments = Enum.map(arguments, &compose_argument/1)
+    arguments = Enum.map(arguments, &compose_value/1)
     state = put_in(state.executions[execution_id], run_id)
     {[command_message("execute", [execution_id, repository, target, arguments])], state}
   end
@@ -317,40 +317,36 @@ defmodule Coflux.Handlers.Agent do
     }
   end
 
-  defp parse_argument(argument) do
-    case argument do
-      ["raw", format, value] -> {:raw, format, value}
-      ["blob", format, key, metadata] -> {:blob, format, key, metadata}
-      ["reference", execution_id] -> {:reference, execution_id}
+  defp parse_references(references) do
+    Map.new(references, fn {key, value} -> {String.to_integer(key), value} end)
+  end
+
+  defp parse_value(value) do
+    case value do
+      ["raw", format, content, references, metadata] ->
+        {:raw, format, content, parse_references(references), metadata}
+
+      ["blob", format, key, references, metadata] ->
+        {:blob, format, key, parse_references(references), metadata}
     end
   end
 
-  defp compose_argument(result) do
-    case result do
-      {:raw, format, value} -> ["raw", format, value]
-      # TODO: strip metadata?
-      {:blob, format, key, metadata} -> ["blob", format, key, metadata]
-      {:reference, execution_id} -> ["reference", execution_id]
-    end
-  end
+  defp compose_value(value) do
+    case value do
+      {:raw, format, content, references, metadata} ->
+        ["raw", format, content, references, metadata]
 
-  defp parse_result(result) do
-    case result do
-      ["raw", format, value] -> {:raw, format, value}
-      ["blob", format, key, metadata] -> {:blob, format, key, metadata}
-      ["reference", execution_id] -> {:reference, execution_id}
+      {:blob, format, key, references, metadata} ->
+        ["blob", format, key, references, metadata]
     end
   end
 
   defp compose_result(result) do
     case result do
-      {:raw, format, value} -> ["raw", format, value]
-      # TODO: strip metadata?
-      {:blob, format, key, metadata} -> ["blob", format, key, metadata]
       {:error, error, _details, nil} -> ["error", error]
+      {:value, value} -> ["value", compose_value(value)]
       {:abandoned, nil} -> ["abandoned"]
       :cancelled -> ["cancelled"]
-      {:deferred, nil} -> ["deferred"]
     end
   end
 
