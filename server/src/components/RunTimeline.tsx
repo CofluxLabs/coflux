@@ -71,7 +71,7 @@ function Bar({ x1, x2, x0, d, className, style }: BarProps) {
 function classNameForResult(result: models.Result | null) {
   if (!result) {
     return "bg-blue-300";
-  } else if (["reference", "raw", "blob"].includes(result.type)) {
+  } else if (result.type == "value") {
     return "bg-green-300";
   } else if (result.type == "error") {
     return "bg-red-300";
