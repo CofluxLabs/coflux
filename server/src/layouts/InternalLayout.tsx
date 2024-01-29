@@ -15,10 +15,10 @@ type HeaderProps = {
 function Header({ projectId }: HeaderProps) {
   const [projects] = useTopic<Record<string, models.Project>>("projects");
   return (
-    <div className="flex px-3 items-center flex-none pt-2 pb-4">
+    <div className="flex p-3 items-center bg-cyan-600 gap-1">
       <Logo />
       {projects && (
-        <div className="flex items-center gap-1">
+        <Fragment>
           <IconChevronCompactRight size={16} className="text-white/40" />
           <ProjectSelector projects={projects} />
           {projectId && projects[projectId] && (
@@ -29,7 +29,7 @@ function Header({ projectId }: HeaderProps) {
               />
             </Fragment>
           )}
-        </div>
+        </Fragment>
       )}
       <span className="flex-1"></span>
     </div>
@@ -40,9 +40,9 @@ export default function InternalLayout() {
   const { project: projectId } = useParams();
   return (
     <SocketProvider url={`ws://${window.location.host}/topics`}>
-      <div className="flex flex-col min-h-screen max-h-screen bg-cyan-600 shadow-inner p-2">
+      <div className="flex flex-col min-h-screen max-h-screen">
         <Header projectId={projectId} />
-        <div className="flex-1 rounded-md overflow-hidden bg-white shadow-xl flex flex-col">
+        <div className="flex-1 overflow-hidden bg-white flex flex-col">
           <Outlet />
         </div>
       </div>

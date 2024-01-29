@@ -40,13 +40,13 @@ function Target({ url, icon: Icon, name, isActive, isOnline }: TargetProps) {
       <Link
         to={url}
         className={classNames(
-          "block px-2 py-0.5 my-0.5 rounded-md flex gap-1 items-center",
+          "block px-1 py-0.5 my-0.5 rounded-md flex gap-1 items-center",
           isOnline ? "text-slate-900" : "text-slate-400",
           isActive ? "bg-slate-200" : "hover:bg-slate-200/50",
         )}
       >
         <Icon size={20} strokeWidth={1} className="text-slate-500 shrink-0" />
-        <div className="font-mono flex-1 overflow-hidden text-ellipsis">
+        <div className="font-mono flex-1 overflow-hidden text-sm text-ellipsis">
           {name}
         </div>
       </Link>
@@ -98,7 +98,7 @@ export default function TargetsList({
                   isActive ? "bg-slate-200" : "hover:bg-slate-200/50",
                 )}
               >
-                <div className="flex items-center py-1 px-2 gap-2">
+                <div className="flex items-center py-1 px-1 gap-2">
                   <h2 className="font-bold uppercase text-slate-400 text-sm">
                     {repository}
                   </h2>

@@ -168,7 +168,7 @@ export default function ProjectLayout() {
           </div>
           <ConnectionStatus agents={agents} />
         </div>
-        <div className="flex-1 flex flex-col shadow-lg">
+        <div className="flex-1 flex flex-col">
           <Outlet context={{ setActiveTarget }} />
         </div>
       </div>

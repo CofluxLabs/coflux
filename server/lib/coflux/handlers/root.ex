@@ -10,6 +10,7 @@ defmodule Coflux.Handlers.Root do
         <!DOCTYPE html>
         <html lang="en">
         <link rel="stylesheet" href="/static/app.css" />
+        <link rel="icon" href="/static/icon.svg" />
         <div id="root"></div>
         <script src="/static/app.js"></script>
         </html>
