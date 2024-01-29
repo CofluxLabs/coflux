@@ -40,7 +40,7 @@ defmodule Coflux.Topics.Run do
     Topic.set(topic, [:steps, step_id], %{
       repository: repository,
       target: target,
-      type: 1,
+      isInitial: false,
       isMemoised: !is_nil(memo_key),
       createdAt: created_at,
       arguments: Enum.map(arguments, &build_value/1),
@@ -56,7 +56,7 @@ defmodule Coflux.Topics.Run do
       topic,
       [:steps, step_id, :attempts, Integer.to_string(sequence)],
       %{
-        type: execution_type,
+        isCached: execution_type == 1,
         executionId: Integer.to_string(execution_id),
         createdAt: created_at,
         executeAfter: execute_after,
@@ -123,7 +123,7 @@ defmodule Coflux.Topics.Run do
            %{
              repository: step.repository,
              target: step.target,
-             type: step.type,
+             isInitial: step.type == 0,
              isMemoised: !is_nil(step.memo_key),
              createdAt: step.created_at,
              arguments: Enum.map(step.arguments, &build_value/1),
@@ -131,7 +131,7 @@ defmodule Coflux.Topics.Run do
                Map.new(step.attempts, fn {sequence, execution} ->
                  {Integer.to_string(sequence),
                   %{
-                    type: execution.type,
+                    isCached: execution.type == 1,
                     executionId: Integer.to_string(execution.execution_id),
                     createdAt: execution.created_at,
                     executeAfter: execution.execute_after,

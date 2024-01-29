@@ -14,7 +14,7 @@ function loadExecutionTimes(run: models.Run): {
   return Object.keys(run.steps).reduce((times, stepId) => {
     const step = run.steps[stepId];
     return Object.entries(step.attempts)
-      .filter(([_, a]) => a.type == 0)
+      .filter(([_, a]) => !a.isCached)
       .reduce((times, [attemptNumber, attempt]) => {
         return {
           ...times,
@@ -82,7 +82,7 @@ function classNameForResult(result: models.Result | null) {
 
 function isRunning(run: models.Run) {
   return Object.values(run.steps).some((step) =>
-    Object.values(step.attempts).some((a) => a.type == 0 && !a.result),
+    Object.values(step.attempts).some((a) => !a.isCached && !a.result),
   );
 }
 
@@ -137,7 +137,7 @@ export default function RunTimeline({ runId, run }: Props) {
       </div>
       {stepIds
         .filter((stepId) =>
-          Object.values(run.steps[stepId].attempts).some((a) => a.type == 0),
+          Object.values(run.steps[stepId].attempts).some((a) => !a.isCached),
         )
         .map((stepId) => {
           const step = run.steps[stepId];

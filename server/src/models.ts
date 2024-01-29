@@ -73,7 +73,7 @@ export type QueuedExecution = {
 };
 
 export type Attempt = {
-  type: 0 | 1;
+  isCached: boolean;
   executionId: string;
   createdAt: number;
   executeAfter: number | null;
@@ -87,7 +87,7 @@ export type Attempt = {
 export type Step = {
   repository: string;
   target: string;
-  type: 0 | 1;
+  isInitial: boolean;
   isMemoised: boolean;
   createdAt: number;
   attempts: Record<string, Attempt>;

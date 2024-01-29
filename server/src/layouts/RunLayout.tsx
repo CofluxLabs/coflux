@@ -133,7 +133,7 @@ export default function RunLayout() {
     : undefined;
   const environmentName = searchParams.get("environment") || undefined;
   const run = useRunTopic(projectId, environmentName, runId);
-  const initialStep = run && Object.values(run.steps).find((s) => s.type == 0);
+  const initialStep = run && Object.values(run.steps).find((s) => s.isInitial);
   const target = useTargetTopic(
     projectId,
     environmentName,
@@ -149,7 +149,7 @@ export default function RunLayout() {
     return <Loading />;
   } else {
     const isRunning = Object.values(run.steps).some((s) =>
-      Object.values(s.attempts).some((a) => a.type == 0 && !a.result),
+      Object.values(s.attempts).some((a) => !a.isCached && !a.result),
     );
     return (
       <HoverContext>

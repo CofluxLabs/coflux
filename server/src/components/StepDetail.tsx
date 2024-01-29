@@ -28,7 +28,7 @@ function AttemptSelectorOption({
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-sm">#{attemptNumber}</span>
-      {attempt.type == 1 ? (
+      {attempt.isCached ? (
         <Badge intent="none" label="Cached" />
       ) : attempt.result?.type == "deferred" ? (
         <Badge intent="none" label="Deferred" />
@@ -158,7 +158,7 @@ function Header({
           <span
             className={classNames(
               "font-mono text-xl",
-              step.type == 0 && "font-bold",
+              step.isInitial && "font-bold",
             )}
           >
             {step.target}
@@ -611,28 +611,29 @@ export default function StepDetail({
         {step.arguments?.length > 0 && (
           <ArgumentsSection arguments_={step.arguments} />
         )}
-        {attempt?.type == 0 ? (
+        {/* TODO: link to run if cached? */}
+        <ExecutionSection attempt={attempt} />
+        {attempt?.assignedAt && (
           <Fragment>
-            <ExecutionSection attempt={attempt} />
             <DependenciesSection attempt={attempt} />
             <ChildrenSection runId={runId} run={run} attempt={attempt} />
-            {attempt.result?.type == "deferred" ? (
-              <DeferredSection attempt={attempt} />
-            ) : (
-              <Fragment>
-                {attempt.result && <ResultSection result={attempt.result} />}
-                <LogsSection
-                  projectId={projectId}
-                  environmentName={environmentName}
-                  runId={runId}
-                  attempt={attempt}
-                />
-              </Fragment>
-            )}
           </Fragment>
-        ) : attempt?.type == 1 ? (
-          <div>{/* TODO: link to execution */}</div>
-        ) : undefined}
+        )}
+        {attempt?.result?.type == "deferred" && (
+          <DeferredSection attempt={attempt} />
+        )}
+        {(attempt?.result?.type == "value" ||
+          attempt?.result?.type == "error") && (
+          <ResultSection result={attempt.result} />
+        )}
+        {attempt?.assignedAt && (
+          <LogsSection
+            projectId={projectId}
+            environmentName={environmentName}
+            runId={runId}
+            attempt={attempt}
+          />
+        )}
       </div>
     </div>
   );

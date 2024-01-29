@@ -115,7 +115,7 @@ function buildGraph(
   );
 
   const initialStepId = sortBy(
-    Object.keys(run.steps).filter((id) => run.steps[id].type == 0),
+    Object.keys(run.steps).filter((id) => run.steps[id].isInitial),
     (stepId) => run.steps[stepId].createdAt,
   )[0];
 
@@ -129,6 +129,16 @@ function buildGraph(
     type: "parent",
     weight: 1000,
   });
+
+  const visibleSteps: Record<string, number> = {};
+  traverseRun(
+    run,
+    stepAttempts,
+    initialStepId,
+    (stepId: string, attemptNumber: number) => {
+      visibleSteps[stepId] = attemptNumber;
+    },
+  );
 
   traverseRun(
     run,
@@ -156,7 +166,7 @@ function buildGraph(
                 (c) =>
                   typeof c == "string" &&
                   Object.values(run.steps[c].attempts).some(
-                    (a) => a.type == 1 && a.executionId == dependencyId,
+                    (a) => a.isCached && a.executionId == dependencyId,
                   ),
               )
             ) {
@@ -177,12 +187,14 @@ function buildGraph(
           const childAttempt =
             childAttemptNumber && run.steps[child].attempts[childAttemptNumber];
           if (childAttempt) {
-            if (childAttempt.type == 1) {
+            if (childAttempt.isCached) {
               const cachedExecutionId = childAttempt.executionId;
-              const cachedStepId = Object.keys(run.steps).find((sId) =>
-                Object.values(run.steps[sId].attempts).some(
-                  (a) => a.type == 0 && a.executionId == cachedExecutionId,
-                ),
+              const cachedStepId = Object.keys(run.steps).find(
+                (sId) =>
+                  sId in visibleSteps &&
+                  Object.values(run.steps[sId].attempts).some(
+                    (a) => !a.isCached && a.executionId == cachedExecutionId,
+                  ),
               );
               if (cachedExecutionId in attempt.dependencies) {
                 g.setEdge(child, stepId, { type: "dependency" });
@@ -233,7 +245,7 @@ function buildGraph(
 
 function classNameForAttempt(attempt: models.Attempt) {
   const result = attempt.result;
-  if (attempt.type == 1 || result?.type == "deferred") {
+  if (attempt.isCached || result?.type == "deferred") {
     return "border-slate-200 bg-slate-50";
   } else if (!result && !attempt?.assignedAt) {
     return "border-blue-200 bg-blue-50";
@@ -265,7 +277,7 @@ function StepNode({
 }: StepNodeProps) {
   const attempt = step.attempts[attemptNumber];
   const { isHovered } = useHoverContext();
-  const isDeferred = attempt?.type == 1 || attempt?.result?.type == "deferred";
+  const isDeferred = attempt?.isCached || attempt?.result?.type == "deferred";
   return (
     <Fragment>
       {Object.keys(step.attempts).length > 1 && (
@@ -297,7 +309,7 @@ function StepNode({
             <span
               className={classNames(
                 "font-mono",
-                step.type == 0 && "font-bold",
+                step.isInitial && "font-bold",
                 isDeferred && "text-slate-500",
               )}
             >
@@ -319,7 +331,7 @@ function StepNode({
           )}
         </span>
         {attempt &&
-          attempt.type == 0 &&
+          !attempt.isCached &&
           !attempt.result &&
           !attempt.assignedAt && (
             <span>

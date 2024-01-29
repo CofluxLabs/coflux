@@ -16,7 +16,7 @@ type StepIdentifierProps = {
 function StepIdentifier({ runId, run, executionId }: StepIdentifierProps) {
   const stepId = Object.keys(run.steps).find((id) =>
     Object.values(run.steps[id].attempts).some(
-      (a) => a.type == 0 && a.executionId == executionId,
+      (a) => !a.isCached && a.executionId == executionId,
     ),
   );
   const step = stepId && run.steps[stepId];
@@ -24,7 +24,7 @@ function StepIdentifier({ runId, run, executionId }: StepIdentifierProps) {
     step &&
     Object.keys(step.attempts).find(
       (n) =>
-        step.attempts[n].type == 0 &&
+        !step.attempts[n].isCached &&
         step.attempts[n].executionId == executionId,
     );
   if (step && attemptNumber) {
