@@ -9,7 +9,7 @@ Value = t.Union[
 
 Result = t.Union[
     tuple[t.Literal["value"], Value],
-    tuple[t.Literal["error"], str],
+    tuple[t.Literal["error"], str, str],
     tuple[t.Literal["abandoned"]],
     tuple[t.Literal["cancelled"]],
 ]

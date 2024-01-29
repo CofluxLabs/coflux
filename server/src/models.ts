@@ -47,9 +47,22 @@ export type Value = {
     }
 );
 
+export type ErrorFrame = {
+  file: string;
+  line: number;
+  name: string;
+  code: string | null;
+};
+
+export type Error = {
+  type: string;
+  message: string;
+  frames: ErrorFrame[];
+};
+
 export type Result =
   | { type: "value"; value: Value }
-  | { type: "error"; error: string; retryId: string | null }
+  | { type: "error"; error: Error; retryId: string | null }
   | { type: "abandoned"; retryId: string | null }
   | { type: "cancelled" }
   | { type: "deferred"; executionId: string; execution: Reference };

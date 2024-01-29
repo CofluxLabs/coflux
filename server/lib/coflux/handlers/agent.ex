@@ -173,7 +173,7 @@ defmodule Coflux.Handlers.Agent do
         end
 
       "put_error" ->
-        [execution_id, error, details] = message["params"]
+        [execution_id, type, message, frames] = message["params"]
 
         if is_recognised_execution?(execution_id, state) do
           :ok =
@@ -181,7 +181,7 @@ defmodule Coflux.Handlers.Agent do
               state.project_id,
               state.environment,
               execution_id,
-              {:error, error, details}
+              {:error, type, message, parse_frames(frames)}
             )
 
           {[], state}
@@ -317,6 +317,12 @@ defmodule Coflux.Handlers.Agent do
     }
   end
 
+  defp parse_frames(frames) do
+    Enum.map(frames, fn [file, line, name, code] ->
+      {file, line, name, code}
+    end)
+  end
+
   defp parse_references(references) do
     Map.new(references, fn {key, value} -> {String.to_integer(key), value} end)
   end
@@ -343,7 +349,7 @@ defmodule Coflux.Handlers.Agent do
 
   defp compose_result(result) do
     case result do
-      {:error, error, _details, nil} -> ["error", error]
+      {:error, type, message, _frames, nil} -> ["error", type, message]
       {:value, value} -> ["value", compose_value(value)]
       {:abandoned, nil} -> ["abandoned"]
       :cancelled -> ["cancelled"]

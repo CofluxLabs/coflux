@@ -856,7 +856,7 @@ defmodule Coflux.Orchestration.Server do
 
   defp result_retryable?(result) do
     case result do
-      {:error, _, _} -> true
+      {:error, _, _, _, _} -> true
       :abandoned -> true
       _ -> false
     end
@@ -985,7 +985,7 @@ defmodule Coflux.Orchestration.Server do
 
     result =
       case result do
-        {:error, message, detail} -> {:error, message, detail, retry_id}
+        {:error, type, message, frames} -> {:error, type, message, frames, retry_id}
         :abandoned -> {:abandoned, retry_id}
         other -> other
       end
@@ -1016,7 +1016,7 @@ defmodule Coflux.Orchestration.Server do
           {:reference, execution_id} ->
             resolve_result(execution_id, db)
 
-          {:error, _, _, execution_id} when not is_nil(execution_id) ->
+          {:error, _, _, _, execution_id} when not is_nil(execution_id) ->
             resolve_result(execution_id, db)
 
           {:abandoned, execution_id} when not is_nil(execution_id) ->

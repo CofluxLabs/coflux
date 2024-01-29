@@ -483,6 +483,18 @@ function DeferredSection({ attempt }: DeferredSectionProps) {
   );
 }
 
+function truncatePath(path: string) {
+  const parts = path.split("/");
+  if (parts.length <= 3) {
+    return path;
+  }
+  return [
+    parts[0],
+    ...parts.slice(1, -1).map((p) => p[0]),
+    parts[parts.length - 1],
+  ].join("/");
+}
+
 type ResultProps = {
   result: models.Result;
 };
@@ -504,8 +516,28 @@ function Result({ result }: ResultProps) {
       }
     case "error":
       return (
-        <div className="font-mono p-2 mt-2 rounded bg-red-50 border border-red-200">
-          {result.error}
+        <div className="p-2 mt-2 rounded bg-red-50 border border-red-200 overflow-x-auto">
+          <p className="mb-2">
+            <span className="font-mono font-bold">{result.error.type}</span>:{" "}
+            <span>{result.error.message}</span>
+          </p>
+          <ol>
+            {result.error.frames.map((frame, index) => (
+              <li key={index}>
+                <p className="text-xs whitespace-nowrap">
+                  File "
+                  <span title={frame.file}>{truncatePath(frame.file)}</span>",
+                  line {frame.line}, in{" "}
+                  <span className="font-mono">{frame.name}</span>
+                </p>
+                {frame.code && (
+                  <pre className="font-mono ml-2 text-sm">
+                    <code>{frame.code}</code>
+                  </pre>
+                )}
+              </li>
+            ))}
+          </ol>
         </div>
       );
     default:

@@ -188,10 +188,29 @@ defmodule Coflux.Topics.Run do
     end)
   end
 
+  defp build_frames(frames) do
+    Enum.map(frames, fn {file, line, name, code} ->
+      %{
+        file: file,
+        line: line,
+        name: name,
+        code: code
+      }
+    end)
+  end
+
   defp build_result(result) do
     case result do
-      {:error, error, _details, retry_id} ->
-        %{type: "error", error: error, retryId: retry_id}
+      {:error, type, message, frames, retry_id} ->
+        %{
+          type: "error",
+          error: %{
+            type: type,
+            message: message,
+            frames: build_frames(frames)
+          },
+          retryId: retry_id
+        }
 
       {:value, value} ->
         %{type: "value", value: build_value(value)}

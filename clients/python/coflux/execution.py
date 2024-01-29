@@ -9,6 +9,8 @@ import hashlib
 import contextvars
 import contextlib
 import concurrent.futures as cf
+import traceback
+import sys
 
 from . import server, blobs, models, serialisation
 
@@ -40,7 +42,9 @@ class RecordResultRequest(t.NamedTuple):
 
 
 class RecordErrorRequest(t.NamedTuple):
-    error: t.Any
+    type: str
+    message: str
+    frames: list[tuple[str, int, str, str | None]]
 
 
 class ScheduleExecutionRequest(t.NamedTuple):
@@ -90,6 +94,12 @@ class ResultResolvedResponse(t.NamedTuple):
 class ResultResolveFailedResponse(t.NamedTuple):
     execution_id: str
     error: str
+
+
+class RemoteException(Exception):
+    def __init__(self, message, remote_type):
+        super().__init__(message)
+        self.remote_type = remote_type
 
 
 def _parse_retries(
@@ -144,6 +154,27 @@ def _serialise_value(value: t.Any, blob_store: blobs.Store) -> models.Value:
     return ("raw", format, serialised, references, metadata)
 
 
+def _exception_type(exception: Exception):
+    if isinstance(exception, RemoteException):
+        return exception.remote_type
+    t = type(exception)
+    if t.__module__ == "builtins":
+        return t.__name__
+    return f"{t.__module__}.{t.__name__}"
+
+
+def _serialise_exception(
+    exception: Exception,
+) -> tuple[str, str, list[tuple[str, int, str, str | None]]]:
+    type_ = _exception_type(exception)
+    message = getattr(exception, "message", str(exception))
+    frames = [
+        (f.filename, f.lineno or 0, f.name, f.line)
+        for f in traceback.extract_tb(exception.__traceback__)
+    ]
+    return type_, message, frames
+
+
 class Channel:
     def __init__(self, execution_id: str, blob_store: blobs.Store, connection):
         self._execution_id = execution_id
@@ -187,8 +218,8 @@ class Channel:
         self._running = False
 
     def record_error(self, exception):
-        error = str(exception)[:200]
-        self._send(RecordErrorRequest(error))
+        type_, message, frames = _serialise_exception(exception)
+        self._send(RecordErrorRequest(type_, message, frames))
         # TODO: wait for confirmation?
         self._running = False
 
@@ -283,15 +314,26 @@ def _deserialise(
         raise Exception(f"Failed to deserialise {description}") from e
 
 
+def _build_exception(type_, message):
+    # TODO: better way to re-create exception?
+    parts = type_.rsplit(type_, maxsplit=1)
+    module = "builtins" if len(parts) == 1 else parts[0]
+    name = parts[-1]
+    if module in sys.modules:
+        class_ = sys.modules[module].get(name)
+        if class_:
+            return class_(message)
+    return RemoteException(message, type_)
+
+
 def _deserialise_result(
     result: models.Result, blob_store: blobs.Store, channel: Channel, description: str
 ):
     match result:
         case ["value", value]:
             return _deserialise_value(value, blob_store, channel, description)
-        case ["error", error]:
-            # TODO: reconstruct exception state
-            raise Exception(error)
+        case ["error", type_, message]:
+            raise _build_exception(type_, message)
         case ["abandoned"]:
             raise Exception("abandoned")
         case ["cancelled"]:
@@ -402,8 +444,8 @@ def _parse_value(value: t.Any) -> models.Value:
 
 def _parse_result(result: t.Any) -> models.Result:
     match result:
-        case ["error", message]:
-            return ("error", message)
+        case ["error", type_, message]:
+            return ("error", type_, message)
         case ["value", value]:
             return ("value", _parse_value(value))
         case ["abandoned"]:
@@ -485,9 +527,9 @@ class Execution:
                     (self._id, _json_safe_value(value)),
                 )
                 self._process.join()
-            case RecordErrorRequest(error):
+            case RecordErrorRequest(type_, message_, frames):
                 self._status = ExecutionStatus.STOPPING
-                self._server_notify("put_error", (self._id, error, {}))
+                self._server_notify("put_error", (self._id, type_, message_, frames))
                 self._process.join()
             case RecordCheckpointRequest(arguments):
                 self._server_notify(

@@ -160,8 +160,6 @@ CREATE TABLE values_ (
   CHECK ((content IS NULL) != (blob_key IS NULL))
 );
 
-CREATE INDEX values_hash ON values_ (hash);
-
 CREATE TABLE value_references (
   value_id INTEGER NOT NULL,
   number INTEGER NOT NULL,
@@ -179,11 +177,23 @@ CREATE TABLE value_metadata (
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE
 );
 
--- TODO: other fields (stack trace, etc)
 CREATE TABLE errors (
   id INTEGER PRIMARY KEY,
-  message TEXT,
-  UNIQUE (message)
+  hash BLOB NOT NULL,
+  type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  UNIQUE (hash)
+);
+
+CREATE TABLE error_frames(
+  error_id INTEGER NOT NULL,
+  depth INTEGER NOT NULL,
+  file TEXT NOT NULL,
+  line INTEGER NOT NULL,
+  name TEXT,
+  code TEXT,
+  PRIMARY KEY (error_id, depth),
+  FOREIGN KEY (error_id) REFERENCES errors ON DELETE CASCADE
 );
 
 CREATE TABLE results (
