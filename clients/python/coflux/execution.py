@@ -54,6 +54,7 @@ class ScheduleExecutionRequest(t.NamedTuple):
     arguments: list[models.Value]
     execute_after: dt.datetime | None
     cache_key: str | None
+    cache_max_age: int | float | None
     defer_key: str | None
     memo_key: str | None
     retry_count: int
@@ -115,6 +116,27 @@ def _parse_retries(
             return (count, delay_min, delay_max)
         case other:
             raise ValueError(other)
+
+
+def _parse_cache(
+    cache: bool | int | float | dt.timedelta,
+    cache_key: t.Callable[[t.Tuple[t.Any, ...]], str] | None,
+    namespace: str,
+    arguments: tuple[t.Any, ...],
+    serialised_arguments: list[models.Value],
+) -> tuple[str | None, int | float | None]:
+    if cache is False:
+        return None, None
+    cache_key_ = _build_key(
+        cache_key or True,
+        arguments,
+        serialised_arguments,
+        namespace,
+    )
+    if cache is True:
+        return cache_key_, None
+    cache_max_age = cache.total_seconds() if isinstance(cache, dt.timedelta) else cache
+    return cache_key_, cache_max_age
 
 
 def _value_key(value: models.Value) -> str:
@@ -229,7 +251,8 @@ class Channel:
         target: str,
         arguments: tuple[t.Any, ...],
         *,
-        cache: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
+        cache: bool | int | float | dt.timedelta = False,
+        cache_key: t.Callable[[t.Tuple[t.Any, ...]], str] | None = None,
         cache_namespace: str | None = None,
         retries: int | tuple[int, int] | tuple[int, int, int] = 0,
         defer: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
@@ -249,11 +272,12 @@ class Channel:
             _serialise_value(a, self._blob_store) for a in arguments
         ]
         default_namespace = f"{repository}:{target}"
-        cache_key = _build_key(
+        cache_key_, cache_max_age = _parse_cache(
             cache,
+            cache_key,
+            cache_namespace or default_namespace,
             arguments,
             serialised_arguments,
-            cache_namespace or default_namespace,
         )
         defer_key = _build_key(
             defer, arguments, serialised_arguments, default_namespace
@@ -271,7 +295,8 @@ class Channel:
                 target,
                 serialised_arguments,
                 execute_after,
-                cache_key,
+                cache_key_,
+                cache_max_age,
                 defer_key,
                 memo_key,
                 retry_count,
@@ -543,6 +568,7 @@ class Execution:
                 arguments,
                 execute_after,
                 cache_key,
+                cache_max_age,
                 defer_key,
                 memo_key,
                 retry_count,
@@ -559,6 +585,7 @@ class Execution:
                         self._id,
                         execute_after_ms,
                         cache_key,
+                        cache_max_age,
                         defer_key,
                         memo_key,
                         retry_count,

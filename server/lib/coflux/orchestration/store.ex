@@ -210,6 +210,7 @@ defmodule Coflux.Orchestration.Store do
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
     cache_key = Keyword.get(opts, :cache_key)
+    cache_max_age = Keyword.get(opts, :cache_max_age)
     defer_key = Keyword.get(opts, :defer_key)
     memo_key = Keyword.get(opts, :memo_key)
     retry_count = Keyword.get(opts, :retry_count, 0)
@@ -231,7 +232,9 @@ defmodule Coflux.Orchestration.Store do
         nil ->
           cached_execution_id =
             if cache_key do
-              case find_cached_execution(db, cache_key) do
+              recorded_after = if cache_max_age, do: now - cache_max_age * 1000, else: 0
+
+              case find_cached_execution(db, cache_key, recorded_after) do
                 {:ok, cached_execution_id} ->
                   cached_execution_id
               end
@@ -799,7 +802,7 @@ defmodule Coflux.Orchestration.Store do
     end
   end
 
-  defp find_cached_execution(db, cache_key) do
+  defp find_cached_execution(db, cache_key, recorded_after) do
     case query(
            db,
            """
@@ -807,11 +810,11 @@ defmodule Coflux.Orchestration.Store do
            FROM steps AS s
            INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id
-           WHERE s.cache_key = ?1 AND (r.type IS NULL OR r.type = 1)
+           WHERE s.cache_key = ?1 AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?2))
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           {cache_key}
+           {cache_key, recorded_after}
          ) do
       {:ok, [{execution_id}]} ->
         {:ok, execution_id}

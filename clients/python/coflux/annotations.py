@@ -1,5 +1,6 @@
 import functools
 import typing as t
+import datetime as dt
 
 from . import context, future
 
@@ -14,11 +15,12 @@ def _decorate(
     *,
     repository: str | None = None,
     name: str | None = None,
-    cache: bool | t.Callable[P, str] = False,
+    cache: bool | int | float | dt.timedelta = False,
+    cache_key: t.Callable[P, str] | None = None,
     cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool | t.Callable[P, str] = False,
-    delay: int = 0,
+    delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     def decorator(fn: t.Callable[P, T]) -> t.Callable[P, future.Future[T]]:
@@ -35,6 +37,7 @@ def _decorate(
                     name_,
                     args,
                     cache=cache,
+                    cache_key=cache_key,
                     cache_namespace=cache_namespace,
                     retries=retries,
                     defer=defer,
@@ -67,17 +70,19 @@ def _decorate(
 def task(
     *,
     name: str | None = None,
-    cache: bool | t.Callable[P, str] = False,
+    cache: bool | int | float | dt.timedelta = False,
+    cache_key: t.Callable[P, str] | None = None,
     cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool | t.Callable[P, str] = False,
-    delay: int = 0,
+    delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     return _decorate(
         "task",
         name=name,
         cache=cache,
+        cache_key=cache_key,
         cache_namespace=cache_namespace,
         retries=retries,
         defer=defer,
@@ -89,16 +94,18 @@ def task(
 def workflow(
     *,
     name: str | None = None,
-    cache: bool | t.Callable[P, str] = False,
+    cache: bool | int | float | dt.timedelta = False,
+    cache_key: t.Callable[P, str] | None = None,
     cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool | t.Callable[P, str] = False,
-    delay: int = 0,
+    delay: int | float | dt.timedelta = 0,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     return _decorate(
         "workflow",
         name=name,
         cache=cache,
+        cache_key=cache_key,
         cache_namespace=cache_namespace,
         retries=retries,
         defer=defer,
@@ -110,17 +117,19 @@ def stub(
     repository: str,
     *,
     name: str | None = None,
-    cache: bool | t.Callable[P, str] = False,
+    cache: bool | int | float | dt.timedelta = False,
+    cache_key: t.Callable[P, str] | None = None,
     cache_namespace: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool | t.Callable[P, str] = False,
-    delay: int = 0,
+    delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
 ) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
     return _decorate(
         repository=repository,
         name=name,
         cache=cache,
+        cache_key=cache_key,
         cache_namespace=cache_namespace,
         retries=retries,
         defer=defer,
