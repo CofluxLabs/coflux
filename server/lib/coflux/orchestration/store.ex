@@ -792,7 +792,7 @@ defmodule Coflux.Orchestration.Store do
            FROM steps AS s
            INNER JOIN attempts AS a ON a.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = a.execution_id
-           WHERE s.run_id = ?1 AND s.memo_key = ?2 AND a.type = 0 AND (r.type IS NULL OR r.type IN (1, 2, 3))
+           WHERE s.run_id = ?1 AND s.memo_key = ?2 AND a.type = 0 AND (r.type IS NULL OR r.type = 1)
            ORDER BY a.created_at DESC
            LIMIT 1
            """,
@@ -814,7 +814,7 @@ defmodule Coflux.Orchestration.Store do
            FROM steps AS s
            INNER JOIN attempts AS a ON a.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = a.execution_id
-           WHERE s.cache_key = ?1 AND a.type = 0 AND (r.type IS NULL OR r.type IN (1, 2, 3))
+           WHERE s.cache_key = ?1 AND a.type = 0 AND (r.type IS NULL OR r.type = 1)
            ORDER BY a.created_at DESC
            LIMIT 1
            """,
