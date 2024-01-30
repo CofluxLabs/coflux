@@ -1,5 +1,5 @@
 defmodule Coflux.Handlers.Agent do
-  alias Coflux.{Orchestration, Logging, Projects}
+  alias Coflux.{Orchestration, Observation, Projects}
 
   def init(req, _opts) do
     qs = :cowboy_req.parse_qs(req)
@@ -225,7 +225,7 @@ defmodule Coflux.Handlers.Agent do
           messages
           |> Enum.group_by(&Map.fetch!(state.executions, elem(&1, 0)))
           |> Enum.each(fn {run_id, messages} ->
-            Logging.write(state.project_id, state.environment, run_id, messages)
+            Observation.write(state.project_id, state.environment, run_id, messages)
           end)
 
           {[], state}

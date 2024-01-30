@@ -1,7 +1,7 @@
 defmodule Coflux.Application do
   use Application
 
-  alias Coflux.{Projects, Orchestration, Logging, Topics}
+  alias Coflux.{Projects, Orchestration, Observation, Topics}
 
   @mix_env Mix.env()
 
@@ -13,7 +13,7 @@ defmodule Coflux.Application do
       [
         {Projects, name: Coflux.ProjectsServer},
         Orchestration.Supervisor,
-        Logging.Supervisor,
+        Observation.Supervisor,
         {Topical, name: Coflux.TopicalRegistry, topics: topics()},
         {Coflux.Web, port: port},
         is_env(:dev) && {Task, &build_assets/0}

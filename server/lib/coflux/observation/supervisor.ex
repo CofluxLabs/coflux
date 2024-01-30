@@ -1,5 +1,5 @@
-defmodule Coflux.Logging.Supervisor do
-  alias Coflux.Logging.Server
+defmodule Coflux.Observation.Supervisor do
+  alias Coflux.Observation.Server
 
   @registry __MODULE__.Registry
   @supervisor __MODULE__.Supervisor
@@ -24,8 +24,8 @@ defmodule Coflux.Logging.Supervisor do
     Supervisor.start_link(children, strategy: :one_for_all)
   end
 
-  def get_server(project_id, environment, run_id) do
-    key = {project_id, environment, run_id}
+  def get_server(project_id, environment) do
+    key = {project_id, environment}
 
     case Registry.lookup(@registry, key) do
       [{pid, _}] ->
@@ -37,8 +37,7 @@ defmodule Coflux.Logging.Supervisor do
            id: Server,
            name: {:via, Registry, {@registry, key}},
            project_id: project_id,
-           environment: environment,
-           run_id: run_id}
+           environment: environment}
 
         case DynamicSupervisor.start_child(@supervisor, spec) do
           {:ok, pid} ->
