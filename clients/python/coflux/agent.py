@@ -113,8 +113,8 @@ class Agent:
                 async with websockets.connect(url) as websocket:
                     print("Connected.")
                     coros = [
-                        self._connection.run(websocket),
-                        self._execution_manager.run(),
+                        asyncio.create_task(self._connection.run(websocket)),
+                        asyncio.create_task(self._execution_manager.run()),
                     ]
                     done, pending = await asyncio.wait(
                         coros, return_when=asyncio.FIRST_COMPLETED

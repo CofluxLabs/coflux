@@ -31,7 +31,10 @@ class Connection:
         await self._enqueue(request, params, id)
 
     async def run(self, websocket) -> None:
-        coros = [self._receive(websocket), self._send(websocket)]
+        coros = [
+            asyncio.create_task(self._receive(websocket)),
+            asyncio.create_task(self._send(websocket)),
+        ]
         done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
