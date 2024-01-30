@@ -139,7 +139,9 @@ defmodule Coflux.Projects do
 
   defp save_projects(state) do
     content = Jason.encode!(state.projects)
-    File.write!(get_path(), content)
+    path = get_path()
+    :ok = File.mkdir_p!(Path.dirname(path))
+    File.write!(path, content)
   end
 
   def generate_id(state, length \\ 5) do

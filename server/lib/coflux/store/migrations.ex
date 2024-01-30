@@ -1,10 +1,14 @@
-defmodule Coflux.Orchestration.Store.Migrations do
+defmodule Coflux.Store.Migrations do
   alias Exqlite.Sqlite3
 
   @otp_app Mix.Project.config()[:app]
 
-  def run(db) do
-    migrations_dir = Application.app_dir(@otp_app, "priv/migrations")
+  def run(db, name) do
+    migrations_dir =
+      @otp_app
+      |> Application.app_dir("priv/migrations")
+      |> Path.join(name)
+
     setup_migrations_table(db)
 
     migrations_dir

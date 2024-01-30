@@ -1,4 +1,4 @@
-defmodule Coflux.Orchestration.Store.Models do
+defmodule Coflux.Orchestration.Models do
   defmodule Run do
     def prepare(fields) do
       Keyword.update!(fields, :recurrent, &(&1 > 0))

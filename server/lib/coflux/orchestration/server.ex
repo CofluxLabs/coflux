@@ -1,8 +1,9 @@
 defmodule Coflux.Orchestration.Server do
   use GenServer, restart: :transient
 
-  alias Coflux.Orchestration.Store
+  alias Coflux.Store
   alias Coflux.MapUtils
+  alias Coflux.Orchestration.{Sessions, Runs, Results}
 
   @session_timeout_ms 5_000
   @recurrent_rate_limit_ms 5_000
@@ -45,7 +46,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def init({project_id, environment}) do
-    case Store.open(project_id, environment) do
+    case Store.open(project_id, environment, "orchestration") do
       {:ok, db} ->
         state = %State{
           project_id: project_id,
@@ -60,7 +61,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_continue(:abandon_pending, state) do
-    {:ok, pending} = Store.get_pending_assignments(state.db)
+    {:ok, pending} = Runs.get_pending_assignments(state.db)
 
     state =
       Enum.reduce(pending, state, fn {execution_id}, state ->
@@ -117,7 +118,7 @@ defmodule Coflux.Orchestration.Server do
               |> Map.new(fn execution_id ->
                 # TODO: more efficient way to load run IDs?
                 {:ok, external_run_id} =
-                  Store.get_external_run_id_for_execution(state.db, execution_id)
+                  Runs.get_external_run_id_for_execution(state.db, execution_id)
 
                 {execution_id, external_run_id}
               end)
@@ -130,7 +131,7 @@ defmodule Coflux.Orchestration.Server do
             {:error, :no_session}
         end
       else
-        case Store.start_session(state.db) do
+        case Sessions.start_session(state.db) do
           {:ok, session_id, external_id} ->
             ref = Process.monitor(pid)
 
@@ -164,9 +165,9 @@ defmodule Coflux.Orchestration.Server do
   def handle_call({:register_targets, external_session_id, repository, targets}, _from, state) do
     session_id = Map.fetch!(state.session_ids, external_session_id)
 
-    case Store.get_or_create_manifest(state.db, repository, targets) do
+    case Sessions.get_or_create_manifest(state.db, repository, targets) do
       {:ok, manifest_id} ->
-        :ok = Store.record_session_manifest(state.db, session_id, manifest_id)
+        :ok = Sessions.record_session_manifest(state.db, session_id, manifest_id)
 
         state =
           state
@@ -211,7 +212,7 @@ defmodule Coflux.Orchestration.Server do
             end
 
           parent_id ->
-            {:ok, step} = Store.get_step_for_execution(state.db, parent_id)
+            {:ok, step} = Runs.get_step_for_execution(state.db, parent_id)
 
             case target.type do
               :workflow ->
@@ -250,12 +251,12 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_call({:cancel_run, external_run_id}, _from, state) do
     # TODO: use one query to get all execution ids?
-    case Store.get_run_by_external_id(state.db, external_run_id) do
+    case Runs.get_run_by_external_id(state.db, external_run_id) do
       {:ok, nil} ->
         {:reply, {:error, :not_found}, state}
 
       {:ok, run} ->
-        {:ok, executions} = Store.get_run_executions(state.db, run.id)
+        {:ok, executions} = Runs.get_run_executions(state.db, run.id)
 
         state =
           Enum.reduce(executions, state, fn {execution_id, repository, assigned_at, completed_at},
@@ -290,7 +291,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:rerun_step, external_step_id}, _from, state) do
-    {:ok, step} = Store.get_step_by_external_id(state.db, external_step_id)
+    {:ok, step} = Runs.get_step_by_external_id(state.db, external_step_id)
     # TODO: abort/cancel any running/scheduled retry? (and reference this retry?)
     {:ok, execution_id, attempt, state} = rerun_step(state, step)
     state = flush_notifications(state)
@@ -315,7 +316,7 @@ defmodule Coflux.Orchestration.Server do
       session.executing
       |> MapSet.difference(execution_ids)
       |> Enum.reduce(state, fn execution_id, state ->
-        case Store.has_result?(state.db, execution_id) do
+        case Results.has_result?(state.db, execution_id) do
           {:ok, false} ->
             {:ok, state} = record_result(state, execution_id, :abandoned)
             state
@@ -331,7 +332,7 @@ defmodule Coflux.Orchestration.Server do
       |> MapSet.difference(session.starting)
       |> MapSet.difference(session.executing)
       |> Enum.reduce(state, fn execution_id, state ->
-        case Store.has_result?(state.db, execution_id) do
+        case Results.has_result?(state.db, execution_id) do
           {:ok, false} ->
             state
 
@@ -340,7 +341,7 @@ defmodule Coflux.Orchestration.Server do
         end
       end)
 
-    case Store.record_hearbeats(state.db, executions) do
+    case Runs.record_hearbeats(state.db, executions) do
       {:ok, _created_at} ->
         state = put_in(state.sessions[session_id].executing, execution_ids)
         {:reply, :ok, state}
@@ -371,7 +372,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:record_checkpoint, execution_id, arguments}, _from, state) do
-    case Store.record_checkpoint(state.db, execution_id, arguments) do
+    case Results.record_checkpoint(state.db, execution_id, arguments) do
       {:ok, _checkpoint_id, _attempt, _created_at} ->
         {:reply, :ok, state}
     end
@@ -388,10 +389,10 @@ defmodule Coflux.Orchestration.Server do
   def handle_call({:get_result, execution_id, from_execution_id, pid}, _from, state) do
     state =
       if from_execution_id do
-        {:ok, id} = Store.record_dependency(state.db, from_execution_id, execution_id)
+        {:ok, id} = Runs.record_dependency(state.db, from_execution_id, execution_id)
 
         if id do
-          {:ok, step} = Store.get_step_for_execution(state.db, from_execution_id)
+          {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
 
           # TODO: only resolve if there are listeners to notify
           dependency = resolve_execution(state.db, execution_id)
@@ -432,7 +433,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:subscribe_repositories, pid}, _from, state) do
-    {:ok, targets} = Store.get_latest_targets(state.db)
+    {:ok, targets} = Sessions.get_latest_targets(state.db)
 
     executing =
       state.sessions
@@ -441,7 +442,7 @@ defmodule Coflux.Orchestration.Server do
         executing |> MapSet.union(session.executing) |> MapSet.union(session.starting)
       end)
 
-    {:ok, executions} = Store.get_unassigned_executions(state.db)
+    {:ok, executions} = Runs.get_unassigned_executions(state.db)
     # TODO: get/include assigned (pending) executions
 
     executions =
@@ -465,7 +466,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:subscribe_repository, repository, pid}, _from, state) do
-    {:ok, executions} = Store.get_repository_executions(state.db, repository)
+    {:ok, executions} = Runs.get_repository_executions(state.db, repository)
     {:ok, ref, state} = add_listener(state, {:repository, repository}, pid)
     {:reply, {:ok, executions, ref}, state}
   end
@@ -485,7 +486,7 @@ defmodule Coflux.Orchestration.Server do
     target = get_target(state.db, repository, target_name)
 
     if target && target.type in [:workflow, :sensor] do
-      {:ok, runs} = Store.get_target_runs(state.db, repository, target_name)
+      {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name)
       {:ok, ref, state} = add_listener(state, {:target, repository, target_name}, pid)
       {:reply, {:ok, target, runs, ref}, state}
     else
@@ -494,7 +495,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:subscribe_run, external_run_id, pid}, _from, state) do
-    case Store.get_run_by_external_id(state.db, external_run_id) do
+    case Runs.get_run_by_external_id(state.db, external_run_id) do
       {:ok, nil} ->
         {:reply, {:error, :not_found}, state}
 
@@ -504,13 +505,13 @@ defmodule Coflux.Orchestration.Server do
             resolve_execution(state.db, run.parent_id)
           end
 
-        {:ok, steps} = Store.get_run_steps(state.db, run.id)
+        {:ok, steps} = Runs.get_run_steps(state.db, run.id)
 
         steps =
           Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, memo_key,
                              created_at} ->
-            {:ok, executions} = Store.get_step_executions(state.db, step_id)
-            {:ok, arguments} = Store.get_step_arguments(state.db, step_id, true)
+            {:ok, executions} = Runs.get_step_executions(state.db, step_id)
+            {:ok, arguments} = Runs.get_step_arguments(state.db, step_id, true)
 
             arguments = Enum.map(arguments, &build_value(&1, state))
 
@@ -526,7 +527,7 @@ defmodule Coflux.Orchestration.Server do
                  Map.new(executions, fn {execution_id, attempt, execute_after, created_at,
                                          _session_id, assigned_at} ->
                    {:ok, dependencies} =
-                     Store.get_execution_dependencies(state.db, execution_id)
+                     Runs.get_execution_dependencies(state.db, execution_id)
 
                    # TODO: batch? get `get_execution_dependencies` to resolve?
                    dependencies =
@@ -535,7 +536,7 @@ defmodule Coflux.Orchestration.Server do
                      end)
 
                    {result, completed_at} =
-                     case Store.get_result(state.db, execution_id, true) do
+                     case Results.get_result(state.db, execution_id, true) do
                        {:ok, {result, completed_at}} ->
                          {result, completed_at}
 
@@ -546,7 +547,7 @@ defmodule Coflux.Orchestration.Server do
                    result = build_result(result, state)
 
                    {:ok, children} =
-                     Store.get_execution_children(state.db, execution_id)
+                     Runs.get_execution_children(state.db, execution_id)
 
                    {attempt,
                     %{
@@ -616,7 +617,7 @@ defmodule Coflux.Orchestration.Server do
         state
       end
 
-    {:ok, executions} = Store.get_unassigned_executions(state.db)
+    {:ok, executions} = Runs.get_unassigned_executions(state.db)
     now = System.os_time(:millisecond)
 
     {executions_due, executions_future, executions_defer} =
@@ -815,9 +816,9 @@ defmodule Coflux.Orchestration.Server do
 
   defp rerun_step(state, step, execute_after \\ nil) do
     # TODO: only get run if needed for notify?
-    {:ok, run} = Store.get_run_by_id(state.db, step.run_id)
+    {:ok, run} = Runs.get_run_by_id(state.db, step.run_id)
 
-    case Store.rerun_step(state.db, step.id, execute_after) do
+    case Runs.rerun_step(state.db, step.id, execute_after) do
       {:ok, execution_id, attempt, created_at} ->
         state =
           notify_listeners(
@@ -855,7 +856,7 @@ defmodule Coflux.Orchestration.Server do
 
   defp resolve_execution(db, execution_id) do
     {:ok, {external_run_id, external_step_id, step_attempt, repository, target}} =
-      Store.get_run_by_execution(db, execution_id)
+      Runs.get_run_by_execution(db, execution_id)
 
     %{
       run_id: external_run_id,
@@ -899,7 +900,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp record_and_notify_result(state, execution_id, result, run_id, repository) do
-    case Store.record_result(state.db, execution_id, result) do
+    case Results.record_result(state.db, execution_id, result) do
       {:ok, created_at} ->
         state = notify_waiting(state, execution_id)
         result = build_result(result, state)
@@ -923,11 +924,11 @@ defmodule Coflux.Orchestration.Server do
   defp record_result(state, execution_id, result) do
     # TODO: check whether result is already recorded (if so, don't re-run, etc)
 
-    {:ok, step} = Store.get_step_for_execution(state.db, execution_id)
+    {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
 
     {retry_id, state} =
       if result_retryable?(result) && step.retry_count > 0 do
-        {:ok, executions} = Store.get_step_executions(state.db, step.id)
+        {:ok, executions} = Runs.get_step_executions(state.db, step.id)
 
         attempts = Enum.count(executions)
 
@@ -946,10 +947,10 @@ defmodule Coflux.Orchestration.Server do
           {nil, state}
         end
       else
-        {:ok, run} = Store.get_run_by_id(state.db, step.run_id)
+        {:ok, run} = Runs.get_run_by_id(state.db, step.run_id)
 
         if run.recurrent do
-          {:ok, executions} = Store.get_step_executions(state.db, step.id)
+          {:ok, executions} = Runs.get_step_executions(state.db, step.id)
 
           if Enum.all?(executions, &elem(&1, 5)) do
             now = System.os_time(:millisecond)
@@ -997,7 +998,7 @@ defmodule Coflux.Orchestration.Server do
 
   defp resolve_result(execution_id, db) do
     # TODO: check execution exists?
-    case Store.get_result(db, execution_id) do
+    case Results.get_result(db, execution_id) do
       {:ok, nil} ->
         {:pending, execution_id}
 
@@ -1103,7 +1104,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp start_run(state, repository, target_name, arguments, opts, parent \\ nil) do
-    case Store.start_run(state.db, repository, target_name, arguments, opts) do
+    case Runs.start_run(state.db, repository, target_name, arguments, opts) do
       {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, attempt, result,
        created_at, child_added} ->
         state =
@@ -1156,9 +1157,9 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp schedule_step(state, run_id, parent_id, repository, target_name, arguments, opts) do
-    {:ok, run} = Store.get_run_by_id(state.db, run_id)
+    {:ok, run} = Runs.get_run_by_id(state.db, run_id)
 
-    case Store.schedule_step(
+    case Runs.schedule_step(
            state.db,
            run_id,
            parent_id,
@@ -1249,7 +1250,7 @@ defmodule Coflux.Orchestration.Server do
 
   defp get_target(db, repository, target_name) do
     # TODO: just query specific target
-    {:ok, targets} = Store.get_latest_targets(db)
+    {:ok, targets} = Sessions.get_latest_targets(db)
     targets |> Map.get(repository, %{}) |> Map.get(target_name)
   end
 
@@ -1276,15 +1277,15 @@ defmodule Coflux.Orchestration.Server do
       session_id = Enum.random(session_ids)
 
       {:ok, arguments} =
-        case Store.get_latest_checkpoint(state.db, step_id) do
+        case Results.get_latest_checkpoint(state.db, step_id) do
           {:ok, nil} ->
-            Store.get_step_arguments(state.db, step_id)
+            Runs.get_step_arguments(state.db, step_id)
 
           {:ok, {checkpoint_id, _, _, _}} ->
-            Store.get_checkpoint_arguments(state.db, checkpoint_id)
+            Results.get_checkpoint_arguments(state.db, checkpoint_id)
         end
 
-      {:ok, assigned_at} = Store.assign_execution(state.db, execution_id, session_id)
+      {:ok, assigned_at} = Runs.assign_execution(state.db, execution_id, session_id)
 
       state =
         state
