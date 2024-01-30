@@ -21,13 +21,13 @@ defmodule Coflux.Topics.Repository do
 
     value =
       Map.new(executions, fn {execution_id, target_name, external_run_id, external_step_id,
-                              sequence, execute_after, created_at, assigned_at} ->
+                              attempt, execute_after, created_at, assigned_at} ->
         {Integer.to_string(execution_id),
          %{
            target: target_name,
            runId: external_run_id,
            stepId: external_step_id,
-           sequence: sequence,
+           attempt: attempt,
            executeAfter: execute_after,
            createdAt: created_at,
            assignedAt: assigned_at
@@ -46,14 +46,14 @@ defmodule Coflux.Topics.Repository do
 
   defp process_notification(
          topic,
-         {:scheduled, execution_id, target_name, external_run_id, external_step_id, sequence,
+         {:scheduled, execution_id, target_name, external_run_id, external_step_id, attempt,
           execute_after, created_at}
        ) do
     Topic.set(topic, [Integer.to_string(execution_id)], %{
       target: target_name,
       runId: external_run_id,
       stepId: external_step_id,
-      sequence: sequence,
+      attempt: attempt,
       executeAfter: execute_after,
       createdAt: created_at,
       assignedAt: nil

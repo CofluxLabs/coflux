@@ -38,12 +38,6 @@ CREATE TABLE parameters (
   FOREIGN KEY (target_id) REFERENCES targets ON DELETE CASCADE
 );
 
-CREATE TABLE executions (
-  id INTEGER PRIMARY KEY,
-  execute_after INTEGER,
-  created_at INTEGER NOT NULL
-);
-
 CREATE TABLE runs (
   id INTEGER PRIMARY KEY,
   external_id TEXT NOT NULL UNIQUE,
@@ -58,7 +52,7 @@ CREATE TABLE steps (
   id INTEGER PRIMARY KEY,
   external_id TEXT NOT NULL UNIQUE,
   run_id INTEGER NOT NULL,
-  type INTEGER NOT NULL,
+  parent_id INTEGER, -- TODO: remove?
   repository TEXT NOT NULL,
   target TEXT NOT NULL,
   priority INTEGER NOT NULL, -- TODO: move to executions?
@@ -69,10 +63,11 @@ CREATE TABLE steps (
   retry_delay_min INTEGER NOT NULL,
   retry_delay_max INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE
+  FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX steps_initial_step ON steps (run_id) WHERE type = 0;
+CREATE UNIQUE INDEX steps_initial_step ON steps (run_id) WHERE parent_id IS NULL;
 CREATE INDEX steps_cache_key ON steps (cache_key);
 
 CREATE TABLE step_arguments (
@@ -84,20 +79,17 @@ CREATE TABLE step_arguments (
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
 );
 
-CREATE TABLE attempts (
+CREATE TABLE executions (
+  id INTEGER PRIMARY KEY,
   step_id INTEGER NOT NULL,
-  sequence INTEGER NOT NULL,
-  type INTEGER NOT NULL,
-  execution_id INTEGER NOT NULL,
+  attempt INTEGER NOT NULL,
+  execute_after INTEGER,
   created_at INTEGER NOT NULL,
-  PRIMARY KEY (step_id, sequence),
-  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  UNIQUE (step_id, attempt),
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX attempts_execution_id ON attempts (execution_id) WHERE type = 0;
-
--- TODO: add 'type' (e.g., 'regular', cached, memoised)
+-- TODO: add 'type' (e.g., 'regular', memoised)
 CREATE TABLE children (
   parent_id INTEGER NOT NULL,
   child_id INTEGER NOT NULL,
@@ -214,6 +206,7 @@ CREATE TABLE results (
       WHEN 2 THEN NOT (error_id OR value_id)
       WHEN 3 THEN NOT (error_id OR successor_id OR value_id)
       WHEN 4 THEN successor_id AND NOT (error_id OR value_id)
+      WHEN 5 THEN successor_id AND NOT (error_id OR value_id)
       ELSE FALSE
     END
   )

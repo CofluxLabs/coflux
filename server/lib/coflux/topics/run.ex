@@ -40,23 +40,21 @@ defmodule Coflux.Topics.Run do
     Topic.set(topic, [:steps, step_id], %{
       repository: repository,
       target: target,
-      isInitial: false,
       isMemoised: !is_nil(memo_key),
       createdAt: created_at,
       arguments: Enum.map(arguments, &build_value/1),
-      attempts: %{}
+      executions: %{}
     })
   end
 
   defp process_notification(
          topic,
-         {:attempt, step_id, sequence, execution_type, execution_id, created_at, execute_after}
+         {:execution, step_id, attempt, execution_id, created_at, execute_after}
        ) do
     Topic.set(
       topic,
-      [:steps, step_id, :attempts, Integer.to_string(sequence)],
+      [:steps, step_id, :executions, Integer.to_string(attempt)],
       %{
-        isCached: execution_type == 1,
         executionId: Integer.to_string(execution_id),
         createdAt: created_at,
         executeAfter: execute_after,
@@ -72,7 +70,7 @@ defmodule Coflux.Topics.Run do
 
   defp process_notification(topic, {:assigned, assigned}) do
     Enum.reduce(assigned, topic, fn {execution_id, assigned_at}, topic ->
-      update_attempt(topic, execution_id, fn topic, base_path ->
+      update_execution(topic, execution_id, fn topic, base_path ->
         Topic.set(topic, base_path ++ [:assignedAt], assigned_at)
       end)
     end)
@@ -81,7 +79,7 @@ defmodule Coflux.Topics.Run do
   defp process_notification(topic, {:dependency, execution_id, dependency_id, dependency}) do
     dependency = build_execution(dependency)
 
-    update_attempt(
+    update_execution(
       topic,
       execution_id,
       fn topic, base_path ->
@@ -97,7 +95,7 @@ defmodule Coflux.Topics.Run do
   defp process_notification(topic, {:child, parent_id, child}) do
     value = build_child(child, topic.state.external_run_id)
 
-    update_attempt(topic, parent_id, fn topic, base_path ->
+    update_execution(topic, parent_id, fn topic, base_path ->
       Topic.insert(topic, base_path ++ [:children], value)
     end)
   end
@@ -105,7 +103,7 @@ defmodule Coflux.Topics.Run do
   defp process_notification(topic, {:result, execution_id, result, created_at}) do
     result = build_result(result)
 
-    update_attempt(topic, execution_id, fn topic, base_path ->
+    update_execution(topic, execution_id, fn topic, base_path ->
       topic
       |> Topic.set(base_path ++ [:result], result)
       |> Topic.set(base_path ++ [:completedAt], created_at)
@@ -123,15 +121,14 @@ defmodule Coflux.Topics.Run do
            %{
              repository: step.repository,
              target: step.target,
-             isInitial: step.type == 0,
+             parentId: if(step.parent_id, do: Integer.to_string(step.parent_id)),
              isMemoised: !is_nil(step.memo_key),
              createdAt: step.created_at,
              arguments: Enum.map(step.arguments, &build_value/1),
-             attempts:
-               Map.new(step.attempts, fn {sequence, execution} ->
-                 {Integer.to_string(sequence),
+             executions:
+               Map.new(step.executions, fn {attempt, execution} ->
+                 {Integer.to_string(attempt),
                   %{
-                    isCached: execution.type == 1,
                     executionId: Integer.to_string(execution.execution_id),
                     createdAt: execution.created_at,
                     executeAfter: execution.execute_after,
@@ -154,7 +151,7 @@ defmodule Coflux.Topics.Run do
     %{
       runId: execution.run_id,
       stepId: execution.step_id,
-      sequence: execution.sequence,
+      attempt: execution.attempt,
       repository: execution.repository,
       target: execution.target
     }
@@ -224,6 +221,9 @@ defmodule Coflux.Topics.Run do
       {:deferred, execution_id, execution} ->
         %{type: "deferred", executionId: execution_id, execution: build_execution(execution)}
 
+      {:cached, execution_id, execution} ->
+        %{type: "cached", executionId: execution_id, execution: build_execution(execution)}
+
       nil ->
         nil
     end
@@ -247,13 +247,13 @@ defmodule Coflux.Topics.Run do
     end
   end
 
-  defp update_attempt(topic, execution_id, fun) do
+  defp update_execution(topic, execution_id, fun) do
     execution_id_s = Integer.to_string(execution_id)
 
     Enum.reduce(topic.value.steps, topic, fn {step_id, step}, topic ->
-      Enum.reduce(step.attempts, topic, fn {sequence, attempt}, topic ->
-        if attempt.executionId == execution_id_s do
-          fun.(topic, [:steps, step_id, :attempts, sequence])
+      Enum.reduce(step.executions, topic, fn {attempt, execution}, topic ->
+        if execution.executionId == execution_id_s do
+          fun.(topic, [:steps, step_id, :executions, attempt])
         else
           topic
         end

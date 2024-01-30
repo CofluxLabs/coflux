@@ -15,24 +15,22 @@ type StepIdentifierProps = {
 
 function StepIdentifier({ runId, run, executionId }: StepIdentifierProps) {
   const stepId = Object.keys(run.steps).find((id) =>
-    Object.values(run.steps[id].attempts).some(
-      (a) => !a.isCached && a.executionId == executionId,
+    Object.values(run.steps[id].executions).some(
+      (e) => e.executionId == executionId,
     ),
   );
   const step = stepId && run.steps[stepId];
-  const attemptNumber =
+  const attempt =
     step &&
-    Object.keys(step.attempts).find(
-      (n) =>
-        !step.attempts[n].isCached &&
-        step.attempts[n].executionId == executionId,
+    Object.keys(step.executions).find(
+      (n) => step.executions[n].executionId == executionId,
     );
-  if (step && attemptNumber) {
+  if (step && attempt) {
     return (
       <StepLink
         runId={runId}
         stepId={stepId}
-        attemptNumber={parseInt(attemptNumber, 10)}
+        attempt={parseInt(attempt, 10)}
         className="block truncate w-40 max-w-full rounded text-sm ring-offset-1"
         activeClassName="ring-2 ring-cyan-400"
         hoveredClassName="ring-2 ring-slate-300"

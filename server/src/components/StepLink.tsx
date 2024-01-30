@@ -13,7 +13,7 @@ import { useHoverContext } from "./HoverContext";
 type Props = {
   runId: string;
   stepId: string;
-  attemptNumber?: number;
+  attempt?: number;
   className?: string;
   activeClassName?: string;
   hoveredClassName?: string;
@@ -23,7 +23,7 @@ type Props = {
 export default function StepLink({
   runId,
   stepId,
-  attemptNumber,
+  attempt,
   className,
   activeClassName,
   hoveredClassName,
@@ -34,16 +34,15 @@ export default function StepLink({
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
   const activeStepId = searchParams.get("step") || undefined;
-  const activeAttemptNumber = searchParams.has("attempt")
+  const activeAttempt = searchParams.has("attempt")
     ? parseInt(searchParams.get("attempt")!)
     : undefined;
   const { isHovered, setHovered } = useHoverContext();
   const isActive =
-    stepId == activeStepId &&
-    (!attemptNumber || activeAttemptNumber == attemptNumber);
+    stepId == activeStepId && (!attempt || activeAttempt == attempt);
   const handleMouseOver = useCallback(
-    () => setHovered(runId, stepId, attemptNumber),
-    [setHovered, runId, stepId, attemptNumber],
+    () => setHovered(runId, stepId, attempt),
+    [setHovered, runId, stepId, attempt],
   );
   const handleMouseOut = useCallback(() => setHovered(undefined), []);
   // TODO: better way to determine page
@@ -57,14 +56,14 @@ export default function StepLink({
         {
           environment: environmentName,
           step: isActive ? undefined : stepId,
-          attempt: isActive ? undefined : attemptNumber,
+          attempt: isActive ? undefined : attempt,
         },
       )}
       className={classNames(
         className,
         isActive
           ? activeClassName
-          : isHovered(runId, stepId, attemptNumber)
+          : isHovered(runId, stepId, attempt)
           ? hoveredClassName
           : undefined,
       )}

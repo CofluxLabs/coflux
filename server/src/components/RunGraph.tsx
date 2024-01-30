@@ -27,7 +27,7 @@ type Node =
       type: "step";
       step: models.Step;
       stepId: string;
-      attemptNumber: number;
+      attempt: number;
     }
   | {
       type: "parent";
@@ -42,21 +42,23 @@ type Node =
 function chooseStepAttempts(
   run: models.Run,
   activeStepId: string | undefined,
-  activeAttemptNumber: number | undefined,
+  activeAttempt: number | undefined,
 ) {
   const stepAttempts: Record<string, number | undefined> = {};
   if (activeStepId) {
-    stepAttempts[activeStepId] = activeAttemptNumber;
+    stepAttempts[activeStepId] = activeAttempt;
     const process = (stepId: string) => {
       Object.keys(run.steps).forEach((sId) => {
         if (!(sId in stepAttempts)) {
-          Object.entries(run.steps[sId].attempts).forEach(([sequence, a]) => {
-            if (a.children.includes(stepId)) {
-              // TODO: keep as string?
-              stepAttempts[sId] = parseInt(sequence, 10);
-              process(sId);
-            }
-          });
+          Object.entries(run.steps[sId].executions).forEach(
+            ([attempt, execution]) => {
+              if (execution.children.includes(stepId)) {
+                // TODO: keep as string?
+                stepAttempts[sId] = parseInt(attempt, 10);
+                process(sId);
+              }
+            },
+          );
         }
       });
     };
@@ -65,7 +67,7 @@ function chooseStepAttempts(
   return stepAttempts;
 }
 
-function stepAttemptNumber(
+function getStepAttempt(
   run: models.Run,
   stepAttempts: Record<string, number | undefined>,
   stepId: string,
@@ -73,7 +75,7 @@ function stepAttemptNumber(
   const step = run.steps[stepId];
   return (
     stepAttempts[stepId] ||
-    max(Object.keys(step.attempts).map((s) => parseInt(s, 10)))
+    max(Object.keys(step.executions).map((s) => parseInt(s, 10)))
   );
 }
 
@@ -81,14 +83,14 @@ function traverseRun(
   run: models.Run,
   stepAttempts: Record<string, number | undefined>,
   stepId: string,
-  callback: (stepId: string, attemptNumber: number) => void,
+  callback: (stepId: string, attempt: number) => void,
   seen: Record<string, true> = {},
 ) {
-  const attemptNumber = stepAttemptNumber(run, stepAttempts, stepId);
-  if (attemptNumber) {
-    callback(stepId, attemptNumber);
-    const attempt = run.steps[stepId].attempts[attemptNumber];
-    attempt?.children.forEach((child) => {
+  const attempt = getStepAttempt(run, stepAttempts, stepId);
+  if (attempt) {
+    callback(stepId, attempt);
+    const execution = run.steps[stepId].executions[attempt];
+    execution?.children.forEach((child) => {
       if (typeof child == "string" && !(child in seen)) {
         traverseRun(run, stepAttempts, child, callback, {
           ...seen,
@@ -103,19 +105,15 @@ function buildGraph(
   run: models.Run,
   runId: string,
   activeStepId: string | undefined,
-  activeAttemptNumber: number | undefined,
+  activeAttempt: number | undefined,
 ) {
   const g = new dagre.graphlib.Graph<Node>();
   g.setGraph({ rankdir: "LR", ranksep: 40, nodesep: 40 });
 
-  const stepAttempts = chooseStepAttempts(
-    run,
-    activeStepId,
-    activeAttemptNumber,
-  );
+  const stepAttempts = chooseStepAttempts(run, activeStepId, activeAttempt);
 
   const initialStepId = sortBy(
-    Object.keys(run.steps).filter((id) => run.steps[id].isInitial),
+    Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
     (stepId) => run.steps[stepId].createdAt,
   )[0];
 
@@ -135,8 +133,8 @@ function buildGraph(
     run,
     stepAttempts,
     initialStepId,
-    (stepId: string, attemptNumber: number) => {
-      visibleSteps[stepId] = attemptNumber;
+    (stepId: string, attempt: number) => {
+      visibleSteps[stepId] = attempt;
     },
   );
 
@@ -144,7 +142,7 @@ function buildGraph(
     run,
     stepAttempts,
     initialStepId,
-    (stepId: string, attemptNumber: number) => {
+    (stepId: string, attempt: number) => {
       const step = run.steps[stepId];
       g.setNode(stepId, {
         width: 160,
@@ -152,21 +150,23 @@ function buildGraph(
         type: "step",
         step,
         stepId,
-        attemptNumber,
+        attempt,
       });
-      const attempt = step.attempts[attemptNumber];
-      if (!attempt) {
+      const execution = step.executions[attempt];
+      if (!execution) {
         return;
       }
-      Object.entries(attempt.dependencies).forEach(
+      Object.entries(execution.dependencies).forEach(
         ([dependencyId, dependency]) => {
           if (dependency.runId == runId) {
             if (
-              !attempt.children.some(
+              !execution.children.some(
                 (c) =>
                   typeof c == "string" &&
-                  Object.values(run.steps[c].attempts).some(
-                    (a) => a.isCached && a.executionId == dependencyId,
+                  Object.values(run.steps[c].executions).some(
+                    (e) =>
+                      e.result?.type == "cached" &&
+                      e.executionId == dependencyId,
                   ),
               )
             ) {
@@ -177,26 +177,24 @@ function buildGraph(
           }
         },
       );
-      attempt.children.forEach((child) => {
+      execution.children.forEach((child) => {
         if (typeof child == "string") {
-          const childAttemptNumber = stepAttemptNumber(
-            run,
-            stepAttempts,
-            child,
-          );
-          const childAttempt =
-            childAttemptNumber && run.steps[child].attempts[childAttemptNumber];
-          if (childAttempt) {
-            if (childAttempt.isCached) {
-              const cachedExecutionId = childAttempt.executionId;
+          const childAttempt = getStepAttempt(run, stepAttempts, child);
+          const childExecution =
+            childAttempt && run.steps[child].executions[childAttempt];
+          if (childExecution) {
+            if (childExecution.result?.type == "cached") {
+              const cachedExecutionId = childExecution.executionId;
               const cachedStepId = Object.keys(run.steps).find(
                 (sId) =>
                   sId in visibleSteps &&
-                  Object.values(run.steps[sId].attempts).some(
-                    (a) => !a.isCached && a.executionId == cachedExecutionId,
+                  Object.values(run.steps[sId].executions).some(
+                    (e) =>
+                      e.result?.type != "cached" &&
+                      e.executionId == cachedExecutionId,
                   ),
               );
-              if (cachedExecutionId in attempt.dependencies) {
+              if (cachedExecutionId in execution.dependencies) {
                 g.setEdge(child, stepId, { type: "dependency" });
                 if (cachedStepId) {
                   g.setEdge(cachedStepId, child, { type: "transitive" });
@@ -208,7 +206,7 @@ function buildGraph(
                 }
               }
             } else if (
-              !Object.values(attempt.dependencies).some(
+              !Object.values(execution.dependencies).some(
                 (d) => d.stepId == child,
               )
             ) {
@@ -226,7 +224,7 @@ function buildGraph(
             runId: child.runId,
           });
           if (
-            Object.values(attempt.dependencies).some(
+            Object.values(execution.dependencies).some(
               (d) => d.runId == child.runId,
             )
           ) {
@@ -243,11 +241,11 @@ function buildGraph(
   return g;
 }
 
-function classNameForAttempt(attempt: models.Attempt) {
-  const result = attempt.result;
-  if (attempt.isCached || result?.type == "deferred") {
+function classNameForExecution(execution: models.Execution) {
+  const result = execution.result;
+  if (result?.type == "cached" || result?.type == "deferred") {
     return "border-slate-200 bg-slate-50";
-  } else if (!result && !attempt?.assignedAt) {
+  } else if (!result && !execution?.assignedAt) {
     return "border-blue-200 bg-blue-50";
   } else if (!result) {
     return "border-blue-400 bg-blue-100";
@@ -263,32 +261,28 @@ function classNameForAttempt(attempt: models.Attempt) {
 type StepNodeProps = {
   stepId: string;
   step: models.Step;
-  attemptNumber: number;
+  attempt: number;
   runId: string;
   isActive: boolean;
 };
 
-function StepNode({
-  stepId,
-  step,
-  attemptNumber,
-  runId,
-  isActive,
-}: StepNodeProps) {
-  const attempt = step.attempts[attemptNumber];
+function StepNode({ stepId, step, attempt, runId, isActive }: StepNodeProps) {
+  const execution = step.executions[attempt];
   const { isHovered } = useHoverContext();
-  const isDeferred = attempt?.isCached || attempt?.result?.type == "deferred";
+  const isDeferred =
+    execution?.result?.type == "cached" ||
+    execution?.result?.type == "deferred";
   return (
     <Fragment>
-      {Object.keys(step.attempts).length > 1 && (
+      {Object.keys(step.executions).length > 1 && (
         <div
           className={classNames(
             "absolute w-full h-full border border-slate-300 bg-white rounded ring-offset-2",
-            isActive || isHovered(runId, stepId, attemptNumber)
+            isActive || isHovered(runId, stepId, attempt)
               ? "-top-2 -right-2"
               : "-top-1 -right-1",
             isHovered(runId, stepId) &&
-              !isHovered(runId, stepId, attemptNumber) &&
+              !isHovered(runId, stepId, attempt) &&
               "ring-2 ring-slate-400",
           )}
         ></div>
@@ -296,10 +290,10 @@ function StepNode({
       <StepLink
         runId={runId}
         stepId={stepId}
-        attemptNumber={attemptNumber}
+        attempt={attempt}
         className={classNames(
           "absolute w-full h-full flex-1 flex gap-2 items-center border rounded px-2 py-1 ring-offset-2",
-          attempt && classNameForAttempt(attempt),
+          execution && classNameForExecution(execution),
         )}
         activeClassName="ring ring-cyan-400"
         hoveredClassName="ring ring-slate-400"
@@ -309,7 +303,7 @@ function StepNode({
             <span
               className={classNames(
                 "font-mono",
-                step.isInitial && "font-bold",
+                !step.parentId && "font-bold",
                 isDeferred && "text-slate-500",
               )}
             >
@@ -330,14 +324,11 @@ function StepNode({
             </span>
           )}
         </span>
-        {attempt &&
-          !attempt.isCached &&
-          !attempt.result &&
-          !attempt.assignedAt && (
-            <span>
-              <IconClock size={20} strokeWidth={1.5} />
-            </span>
-          )}
+        {execution && !execution.result && !execution.assignedAt && (
+          <span>
+            <IconClock size={20} strokeWidth={1.5} />
+          </span>
+        )}
       </StepLink>
     </Fragment>
   );
@@ -353,7 +344,7 @@ function ParentNode({ parent }: ParentNodeProps) {
       <StepLink
         runId={parent.runId}
         stepId={parent.stepId}
-        attemptNumber={parent.sequence}
+        attempt={parent.attempt}
         className="flex-1 w-full h-full flex gap-2 items-center px-2 py-1 border border-slate-300 rounded-full bg-white ring-offset-2"
         hoveredClassName="ring ring-slate-400"
       >
@@ -385,7 +376,7 @@ function ChildNode({ runId, child }: ChildNodeProps) {
     <StepLink
       runId={runId}
       stepId={child.stepId}
-      attemptNumber={1}
+      attempt={1}
       className="flex-1 flex w-full h-full gap-2 items-center border border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
       hoveredClassName="ring ring-slate-400"
     >
@@ -486,7 +477,7 @@ type Props = {
   width: number;
   height: number;
   activeStepId: string | undefined;
-  activeAttemptNumber: number | undefined;
+  activeAttempt: number | undefined;
   minimumMargin?: number;
 };
 
@@ -496,7 +487,7 @@ export default function RunGraph({
   width: containerWidth,
   height: containerHeight,
   activeStepId,
-  activeAttemptNumber,
+  activeAttempt,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [offsetOverride, setOffsetOverride] = useState<[number, number]>();
@@ -504,8 +495,8 @@ export default function RunGraph({
   const [zoomOverride, setZoomOverride] = useState<number>();
   const { isHovered } = useHoverContext();
   const graph = useMemo(
-    () => buildGraph(run, runId, activeStepId, activeAttemptNumber),
-    [run, activeStepId, activeAttemptNumber],
+    () => buildGraph(run, runId, activeStepId, activeAttempt),
+    [run, activeStepId, activeAttempt],
   );
   const graphWidth = graph.graph().width || 0;
   const graphHeight = graph.graph().height || 0;
@@ -638,7 +629,7 @@ export default function RunGraph({
                   <StepNode
                     stepId={node.stepId}
                     step={node.step}
-                    attemptNumber={node.attemptNumber}
+                    attempt={node.attempt}
                     runId={runId}
                     isActive={nodeId == activeStepId}
                   />

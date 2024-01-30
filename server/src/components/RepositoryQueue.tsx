@@ -64,7 +64,7 @@ export default function RepositoryQueue({
                           {
                             environment: environmentName,
                             step: execution.stepId,
-                            attempt: execution.sequence,
+                            attempt: execution.attempt,
                           },
                         )}
                       >

@@ -27,7 +27,7 @@ export type Repository = {
 export type Reference = {
   runId: string;
   stepId: string;
-  sequence: number;
+  attempt: number;
   repository: string;
   target: string;
 };
@@ -65,7 +65,8 @@ export type Result =
   | { type: "error"; error: Error; retryId: string | null }
   | { type: "abandoned"; retryId: string | null }
   | { type: "cancelled" }
-  | { type: "deferred"; executionId: string; execution: Reference };
+  | { type: "deferred"; executionId: string; execution: Reference }
+  | { type: "cached"; executionId: string; execution: Reference };
 
 export type Child = Pick<Target, "repository" | "target"> & {
   runId: string;
@@ -79,14 +80,13 @@ export type QueuedExecution = {
   target: string;
   runId: string;
   stepId: string;
-  sequence: number;
+  attempt: number;
   executeAfter: number | null;
   createdAt: number;
   assignedAt: number | null;
 };
 
-export type Attempt = {
-  isCached: boolean;
+export type Execution = {
   executionId: string;
   createdAt: number;
   executeAfter: number | null;
@@ -100,10 +100,11 @@ export type Attempt = {
 export type Step = {
   repository: string;
   target: string;
-  isInitial: boolean;
+  parentId: string | null;
   isMemoised: boolean;
   createdAt: number;
-  attempts: Record<string, Attempt>;
+  // TODO: index by execution id?
+  executions: Record<string, Execution>;
   arguments: Value[];
 };
 

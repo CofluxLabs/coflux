@@ -129,12 +129,11 @@ defmodule Coflux.Orchestration.Store do
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
-      {:ok, step_id, external_step_id, execution_id, sequence, execution_type, now, false,
-       child_added} =
+      {:ok, step_id, external_step_id, execution_id, attempt, now, false, result, child_added} =
         do_schedule_step(db, run_id, parent_id, repository, target, arguments, true, now, opts)
 
-      {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, sequence,
-       execution_type, now, child_added}
+      {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, attempt, result,
+       now, child_added}
     end)
   end
 
@@ -146,7 +145,7 @@ defmodule Coflux.Orchestration.Store do
         id,
         external_id,
         run_id,
-        type,
+        parent_id,
         repository,
         target,
         priority,
@@ -171,7 +170,7 @@ defmodule Coflux.Orchestration.Store do
         s.id,
         s.external_id,
         s.run_id,
-        s.type,
+        s.parent_id,
         s.repository,
         s.target,
         s.priority,
@@ -181,8 +180,8 @@ defmodule Coflux.Orchestration.Store do
         s.retry_delay_max,
         s.created_at
       FROM steps AS s
-      INNER JOIN attempts AS a ON a.step_id = s.id
-      WHERE a.execution_id = ?1 AND a.type = 0
+      INNER JOIN executions AS e ON e.step_id = s.id
+      WHERE e.id = ?1
       """,
       {execution_id},
       Models.Step
@@ -224,10 +223,10 @@ defmodule Coflux.Orchestration.Store do
         end
       end
 
-    {step_id, external_step_id, execution_id, sequence, execution_type, now, memoised} =
+    {step_id, external_step_id, execution_id, attempt, now, memoised, result} =
       case memoised_execution do
-        {step_id, external_step_id, execution_id, sequence, execution_type, now} ->
-          {step_id, external_step_id, execution_id, sequence, execution_type, now, true}
+        {step_id, external_step_id, execution_id, attempt, now} ->
+          {step_id, external_step_id, execution_id, attempt, now, true, false}
 
         nil ->
           cached_execution_id =
@@ -243,7 +242,7 @@ defmodule Coflux.Orchestration.Store do
             insert_step(
               db,
               run_id,
-              if(is_initial, do: 0, else: 1),
+              if(!is_initial, do: parent_id),
               repository,
               target,
               priority,
@@ -263,20 +262,19 @@ defmodule Coflux.Orchestration.Store do
             {:ok, _} = insert_step_argument(db, step_id, position, value_id)
           end)
 
-          sequence = 1
+          attempt = 1
 
-          {execution_id, execution_type} =
+          {:ok, execution_id} =
+            insert_execution(db, step_id, attempt, execute_after, now)
+
+          result =
             if cached_execution_id do
-              {cached_execution_id, 1}
-            else
-              {:ok, execution_id} = insert_execution(db, execute_after, now)
-              {execution_id, 0}
+              # TODO: delay if execute_after is set?
+              {:ok, _} = insert_result(db, execution_id, 5, nil, nil, cached_execution_id, now)
+              {:cached, cached_execution_id}
             end
 
-          {:ok, _} =
-            insert_attempt(db, step_id, sequence, execution_id, execution_type, now)
-
-          {step_id, external_step_id, execution_id, sequence, execution_type, now, false}
+          {step_id, external_step_id, execution_id, attempt, now, false, result}
       end
 
     child_added =
@@ -287,19 +285,16 @@ defmodule Coflux.Orchestration.Store do
         false
       end
 
-    {:ok, step_id, external_step_id, execution_id, sequence, execution_type, now, memoised,
-     child_added}
+    {:ok, step_id, external_step_id, execution_id, attempt, now, memoised, result, child_added}
   end
 
   def rerun_step(db, step_id, execute_after \\ nil) do
     with_transaction(db, fn ->
       now = current_timestamp()
       # TODO: cancel pending executions for step?
-      {:ok, sequence} = get_next_attempt_sequence(db, step_id)
-      {:ok, execution_id} = insert_execution(db, execute_after, now)
-      execution_type = 0
-      {:ok, _} = insert_attempt(db, step_id, sequence, execution_id, execution_type, now)
-      {:ok, execution_id, sequence, execution_type, now}
+      {:ok, attempt} = get_next_execution_attempt(db, step_id)
+      {:ok, execution_id} = insert_execution(db, step_id, attempt, execute_after, now)
+      {:ok, execution_id, attempt, now}
     end)
   end
 
@@ -370,9 +365,9 @@ defmodule Coflux.Orchestration.Store do
       """
       SELECT c.id, c.execution_id, c.sequence, c.created_at
       FROM checkpoints AS c
-      INNER JOIN attempts AS a ON a.execution_id = c.execution_id
-      WHERE a.step_id = ?1 AND a.type = 0
-      ORDER BY a.sequence DESC, c.sequence DESC
+      INNER JOIN executions AS e ON e.id = c.execution_id
+      WHERE e.step_id = ?1
+      ORDER BY e.attempt DESC, c.sequence DESC
       LIMIT 1
       """,
       {step_id}
@@ -492,6 +487,9 @@ defmodule Coflux.Orchestration.Store do
 
             {4, nil, nil, defer_id} ->
               {:deferred, defer_id}
+
+            {5, nil, nil, cached_id} ->
+              {:cached, cached_id}
           end
 
         {:ok, {result, created_at}}
@@ -516,12 +514,11 @@ defmodule Coflux.Orchestration.Store do
         e.execute_after,
         e.created_at
       FROM executions AS e
-      INNER JOIN attempts AS at ON at.execution_id = e.id
-      INNER JOIN steps AS s ON s.id = at.step_id
+      INNER JOIN steps AS s ON s.id = e.step_id
       INNER JOIN runs AS run ON run.id = s.run_id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN results AS r ON r.execution_id = e.id
-      WHERE at.type = 0 AND a.created_at IS NULL AND r.created_at IS NULL
+      WHERE a.created_at IS NULL AND r.created_at IS NULL
       ORDER BY e.execute_after, e.created_at, s.priority DESC
       """
     )
@@ -536,17 +533,16 @@ defmodule Coflux.Orchestration.Store do
         s.target,
         r.external_id,
         s.external_id,
-        at.sequence,
+        e.attempt,
         e.execute_after,
         e.created_at,
         a.created_at
       FROM executions AS e
-      INNER JOIN attempts AS at ON at.execution_id = e.id
-      INNER JOIN steps AS s ON s.id = at.step_id
+      INNER JOIN steps AS s ON s.id = e.step_id
       INNER JOIN runs AS r ON r.id = s.run_id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN results AS re ON re.execution_id = e.id
-      WHERE at.type = 0 AND s.repository = ?1 AND re.created_at IS NULL
+      WHERE s.repository = ?1 AND re.created_at IS NULL
       """,
       {repository}
     )
@@ -568,12 +564,12 @@ defmodule Coflux.Orchestration.Store do
     query(
       db,
       """
-      SELECT at.execution_id, s.repository, a.created_at, r.created_at
-      FROM attempts AS at
-      INNER JOIN steps AS s ON s.id = at.step_id
-      LEFT JOIN assignments AS a ON a.execution_id = at.execution_id
-      LEFT JOIN results AS r ON r.execution_id = at.execution_id
-      WHERE at.type = 0 AND s.run_id = ?1
+      SELECT e.id, s.repository, a.created_at, r.created_at
+      FROM executions AS e
+      INNER JOIN steps AS s ON s.id = e.step_id
+      LEFT JOIN assignments AS a ON a.execution_id = e.id
+      LEFT JOIN results AS r ON r.execution_id = e.id
+      WHERE s.run_id = ?1
       """,
       {run_id}
     )
@@ -645,9 +641,7 @@ defmodule Coflux.Orchestration.Store do
       SELECT DISTINCT r.external_id, r.created_at
       FROM runs as r
       INNER JOIN steps AS s ON s.run_id = r.id
-      WHERE s.repository = ?1
-        AND s.target = ?2
-        AND s.type = 0
+      WHERE s.repository = ?1 AND s.target = ?2
       ORDER BY r.created_at DESC
       LIMIT ?3
       """,
@@ -685,11 +679,11 @@ defmodule Coflux.Orchestration.Store do
     query_one(
       db,
       """
-      SELECT r.external_id, s.external_id, a.sequence, s.repository, s.target
-      FROM attempts AS a
-      INNER JOIN steps AS s ON s.id = a.step_id
+      SELECT r.external_id, s.external_id, e.attempt, s.repository, s.target
+      FROM executions AS e
+      INNER JOIN steps AS s ON s.id = e.step_id
       INNER JOIN runs AS r ON r.id = s.run_id
-      WHERE a.execution_id = ?1 AND a.type = 0
+      WHERE e.id = ?1
       """,
       {execution_id}
     )
@@ -700,10 +694,10 @@ defmodule Coflux.Orchestration.Store do
       db,
       """
       SELECT r.external_id
-      FROM attempts AS a
-      INNER JOIN steps AS s ON s.id = a.step_id
+      FROM executions AS e
+      INNER JOIN steps AS s ON s.id = e.step_id
       INNER JOIN runs AS r ON r.id = s.run_id
-      WHERE a.execution_id = ?1 AND a.type = 0
+      WHERE e.id = ?1
       """,
       {execution_id}
     )
@@ -713,7 +707,7 @@ defmodule Coflux.Orchestration.Store do
     query(
       db,
       """
-      SELECT id, external_id, type, repository, target, memo_key, created_at
+      SELECT id, external_id, parent_id, repository, target, memo_key, created_at
       FROM steps
       WHERE run_id = ?1
       """,
@@ -721,15 +715,14 @@ defmodule Coflux.Orchestration.Store do
     )
   end
 
-  def get_step_attempts(db, step_id) do
+  def get_step_executions(db, step_id) do
     query(
       db,
       """
-      SELECT e.id, at.sequence, at.type, e.execute_after, e.created_at, a.session_id, a.created_at
+      SELECT e.id, e.attempt, e.execute_after, e.created_at, a.session_id, a.created_at
       FROM executions AS e
-      INNER JOIN attempts AS at ON at.execution_id = e.id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
-      WHERE at.step_id = ?1
+      WHERE e.step_id = ?1
       """,
       {step_id}
     )
@@ -788,12 +781,12 @@ defmodule Coflux.Orchestration.Store do
     case query(
            db,
            """
-           SELECT s.id, s.external_id, a.execution_id, a.sequence, a.type, a.created_at
+           SELECT s.id, s.external_id, e.id, e.attempt, e.created_at
            FROM steps AS s
-           INNER JOIN attempts AS a ON a.step_id = s.id
-           LEFT JOIN results AS r ON r.execution_id = a.execution_id
-           WHERE s.run_id = ?1 AND s.memo_key = ?2 AND a.type = 0 AND (r.type IS NULL OR r.type = 1)
-           ORDER BY a.created_at DESC
+           INNER JOIN executions AS e ON e.step_id = s.id
+           LEFT JOIN results AS r ON r.execution_id = e.id
+           WHERE s.run_id = ?1 AND s.memo_key = ?2 AND (r.type IS NULL OR r.type = 1)
+           ORDER BY e.created_at DESC
            LIMIT 1
            """,
            {run_id, memo_key}
@@ -810,12 +803,12 @@ defmodule Coflux.Orchestration.Store do
     case query(
            db,
            """
-           SELECT a.execution_id
+           SELECT e.id
            FROM steps AS s
-           INNER JOIN attempts AS a ON a.step_id = s.id
-           LEFT JOIN results AS r ON r.execution_id = a.execution_id
-           WHERE s.cache_key = ?1 AND a.type = 0 AND (r.type IS NULL OR r.type = 1)
-           ORDER BY a.created_at DESC
+           INNER JOIN executions AS e ON e.step_id = s.id
+           LEFT JOIN results AS r ON r.execution_id = e.id
+           WHERE s.cache_key = ?1 AND (r.type IS NULL OR r.type = 1)
+           ORDER BY e.created_at DESC
            LIMIT 1
            """,
            {cache_key}
@@ -847,7 +840,7 @@ defmodule Coflux.Orchestration.Store do
   defp insert_step(
          db,
          run_id,
-         type,
+         parent_id,
          repository,
          target,
          priority,
@@ -864,7 +857,7 @@ defmodule Coflux.Orchestration.Store do
         case insert_one(db, :steps, %{
                external_id: external_id,
                run_id: run_id,
-               type: type,
+               parent_id: parent_id,
                repository: repository,
                target: target,
                priority: priority,
@@ -890,12 +883,12 @@ defmodule Coflux.Orchestration.Store do
     })
   end
 
-  defp get_next_attempt_sequence(db, step_id) do
+  defp get_next_execution_attempt(db, step_id) do
     case query(
            db,
            """
-           SELECT MAX(sequence)
-           FROM attempts
+           SELECT MAX(attempt)
+           FROM executions
            WHERE step_id = ?1
            """,
            {step_id}
@@ -903,24 +896,16 @@ defmodule Coflux.Orchestration.Store do
       {:ok, [{nil}]} ->
         {:ok, 1}
 
-      {:ok, [{last_sequence}]} ->
-        {:ok, last_sequence + 1}
+      {:ok, [{last_attempt}]} ->
+        {:ok, last_attempt + 1}
     end
   end
 
-  defp insert_execution(db, execute_after, created_at) do
+  defp insert_execution(db, step_id, attempt, execute_after, created_at) do
     insert_one(db, :executions, %{
-      execute_after: execute_after,
-      created_at: created_at
-    })
-  end
-
-  defp insert_attempt(db, step_id, sequence, execution_id, type, created_at) do
-    insert_one(db, :attempts, %{
       step_id: step_id,
-      sequence: sequence,
-      execution_id: execution_id,
-      type: type,
+      attempt: attempt,
+      execute_after: execute_after,
       created_at: created_at
     })
   end

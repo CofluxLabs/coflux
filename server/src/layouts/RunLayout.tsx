@@ -105,7 +105,7 @@ function DetailPanel({
           <StepDetail
             runId={runId}
             stepId={stepIdOrPrevious}
-            sequence={attemptNumberOrPrevious || 1}
+            attempt={attemptNumberOrPrevious || 1}
             run={run}
             projectId={projectId}
             environmentName={environmentName}
@@ -133,7 +133,7 @@ export default function RunLayout() {
     : undefined;
   const environmentName = searchParams.get("environment") || undefined;
   const run = useRunTopic(projectId, environmentName, runId);
-  const initialStep = run && Object.values(run.steps).find((s) => s.isInitial);
+  const initialStep = run && Object.values(run.steps).find((s) => !s.parentId);
   const target = useTargetTopic(
     projectId,
     environmentName,
@@ -149,7 +149,7 @@ export default function RunLayout() {
     return <Loading />;
   } else {
     const isRunning = Object.values(run.steps).some((s) =>
-      Object.values(s.attempts).some((a) => !a.isCached && !a.result),
+      Object.values(s.executions).some((e) => !e.result),
     );
     return (
       <HoverContext>

@@ -140,8 +140,8 @@ defmodule Coflux.Handlers.Api do
              arguments.environment,
              arguments.step_id
            ) do
-        {:ok, execution_id, sequence} ->
-          json_response(req, %{"executionId" => execution_id, "sequence" => sequence})
+        {:ok, execution_id, attempt} ->
+          json_response(req, %{"executionId" => execution_id, "attempt" => attempt})
       end
     else
       json_error_response(req, "bad_request", details: errors)

@@ -17,32 +17,32 @@ import RunLogs from "./RunLogs";
 import StepLink from "./StepLink";
 
 type AttemptSelectorOptionProps = {
-  attemptNumber: number;
-  attempt: models.Attempt;
+  attempt: number;
+  execution: models.Execution;
 };
 
 function AttemptSelectorOption({
-  attemptNumber,
   attempt,
+  execution,
 }: AttemptSelectorOptionProps) {
   return (
     <div className="flex items-center gap-2">
-      <span className="flex-1 text-sm">#{attemptNumber}</span>
-      {attempt.isCached ? (
+      <span className="flex-1 text-sm">#{attempt}</span>
+      {execution.result?.type == "cached" ? (
         <Badge intent="none" label="Cached" />
-      ) : attempt.result?.type == "deferred" ? (
+      ) : execution.result?.type == "deferred" ? (
         <Badge intent="none" label="Deferred" />
-      ) : !attempt.assignedAt ? (
+      ) : !execution.assignedAt ? (
         <Badge intent="info" label="Assigning" />
-      ) : !attempt.result ? (
+      ) : !execution.result ? (
         <Badge intent="info" label="Running" />
-      ) : ["value"].includes(attempt.result.type) ? (
+      ) : ["value"].includes(execution.result.type) ? (
         <Badge intent="success" label="Completed" />
-      ) : attempt.result.type == "error" ? (
+      ) : execution.result.type == "error" ? (
         <Badge intent="danger" label="Failed" />
-      ) : attempt.result.type == "abandoned" ? (
+      ) : execution.result.type == "abandoned" ? (
         <Badge intent="warning" label="Abandoned" />
-      ) : attempt.result.type == "cancelled" ? (
+      ) : execution.result.type == "cancelled" ? (
         <Badge intent="warning" label="Cancelled" />
       ) : null}
     </div>
@@ -50,25 +50,25 @@ function AttemptSelectorOption({
 }
 
 type AttemptSelectorProps = {
-  selectedNumber: number;
-  attempts: Record<number, models.Attempt>;
+  selected: number;
+  executions: Record<number, models.Execution>;
   onChange: (number: number) => void;
 };
 
 function AttemptSelector({
-  selectedNumber,
-  attempts,
+  selected,
+  executions,
   onChange,
 }: AttemptSelectorProps) {
-  const selectedAttempt = attempts[selectedNumber];
+  const selectedExecution = executions[selected];
   return (
-    <Listbox value={selectedNumber} onChange={onChange}>
+    <Listbox value={selected} onChange={onChange}>
       <div className="relative">
         <Listbox.Button className="flex items-center gap-1 relative p-1 pl-2 bg-white text-left text-slate-600 border border-slate-300 rounded-md shadow-sm font-bold">
-          {selectedAttempt && (
+          {selectedExecution && (
             <AttemptSelectorOption
-              attemptNumber={selectedNumber}
-              attempt={selectedAttempt}
+              attempt={selected}
+              execution={selectedExecution}
             />
           )}
           <IconChevronDown size={16} className="opacity-40" />
@@ -83,9 +83,9 @@ function AttemptSelector({
           leaveTo="opacity-0 scale-95"
         >
           <Listbox.Options className="absolute p-1 mt-1 overflow-auto text-base bg-white rounded shadow-lg max-h-60">
-            {sortBy(Object.entries(attempts), "sequence").map(
-              ([attemptNumber, attempt]) => (
-                <Listbox.Option key={attemptNumber} value={attemptNumber}>
+            {sortBy(Object.entries(executions), "attempt").map(
+              ([attempt, execution]) => (
+                <Listbox.Option key={attempt} value={attempt}>
                   {({ selected, active }) => (
                     <div
                       className={classNames(
@@ -95,8 +95,8 @@ function AttemptSelector({
                       )}
                     >
                       <AttemptSelectorOption
-                        attemptNumber={parseInt(attemptNumber, 10)}
-                        attempt={attempt}
+                        attempt={parseInt(attempt, 10)}
+                        execution={execution}
                       />
                     </div>
                   )}
@@ -116,7 +116,7 @@ type HeaderProps = {
   run: models.Run;
   stepId: string;
   step: models.Step;
-  sequence: number;
+  attempt: number;
   onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
 };
 
@@ -126,7 +126,7 @@ function Header({
   run,
   stepId,
   step,
-  sequence,
+  attempt,
   onRerunStep,
 }: HeaderProps) {
   const [rerunning, setRerunning] = useState(false);
@@ -146,9 +146,9 @@ function Header({
   );
   const handleRetryClick = useCallback(() => {
     setRerunning(true);
-    onRerunStep(stepId, environmentName).then(({ sequence }) => {
+    onRerunStep(stepId, environmentName).then(({ attempt }) => {
       setRerunning(false);
-      changeAttempt(sequence);
+      changeAttempt(attempt);
     });
   }, [onRerunStep, stepId, environmentName, changeAttempt]);
   return (
@@ -158,7 +158,7 @@ function Header({
           <span
             className={classNames(
               "font-mono text-xl",
-              step.isInitial && "font-bold",
+              !step.parentId && "font-bold",
             )}
           >
             {step.target}
@@ -167,8 +167,8 @@ function Header({
         </h2>
         <div className="flex items-center gap-1 mt-1">
           <AttemptSelector
-            selectedNumber={sequence}
-            attempts={step.attempts}
+            selected={attempt}
+            executions={step.executions}
             onChange={changeAttempt}
           />
 
@@ -230,7 +230,7 @@ function Value({ value, className }: ValueProps) {
               key={index}
               runId={reference.runId}
               stepId={reference.stepId}
-              attemptNumber={reference.sequence}
+              attempt={reference.attempt}
               className="font-sans text-base px-1 bg-slate-200 ring-offset-1 text-slate-600 text-sm rounded"
               hoveredClassName="ring-2 ring-slate-300"
             >
@@ -285,19 +285,19 @@ function ArgumentsSection({ arguments_ }: ArgumentsSectionProps) {
 }
 
 type ExecutionSectionProps = {
-  attempt: models.Attempt;
+  execution: models.Execution;
 };
 
-function ExecutionSection({ attempt }: ExecutionSectionProps) {
+function ExecutionSection({ execution }: ExecutionSectionProps) {
   const scheduledAt = DateTime.fromMillis(
-    attempt.executeAfter || attempt.createdAt,
+    execution.executeAfter || execution.createdAt,
   );
-  const assignedAt = attempt.assignedAt
-    ? DateTime.fromMillis(attempt.assignedAt)
+  const assignedAt = execution.assignedAt
+    ? DateTime.fromMillis(execution.assignedAt)
     : null;
   const completedAt =
-    attempt.completedAt !== null
-      ? DateTime.fromMillis(attempt.completedAt)
+    execution.completedAt !== null
+      ? DateTime.fromMillis(execution.completedAt)
       : null;
   return (
     <div>
@@ -341,25 +341,25 @@ function ExecutionSection({ attempt }: ExecutionSectionProps) {
 }
 
 type DependenciesSectionProps = {
-  attempt: models.Attempt;
+  execution: models.Execution;
 };
 
-function DependenciesSection({ attempt }: DependenciesSectionProps) {
+function DependenciesSection({ execution }: DependenciesSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">
         Dependencies
       </h3>
-      {Object.keys(attempt.dependencies).length ? (
+      {Object.keys(execution.dependencies).length ? (
         <ul className="">
-          {Object.entries(attempt.dependencies).map(
+          {Object.entries(execution.dependencies).map(
             ([dependencyId, dependency]) => {
               return (
                 <li key={dependencyId}>
                   <StepLink
                     runId={dependency.runId}
                     stepId={dependency.stepId}
-                    attemptNumber={dependency.sequence}
+                    attempt={dependency.attempt}
                     className="rounded text-sm ring-offset-1 px-1"
                     hoveredClassName="ring-2 ring-slate-300"
                   >
@@ -383,16 +383,16 @@ function DependenciesSection({ attempt }: DependenciesSectionProps) {
 type ChildrenSectionProps = {
   runId: string;
   run: models.Run;
-  attempt: models.Attempt;
+  execution: models.Execution;
 };
 
-function ChildrenSection({ runId, run, attempt }: ChildrenSectionProps) {
+function ChildrenSection({ runId, run, execution }: ChildrenSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Children</h3>
-      {attempt.children.length ? (
+      {execution.children.length ? (
         <ul className="">
-          {attempt.children.map((child) => {
+          {execution.children.map((child) => {
             if (typeof child == "string") {
               const step = run.steps[child];
               return (
@@ -400,7 +400,7 @@ function ChildrenSection({ runId, run, attempt }: ChildrenSectionProps) {
                   <StepLink
                     runId={runId}
                     stepId={child}
-                    attemptNumber={1}
+                    attempt={1}
                     className="rounded text-sm ring-offset-1 px-1"
                     hoveredClassName="ring-2 ring-slate-300"
                   >
@@ -415,7 +415,7 @@ function ChildrenSection({ runId, run, attempt }: ChildrenSectionProps) {
                   <StepLink
                     runId={child.runId}
                     stepId={child.stepId}
-                    attemptNumber={1}
+                    attempt={1}
                     className="rounded text-sm ring-offset-1 px-1"
                     hoveredClassName="ring-2 ring-slate-300"
                   >
@@ -434,19 +434,90 @@ function ChildrenSection({ runId, run, attempt }: ChildrenSectionProps) {
   );
 }
 
-type DeferredSectionProps = {
-  attempt: models.Attempt;
+type ResultSectionProps = {
+  result: Extract<models.Result, { type: "value" }>;
 };
 
-function DeferredSection({ attempt }: DeferredSectionProps) {
+function ResultSection({ result }: ResultSectionProps) {
+  const value = result.value;
+  return (
+    <div>
+      <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
+      {value.type == "raw" ? (
+        <div className="bg-white rounded block p-1 border border-slate-300 break-all whitespace-break-spaces">
+          {" "}
+          <Value value={value} />
+        </div>
+      ) : value.type == "blob" ? (
+        <BlobLink value={value} />
+      ) : undefined}
+    </div>
+  );
+}
+
+function truncatePath(path: string) {
+  const parts = path.split("/");
+  if (parts.length <= 3) {
+    return path;
+  }
+  return [
+    parts[0],
+    ...parts.slice(1, -1).map((p) => p[0]),
+    parts[parts.length - 1],
+  ].join("/");
+}
+
+type ErrorSectionProps = {
+  result: Extract<models.Result, { type: "error" }>;
+};
+
+function ErrorSection({ result }: ErrorSectionProps) {
+  const error = result.error;
+  return (
+    <div>
+      <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
+      <div className="p-2 mt-2 rounded bg-red-50 border border-red-200 overflow-x-auto">
+        <p className="mb-2">
+          <span className="font-mono font-bold">{error.type}</span>:{" "}
+          <span>{error.message}</span>
+        </p>
+        <ol>
+          {error.frames.map((frame, index) => (
+            <li key={index}>
+              <p className="text-xs whitespace-nowrap">
+                File "<span title={frame.file}>{truncatePath(frame.file)}</span>
+                ", line {frame.line}, in{" "}
+                <span className="font-mono">{frame.name}</span>
+              </p>
+              {frame.code && (
+                <pre className="font-mono ml-2 text-sm">
+                  <code>{frame.code}</code>
+                </pre>
+              )}
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+type DeferredSectionProps = {
+  execution: models.Execution;
+};
+
+function DeferredSection({ execution }: DeferredSectionProps) {
   const scheduledAt = DateTime.fromMillis(
-    attempt.executeAfter || attempt.createdAt,
+    execution.executeAfter || execution.createdAt,
   );
   const completedAt =
-    attempt.completedAt !== null
-      ? DateTime.fromMillis(attempt.completedAt)
+    execution.completedAt !== null
+      ? DateTime.fromMillis(execution.completedAt)
       : null;
-  const result = attempt.result as Extract<models.Result, { type: "deferred" }>;
+  const result = execution.result as Extract<
+    models.Result,
+    { type: "deferred" }
+  >;
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Deferred</h3>
@@ -468,7 +539,7 @@ function DeferredSection({ attempt }: DeferredSectionProps) {
           <StepLink
             runId={result.execution.runId}
             stepId={result.execution.stepId}
-            attemptNumber={result.execution.sequence}
+            attempt={result.execution.attempt}
             className="rounded text-sm ring-offset-1 px-1"
             hoveredClassName="ring-2 ring-slate-300"
           >
@@ -483,77 +554,29 @@ function DeferredSection({ attempt }: DeferredSectionProps) {
   );
 }
 
-function truncatePath(path: string) {
-  const parts = path.split("/");
-  if (parts.length <= 3) {
-    return path;
-  }
-  return [
-    parts[0],
-    ...parts.slice(1, -1).map((p) => p[0]),
-    parts[parts.length - 1],
-  ].join("/");
-}
-
-type ResultProps = {
-  result: models.Result;
+type CachedSectionProps = {
+  result: Extract<models.Result, { type: "cached" }>;
 };
 
-function Result({ result }: ResultProps) {
-  switch (result.type) {
-    case "value":
-      const value = result.value;
-      switch (value.type) {
-        case "raw":
-          return (
-            <div className="bg-white rounded block p-1 border border-slate-300 break-all whitespace-break-spaces">
-              {" "}
-              <Value value={value} />
-            </div>
-          );
-        case "blob":
-          return <BlobLink value={value} />;
-      }
-    case "error":
-      return (
-        <div className="p-2 mt-2 rounded bg-red-50 border border-red-200 overflow-x-auto">
-          <p className="mb-2">
-            <span className="font-mono font-bold">{result.error.type}</span>:{" "}
-            <span>{result.error.message}</span>
-          </p>
-          <ol>
-            {result.error.frames.map((frame, index) => (
-              <li key={index}>
-                <p className="text-xs whitespace-nowrap">
-                  File "
-                  <span title={frame.file}>{truncatePath(frame.file)}</span>",
-                  line {frame.line}, in{" "}
-                  <span className="font-mono">{frame.name}</span>
-                </p>
-                {frame.code && (
-                  <pre className="font-mono ml-2 text-sm">
-                    <code>{frame.code}</code>
-                  </pre>
-                )}
-              </li>
-            ))}
-          </ol>
-        </div>
-      );
-    default:
-      return null;
-  }
-}
-
-type ResultSectionProps = {
-  result: models.Result;
-};
-
-function ResultSection({ result }: ResultSectionProps) {
+function CachedSection({ result }: CachedSectionProps) {
   return (
     <div>
-      <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
-      <Result result={result} />
+      <h3 className="uppercase text-sm font-bold text-slate-400">Cached</h3>
+      <p>
+        To:{" "}
+        <StepLink
+          runId={result.execution.runId}
+          stepId={result.execution.stepId}
+          attempt={result.execution.attempt}
+          className="rounded text-sm ring-offset-1 px-1"
+          hoveredClassName="ring-2 ring-slate-300"
+        >
+          <span className="font-mono">{result.execution.target}</span>{" "}
+          <span className="text-slate-500">
+            ({result.execution.repository})
+          </span>
+        </StepLink>
+      </p>
     </div>
   );
 }
@@ -562,14 +585,14 @@ type LogsSectionProps = {
   projectId: string;
   environmentName: string;
   runId: string;
-  attempt: models.Attempt;
+  execution: models.Execution;
 };
 
 function LogsSection({
   projectId,
   environmentName,
   runId,
-  attempt,
+  execution,
 }: LogsSectionProps) {
   const [logs, _] = useTopic<models.LogMessage[]>(
     "projects",
@@ -580,19 +603,20 @@ function LogsSection({
     runId,
     "logs",
   );
-  const attemptLogs = logs && logs.filter((l) => l[0] == attempt.executionId);
+  const executionLogs =
+    logs && logs.filter((l) => l[0] == execution.executionId);
   const scheduledAt = DateTime.fromMillis(
-    attempt.executeAfter || attempt.createdAt,
+    execution.executeAfter || execution.createdAt,
   );
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Logs</h3>
-      {attemptLogs === undefined ? (
+      {executionLogs === undefined ? (
         <Loading />
       ) : (
         <RunLogs
           startTime={scheduledAt}
-          logs={attemptLogs}
+          logs={executionLogs}
           darkerTimestampRule={true}
         />
       )}
@@ -603,7 +627,7 @@ function LogsSection({
 type Props = {
   runId: string;
   stepId: string;
-  sequence: number;
+  attempt: number;
   run: models.Run;
   projectId: string;
   environmentName: string;
@@ -615,7 +639,7 @@ type Props = {
 export default function StepDetail({
   runId,
   stepId,
-  sequence,
+  attempt,
   run,
   projectId,
   environmentName,
@@ -624,7 +648,7 @@ export default function StepDetail({
   onRerunStep,
 }: Props) {
   const step = run.steps[stepId];
-  const attempt = step.attempts[sequence];
+  const execution = step.executions[attempt];
   return (
     <div
       className={classNames("overflow-hidden flex flex-col", className)}
@@ -636,7 +660,7 @@ export default function StepDetail({
         run={run}
         stepId={stepId}
         step={step}
-        sequence={sequence}
+        attempt={attempt}
         onRerunStep={onRerunStep}
       />
       <div className="flex flex-col overflow-auto p-4 gap-5">
@@ -644,26 +668,28 @@ export default function StepDetail({
           <ArgumentsSection arguments_={step.arguments} />
         )}
         {/* TODO: link to run if cached? */}
-        <ExecutionSection attempt={attempt} />
-        {attempt?.assignedAt && (
+        <ExecutionSection execution={execution} />
+        {execution?.assignedAt && (
           <Fragment>
-            <DependenciesSection attempt={attempt} />
-            <ChildrenSection runId={runId} run={run} attempt={attempt} />
+            <DependenciesSection execution={execution} />
+            <ChildrenSection runId={runId} run={run} execution={execution} />
           </Fragment>
         )}
-        {attempt?.result?.type == "deferred" && (
-          <DeferredSection attempt={attempt} />
-        )}
-        {(attempt?.result?.type == "value" ||
-          attempt?.result?.type == "error") && (
-          <ResultSection result={attempt.result} />
-        )}
-        {attempt?.assignedAt && (
+        {execution?.result?.type == "value" ? (
+          <ResultSection result={execution.result} />
+        ) : execution?.result?.type == "error" ? (
+          <ErrorSection result={execution.result} />
+        ) : execution?.result?.type == "deferred" ? (
+          <DeferredSection execution={execution} />
+        ) : execution?.result?.type == "cached" ? (
+          <CachedSection result={execution.result} />
+        ) : undefined}
+        {execution?.assignedAt && (
           <LogsSection
             projectId={projectId}
             environmentName={environmentName}
             runId={runId}
-            attempt={attempt}
+            execution={execution}
           />
         )}
       </div>
