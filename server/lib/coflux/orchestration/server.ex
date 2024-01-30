@@ -1178,7 +1178,8 @@ defmodule Coflux.Orchestration.Server do
             notify_listeners(
               state,
               {:run, run_id},
-              {:step, external_step_id, repository, target_name, memo_key, created_at, arguments}
+              {:step, external_step_id, repository, target_name, memo_key, parent_id, created_at,
+               arguments}
             )
           else
             state
