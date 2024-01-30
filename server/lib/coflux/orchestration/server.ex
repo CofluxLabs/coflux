@@ -686,24 +686,25 @@ defmodule Coflux.Orchestration.Server do
 
     state = notify_listeners(state, :repositories, {:assigned, assigned_by_repository})
 
-    Enum.reduce(assigned_by_repository, state, fn {repository, execution_ids}, state ->
-      repository_executions =
-        Enum.reduce(assigned, %{}, fn {execution, assigned_at}, repository_executions ->
-          execution_id = elem(execution, 0)
+    state =
+      Enum.reduce(assigned_by_repository, state, fn {repository, execution_ids}, state ->
+        repository_executions =
+          Enum.reduce(assigned, %{}, fn {execution, assigned_at}, repository_executions ->
+            execution_id = elem(execution, 0)
 
-          if MapSet.member?(execution_ids, execution_id) do
-            Map.put(repository_executions, execution_id, assigned_at)
-          else
-            repository_executions
-          end
-        end)
+            if MapSet.member?(execution_ids, execution_id) do
+              Map.put(repository_executions, execution_id, assigned_at)
+            else
+              repository_executions
+            end
+          end)
 
-      notify_listeners(
-        state,
-        {:repository, repository},
-        {:assigned, repository_executions}
-      )
-    end)
+        notify_listeners(
+          state,
+          {:repository, repository},
+          {:assigned, repository_executions}
+        )
+      end)
 
     next_execute_after =
       executions_future
