@@ -1,6 +1,7 @@
 import asyncio
 import click
 import importlib
+import importlib.util
 import os
 import types
 import typing as t
@@ -79,7 +80,14 @@ def _get_host(argument: str | None) -> str:
 async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
     for module in modules:
         if isinstance(module, str):
-            module = importlib.import_module(module)
+            path = Path(module)
+            if path.is_file():
+                spec = importlib.util.spec_from_file_location(module, path)
+                assert spec
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            else:
+                module = importlib.import_module(module)
         await agent.register_module(module)
     await agent.run()
 
@@ -134,7 +142,7 @@ def cli():
 )
 @click.option(
     "--repo",
-    help="Name of the Python repo to setup (if it doesn't already exist; e.g., 'my_package.repo')",
+    help="Name of the Python module to setup (if it doesn't already exist; e.g., 'my_package.repo')",
 )
 def init(
     project: str,
@@ -144,7 +152,9 @@ def init(
     repo: str | None,
 ):
     """
-    Initialise a project.
+    Initialise a project by populating the configuration file.
+
+    Will also setup files for a Python module for the repository, if needed.
     """
 
     # TODO: connect to server to check details?
@@ -223,7 +233,11 @@ def agent_run(
     module_name: tuple[str],
 ) -> None:
     """
-    Run the agent.
+    Run the agent, loading the specified modules as repositories.
+
+    Paths to scripts can be passed instead of module names.
+
+    Options will be loaded from the configuration file, unless overridden as arguments (or environment variables).
     """
     if not module_name:
         raise click.ClickException("No module(s) specified.")
