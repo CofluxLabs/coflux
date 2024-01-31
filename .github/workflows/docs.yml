@@ -1,3 +1,8 @@
+on:
+  push:
+    # paths: [docs/**]
+    branches: [main]
+
 jobs:
   build:
     runs-on: ubuntu-latest
