@@ -1,0 +1,19 @@
+# Dependencies
+/node_modules/
+
+# Production
+/build/
+
+# Generated files
+/.docusaurus
+/.cache-loader
+
+# NPM
+/npm-debug.log*
+
+# Direnv
+/.direnv/
+
+# Misc
+.DS_Store
+
