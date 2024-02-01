@@ -43,6 +43,7 @@ jobs:
       - name: Check pushed
         id: pushed
         run: |
+          set +e
           docker pull $(echo "${{ steps.meta.outputs.tags }}" | head -n 1 | tr -d '\n')
           echo "pushed=$(if [ $? -eq 0 ]; then echo "true"; else echo "false"; fi)" >> "$GITHUB_OUTPUT"
 
