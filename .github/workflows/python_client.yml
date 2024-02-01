@@ -2,10 +2,6 @@ on:
   push:
     # paths: [clients/python/**]
 
-defaults:
-  run:
-    working-directory: clients/python
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,6 +22,8 @@ jobs:
           poetry install
       - name: Build
         run: poetry build
+        with:
+          working-directory: clients/python
 
   publish:
     # if: github.ref == 'ref/heads/main' && github.repository == 'CofluxLabs/coflux'
@@ -46,7 +44,7 @@ jobs:
         run: |
           python -m pip install pip --upgrade
           pip install poetry httpx
-      - name: Check version
+      - name: Check published
         shell: python
         id: checkversion
         run: |
@@ -55,7 +53,7 @@ jobs:
           import httpx
           from pathlib import Path
 
-          with open("pyproject.toml", "rb") as f:
+          with open("clients/python/pyproject.toml", "rb") as f:
             version = tomllib.load(f)["tool"]["poetry"]["version"]
 
           r = httpx.get(f"https://pypi.org/pypi/coflux/{version}/json")
@@ -66,10 +64,17 @@ jobs:
               f.write(f"version={version}\n")
               f.write(f"published={published}\n")
 
-      - name: Publish
+      - name: Build
         if: steps.checkversion.outputs.published == 'false'
         run: |
-          poetry publish --build
+          poetry build
+        with:
+          working-directory: clients/python
+      - name: Publish
+        if: steps.checkversion.outputs.published == 'false'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: clients/python/dist
       - name: Tag
         if: steps.checkversion.outputs.published == 'false'
         env:
