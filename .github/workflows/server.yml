@@ -43,9 +43,8 @@ jobs:
       - name: Check pushed
         id: pushed
         run: |
-          TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1 | tr -d '\n')
-          docker pull $TAG || echo "Image ($TAG) not found"
-          echo "pushed=$(if [ $? -eq 0 ]; then echo "false"; else echo "true"; fi)" >> "$GITHUB_OUTPUT"
+          docker pull $(echo "${{ steps.meta.outputs.tags }}" | head -n 1 | tr -d '\n')
+          echo "pushed=$(if [ $? -eq 0 ]; then echo "true"; else echo "false"; fi)" >> "$GITHUB_OUTPUT"
 
       - name: Build/push image
         uses: docker/build-push-action@v5
