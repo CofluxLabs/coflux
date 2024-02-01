@@ -13,7 +13,7 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - name: Checkout
@@ -57,7 +57,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Release
-        if: steps.pushed.outputs.pushed == 'false'
+        # if: steps.pushed.outputs.pushed == 'false'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
