@@ -35,7 +35,7 @@ jobs:
       - name: Get version
         id: version
         run: |
-          MIX_VERSION=$(mix eval "IO.inspect Mix.Project.config[:version]" | grep -oP '\"\K[^\"]+')
+          MIX_VERSION=$(mix eval --no-deps-check "IO.inspect Mix.Project.config[:version]" | grep -oP '\"\K[^\"]+')
           echo "version=$MIX_VERSION" >> "$GITHUB_OUTPUT"
         working-directory: server
 
