@@ -52,12 +52,12 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: server
-          push: ${{ github.ref == 'ref/heads/main' && steps.pushed.outputs.pushed == 'false' }}
+          push: ${{ github.ref == 'refs/heads/main' && steps.pushed.outputs.pushed == 'false' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Release
-        if: github.ref == 'ref/heads/main' && steps.pushed.outputs.pushed == 'false'
+        if: github.ref == 'refs/heads/main' && steps.pushed.outputs.pushed == 'false'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
