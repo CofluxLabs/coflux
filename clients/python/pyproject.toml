@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "coflux"
-version = "0.2.1"
+version = "0.2.2"
 description = ""
 authors = ["Joe Freeman <joe@joef.uk>"]
 readme = "README.md"
