@@ -1,6 +1,6 @@
 on:
   push:
-    paths: [clients/python/**]
+    # paths: [clients/python/**]
 
 jobs:
   build:
