@@ -60,7 +60,7 @@ jobs:
               f.write(f"released={released}\n")
 
       - name: Release
-        if: steps.checkversion.outputs.released == "false"
+        if: steps.checkversion.outputs.released == 'false'
         run: |
           poetry release --build
       - name: Tag
