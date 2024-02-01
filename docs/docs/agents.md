@@ -9,7 +9,7 @@ Primarily, an agent is a process that's able to execute the code required by you
 3. Invoke and monitor executions of operations (in forked sub-processes).
 4. Report status/results/errors back to the orchestrator.
 
-## Installing
+## Install
 
 These are taken care of by the Coflux Python library, which can be installed from PyPI - e.g., with `pip`:
 
@@ -19,7 +19,7 @@ pip install coflux
 
 This will also install the `coflux` CLI, which we can use to run our agent.
 
-## Configuring
+## Initialise
 
 First, we can use the `init` command to populate a configuration file (which will avoid needing to specify options when we run the agent):
 
@@ -29,7 +29,7 @@ coflux init
 
 Enter the ID of the project that you created.
 
-## Running
+## Run
 
 Now we can run the agent:
 

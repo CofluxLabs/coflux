@@ -22,6 +22,6 @@ def print_greeting(name: str):
 
 This defines a `print_greeting` workflow, which takes a `name` as an argument. When run, it calls the `build_greeting` task, passing through this argument. Once it has the result from the task, it gets printed.
 
-Workflows are defined in _repositories_, which are typically Python modules, but can also be loaded from a Python script, which we'll do momentarily. Put the workflow above into `hello.py`.
+Workflows are defined in _repositories_, which are typically Python modules, but can also be loaded from a Python script, which we'll do momentarily. Put the workflow above into `hello.py`. (We'll install the `coflux` library in a moment.)
 
 Before coming back to more advanced features, let's see how to get this workflow running...
