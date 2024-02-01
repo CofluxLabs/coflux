@@ -1,3 +1,5 @@
+name: Server
+
 on:
   push:
     # paths: [server/**]

@@ -1,3 +1,5 @@
+name: Python client
+
 on:
   push:
     paths: [clients/python/**]
