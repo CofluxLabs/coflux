@@ -1,6 +1,6 @@
 on:
   push:
-    # paths: [clients/python/**]
+    paths: [clients/python/**]
 
 jobs:
   build:
@@ -26,7 +26,7 @@ jobs:
         working-directory: clients/python
 
   publish:
-    # if: github.ref == 'ref/heads/main' && github.repository == 'CofluxLabs/coflux'
+    if: github.ref == 'ref/heads/main' && github.repository == 'CofluxLabs/coflux'
     runs-on: ubuntu-latest
     needs: [build]
     concurrency: ${{ github.workflow }}-publish
@@ -65,17 +65,17 @@ jobs:
               f.write(f"version={version}\n")
               f.write(f"published={published}\n")
 
-      # - name: Build
-      #   if: steps.checkversion.outputs.published == 'false'
-      #   run: poetry build
-      #   working-directory: clients/python
-      # - name: Publish
-      #   if: steps.checkversion.outputs.published == 'false'
-      #   uses: pypa/gh-action-pypi-publish@release/v1
-      #   with:
-      #     packages-dir: clients/python/dist
+      - name: Build
+        if: steps.checkversion.outputs.published == 'false'
+        run: poetry build
+        working-directory: clients/python
+      - name: Publish
+        if: steps.checkversion.outputs.published == 'false'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: clients/python/dist
       - name: Release
-        # if: steps.checkversion.outputs.published == 'false'
+        if: steps.checkversion.outputs.published == 'false'
         env:
           VERSION: ${{ steps.checkversion.outputs.version }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
