@@ -7,7 +7,7 @@ defmodule Coflux.Utils do
 
   def data_path(path) do
     path =
-      "DATA_DIR"
+      "COFLUX_DATA_DIR"
       |> System.get_env(Path.join(File.cwd!(), "data"))
       |> Path.join(path)
 

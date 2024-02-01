@@ -29,7 +29,7 @@ FROM debian:bullseye
 WORKDIR /app
 
 ARG data_dir=/data
-ENV DATA_DIR=${data_dir}
+ENV COFLUX_DATA_DIR=${data_dir}
 RUN mkdir ${data_dir}
 
 RUN apt-get update -y && apt-get install -y libstdc++6 openssl libncurses5 locales \
