@@ -2,6 +2,10 @@ on:
   push:
     # paths: [clients/python/**]
 
+defaults:
+  run:
+    working-directory: clients/python
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,6 +23,7 @@ jobs:
         run: |
           python -m pip install pip --upgrade
           pip install poetry
+          poetry install
       - name: Build
         run: poetry build
 
