@@ -79,4 +79,4 @@ jobs:
         env:
           VERSION: ${{ steps.checkversion.outputs.version }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create clients/python/$VERSION --title "Python client ($VERSION)"
+        run: gh release create clients/python/$VERSION --title "Python client ($VERSION)" --notes "https://pypi.org/project/coflux/$VERSION/"
