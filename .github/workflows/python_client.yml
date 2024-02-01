@@ -64,19 +64,18 @@ jobs:
               f.write(f"version={version}\n")
               f.write(f"published={published}\n")
 
-      - name: Build
-        if: steps.checkversion.outputs.published == 'false'
-        run: poetry build
-        working-directory: clients/python
-      - name: Publish
-        if: steps.checkversion.outputs.published == 'false'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: clients/python/dist
-      - name: Tag
-        if: steps.checkversion.outputs.published == 'false'
+      # - name: Build
+      #   if: steps.checkversion.outputs.published == 'false'
+      #   run: poetry build
+      #   working-directory: clients/python
+      # - name: Publish
+      #   if: steps.checkversion.outputs.published == 'false'
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     packages-dir: clients/python/dist
+      - name: Release
+        # if: steps.checkversion.outputs.published == 'false'
         env:
           VERSION: ${{ steps.checkversion.outputs.version }}
-        run: |
-          git tag -a clients/python/$VERSION -m "Python client version $VERSION"
-          git push origin --tags
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create clients/python/$VERSION --title "Python client ($VERSION)"
