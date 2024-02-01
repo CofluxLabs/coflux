@@ -45,7 +45,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,enable=true,value=${{ env.RELEASE_VERSION }}
+            type=raw,enable=true,value=${{ steps.version.outputs.version }}
             type=raw,enable=true,value=latest
 
       - name: Build/push image
@@ -57,7 +57,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Release
-        # if: steps.pushed.outputs.pushed == 'false'
+        if: steps.pushed.outputs.pushed == 'false'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
