@@ -31,14 +31,6 @@ jobs:
         run: |
           echo "version=$(cat server/VERSION)" >> "$GITHUB_OUTPUT"
 
-      - name: Check pushed
-        id: pushed
-        env:
-          TAG: ${{ steps.version.outputs.version }}
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.TAG }} || echo "Image not found"
-          echo "pushed=$(if [ $? -eq 0 ]; then echo "false"; else echo "true"; fi)" >> "$GITHUB_OUTPUT"
-
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -47,6 +39,13 @@ jobs:
           tags: |
             type=raw,enable=true,value=${{ steps.version.outputs.version }}
             type=raw,enable=true,value=latest
+
+      - name: Check pushed
+        id: pushed
+        run: |
+          TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1 | tr -d '\n')
+          docker pull $TAG || echo "Image ($TAG) not found"
+          echo "pushed=$(if [ $? -eq 0 ]; then echo "false"; else echo "true"; fi)" >> "$GITHUB_OUTPUT"
 
       - name: Build/push image
         uses: docker/build-push-action@v5
