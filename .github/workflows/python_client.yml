@@ -20,6 +20,7 @@ jobs:
           python -m pip install pip --upgrade
           pip install poetry
           poetry install
+        working-directory: clients/python
       - name: Build
         run: poetry build
         working-directory: clients/python
