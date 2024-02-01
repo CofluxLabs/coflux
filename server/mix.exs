@@ -1,10 +1,12 @@
 defmodule Coflux.MixProject do
   use Mix.Project
 
+  @version String.trim(File.read!("VERSION"))
+
   def project do
     [
       app: :coflux,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps()

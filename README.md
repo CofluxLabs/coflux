@@ -20,3 +20,5 @@ def reticulate(splines):
 def my_workflow(url):
     reticulate(fetch_splines(url))
 ```
+
+Refer to the [docs](https://docs.coflux.com) for more details.
