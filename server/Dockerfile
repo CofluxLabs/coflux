@@ -27,7 +27,10 @@ RUN MIX_ENV=prod mix release
 
 FROM debian:bullseye
 WORKDIR /app
-RUN mkdir /app/data
+
+ARG data_dir=/data
+ENV DATA_DIR=${data_dir}
+RUN mkdir ${data_dir}
 
 RUN apt-get update -y && apt-get install -y libstdc++6 openssl libncurses5 locales \
   && apt-get clean && rm -f /var/lib/apt/lists/*_*

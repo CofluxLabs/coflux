@@ -123,7 +123,7 @@ defmodule Coflux.Projects do
   end
 
   defp get_path() do
-    "data/projects.json"
+    Utils.data_path("projects.json")
   end
 
   defp remove_subscriber(state, ref) do
