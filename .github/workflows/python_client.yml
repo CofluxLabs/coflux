@@ -22,8 +22,7 @@ jobs:
           poetry install
       - name: Build
         run: poetry build
-        with:
-          working-directory: clients/python
+        working-directory: clients/python
 
   publish:
     # if: github.ref == 'ref/heads/main' && github.repository == 'CofluxLabs/coflux'
@@ -66,10 +65,8 @@ jobs:
 
       - name: Build
         if: steps.checkversion.outputs.published == 'false'
-        run: |
-          poetry build
-        with:
-          working-directory: clients/python
+        run: poetry build
+        working-directory: clients/python
       - name: Publish
         if: steps.checkversion.outputs.published == 'false'
         uses: pypa/gh-action-pypi-publish@release/v1
