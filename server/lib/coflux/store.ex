@@ -4,9 +4,12 @@ defmodule Coflux.Store do
   alias Exqlite.Sqlite3
 
   def open(project_id, environment, name) do
-    dir = "data/#{project_id}/#{environment}"
-    :ok = File.mkdir_p!(dir)
-    {:ok, db} = Sqlite3.open(Path.join(dir, "#{name}.sqlite"))
+    path =
+      [project_id, environment, "#{name}.sqlite"]
+      |> Path.join()
+      |> Utils.data_path()
+
+    {:ok, db} = Sqlite3.open(path)
     :ok = Migrations.run(db, name)
     {:ok, db}
   end
