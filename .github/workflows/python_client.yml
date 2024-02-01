@@ -31,7 +31,7 @@ jobs:
         working-directory: clients/python
 
   publish:
-    if: github.ref == 'ref/heads/main' && github.repository == 'CofluxLabs/coflux'
+    if: github.ref == 'refs/heads/main' && github.repository == 'CofluxLabs/coflux'
     runs-on: ubuntu-latest
     needs: [build]
     concurrency: ${{ github.workflow }}-publish
