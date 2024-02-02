@@ -329,23 +329,33 @@ defmodule Coflux.Handlers.Agent do
     Map.new(references, fn {key, value} -> {String.to_integer(key), value} end)
   end
 
+  defp parse_paths(paths) do
+    Map.new(paths, fn {key, [path, blob_key]} -> {String.to_integer(key), {path, blob_key}} end)
+  end
+
   defp parse_value(value) do
     case value do
-      ["raw", format, content, references, metadata] ->
-        {:raw, format, content, parse_references(references), metadata}
+      ["raw", format, content, references, paths, metadata] ->
+        {:raw, format, content, parse_references(references), parse_paths(paths), metadata}
 
-      ["blob", format, key, references, metadata] ->
-        {:blob, format, key, parse_references(references), metadata}
+      ["blob", format, key, references, paths, metadata] ->
+        {:blob, format, key, parse_references(references), parse_paths(paths), metadata}
     end
+  end
+
+  defp compose_paths(paths) do
+    Map.new(paths, fn {key, {path, blob_key}} ->
+      {key, [path, blob_key]}
+    end)
   end
 
   defp compose_value(value) do
     case value do
-      {:raw, format, content, references, metadata} ->
-        ["raw", format, content, references, metadata]
+      {:raw, format, content, references, paths, metadata} ->
+        ["raw", format, content, references, compose_paths(paths), metadata]
 
-      {:blob, format, key, references, metadata} ->
-        ["blob", format, key, references, metadata]
+      {:blob, format, key, references, paths, metadata} ->
+        ["blob", format, key, references, compose_paths(paths), metadata]
     end
   end
 

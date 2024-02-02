@@ -35,6 +35,7 @@ export type Reference = {
 export type Value = {
   format: string;
   references: Record<string, [string, Reference]>;
+  paths: Record<string, [string, string]>;
   metadata: Record<string, any>;
 } & (
   | {

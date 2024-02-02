@@ -5,7 +5,13 @@ import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTopic } from "@topical/react";
-import { IconChevronDown, IconPinned } from "@tabler/icons-react";
+import {
+  IconChevronDown,
+  IconFile,
+  IconFolder,
+  IconFunction,
+  IconPinned,
+} from "@tabler/icons-react";
 import reactStringReplace from "react-string-replace";
 
 import * as models from "../models";
@@ -231,11 +237,26 @@ function Value({ value, className }: ValueProps) {
               runId={reference.runId}
               stepId={reference.stepId}
               attempt={reference.attempt}
-              className="font-sans text-base px-1 bg-slate-200 ring-offset-1 text-slate-600 text-sm rounded"
+              className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 ring-offset-1 rounded"
               hoveredClassName="ring-2 ring-slate-300"
             >
-              ...
+              <IconFunction size={16} className="inline-block" />
             </StepLink>
+          );
+        } else if (referenceNumber in value.paths) {
+          const [path, blob_key] = value.paths[referenceNumber];
+          return (
+            <a
+              href={`/blobs/${blob_key}`}
+              title={path}
+              className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 rounded"
+            >
+              {path.endsWith("/") ? (
+                <IconFolder size={16} className="inline-block" />
+              ) : (
+                <IconFile size={16} className="inline-block" />
+              )}
+            </a>
           );
         } else {
           return `{${match}}`;
@@ -255,7 +276,7 @@ function Argument({ argument }: ArgumentProps) {
       return (
         <Value
           value={argument}
-          className="bg-white px-0.5 border border-slate-300 rounded"
+          className="bg-white p-1 border border-slate-300 rounded"
         />
       );
     case "blob":

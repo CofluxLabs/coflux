@@ -161,6 +161,15 @@ CREATE TABLE value_references (
   FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT
 );
 
+CREATE TABLE value_paths (
+  value_id INTEGER NOT NULL,
+  number INTEGER NOT NULL,
+  path TEXT NOT NULL,
+  blob_key TEXT NOT NULL,
+  PRIMARY KEY (value_id, number),
+  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE
+);
+
 CREATE TABLE value_metadata (
   value_id INTEGER NOT NULL,
   key TEXT NOT NULL,

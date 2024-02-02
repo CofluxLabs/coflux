@@ -50,10 +50,10 @@ def _build_manifest(targets: dict) -> dict:
 
 def _parse_value(value: list) -> models.Value:
     match value:
-        case ["raw", format, content, references, metadata]:
-            return ("raw", format, content.encode(), references, metadata)
-        case ["blob", format, key, references, metadata]:
-            return ("blob", format, key, references, metadata)
+        case ["raw", format, content, references, paths, metadata]:
+            return ("raw", format, content.encode(), references, paths, metadata)
+        case ["blob", format, key, references, paths, metadata]:
+            return ("blob", format, key, references, paths, metadata)
     raise Exception(f"unexpected value: {value}")
 
 
@@ -75,7 +75,8 @@ class Agent:
         self._connection = server.Connection(
             {"execute": self._handle_execute, "abort": self._handle_abort}
         )
-        self._execution_manager = execution.Manager(self._connection, server_host)
+        blob_url_format = f"http://{server_host}/blobs/{{key}}"
+        self._execution_manager = execution.Manager(self._connection, blob_url_format)
 
     async def _handle_execute(self, *args) -> None:
         (execution_id, repository, target_name, arguments) = args

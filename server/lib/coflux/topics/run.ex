@@ -160,21 +160,23 @@ defmodule Coflux.Topics.Run do
 
   defp build_value(value) do
     case value do
-      {:raw, format, content, references, metadata} ->
+      {:raw, format, content, references, paths, metadata} ->
         %{
           type: "raw",
           format: format,
           content: content,
           references: build_references(references),
+          paths: build_paths(paths),
           metadata: metadata
         }
 
-      {:blob, format, key, references, metadata} ->
+      {:blob, format, key, references, paths, metadata} ->
         %{
           type: "blob",
           format: format,
           key: key,
           references: build_references(references),
+          paths: build_paths(paths),
           metadata: metadata
         }
     end
@@ -183,6 +185,12 @@ defmodule Coflux.Topics.Run do
   defp build_references(references) do
     Map.new(references, fn {placeholder, {execution_id, execution}} ->
       {placeholder, [execution_id, build_execution(execution)]}
+    end)
+  end
+
+  defp build_paths(paths) do
+    Map.new(paths, fn {placeholder, {path, blob_key}} ->
+      {placeholder, [path, blob_key]}
     end)
   end
 

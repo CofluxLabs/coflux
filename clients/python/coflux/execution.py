@@ -7,15 +7,17 @@ import asyncio
 import datetime as dt
 import hashlib
 import contextvars
-import contextlib
 import concurrent.futures as cf
 import traceback
 import sys
+import tempfile
+import os
+import contextlib
+from pathlib import Path
 
 from . import server, blobs, models, serialisation
 
 
-_BLOB_THRESHOLD = 100
 _EXECUTION_THRESHOLD_S = 1.0
 _AGENT_THRESHOLD_S = 5.0
 
@@ -142,12 +144,16 @@ def _parse_cache(
 def _value_key(value: models.Value) -> str:
     # TODO: tidy
     match value:
-        case ["raw", format, content, references, _metadata]:
+        case ["raw", format, content, references, paths, _metadata]:
             refs = ";".join(f"{k}={v}" for k, v in sorted(references.items()))
-            return f"raw:{format}:{refs}:{content}"
-        case ["blob", format, key, references, _metadata]:
+            # TODO: better/safer encoding
+            paths_ = ";".join(f"{k}={p}|{h}" for k, (p, h) in sorted(paths.items()))
+            return f"raw:{format}:{refs}:{paths_}:{content}"
+        case ["blob", format, key, references, paths, _metadata]:
             refs = ";".join(f"{k}={v}" for k, v in sorted(references.items()))
-            return f"blob:{format}:{refs}:{key}"
+            # TODO: better/safer encoding
+            paths_ = ";".join(f"{k}={p}|{h}" for k, (p, h) in sorted(paths.items()))
+            return f"blob:{format}:{refs}:{paths_}:{key}"
 
 
 def _build_key(
@@ -166,14 +172,6 @@ def _build_key(
     if prefix is not None:
         cache_key = prefix + "\0" + cache_key
     return hashlib.sha256(cache_key.encode()).hexdigest()
-
-
-def _serialise_value(value: t.Any, blob_store: blobs.Store) -> models.Value:
-    format, serialised, references, metadata = serialisation.serialise(value)
-    if format != "json" or len(serialised) > _BLOB_THRESHOLD:
-        key = blob_store.put(serialised)
-        return ("blob", format, key, references, metadata)
-    return ("raw", format, serialised, references, metadata)
 
 
 def _exception_type(exception: Exception):
@@ -197,15 +195,79 @@ def _serialise_exception(
     return type_, message, frames
 
 
+class LineBuffer(t.IO[str]):
+    def __init__(self, fn):
+        self._fn = fn
+        self._buffer = ""
+
+    def write(self, content):
+        self._buffer += content
+        lines = self._buffer.split("\n")
+        for line in lines[:-1]:
+            self._fn(line)
+        self._buffer = lines[-1]
+
+    def flush(self):
+        if self._buffer:
+            self._fn(self._buffer)
+            self._buffer = ""
+
+
+@contextlib.contextmanager
+def capture_streams(*, stdout, stderr):
+    original = (sys.stdout, sys.stderr)
+    sys.stdout = LineBuffer(stdout)
+    sys.stderr = LineBuffer(stderr)
+    yield
+    sys.stdout.flush()
+    sys.stderr.flush()
+    sys.stdout, sys.stderr = original
+
+
+@contextlib.contextmanager
+def working_directory():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir)
+        original = os.getcwd()
+        os.chdir(path)
+        yield path
+        os.chdir(original)
+
+
 class Channel:
-    def __init__(self, execution_id: str, blob_store: blobs.Store, connection):
+    def __init__(self, execution_id: str, blob_url_format: str, connection):
         self._execution_id = execution_id
+        self._blob_url_format = blob_url_format
         self._connection = connection
-        self._blob_store = blob_store
         self._last_schedule_id = 0
         self._schedules: dict[int, cf.Future] = {}
         self._resolves: dict[str, cf.Future] = {}
         self._running = True
+        self._exit_stack = contextlib.ExitStack()
+
+    def __enter__(self):
+        self._exit_stack.enter_context(
+            capture_streams(
+                stdout=lambda m: self.log_message(1, m),
+                stderr=lambda m: self.log_message(3, m),
+            )
+        )
+        self._directory = self._exit_stack.enter_context(working_directory())
+        self._blob_store = self._exit_stack.enter_context(
+            blobs.Store(self._blob_url_format)
+        )
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._exit_stack.close()
+
+    @property
+    def directory(self) -> Path:
+        return self._directory
+
+    @property
+    def blob_store(self) -> blobs.Store:
+        return self._blob_store
 
     def run(self):
         while self._running:
@@ -234,7 +296,7 @@ class Channel:
         self._send(ExecutingNotification())
 
     def record_result(self, data: t.Any):
-        value = _serialise_value(data, self._blob_store)
+        value = serialisation.serialise(data, self._blob_store, self._directory)
         self._send(RecordResultRequest(value))
         # TODO: wait for confirmation?
         self._running = False
@@ -269,7 +331,8 @@ class Channel:
             execute_after = (execute_after or dt.datetime.now()) + delay
         # TODO: parallelise?
         serialised_arguments = [
-            _serialise_value(a, self._blob_store) for a in arguments
+            serialisation.serialise(a, self._blob_store, self._directory)
+            for a in arguments
         ]
         default_namespace = f"{repository}:{target}"
         cache_key_, cache_max_age = _parse_cache(
@@ -317,7 +380,8 @@ class Channel:
 
     def record_checkpoint(self, arguments):
         serialised_arguments = [
-            _serialise_value(a, self._blob_store) for a in arguments
+            serialisation.serialise(a, self._blob_store, self._directory)
+            for a in arguments
         ]
         self._send(RecordCheckpointRequest(serialised_arguments))
 
@@ -356,7 +420,7 @@ def _deserialise_result(
 ):
     match result:
         case ["value", value]:
-            return _deserialise_value(value, blob_store, channel, description)
+            return _deserialise_value(value, channel, description)
         case ["error", type_, message]:
             raise _build_exception(type_, message)
         case ["abandoned"]:
@@ -369,88 +433,73 @@ def _deserialise_result(
 
 def _deserialise_value(
     value: models.Value,
-    blob_store: blobs.Store,
     channel: Channel,
     description: str,
 ) -> t.Any:
     match value:
-        case ("raw", format, content, references, _metadata):
+        case ("raw", format, content, references, paths, _metadata):
             return serialisation.deserialise(
-                format, content, references, channel.resolve_reference
+                format,
+                content,
+                references,
+                paths,
+                channel.resolve_reference,
+                channel.blob_store,
+                channel.directory,
             )
-        case ("blob", format, blob_key, references, _metadata):
-            content = blob_store.get(blob_key)
+        case ("blob", format, blob_key, references, paths, _metadata):
+            content = channel.blob_store.get(blob_key)
             return serialisation.deserialise(
-                format, content, references, channel.resolve_reference
+                format,
+                content,
+                references,
+                paths,
+                channel.resolve_reference,
+                channel.blob_store,
+                channel.directory,
             )
 
 
 def _resolve_arguments(
     arguments: list[models.Value],
-    blob_store: blobs.Store,
     channel: Channel,
 ) -> list[t.Any]:
     # TODO: parallelise
     return [
-        _deserialise_value(v, blob_store, channel, f"argument {i}")
-        for i, v in enumerate(arguments)
+        _deserialise_value(v, channel, f"argument {i}") for i, v in enumerate(arguments)
     ]
-
-
-class Capture(t.IO[str]):
-    def __init__(self, channel: Channel, level: int):
-        self._channel = channel
-        self._level = level
-        self._buffer = ""
-
-    def write(self, content):
-        self._buffer += content
-        lines = self._buffer.split("\n")
-        for line in lines[:-1]:
-            self._channel.log_message(self._level, line)
-        self._buffer = lines[-1]
-
-    def flush(self):
-        if self._buffer:
-            self._channel.log_message(self._level, self._buffer)
-            self._buffer = ""
 
 
 def _execute(
     target: t.Callable,
     arguments: list[models.Value],
     execution_id: str,
-    server_host: str,
+    blob_url_format: str,
     conn,
 ):
-    blob_store = blobs.Store(server_host)
-    channel = Channel(execution_id, blob_store, conn)
-    thread = threading.Thread(target=channel.run)
-    thread.start()
-    token = channel_context.set(channel)
-    try:
-        resolved_arguments = _resolve_arguments(arguments, blob_store, channel)
-        channel.notify_executing()
-        with contextlib.redirect_stdout(Capture(channel, 1)) as stdout_capture:
-            with contextlib.redirect_stderr(Capture(channel, 3)) as stderr_capture:
-                value = target(*resolved_arguments)
-        stdout_capture.flush()
-        stderr_capture.flush()
-    except Exception as e:
-        channel.record_error(e)
-    else:
-        channel.record_result(value)
-    finally:
-        channel_context.reset(token)
+    with Channel(execution_id, blob_url_format, conn) as channel:
+        thread = threading.Thread(target=channel.run)
+        thread.start()
+        token = channel_context.set(channel)
+        try:
+            resolved_arguments = _resolve_arguments(arguments, channel)
+            channel.notify_executing()
+            value = target(*resolved_arguments)
+        except Exception as e:
+            channel.record_error(e)
+        else:
+            channel.record_result(value)
+        finally:
+            channel_context.reset(token)
 
 
 def _json_safe_value(value: models.Value):
     # TODO: tidy
     match value:
-        case ("raw", format, content, references, metadata):
-            return ["raw", format, content.decode(), references, metadata]
-        case ("blob", format, key, references, metadata):
-            return ["blob", format, key, references, metadata]
+        case ("raw", format, content, references, paths, metadata):
+            return ["raw", format, content.decode(), references, paths, metadata]
+        case ("blob", format, key, references, paths, metadata):
+            return ["blob", format, key, references, paths, metadata]
 
 
 def _json_safe_arguments(arguments: list[models.Value]):
@@ -459,10 +508,10 @@ def _json_safe_arguments(arguments: list[models.Value]):
 
 def _parse_value(value: t.Any) -> models.Value:
     match value:
-        case ["raw", format, content, references, metadata]:
-            return ("raw", format, content.encode(), references, metadata)
-        case ["blob", format, key, references, metadata]:
-            return ("blob", format, key, references, metadata)
+        case ["raw", format, content, references, paths, metadata]:
+            return ("raw", format, content.encode(), references, paths, metadata)
+        case ["blob", format, key, references, paths, metadata]:
+            return ("blob", format, key, references, paths, metadata)
         case other:
             raise Exception(f"unrecognised value: {other}")
 
@@ -487,7 +536,7 @@ class Execution:
         execution_id: str,
         target: t.Callable,
         arguments: list[models.Value],
-        server_host: str,
+        blob_url_format: str,
         server_connection: server.Connection,
         loop: asyncio.AbstractEventLoop,
     ):
@@ -501,7 +550,7 @@ class Execution:
         self._connection = parent_conn
         self._process = mp_context.Process(
             target=_execute,
-            args=(target, arguments, execution_id, server_host, child_conn),
+            args=(target, arguments, execution_id, blob_url_format, child_conn),
             name=f"Execution-{execution_id}",
         )
 
@@ -631,9 +680,9 @@ class Execution:
 
 
 class Manager:
-    def __init__(self, connection: server.Connection, server_host: str):
+    def __init__(self, connection: server.Connection, blob_url_format: str):
         self._connection = connection
-        self._server_host = server_host
+        self._blob_url_format = blob_url_format
         self._executions: dict[str, Execution] = {}
         self._last_heartbeat_sent = None
 
@@ -675,7 +724,7 @@ class Manager:
             execution_id,
             target,
             arguments,
-            self._server_host,
+            self._blob_url_format,
             self._connection,
             loop,
         )

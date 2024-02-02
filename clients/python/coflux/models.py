@@ -3,8 +3,22 @@ import typing as t
 # TODO: use named tuples
 
 Value = t.Union[
-    tuple[t.Literal["raw"], str, bytes, dict[int, str], dict[str, t.Any]],
-    tuple[t.Literal["blob"], str, str, dict[int, str], dict[str, t.Any]],
+    tuple[
+        t.Literal["raw"],
+        str,
+        bytes,
+        dict[int, str],
+        dict[int, tuple[str, str]],
+        dict[str, t.Any],
+    ],
+    tuple[
+        t.Literal["blob"],
+        str,
+        str,
+        dict[int, str],
+        dict[int, tuple[str, str]],
+        dict[str, t.Any],
+    ],
 ]
 
 Result = t.Union[
