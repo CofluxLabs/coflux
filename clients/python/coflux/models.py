@@ -2,23 +2,15 @@ import typing as t
 
 # TODO: use named tuples
 
+Metadata = dict[str, t.Any]
+
+References = dict[int, str]
+
+Paths = dict[int, tuple[str, str, Metadata]]
+
 Value = t.Union[
-    tuple[
-        t.Literal["raw"],
-        str,
-        bytes,
-        dict[int, str],
-        dict[int, tuple[str, str]],
-        dict[str, t.Any],
-    ],
-    tuple[
-        t.Literal["blob"],
-        str,
-        str,
-        dict[int, str],
-        dict[int, tuple[str, str]],
-        dict[str, t.Any],
-    ],
+    tuple[t.Literal["raw"], bytes, str, References, Paths],
+    tuple[t.Literal["blob"], str, Metadata, str, References, Paths],
 ]
 
 Result = t.Union[

@@ -875,11 +875,11 @@ defmodule Coflux.Orchestration.Server do
 
   defp build_value(value, state) do
     case value do
-      {:raw, format, content, references, paths, metadata} ->
-        {:raw, format, content, resolve_references(references, state), paths, metadata}
+      {{:raw, content}, format, references, paths} ->
+        {{:raw, content}, format, resolve_references(references, state), paths}
 
-      {:blob, format, key, references, paths, metadata} ->
-        {:blob, format, key, resolve_references(references, state), paths, metadata}
+      {{:blob, key, metadata}, format, references, paths} ->
+        {{:blob, key, metadata}, format, resolve_references(references, state), paths}
     end
   end
 

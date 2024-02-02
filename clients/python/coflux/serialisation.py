@@ -5,6 +5,7 @@ import pickle
 import tempfile
 import zipfile
 import os
+import mimetypes
 from pathlib import Path
 
 from . import future, blobs, models
@@ -55,8 +56,8 @@ def _do_substitution(substitutions: dict[int, T], value: T, existing: set[int]):
 def _substitute_placeholders(
     data: t.Any,
     existing: set[int],
-    references: dict[int, str],
-    paths: dict[int, tuple[str, str]],
+    references: models.References,
+    paths: models.Paths,
     blob_store: blobs.Store,
     execution_dir: Path,
 ) -> t.Any:
@@ -69,9 +70,12 @@ def _substitute_placeholders(
         if path.is_file():
             path_str = str(path.relative_to(execution_dir))
             blob_key = blob_store.upload(path)
+            (type, _) = mimetypes.guess_type(path)
+            metadata = {"size": path.stat().st_size, "type": type}
         elif path.is_dir():
             path_str = str(path.relative_to(execution_dir)) + "/"
             with tempfile.NamedTemporaryFile() as temp_file:
+                sizes = []
                 temp_path = Path(temp_file.name)
                 with zipfile.ZipFile(temp_path, "w") as zip:
                     for root, _, files in os.walk(path):
@@ -79,11 +83,13 @@ def _substitute_placeholders(
                         for file in files:
                             file_path = root.joinpath(file)
                             zip.write(file_path, arcname=file_path.relative_to(path))
+                            sizes.append(file_path.stat().st_size)
                 blob_key = blob_store.upload(temp_path)
+                metadata = {"totalSize": sum(sizes), "count": len(sizes)}
         else:
             raise Exception(f"path ({path}) doesn't exist")
         return _do_substitution(
-            paths, (path_str, blob_key), existing | references.keys()
+            paths, (path_str, blob_key, metadata), existing | references.keys()
         )
     elif isinstance(data, list):
         return [
@@ -125,7 +131,7 @@ def _replace_placeholders(
 
 def _serialise(
     data: t.Any, blob_store: blobs.Store, execution_dir: Path
-) -> tuple[str, bytes, dict[int, str], dict[int, tuple[str, str]], dict[str, t.Any]]:
+) -> tuple[str, bytes, models.References, models.Paths, models.Metadata]:
     references = {}
     paths = {}
     avoid_numbers = _find_numbers(data)
@@ -148,8 +154,8 @@ def serialise(
     )
     if format != "json" or len(serialised) > _BLOB_THRESHOLD:
         key = blob_store.put(serialised)
-        return ("blob", format, key, references, paths, metadata)
-    return ("raw", format, serialised, references, paths, metadata)
+        return ("blob", key, metadata, format, references, paths)
+    return ("raw", serialised, format, references, paths)
 
 
 def _deserialise(format: str, content: bytes):
@@ -165,8 +171,8 @@ def _deserialise(format: str, content: bytes):
 def deserialise(
     format: str,
     content: bytes,
-    references: dict[int, str],
-    paths: dict[int, tuple[str, str]],
+    references: models.References,
+    paths: models.Paths,
     resolve_fn: t.Callable[[str], t.Any],
     blob_store: blobs.Store,
     execution_dir: Path,
@@ -177,7 +183,7 @@ def deserialise(
         for k, v in references.items()
     }
     path_placeholders = {}
-    for placeholder, (path, blob_key) in paths.items():
+    for placeholder, (path, blob_key, _metadata) in paths.items():
         resolved_path = execution_dir.joinpath(path)
         resolved_path.parent.mkdir(parents=True, exist_ok=True)
         if path.endswith("/"):

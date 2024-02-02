@@ -181,7 +181,7 @@ defmodule Coflux.Handlers.Api do
         result =
           Enum.map(arguments, fn argument ->
             case argument do
-              ["json", value] -> {:raw, "json", value, %{}, %{}, %{}}
+              ["json", value] -> {{:raw, value}, "json", %{}, %{}}
             end
           end)
 

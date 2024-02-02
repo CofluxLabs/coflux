@@ -16,7 +16,7 @@ import reactStringReplace from "react-string-replace";
 
 import * as models from "../models";
 import Badge from "./Badge";
-import { buildUrl, formatDiff, humanSize } from "../utils";
+import { buildUrl, formatDiff, humanSize, pluralise } from "../utils";
 import Loading from "./Loading";
 import Button from "./common/Button";
 import RunLogs from "./RunLogs";
@@ -219,6 +219,26 @@ function BlobLink({ value }: BlobLinkProps) {
   );
 }
 
+function titleForPath(path: string, metadata: Record<string, any>) {
+  const parts = [path];
+  if (path.endsWith("/")) {
+    if ("count" in metadata) {
+      parts.push(pluralise(metadata.count, "file"));
+    }
+    if ("totalSize" in metadata) {
+      parts.push(humanSize(metadata.totalSize));
+    }
+  } else {
+    if ("size" in metadata) {
+      parts.push(humanSize(metadata.size));
+    }
+    if ("type" in metadata && metadata.type) {
+      parts.push(metadata.type);
+    }
+  }
+  return parts.join("\n");
+}
+
 type ValueProps = {
   value: Extract<models.Value, { type: "raw" }>;
   className?: string;
@@ -244,11 +264,11 @@ function Value({ value, className }: ValueProps) {
             </StepLink>
           );
         } else if (referenceNumber in value.paths) {
-          const [path, blob_key] = value.paths[referenceNumber];
+          const [path, blob_key, metadata] = value.paths[referenceNumber];
           return (
             <a
               href={`/blobs/${blob_key}`}
-              title={path}
+              title={titleForPath(path, metadata)}
               className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 rounded"
             >
               {path.endsWith("/") ? (

@@ -50,10 +50,10 @@ def _build_manifest(targets: dict) -> dict:
 
 def _parse_value(value: list) -> models.Value:
     match value:
-        case ["raw", format, content, references, paths, metadata]:
-            return ("raw", format, content.encode(), references, paths, metadata)
-        case ["blob", format, key, references, paths, metadata]:
-            return ("blob", format, key, references, paths, metadata)
+        case ["raw", content, format, references, paths]:
+            return ("raw", content.encode(), format, references, paths)
+        case ["blob", key, metadata, format, references, paths]:
+            return ("blob", key, metadata, format, references, paths)
     raise Exception(f"unexpected value: {value}")
 
 

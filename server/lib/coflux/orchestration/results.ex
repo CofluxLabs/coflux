@@ -169,17 +169,78 @@ defmodule Coflux.Orchestration.Results do
     {:ok, {type, message, frames}}
   end
 
+  defp hash_blob(blob_key, metadata) do
+    metadata_parts =
+      metadata
+      |> Enum.sort()
+      |> Enum.flat_map(fn {k, v} -> [k, Jason.encode!(v)] end)
+
+    data =
+      [blob_key]
+      |> Enum.concat(metadata_parts)
+      |> Enum.intersperse(0)
+
+    :crypto.hash(:sha256, data)
+  end
+
+  defp get_or_create_blob(db, blob_key, metadata) do
+    hash = hash_blob(blob_key, metadata)
+
+    case query_one(db, "SELECT id FROM blobs WHERE hash = ?1", {hash}) do
+      {:ok, {id}} ->
+        {:ok, id}
+
+      {:ok, nil} ->
+        {:ok, blob_id} =
+          insert_one(db, :blobs, %{
+            hash: hash,
+            blob_key: blob_key
+          })
+
+        {:ok, _} =
+          insert_many(
+            db,
+            :blob_metadata,
+            {:blob_id, :key, :value},
+            Enum.map(metadata, fn {k, v} ->
+              {blob_id, k, Jason.encode!(v)}
+            end)
+          )
+
+        {:ok, blob_id}
+    end
+  end
+
+  def get_blob_by_id(db, blob_id, load_metadata) do
+    case query_one!(db, "SELECT blob_key FROM blobs WHERE id = ?1", {blob_id}) do
+      {:ok, {blob_key}} ->
+        metadata =
+          if load_metadata do
+            case query(
+                   db,
+                   "SELECT key, value FROM blob_metadata WHERE blob_id = ?1",
+                   {blob_id}
+                 ) do
+              {:ok, rows} ->
+                Map.new(rows, fn {k, v} -> {k, Jason.decode!(v)} end)
+            end
+          end
+
+        {:ok, {blob_key, metadata}}
+    end
+  end
+
   def get_value_by_id(db, value_id, load_metadata) do
     case query_one!(
            db,
-           "SELECT format, content, blob_key FROM values_ WHERE id = ?1",
+           "SELECT format, content, blob_id FROM values_ WHERE id = ?1",
            {value_id}
          ) do
-      {:ok, {format, content, blob_key}} ->
+      {:ok, {format, content, blob_id}} ->
         references =
           case query(
                  db,
-                 "SELECT number, reference_id FROM value_references WHERE value_id = ?1",
+                 "SELECT placeholder, reference_id FROM value_references WHERE value_id = ?1",
                  {value_id}
                ) do
             {:ok, rows} -> Map.new(rows)
@@ -188,46 +249,31 @@ defmodule Coflux.Orchestration.Results do
         paths =
           case query(
                  db,
-                 "SELECT number, path, blob_key FROM value_paths WHERE value_id = ?1",
+                 "SELECT placeholder, path, blob_id FROM value_paths WHERE value_id = ?1",
                  {value_id}
                ) do
             {:ok, rows} ->
-              Map.new(rows, fn {number, path, blob_key} ->
-                {number, {path, blob_key}}
+              Map.new(rows, fn {placeholder, path, blob_id} ->
+                {:ok, {blob_key, metadata}} = get_blob_by_id(db, blob_id, load_metadata)
+                {placeholder, {path, blob_key, metadata}}
               end)
           end
 
-        metadata =
-          if load_metadata do
-            case query(
-                   db,
-                   "SELECT key, value FROM value_metadata WHERE value_id = ?1",
-                   {value_id}
-                 ) do
-              {:ok, rows} ->
-                Map.new(rows, fn {k, v} -> {k, Jason.decode!(v)} end)
-            end
-          end
-
         value =
-          case {content, blob_key} do
+          case {content, blob_id} do
             {content, nil} ->
-              {:raw, format, content, references, paths, metadata}
+              {{:raw, content}, format, references, paths}
 
-            {nil, blob_key} ->
-              {:blob, format, blob_key, references, paths, metadata}
+            {nil, blob_id} ->
+              {:ok, {blob_key, metadata}} = get_blob_by_id(db, blob_id, load_metadata)
+              {{:blob, blob_key, metadata}, format, references, paths}
           end
 
         {:ok, value}
     end
   end
 
-  defp hash_value(format, content, blob_key, metadata, references, paths) do
-    metadata_parts =
-      metadata
-      |> Enum.sort()
-      |> Enum.flat_map(fn {k, v} -> [k, Jason.encode!(v)] end)
-
+  defp hash_value(content, blob_id, format, references, paths) do
     references_parts =
       references
       |> Enum.sort()
@@ -236,31 +282,37 @@ defmodule Coflux.Orchestration.Results do
     paths_parts =
       paths
       |> Enum.sort()
-      |> Enum.flat_map(fn {k, {v1, v2}} -> [Integer.to_string(k), v1, v2] end)
+      |> Enum.flat_map(fn {k, {v1, v2}} -> [Integer.to_string(k), v1, Integer.to_string(v2)] end)
 
     data =
-      [format, content || 0, blob_key || 0]
+      [format, content || 0, blob_id || 0]
       |> Enum.concat(references_parts)
       |> Enum.concat(paths_parts)
-      |> Enum.concat(metadata_parts)
       |> Enum.intersperse(0)
 
     :crypto.hash(:sha256, data)
   end
 
   def get_or_create_value(db, value) do
-    {format, content, blob_key, references, paths, metadata} =
+    {content, blob_id, format, references, paths} =
       case value do
-        {:raw, format, content, references, paths, metadata} ->
-          {format, content, nil, references, paths, metadata}
+        {{:raw, content}, format, references, paths} ->
+          {content, nil, format, references, paths}
 
-        {:blob, format, blob_key, references, paths, metadata} ->
-          {format, nil, blob_key, references, paths, metadata}
+        {{:blob, blob_key, metadata}, format, references, paths} ->
+          {:ok, blob_id} = get_or_create_blob(db, blob_key, metadata)
+
+          {nil, blob_id, format, references, paths}
       end
 
-    hash = hash_value(format, content, blob_key, metadata, references, paths)
+    paths =
+      Enum.reduce(paths, %{}, fn {placeholder, {path, blob_key, metadata}}, paths ->
+        {:ok, blob_id} = get_or_create_blob(db, blob_key, metadata)
+        Map.put(paths, placeholder, {path, blob_id})
+      end)
 
-    # TODO: don't assume hash is unique?
+    hash = hash_value(content, blob_id, format, references, paths)
+
     case query_one(db, "SELECT id FROM values_ WHERE hash = ?1", {hash}) do
       {:ok, {id}} ->
         {:ok, id}
@@ -271,16 +323,16 @@ defmodule Coflux.Orchestration.Results do
             hash: hash,
             format: format,
             content: content,
-            blob_key: blob_key
+            blob_id: blob_id
           })
 
         {:ok, _} =
           insert_many(
             db,
             :value_references,
-            {:value_id, :number, :reference_id},
-            Enum.map(references, fn {number, reference_id} ->
-              {value_id, number, reference_id}
+            {:value_id, :placeholder, :reference_id},
+            Enum.map(references, fn {placeholder, reference_id} ->
+              {value_id, placeholder, reference_id}
             end)
           )
 
@@ -288,19 +340,9 @@ defmodule Coflux.Orchestration.Results do
           insert_many(
             db,
             :value_paths,
-            {:value_id, :number, :path, :blob_key},
-            Enum.map(paths, fn {number, {path, blob_key}} ->
-              {value_id, number, path, blob_key}
-            end)
-          )
-
-        {:ok, _} =
-          insert_many(
-            db,
-            :value_metadata,
-            {:value_id, :key, :value},
-            Enum.map(metadata, fn {k, v} ->
-              {value_id, k, Jason.encode!(v)}
+            {:value_id, :placeholder, :path, :blob_id},
+            Enum.map(paths, fn {placeholder, {path, blob_id}} ->
+              {value_id, placeholder, path, blob_id}
             end)
           )
 
@@ -321,7 +363,6 @@ defmodule Coflux.Orchestration.Results do
   defp get_or_create_error(db, type, message, frames) do
     hash = hash_error(type, message, frames)
 
-    # TODO: don't assume hash is unique?
     case query_one(db, "SELECT id FROM errors WHERE hash = ?1", {hash}) do
       {:ok, {id}} ->
         {:ok, id}

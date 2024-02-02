@@ -144,15 +144,15 @@ def _parse_cache(
 def _value_key(value: models.Value) -> str:
     # TODO: tidy
     match value:
-        case ["raw", format, content, references, paths, _metadata]:
+        case ["raw", content, format, references, paths]:
             refs = ";".join(f"{k}={v}" for k, v in sorted(references.items()))
             # TODO: better/safer encoding
-            paths_ = ";".join(f"{k}={p}|{h}" for k, (p, h) in sorted(paths.items()))
+            paths_ = ";".join(f"{k}={p}|{h}" for k, (p, h, _m) in sorted(paths.items()))
             return f"raw:{format}:{refs}:{paths_}:{content}"
-        case ["blob", format, key, references, paths, _metadata]:
+        case ["blob", key, _metadata, format, references, paths]:
             refs = ";".join(f"{k}={v}" for k, v in sorted(references.items()))
             # TODO: better/safer encoding
-            paths_ = ";".join(f"{k}={p}|{h}" for k, (p, h) in sorted(paths.items()))
+            paths_ = ";".join(f"{k}={p}|{h}" for k, (p, h, _m) in sorted(paths.items()))
             return f"blob:{format}:{refs}:{paths_}:{key}"
 
 
@@ -437,7 +437,7 @@ def _deserialise_value(
     description: str,
 ) -> t.Any:
     match value:
-        case ("raw", format, content, references, paths, _metadata):
+        case ("raw", content, format, references, paths):
             return serialisation.deserialise(
                 format,
                 content,
@@ -447,7 +447,7 @@ def _deserialise_value(
                 channel.blob_store,
                 channel.directory,
             )
-        case ("blob", format, blob_key, references, paths, _metadata):
+        case ("blob", blob_key, _metadata, format, references, paths):
             content = channel.blob_store.get(blob_key)
             return serialisation.deserialise(
                 format,
@@ -496,10 +496,10 @@ def _execute(
 def _json_safe_value(value: models.Value):
     # TODO: tidy
     match value:
-        case ("raw", format, content, references, paths, metadata):
-            return ["raw", format, content.decode(), references, paths, metadata]
-        case ("blob", format, key, references, paths, metadata):
-            return ["blob", format, key, references, paths, metadata]
+        case ("raw", content, format, references, paths):
+            return ["raw", content.decode(), format, references, paths]
+        case ("blob", key, metadata, format, references, paths):
+            return ["blob", key, metadata, format, references, paths]
 
 
 def _json_safe_arguments(arguments: list[models.Value]):
@@ -508,10 +508,10 @@ def _json_safe_arguments(arguments: list[models.Value]):
 
 def _parse_value(value: t.Any) -> models.Value:
     match value:
-        case ["raw", format, content, references, paths, metadata]:
-            return ("raw", format, content.encode(), references, paths, metadata)
-        case ["blob", format, key, references, paths, metadata]:
-            return ("blob", format, key, references, paths, metadata)
+        case ["raw", content, format, references, paths]:
+            return ("raw", content.encode(), format, references, paths)
+        case ["blob", key, metadata, format, references, paths]:
+            return ("blob", key, metadata, format, references, paths)
         case other:
             raise Exception(f"unrecognised value: {other}")
 

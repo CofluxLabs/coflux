@@ -142,40 +142,48 @@ CREATE TABLE heartbeats (
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
 );
 
+CREATE TABLE blobs (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL,
+  blob_key TEXT NOT NULL -- TODO: use type BLOB?
+);
+
+CREATE TABLE blob_metadata (
+  blob_id INTEGER NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (blob_id, key),
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE CASCADE
+);
+
 CREATE TABLE values_ (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL,
   format TEXT NOT NULL,
   content BLOB,
-  blob_key TEXT,
+  blob_id INTEGER,
   UNIQUE (hash),
-  CHECK ((content IS NULL) != (blob_key IS NULL))
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
+  CHECK ((content IS NULL) != (blob_id IS NULL))
 );
 
 CREATE TABLE value_references (
   value_id INTEGER NOT NULL,
-  number INTEGER NOT NULL,
+  placeholder INTEGER NOT NULL,
   reference_id INTEGER NOT NULL,
-  PRIMARY KEY (value_id, number),
+  PRIMARY KEY (value_id, placeholder),
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE,
   FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT
 );
 
 CREATE TABLE value_paths (
   value_id INTEGER NOT NULL,
-  number INTEGER NOT NULL,
+  placeholder INTEGER NOT NULL,
   path TEXT NOT NULL,
-  blob_key TEXT NOT NULL,
-  PRIMARY KEY (value_id, number),
-  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE
-);
-
-CREATE TABLE value_metadata (
-  value_id INTEGER NOT NULL,
-  key TEXT NOT NULL,
-  value TEXT NOT NULL,
-  PRIMARY KEY (value_id, key),
-  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE
+  blob_id INTEGER NOT NULL,
+  PRIMARY KEY (value_id, placeholder),
+  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE,
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
 );
 
 CREATE TABLE errors (

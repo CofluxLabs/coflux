@@ -32,12 +32,7 @@ export type Reference = {
   target: string;
 };
 
-export type Value = {
-  format: string;
-  references: Record<string, [string, Reference]>;
-  paths: Record<string, [string, string]>;
-  metadata: Record<string, any>;
-} & (
+export type Value = (
   | {
       type: "raw";
       content: string;
@@ -45,8 +40,13 @@ export type Value = {
   | {
       type: "blob";
       key: string;
+      metadata: Record<string, any>;
     }
-);
+) & {
+  format: string;
+  references: Record<string, [string, Reference]>;
+  paths: Record<string, [string, string, Record<string, any>]>;
+};
 
 export type ErrorFrame = {
   file: string;
