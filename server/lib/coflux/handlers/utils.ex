@@ -20,7 +20,7 @@ defmodule Coflux.Handlers.Utils do
     )
   end
 
-  def json_error_response(req, error, opts) do
+  def json_error_response(req, error, opts \\ []) do
     status = Keyword.get(opts, :status, 400)
     details = Keyword.get(opts, :details)
     result = %{"error" => error}

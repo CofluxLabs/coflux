@@ -1,6 +1,8 @@
 defmodule Coflux.Handlers.Blobs do
   import Coflux.Handlers.Utils
 
+  alias Coflux.Utils
+
   def init(req, opts) do
     bindings = :cowboy_req.bindings(req)
 
@@ -9,8 +11,15 @@ defmodule Coflux.Handlers.Blobs do
     |> handle(:cowboy_req.method(req), bindings[:key], opts)
   end
 
+  defp handle(req, "HEAD", key, opts) do
+    exists = File.exists?(blob_path(key))
+    status = if exists, do: 200, else: 404
+    req = :cowboy_req.reply(status, %{}, req)
+    {:ok, req, opts}
+  end
+
   defp handle(req, "GET", key, opts) do
-    case get_blob(key) do
+    case File.read(blob_path(key)) do
       {:ok, content} ->
         req = :cowboy_req.reply(200, %{}, content, req)
         {:ok, req, opts}
@@ -18,28 +27,42 @@ defmodule Coflux.Handlers.Blobs do
   end
 
   defp handle(req, "PUT", key, opts) do
-    # TODO: handle more
-    case :cowboy_req.read_body(req) do
-      {:ok, content, req} ->
-        case put_blob(key, content) do
-          :ok ->
-            req = :cowboy_req.reply(204, req)
-            {:ok, req, opts}
-        end
+    {:ok, temp_path} = Briefly.create()
+
+    case File.open!(temp_path, [:write], &read_body(req, &1)) do
+      {:ok, req, hash} ->
+        req =
+          if key == Base.encode16(hash, case: :lower) do
+            path = blob_path(key)
+            path |> Path.dirname() |> File.mkdir_p!()
+            :ok = File.rename(temp_path, path)
+            :cowboy_req.reply(204, req)
+          else
+            json_error_response(req, "hash_mismatch")
+          end
+
+        {:ok, req, opts}
     end
   end
 
-  defp blob_path(key) do
-    "blobs/#{key}"
+  defp blob_path(<<a::binary-size(2), b::binary-size(2)>> <> c) do
+    Utils.data_path("blobs/#{a}/#{b}/#{c}")
   end
 
-  defp get_blob(key) do
-    {:ok, File.read!(blob_path(key))}
-  end
+  defp read_body(req, file, hash \\ nil) do
+    hash = hash || :crypto.hash_init(:sha256)
 
-  defp put_blob(key, content) do
-    path = blob_path(key)
-    path |> Path.dirname() |> File.mkdir_p!()
-    File.write!(path, content)
+    case :cowboy_req.read_body(req) do
+      {status, data, req} when status in [:ok, :more] ->
+        case IO.binwrite(file, data) do
+          :ok ->
+            hash = :crypto.hash_update(hash, data)
+
+            case status do
+              :ok -> {:ok, req, :crypto.hash_final(hash)}
+              :more -> read_body(req, file, hash)
+            end
+        end
+    end
   end
 end

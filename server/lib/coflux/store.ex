@@ -5,7 +5,7 @@ defmodule Coflux.Store do
 
   def open(project_id, environment, name) do
     path =
-      [project_id, environment, "#{name}.sqlite"]
+      ["projects", project_id, environment, "#{name}.sqlite"]
       |> Path.join()
       |> Utils.data_path()
 
