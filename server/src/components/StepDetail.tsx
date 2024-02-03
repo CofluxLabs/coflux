@@ -220,7 +220,7 @@ function BlobLink({ value }: BlobLinkProps) {
 }
 
 function titleForPath(path: string, metadata: Record<string, any>) {
-  const parts = [path];
+  const parts = [];
   if (path.endsWith("/")) {
     if ("count" in metadata) {
       parts.push(pluralise(metadata.count, "file"));
@@ -236,7 +236,11 @@ function titleForPath(path: string, metadata: Record<string, any>) {
       parts.push(metadata.type);
     }
   }
-  return parts.join("\n");
+  if (parts.length) {
+    return `${path}\n${parts.join("; ")}`;
+  } else {
+    return path;
+  }
 }
 
 type ValueProps = {
@@ -270,6 +274,7 @@ function Value({ value, className }: ValueProps) {
               href={`/blobs/${blob_key}`}
               title={titleForPath(path, metadata)}
               className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 rounded"
+              key={index}
             >
               {path.endsWith("/") ? (
                 <IconFolder size={16} className="inline-block" />
