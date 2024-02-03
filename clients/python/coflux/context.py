@@ -1,7 +1,7 @@
 import typing as t
 import datetime as dt
 
-from . import execution, future
+from . import execution, models
 
 
 class NotInContextException(Exception):
@@ -44,9 +44,9 @@ def schedule(
     )
 
 
-def resolve(target_execution_id: str) -> future.Future[t.Any]:
+def resolve(target_execution_id: str) -> models.Execution[t.Any]:
     channel = _get_channel()
-    return future.Future(
+    return models.Execution(
         lambda: channel.resolve_reference(target_execution_id),
         target_execution_id,
     )

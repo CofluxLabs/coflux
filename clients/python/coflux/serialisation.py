@@ -8,7 +8,7 @@ import os
 import mimetypes
 from pathlib import Path
 
-from . import future, blobs, models
+from . import blobs, models
 
 T = t.TypeVar("T")
 
@@ -61,8 +61,8 @@ def _substitute_placeholders(
     blob_store: blobs.Store,
     execution_dir: Path,
 ) -> t.Any:
-    if isinstance(data, future.Future) and data.execution_id:
-        return _do_substitution(references, data.execution_id, existing | paths.keys())
+    if isinstance(data, models.Execution) and data.id:
+        return _do_substitution(references, data.id, existing | paths.keys())
     elif isinstance(data, Path):
         path = data.resolve()
         if not path.is_relative_to(execution_dir):
@@ -111,19 +111,19 @@ def _substitute_placeholders(
 
 def _replace_placeholders(
     data: t.Any,
-    reference_placeholders: dict[str, future.Future],
+    execution_placeholders: dict[str, models.Execution],
     path_placeholders: dict[str, Path],
 ):
     if isinstance(data, str):
-        return reference_placeholders.get(data) or path_placeholders.get(data) or data
+        return execution_placeholders.get(data) or path_placeholders.get(data) or data
     elif isinstance(data, list):
         return [
-            _replace_placeholders(item, reference_placeholders, path_placeholders)
+            _replace_placeholders(item, execution_placeholders, path_placeholders)
             for item in data
         ]
     elif isinstance(data, dict):
         return {
-            k: _replace_placeholders(v, reference_placeholders, path_placeholders)
+            k: _replace_placeholders(v, execution_placeholders, path_placeholders)
             for k, v in data.items()
         }
     return data
@@ -178,8 +178,8 @@ def deserialise(
     execution_dir: Path,
 ) -> t.Any:
     data = _deserialise(format, content)
-    reference_placeholders = {
-        f"{{{k}}}": future.Future(lambda: resolve_fn(v), v)
+    execution_placeholders = {
+        f"{{{k}}}": models.Execution(lambda: resolve_fn(v), v)
         for k, v in references.items()
     }
     path_placeholders = {}
@@ -196,4 +196,4 @@ def deserialise(
         else:
             blob_store.download(blob_key, resolved_path)
         path_placeholders[f"{{{placeholder}}}"] = resolved_path
-    return _replace_placeholders(data, reference_placeholders, path_placeholders)
+    return _replace_placeholders(data, execution_placeholders, path_placeholders)
