@@ -62,10 +62,10 @@ const config: Config = {
       options: {
         theme: "base",
         themeVariables: {
-          primaryColor: "#f8fafc",
-          primaryTextColor: "#334155",
-          primaryBorderColor: "#0891b2",
-          lineColor: "#334155",
+          primaryColor: "#f1f5f9",
+          primaryTextColor: "#164e63",
+          primaryBorderColor: "#64748b",
+          lineColor: "#155e75",
         },
       },
     },

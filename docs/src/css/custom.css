@@ -28,3 +28,20 @@
 .footer__bottom {
   color: #64748b;
 }
+
+.markdown img {
+  margin: var(--ifm-leading) auto;
+  display: block;
+  border: 1px solid #eee;
+  box-shadow: var(--ifm-global-shadow-lw);
+  border-radius: var(--ifm-code-border-radius);
+}
+
+.docusaurus-mermaid-container {
+  margin: var(--ifm-leading) 0;
+}
+
+.docusaurus-mermaid-container > svg {
+  margin: 0 auto;
+  display: block;
+}

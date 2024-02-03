@@ -1,4 +1,4 @@
-# Running the server
+# 2. Running the server
 
 The Coflux server can be run as a Docker container, storing data in your working directory:
 

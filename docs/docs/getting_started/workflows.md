@@ -1,4 +1,4 @@
-# Defining workflows
+# 1. Defining workflows
 
 Workflows are defined in code, using Python functions, which are annotated to indicate their operation type and configuration. A _workflow_ is the entry point for a workflow, and a _task_ is an operation to be executed within the run. Workflows can call tasks, tasks can call other tasks, and tasks can also call workflows (initiating a separate run).
 
@@ -9,7 +9,7 @@ The annotations are designed to be unimposing so that functions can be executed 
 Let's start with a simple example:
 
 ```python
-import colux
+import coflux
 
 @coflux.task()
 def build_greeting(name: str):

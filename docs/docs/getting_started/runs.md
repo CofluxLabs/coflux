@@ -1,4 +1,4 @@
-# Initiating runs
+# 4. Initiating runs
 
 We've defined our workflow, started the Coflux server, and started an agent. The final step is to trigger a run of our workflow.
 

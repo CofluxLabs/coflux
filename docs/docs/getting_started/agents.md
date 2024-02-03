@@ -1,4 +1,4 @@
-# Starting agents
+# 3. Starting agents
 
 Workflows are hosted by _agents_ - each agent can have its own dependencies, and be deployed within your infrastructure as you like - for example a single agent may be deployed on an on-premise bare-metal server with a GPU, and another agent could be deployed as a Docker image on an auto-scaling cloud cluster.
 
