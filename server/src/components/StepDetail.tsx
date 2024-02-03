@@ -144,7 +144,7 @@ function Header({
     },
     [projectId, run, environmentName, step, navigate, location],
   );
-  const handleRetryClick = useCallback(() => {
+  const handleRerunClick = useCallback(() => {
     setRerunning(true);
     onRerunStep(stepId, environmentName).then(({ attempt }) => {
       setRerunning(false);
@@ -176,9 +176,9 @@ function Header({
             disabled={rerunning}
             outline={true}
             size="sm"
-            onClick={handleRetryClick}
+            onClick={handleRerunClick}
           >
-            Retry
+            Re-run
           </Button>
         </div>
       </div>
