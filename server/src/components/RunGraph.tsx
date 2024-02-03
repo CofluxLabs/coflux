@@ -439,7 +439,7 @@ function Edge({ edge, offset, highlight }: EdgeProps) {
           : "stroke-slate-200"
       }
       fill="none"
-      strokeWidth={highlight ? 3 : 3}
+      strokeWidth={highlight || type == "dependency" ? 3 : 2}
       strokeDasharray={type != "dependency" ? "5" : undefined}
       d={buildPath(
         points.map(({ x, y }) => ({ x: x + offset[0], y: y + offset[1] })),
