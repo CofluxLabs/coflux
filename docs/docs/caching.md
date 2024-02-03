@@ -2,7 +2,7 @@
 
 Some use cases for caching include:
 
-- Avoiding re-computing something (expensive) that we can assume hasn't changed.
+- Avoiding re-computing something that we can assume hasn't changed.
 - Avoiding making an external request too frequently (e.g., to an API that implements rate limiting).
 
 :::note
@@ -21,7 +21,7 @@ If this step has previously run with the same arguments, the step won't be re-ex
 
 ## Maximum age
 
-Alternatively, instead of `True`, a _maximum age_ can be specified, either with a numeric value, corresponding to seconds; or as a `datetime.timedelta`. In this case, a previous result (for the same arguments) will only be used if it's within this age:
+Alternatively, instead of passing `True`, a _maximum age_ can be specified, either with a numeric value, corresponding to seconds; or as a `datetime.timedelta`. In this case, a previous result (for the same arguments) will only be used if it's within this age:
 
 ```python
 import datetime as dt
@@ -35,16 +35,18 @@ This will re-use a (successful) request (for a user) as long as it's within the 
 
 ## Expiration
 
-Unlike a typical cache, results themselves don't expire. This gives more flexibility, as the age can be changed retrospectively. However, you can achieve an expiration-like mechanism by adding time-based task arguments. For example, adding a date parameter (and having the caller determine the current date) means you automatically stop caching at the end of the day:
+Unlike a typical cache, results themselves don't expire. This gives more flexibility, as the age can be changed retrospectively. However, you can achieve an expiration-like mechanism by adding time-based task arguments. For example, adding a date parameter (and having the caller determine the current date) means you automatically stop using the cached result at the end of each day (subject to timezone considerations):
 
 ```python
+import datetime as dt
+
 @task(cache=True)
 def get_headlines(date):
     ...
 
 @workflow()
 def my_workflow():
-    headlines = get_headlines()
+    headlines = get_headlines(dt.date.today())
     ...
 ```
 
@@ -77,10 +79,10 @@ Here we have a function to fetch a specified product from the provided URL. If t
 
 ## Cache namespaces
 
-Each cache key is considered within a namespace. By default this namespace consists of the repository name and the task name. In some cases it might be necessary to override this namespace. For example, if you need to rename a function (or repository), but you want to retain the cache:
+Each cache key is considered within a namespace. By default this namespace consists of the repository name and the task name (in the format `repository:target`). In some cases it might be necessary to override this namespace. For example, if you need to rename a function (or repository), but you want to retain the cache:
 
 ```python
-@task(cache=True, cache_namespace="example1.repo:old_task_name")
+@task(cache=True, cache_namespace="example1.repo:task_name")
 def new_task_name():
     ...
 ```
@@ -103,7 +105,7 @@ def task_b(b):
 The cache settings can be set on `@workflow`s as well as `@task`s, but they might not operate as expected. This is a little unintuitive, so it's subject to change.
 :::
 
-The cache settings are evaluated by the caller of the task/workflow. If the workflow is triggered manually, there isn't an opportunity to evaluate the settings, so a cache key isn't assigned. However, the settings are still applied when a workflow is called by another workflow (or by a [sensor](/sensors)). For example:
+The cache settings are evaluated by the caller of the task/workflow. If the workflow is triggered manually, there isn't an opportunity to evaluate the settings, so a cache key isn't assigned. However, the settings _are_ still applied when a workflow is called by another workflow (or by a [sensor](/sensors)). For example:
 
 ```python
 @workflow(cache=True)

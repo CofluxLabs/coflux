@@ -1,12 +1,12 @@
 # Asynchronous execution
 
 :::note
-This isn't related to `async`/`await` in Python.
+This topic isn't related to `async`/`await` in Python.
 :::
 
-By default, when you call a task from another task (or workflow), execution will be paused while waiting for the called task to complete. This is more intuitive, and makes adoption a bit easier.
+By default, when you call a task from another task (or workflow), execution will be paused while waiting for the called task to complete. This is more intuitive for beginners, and also makes code more portable.
 
-Often, however, you'll want to be able to execute tasks in parallel, and collect the results later on. Or trigger a task without waiting for the result. This can be done by 'submitting' the task instead of calling it. You can then wait for the result when it's needed:
+Often, however, you'll want to be able to execute tasks in parallel, and collect the results later on. Or trigger a task without waiting for the result. This can be done by 'submitting' the task (using `.submit(...)`) instead of calling it. This returns a 'future'-like object, which can be used to wait for the result (using `.result()`), when needed:
 
 ```python
 @task()
@@ -36,6 +36,8 @@ And comparing to a synchronous equivalent:
 
 <img src="/img/synchronous.png" alt="Synchronous execution" width="500" />
 
+Note the longer total execution time.
+
 :::info
 Calling a task synchronously is the same as submitting it and then immediately waiting for its result. The following two workflows are equivalent:
 
@@ -52,7 +54,7 @@ def my_workflow(a, b):
 ```
 :::
 
-## Passing/returning futures
+## Passing and returning futures
 
 Futures can be passed to other tasks, or returned from a task/workflow to avoid unnecessarily waiting for a result. Demonstrating both:
 
@@ -64,15 +66,17 @@ def process_order(user_id, product_id):
     return create_order.submit(user_future, product_future)
 ```
 
-In this case, the workflow is simply responsible for submitting three tasks, after which it can return:
+In this case, the workflow is responsible for submitting three tasks and wiring them together, after which it can return:
 
 <img src="/img/futures_timeline.png" alt="Futures timeline" width="500" />
 
-The relationships between the tasks is indicated in the graph view. The dashed line indicates that there is a parent-child relationship, bit without a strict dependency. This can help to indicate the direction that data is flowing:
+The relationships between the tasks is indicated in the graph view. The dashed line indicates that there is a parent-child relationship, but without a strict dependency. This can help to indicate the direction that data is flowing:
 
 <img src="/img/futures_graph.png" alt="Futures graph" width="500" />
 
 ## Fire-and-forget
 
-You can submit a task without ever waiting for the result. In this case the caller doesn't have a way to know that the task was successful, but it may be acceptable to rely on the retry mechanism or separate monitoring. An example use case might be sending a notification to a user.
+A task can be submitted without ever waiting for the result. In this case the caller doesn't have a way to know that the task was successful, but it may be acceptable to rely on the retry mechanism or separate monitoring.
+
+An example use case might be sending a notification to a user.
 

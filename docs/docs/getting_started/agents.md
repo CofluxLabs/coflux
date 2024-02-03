@@ -11,17 +11,19 @@ Primarily, an agent is a process that's able to execute the code required by you
 
 ## Install
 
-These are taken care of by the Coflux Python library, which can be installed from PyPI - e.g., with `pip`:
+These are taken care of by the Coflux Python package, which can be installed from PyPI - e.g., with `pip`:
 
 ```bash
 pip install coflux
 ```
 
+**Run the command above**, or install the package as you prefer.
+
 This will also install the `coflux` CLI, which we can use to run our agent.
 
 ## Initialise
 
-First, we can use the `init` command to populate a configuration file (which will avoid needing to specify options when we run the agent):
+First, we can use the `init` command to populate a configuration file (which will avoid needing to specify options when we run the agent). **Run the following command**:
 
 ```bash
 coflux init
@@ -31,7 +33,7 @@ Enter the ID of the project that you created.
 
 ## Run
 
-Now we can run the agent:
+Now we need to start the agent. **Run the following command**:
 
 ```bash
 coflux agent.run hello.py

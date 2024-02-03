@@ -14,6 +14,7 @@ const sidebars: SidebarsConfig = {
       ],
     },
     "concepts",
+    "executions",
     "async",
     "retries",
     "caching",
