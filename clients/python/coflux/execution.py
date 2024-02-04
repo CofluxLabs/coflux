@@ -7,12 +7,14 @@ import asyncio
 import datetime as dt
 import hashlib
 import contextvars
-import concurrent.futures as cf
 import traceback
 import sys
 import tempfile
 import os
 import contextlib
+import mimetypes
+import zipfile
+import itertools
 from pathlib import Path
 
 from . import server, blobs, models, serialisation
@@ -25,6 +27,30 @@ _AGENT_THRESHOLD_S = 5.0
 T = t.TypeVar("T")
 
 channel_context = contextvars.ContextVar("channel")
+
+
+class Future(t.Generic[T]):
+    def __init__(self):
+        self._event = threading.Event()
+        self._result: T | None = None
+        self._exception: BaseException | None = None
+
+    def result(self, timeout: float | None = None):
+        self._event.wait(timeout)
+        if self._exception:
+            raise self._exception
+        else:
+            return t.cast(T, self._result)
+
+    def set_result(self, result):
+        assert not self._result and not self._exception
+        self._result = result
+        self._event.set()
+
+    def set_exception(self, exception):
+        assert not self._result and not self._exception
+        self._exception = exception
+        self._event.set()
 
 
 class ExecutionStatus(enum.Enum):
@@ -65,7 +91,19 @@ class ScheduleExecutionRequest(t.NamedTuple):
 
 
 class ResolveReferenceRequest(t.NamedTuple):
-    execution_id: str
+    execution_id: int
+
+
+class PersistAssetRequest(t.NamedTuple):
+    persist_id: int
+    type: int
+    path: str
+    blob_key: str
+    metadata: dict[str, t.Any]
+
+
+class ResolveAssetRequest(t.NamedTuple):
+    asset_id: int
 
 
 class RecordCheckpointRequest(t.NamedTuple):
@@ -81,21 +119,43 @@ class LogMessageRequest(t.NamedTuple):
 
 class ExecutionScheduledResponse(t.NamedTuple):
     schedule_id: int
-    execution_id: str
+    execution_id: int
 
 
-class ExecutionScheduleFailedResponse(t.NamedTuple):
+class ScheduleExecutionFailedResponse(t.NamedTuple):
     schedule_id: int
     error: str
 
 
 class ResultResolvedResponse(t.NamedTuple):
-    execution_id: str
+    execution_id: int
     result: models.Result
 
 
-class ResultResolveFailedResponse(t.NamedTuple):
-    execution_id: str
+class ResolveResultFailedResponse(t.NamedTuple):
+    execution_id: int
+    error: str
+
+
+class AssetPersistedResponse(t.NamedTuple):
+    persist_id: int
+    asset_id: str
+
+
+class PersistAssetFailedResponse(t.NamedTuple):
+    persist_id: int
+    error: str
+
+
+class AssetResolvedResponse(t.NamedTuple):
+    asset_id: int
+    asset_type: int
+    path: str
+    blob_key: str
+
+
+class ResolveAssetFailedResponse(t.NamedTuple):
+    asset_id: int
     error: str
 
 
@@ -144,16 +204,16 @@ def _parse_cache(
 def _value_key(value: models.Value) -> str:
     # TODO: tidy
     match value:
-        case ["raw", content, format, references, paths]:
+        case ["raw", content, format, references, assets]:
             refs = ";".join(f"{k}={v}" for k, v in sorted(references.items()))
             # TODO: better/safer encoding
-            paths_ = ";".join(f"{k}={p}|{h}" for k, (p, h, _m) in sorted(paths.items()))
-            return f"raw:{format}:{refs}:{paths_}:{content}"
-        case ["blob", key, _metadata, format, references, paths]:
+            assets_ = ";".join(f"{k}={v}" for k, v in sorted(assets.items()))
+            return f"raw:{format}:{refs}:{assets_}:{content}"
+        case ["blob", key, _metadata, format, references, assets]:
             refs = ";".join(f"{k}={v}" for k, v in sorted(references.items()))
             # TODO: better/safer encoding
-            paths_ = ";".join(f"{k}={p}|{h}" for k, (p, h, _m) in sorted(paths.items()))
-            return f"blob:{format}:{refs}:{paths_}:{key}"
+            assets_ = ";".join(f"{k}={v}" for k, v in sorted(assets.items()))
+            return f"blob:{format}:{refs}:{assets_}:{key}"
 
 
 def _build_key(
@@ -234,14 +294,22 @@ def working_directory():
         os.chdir(original)
 
 
+def counter():
+    count = itertools.count()
+    return lambda: next(count)
+
+
 class Channel:
     def __init__(self, execution_id: str, blob_url_format: str, connection):
         self._execution_id = execution_id
         self._blob_url_format = blob_url_format
         self._connection = connection
-        self._last_schedule_id = 0
-        self._schedules: dict[int, cf.Future] = {}
-        self._resolves: dict[str, cf.Future] = {}
+        self._next_schedule_id = counter()
+        self._next_persist_id = counter()
+        self._schedules: dict[int, Future[str]] = {}
+        self._persists: dict[int, Future[str]] = {}
+        self._execution_resolves: dict[int, Future[models.Result]] = {}
+        self._asset_resolves: dict[int, Future[tuple[int, str, str]]] = {}
         self._running = True
         self._exit_stack = contextlib.ExitStack()
 
@@ -276,18 +344,28 @@ class Channel:
                 match message:
                     case ExecutionScheduledResponse(schedule_id, execution_id):
                         self._schedules.pop(schedule_id).set_result(execution_id)
-                    case ExecutionScheduleFailedResponse(schedule_id, error):
+                    case ScheduleExecutionFailedResponse(schedule_id, error):
                         self._schedules.pop(schedule_id).set_exception(Exception(error))
                     case ResultResolvedResponse(execution_id, result):
-                        self._resolves.pop(execution_id).set_result(result)
-                    case ResultResolveFailedResponse(execution_id, error):
-                        self._resolves.pop(execution_id).set_exception(Exception(error))
+                        self._execution_resolves.pop(execution_id).set_result(result)
+                    case ResolveResultFailedResponse(execution_id, error):
+                        self._execution_resolves.pop(execution_id).set_exception(
+                            Exception(error)
+                        )
+                    case AssetPersistedResponse(persist_id, asset_id):
+                        self._persists.pop(persist_id).set_result(asset_id)
+                    case PersistAssetFailedResponse(persist_id, error):
+                        self._persists.pop(persist_id).set_exception(Exception(error))
+                    case AssetResolvedResponse(asset_id, asset_type, path, blob_key):
+                        self._asset_resolves.pop(asset_id).set_result(
+                            (asset_type, path, blob_key)
+                        )
+                    case ResolveAssetFailedResponse(asset_id, error):
+                        self._asset_resolves.pop(asset_id).set_exception(
+                            Exception(error)
+                        )
                     case other:
                         raise Exception(f"Received unhandled response: {other}")
-
-    def _next_schedule_id(self):
-        self._last_schedule_id += 1
-        return self._last_schedule_id
 
     def _send(self, message):
         self._connection.send(message)
@@ -349,7 +427,7 @@ class Channel:
         retry_count, retry_delay_min, retry_delay_max = _parse_retries(retries)
 
         schedule_id = self._next_schedule_id()
-        future = cf.Future()
+        future = Future()
         self._schedules[schedule_id] = future
         self._send(
             ScheduleExecutionRequest(
@@ -370,10 +448,10 @@ class Channel:
         return future.result()
 
     def resolve_reference(self, execution_id):
-        future = self._resolves.get(execution_id)
+        future = self._execution_resolves.get(execution_id)
         if not future:
-            future = cf.Future()
-            self._resolves[execution_id] = future
+            future = Future()
+            self._execution_resolves[execution_id] = future
             self._send(ResolveReferenceRequest(execution_id))
         result = future.result()
         return _deserialise_result(result, self._blob_store, self, "reference")
@@ -384,6 +462,69 @@ class Channel:
             for a in arguments
         ]
         self._send(RecordCheckpointRequest(serialised_arguments))
+
+    # TODO: support specifying filter (glob)
+    def persist(self, path: Path | None) -> models.Asset:
+        path = path or self._directory
+        if not path.exists():
+            raise Exception(f"path '{path}' doesn't exist")
+        path = path.resolve()
+        if not path.is_relative_to(self._directory):
+            raise Exception(f"path ({path}) not in execution directory")
+        # TODO: zip all assets?
+        path_str = str(path.relative_to(self._directory))
+        if path.is_file():
+            asset_type = 0
+            blob_key = self._blob_store.upload(path)
+            (mime_type, _) = mimetypes.guess_type(path)
+            metadata = {"size": path.stat().st_size, "type": mime_type}
+        elif path.is_dir():
+            asset_type = 1
+            sizes = []
+            with tempfile.NamedTemporaryFile() as zip_file:
+                zip_path = Path(zip_file.name)
+                with zipfile.ZipFile(zip_path, "w") as zip:
+                    for root, _, files in os.walk(path):
+                        root = Path(root)
+                        for file in files:
+                            file_path = root.joinpath(file)
+                            zip.write(file_path, arcname=file_path.relative_to(path))
+                            sizes.append(file_path.stat().st_size)
+                blob_key = self._blob_store.upload(zip_path)
+            metadata = {"totalSize": sum(sizes), "count": len(sizes)}
+        else:
+            raise Exception(f"path ({path}) isn't a file or a directory")
+        persist_id = self._next_persist_id()
+        future = Future()
+        self._persists[persist_id] = future
+        self._send(
+            PersistAssetRequest(persist_id, asset_type, path_str, blob_key, metadata)
+        )
+        asset_id = future.result()
+        return models.Asset(asset_id)
+
+    # TODO: specify where to restore to? or use asset's path?
+    def restore(self, asset: models.Asset) -> Path:
+        future = self._asset_resolves.get(asset.id)
+        if not future:
+            future = Future()
+            self._asset_resolves[asset.id] = future
+            self._send(ResolveAssetRequest(asset.id))
+        asset_type, path_str, blob_key = future.result()
+        resolved_path = self._directory.joinpath(path_str)
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+        if asset_type == 0:
+            self._blob_store.download(blob_key, resolved_path)
+        elif asset_type == 1:
+            resolved_path.mkdir()
+            with tempfile.NamedTemporaryFile() as zip_file:
+                zip_path = Path(zip_file.name)
+                self._blob_store.download(blob_key, zip_path)
+                with zipfile.ZipFile(zip_path, "r") as zip:
+                    zip.extractall(resolved_path)
+        else:
+            raise Exception(f"unrecognised asset type ({asset_type})")
+        return resolved_path
 
     def log_message(self, level, template, **kwargs):
         timestamp = time.time() * 1000
@@ -437,26 +578,22 @@ def _deserialise_value(
     description: str,
 ) -> t.Any:
     match value:
-        case ("raw", content, format, references, paths):
+        case ("raw", content, format, references, assets):
             return serialisation.deserialise(
                 format,
                 content,
                 references,
-                paths,
+                assets,
                 channel.resolve_reference,
-                channel.blob_store,
-                channel.directory,
             )
-        case ("blob", blob_key, _metadata, format, references, paths):
+        case ("blob", blob_key, _metadata, format, references, assets):
             content = channel.blob_store.get(blob_key)
             return serialisation.deserialise(
                 format,
                 content,
                 references,
-                paths,
+                assets,
                 channel.resolve_reference,
-                channel.blob_store,
-                channel.directory,
             )
 
 
@@ -496,10 +633,10 @@ def _execute(
 def _json_safe_value(value: models.Value):
     # TODO: tidy
     match value:
-        case ("raw", content, format, references, paths):
-            return ["raw", content.decode(), format, references, paths]
-        case ("blob", key, metadata, format, references, paths):
-            return ["blob", key, metadata, format, references, paths]
+        case ("raw", content, format, references, assets):
+            return ["raw", content.decode(), format, references, assets]
+        case ("blob", key, metadata, format, references, assets):
+            return ["blob", key, metadata, format, references, assets]
 
 
 def _json_safe_arguments(arguments: list[models.Value]):
@@ -508,10 +645,10 @@ def _json_safe_arguments(arguments: list[models.Value]):
 
 def _parse_value(value: t.Any) -> models.Value:
     match value:
-        case ["raw", content, format, references, paths]:
-            return ("raw", content.encode(), format, references, paths)
-        case ["blob", key, metadata, format, references, paths]:
-            return ("blob", key, metadata, format, references, paths)
+        case ["raw", content, format, references, assets]:
+            return ("raw", content.encode(), format, references, assets)
+        case ["blob", key, metadata, format, references, assets]:
+            return ("blob", key, metadata, format, references, assets)
         case other:
             raise Exception(f"unrecognised value: {other}")
 
@@ -645,7 +782,7 @@ class Execution:
                         ExecutionScheduledResponse(schedule_id, execution_id)
                     ),
                     lambda error: self._try_send(
-                        ExecutionScheduleFailedResponse(schedule_id, error)
+                        ScheduleExecutionFailedResponse(schedule_id, error)
                     ),
                 )
             case ResolveReferenceRequest(execution_id):
@@ -657,7 +794,30 @@ class Execution:
                         ResultResolvedResponse(execution_id, _parse_result(result))
                     ),
                     lambda error: self._try_send(
-                        ResultResolveFailedResponse(execution_id, error)
+                        ResolveResultFailedResponse(execution_id, error)
+                    ),
+                )
+            case PersistAssetRequest(persist_id, type, path, blob_key, metadata):
+                self._server_request(
+                    "put_asset",
+                    (self._id, type, path, blob_key, metadata),
+                    lambda asset_id: self._try_send(
+                        AssetPersistedResponse(persist_id, asset_id)
+                    ),
+                    lambda error: self._try_send(
+                        PersistAssetFailedResponse(persist_id, error)
+                    ),
+                )
+
+            case ResolveAssetRequest(asset_id):
+                self._server_request(
+                    "get_asset",
+                    (asset_id, self._id),
+                    lambda result: self._try_send(
+                        AssetResolvedResponse(asset_id, *result)
+                    ),
+                    lambda error: self._try_send(
+                        ResolveAssetFailedResponse(asset_id, error)
                     ),
                 )
             case LogMessageRequest(level, template, labels, timestamp):

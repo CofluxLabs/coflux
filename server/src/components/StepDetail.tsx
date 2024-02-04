@@ -219,28 +219,27 @@ function BlobLink({ value }: BlobLinkProps) {
   );
 }
 
-function titleForPath(path: string, metadata: Record<string, any>) {
+function formatMetadata(asset: models.Asset) {
   const parts = [];
-  if (path.endsWith("/")) {
-    if ("count" in metadata) {
-      parts.push(pluralise(metadata.count, "file"));
-    }
-    if ("totalSize" in metadata) {
-      parts.push(humanSize(metadata.totalSize));
-    }
-  } else {
-    if ("size" in metadata) {
-      parts.push(humanSize(metadata.size));
-    }
-    if ("type" in metadata && metadata.type) {
-      parts.push(metadata.type);
-    }
+  switch (asset.type) {
+    case 0:
+      if ("size" in asset.metadata) {
+        parts.push(humanSize(asset.metadata.size));
+      }
+      if ("type" in asset.metadata && asset.metadata.type) {
+        parts.push(asset.metadata.type);
+      }
+      break;
+    case 1:
+      if ("count" in asset.metadata) {
+        parts.push(pluralise(asset.metadata.count, "file"));
+      }
+      if ("totalSize" in asset.metadata) {
+        parts.push(humanSize(asset.metadata.totalSize));
+      }
+      break;
   }
-  if (parts.length) {
-    return `${path}\n${parts.join("; ")}`;
-  } else {
-    return path;
-  }
+  return parts.join("; ");
 }
 
 type ValueProps = {
@@ -267,20 +266,20 @@ function Value({ value, className }: ValueProps) {
               <IconFunction size={16} className="inline-block" />
             </StepLink>
           );
-        } else if (referenceNumber in value.paths) {
-          const [path, blob_key, metadata] = value.paths[referenceNumber];
+        } else if (referenceNumber in value.assets) {
+          const [_, asset] = value.assets[referenceNumber];
           return (
             <a
-              href={`/blobs/${blob_key}`}
-              title={titleForPath(path, metadata)}
+              href={`/blobs/${asset.blobKey}`}
+              title={`${asset.path}\n${formatMetadata(asset)}`}
               className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 rounded"
               key={index}
             >
-              {path.endsWith("/") ? (
-                <IconFolder size={16} className="inline-block" />
-              ) : (
+              {asset.type == 0 ? (
                 <IconFile size={16} className="inline-block" />
-              )}
+              ) : asset.type == 1 ? (
+                <IconFolder size={16} className="inline-block" />
+              ) : undefined}
             </a>
           );
         } else {
@@ -627,6 +626,42 @@ function CachedSection({ result }: CachedSectionProps) {
   );
 }
 
+type AssetsSectionProps = {
+  execution: models.Execution;
+};
+
+function AssetsSection({ execution }: AssetsSectionProps) {
+  return (
+    <div>
+      <h3 className="uppercase text-sm font-bold text-slate-400">Assets</h3>
+      {Object.keys(execution.assets).length ? (
+        <ul>
+          {Object.entries(execution.assets).map(([assetId, asset]) => (
+            <li key={assetId} className="flex items-center gap-1">
+              <a
+                href={`/blobs/${asset.blobKey}`}
+                className="flex items-center gap-1"
+              >
+                {asset.type == 0 ? (
+                  <IconFile size={16} className="inline-block" />
+                ) : asset.type == 1 ? (
+                  <IconFolder size={16} className="inline-block" />
+                ) : undefined}
+                {asset.path}
+              </a>
+              <span className="text-slate-500 text-xs">
+                ({formatMetadata(asset)})
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>None</p>
+      )}
+    </div>
+  );
+}
+
 type LogsSectionProps = {
   projectId: string;
   environmentName: string;
@@ -731,12 +766,15 @@ export default function StepDetail({
           <CachedSection result={execution.result} />
         ) : undefined}
         {execution?.assignedAt && (
-          <LogsSection
-            projectId={projectId}
-            environmentName={environmentName}
-            runId={runId}
-            execution={execution}
-          />
+          <Fragment>
+            <AssetsSection execution={execution} />
+            <LogsSection
+              projectId={projectId}
+              environmentName={environmentName}
+              runId={runId}
+              execution={execution}
+            />
+          </Fragment>
         )}
       </div>
     </div>

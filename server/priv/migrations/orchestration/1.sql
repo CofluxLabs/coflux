@@ -89,6 +89,16 @@ CREATE TABLE executions (
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
 );
 
+CREATE TABLE assets (
+  id INTEGER PRIMARY KEY,
+  execution_id INTEGER NOT NULL,
+  type INTEGER NOT NULL,
+  path TEXT NOT NULL,
+  blob_id INTEGER NOT NULL,
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
+);
+
 -- TODO: add 'type' (e.g., 'regular', memoised)
 CREATE TABLE children (
   parent_id INTEGER NOT NULL,
@@ -107,13 +117,23 @@ CREATE TABLE assignments (
   FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE
 );
 
+-- TODO: rename execution_dependencies
 CREATE TABLE dependencies (
   execution_id INTEGER NOT NULL,
   dependency_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   PRIMARY KEY (execution_id, dependency_id),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (dependency_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (dependency_id) REFERENCES executions ON DELETE RESTRICT
+);
+
+CREATE TABLE asset_dependencies (
+  execution_id INTEGER NOT NULL,
+  asset_id INTEGER,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (execution_id, asset_id),
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT
 );
 
 CREATE TABLE checkpoints(
@@ -148,6 +168,7 @@ CREATE TABLE blobs (
   blob_key TEXT NOT NULL -- TODO: use type BLOB?
 );
 
+-- TODO: associate separately with value/asset?
 CREATE TABLE blob_metadata (
   blob_id INTEGER NOT NULL,
   key TEXT NOT NULL,
@@ -176,14 +197,16 @@ CREATE TABLE value_references (
   FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT
 );
 
-CREATE TABLE value_paths (
+-- TODO: combine with value_references into value_placeholders (enforces placeholders don't overlap)
+CREATE TABLE value_assets (
   value_id INTEGER NOT NULL,
   placeholder INTEGER NOT NULL,
-  path TEXT NOT NULL,
-  blob_id INTEGER NOT NULL,
+  asset_id INTEGER NOT NULL,
+  -- path TEXT NOT NULL,
+  -- blob_id INTEGER NOT NULL,
   PRIMARY KEY (value_id, placeholder),
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE,
-  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
+  FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT
 );
 
 CREATE TABLE errors (

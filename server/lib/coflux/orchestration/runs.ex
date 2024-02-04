@@ -233,6 +233,21 @@ defmodule Coflux.Orchestration.Runs do
     end)
   end
 
+  def record_asset_dependency(db, execution_id, asset_id) do
+    with_transaction(db, fn ->
+      insert_one(
+        db,
+        :asset_dependencies,
+        %{
+          execution_id: execution_id,
+          asset_id: asset_id,
+          created_at: current_timestamp()
+        },
+        on_conflict: "DO NOTHING"
+      )
+    end)
+  end
+
   def get_unassigned_executions(db) do
     query(
       db,
@@ -446,6 +461,18 @@ defmodule Coflux.Orchestration.Runs do
       """
       SELECT dependency_id
       FROM dependencies
+      WHERE execution_id = ?1
+      """,
+      {execution_id}
+    )
+  end
+
+  def get_asset_dependencies(db, execution_id) do
+    query(
+      db,
+      """
+      SELECT asset_id
+      FROM asset_dependencies
       WHERE execution_id = ?1
       """,
       {execution_id}

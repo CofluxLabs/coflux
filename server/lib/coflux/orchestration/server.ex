@@ -387,6 +387,8 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:get_result, execution_id, from_execution_id, pid}, _from, state) do
+    # TODO: check execution_id exists? (call resolve_result first?)
+
     state =
       if from_execution_id do
         {:ok, id} = Runs.record_dependency(state.db, from_execution_id, execution_id)
@@ -430,6 +432,40 @@ defmodule Coflux.Orchestration.Server do
     state = flush_notifications(state)
 
     {:reply, result, state}
+  end
+
+  def handle_call({:put_asset, execution_id, type, path, blob_key, metadata}, _from, state) do
+    {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
+    {:ok, asset_id} = Results.create_asset(state.db, execution_id, type, path, blob_key, metadata)
+    asset = resolve_asset(state.db, asset_id, false)
+    state = notify_listeners(state, {:run, step.run_id}, {:asset, execution_id, asset_id, asset})
+    {:reply, {:ok, asset_id}, state}
+  end
+
+  def handle_call({:get_asset, asset_id, from_execution_id}, _from, state) do
+    {:ok, {_, type, path, blob_key, _}} = Results.get_asset_by_id(state.db, asset_id, false)
+
+    state =
+      if from_execution_id do
+        {:ok, id} = Runs.record_asset_dependency(state.db, from_execution_id, asset_id)
+
+        if id do
+          {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
+          asset_ = resolve_asset(state.db, asset_id, true)
+
+          notify_listeners(
+            state,
+            {:run, step.run_id},
+            {:asset_dependency, from_execution_id, asset_id, asset_}
+          )
+        else
+          state
+        end
+      else
+        state
+      end
+
+    {:reply, {:ok, type, path, blob_key}, state}
   end
 
   def handle_call({:subscribe_repositories, pid}, _from, state) do
@@ -526,6 +562,9 @@ defmodule Coflux.Orchestration.Server do
                executions:
                  Map.new(executions, fn {execution_id, attempt, execute_after, created_at,
                                          _session_id, assigned_at} ->
+                   {:ok, asset_ids} = Results.get_assets_for_execution(state.db, execution_id)
+                   assets = Map.new(asset_ids, &{&1, resolve_asset(state.db, &1, false)})
+
                    {:ok, dependencies} =
                      Runs.get_execution_dependencies(state.db, execution_id)
 
@@ -533,6 +572,13 @@ defmodule Coflux.Orchestration.Server do
                    dependencies =
                      Map.new(dependencies, fn {dependency_id} ->
                        {dependency_id, resolve_execution(state.db, dependency_id)}
+                     end)
+
+                   {:ok, asset_ids} = Runs.get_asset_dependencies(state.db, execution_id)
+
+                   asset_dependencies =
+                     Map.new(asset_ids, fn {asset_id} ->
+                       {asset_id, resolve_asset(state.db, asset_id, true)}
                      end)
 
                    {result, completed_at} =
@@ -556,7 +602,9 @@ defmodule Coflux.Orchestration.Server do
                       execute_after: execute_after,
                       assigned_at: assigned_at,
                       completed_at: completed_at,
+                      assets: assets,
                       dependencies: dependencies,
+                      asset_dependencies: asset_dependencies,
                       result: result,
                       children: children
                     }}
@@ -867,19 +915,46 @@ defmodule Coflux.Orchestration.Server do
     }
   end
 
-  defp resolve_references(references, state) do
+  defp resolve_asset(db, asset_id, include_execution) do
+    {:ok, {execution_id, type, path, blob_key, metadata}} =
+      Results.get_asset_by_id(db, asset_id, true)
+
+    result = %{
+      type: type,
+      path: path,
+      metadata: metadata,
+      blob_key: blob_key
+    }
+
+    if include_execution do
+      Map.put(result, :execution, resolve_execution(db, execution_id))
+    else
+      result
+    end
+  end
+
+  defp resolve_references(references, db) do
     Map.new(references, fn {placeholder, execution_id} ->
-      {placeholder, {execution_id, resolve_execution(state.db, execution_id)}}
+      {placeholder, {execution_id, resolve_execution(db, execution_id)}}
+    end)
+  end
+
+  defp resolve_assets(assets, db) do
+    Map.new(assets, fn {placeholder, asset_id} ->
+      {placeholder, {asset_id, resolve_asset(db, asset_id, true)}}
     end)
   end
 
   defp build_value(value, state) do
-    case value do
-      {{:raw, content}, format, references, paths} ->
-        {{:raw, content}, format, resolve_references(references, state), paths}
+    db = state.db
 
-      {{:blob, key, metadata}, format, references, paths} ->
-        {{:blob, key, metadata}, format, resolve_references(references, state), paths}
+    case value do
+      {{:raw, content}, format, references, assets} ->
+        {{:raw, content}, format, resolve_references(references, db), resolve_assets(assets, db)}
+
+      {{:blob, key, metadata}, format, references, assets} ->
+        {{:blob, key, metadata}, format, resolve_references(references, db),
+         resolve_assets(assets, db)}
     end
   end
 

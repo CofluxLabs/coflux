@@ -32,6 +32,14 @@ export type Reference = {
   target: string;
 };
 
+export type Asset = {
+  type: 0 | 1;
+  path: string;
+  blobKey: string;
+  metadata: Record<string, any>;
+  execution?: Reference;
+};
+
 export type Value = (
   | {
       type: "raw";
@@ -45,7 +53,7 @@ export type Value = (
 ) & {
   format: string;
   references: Record<string, [string, Reference]>;
-  paths: Record<string, [string, string, Record<string, any>]>;
+  assets: Record<string, [string, Asset]>;
 };
 
 export type ErrorFrame = {
@@ -96,6 +104,7 @@ export type Execution = {
   dependencies: Record<string, Reference>;
   children: (string | Child)[];
   result: Result | null;
+  assets: Record<string, Asset>;
 };
 
 export type Step = {

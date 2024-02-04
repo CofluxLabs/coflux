@@ -1,5 +1,6 @@
 import typing as t
 import datetime as dt
+from pathlib import Path
 
 from . import execution, models
 
@@ -44,12 +45,20 @@ def schedule(
     )
 
 
-def resolve(target_execution_id: str) -> models.Execution[t.Any]:
+def resolve(target_execution_id: int) -> models.Execution[t.Any]:
     channel = _get_channel()
     return models.Execution(
         lambda: channel.resolve_reference(target_execution_id),
         target_execution_id,
     )
+
+
+def persist(path: Path) -> models.Asset:
+    return _get_channel().persist(path)
+
+
+def restore(asset: models.Asset) -> Path:
+    return _get_channel().restore(asset)
 
 
 def checkpoint(*arguments: t.Any) -> None:

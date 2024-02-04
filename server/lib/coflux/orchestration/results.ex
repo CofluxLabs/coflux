@@ -246,72 +246,62 @@ defmodule Coflux.Orchestration.Results do
             {:ok, rows} -> Map.new(rows)
           end
 
-        paths =
+        assets =
           case query(
                  db,
-                 "SELECT placeholder, path, blob_id FROM value_paths WHERE value_id = ?1",
+                 "SELECT placeholder, asset_id FROM value_assets WHERE value_id = ?1",
                  {value_id}
                ) do
-            {:ok, rows} ->
-              Map.new(rows, fn {placeholder, path, blob_id} ->
-                {:ok, {blob_key, metadata}} = get_blob_by_id(db, blob_id, load_metadata)
-                {placeholder, {path, blob_key, metadata}}
-              end)
+            {:ok, rows} -> Map.new(rows)
           end
 
         value =
           case {content, blob_id} do
             {content, nil} ->
-              {{:raw, content}, format, references, paths}
+              {{:raw, content}, format, references, assets}
 
             {nil, blob_id} ->
               {:ok, {blob_key, metadata}} = get_blob_by_id(db, blob_id, load_metadata)
-              {{:blob, blob_key, metadata}, format, references, paths}
+              {{:blob, blob_key, metadata}, format, references, assets}
           end
 
         {:ok, value}
     end
   end
 
-  defp hash_value(content, blob_id, format, references, paths) do
+  defp hash_value(content, blob_id, format, references, assets) do
     references_parts =
       references
       |> Enum.sort()
       |> Enum.flat_map(fn {k, v} -> [Integer.to_string(k), Integer.to_string(v)] end)
 
-    paths_parts =
-      paths
+    assets_parts =
+      assets
       |> Enum.sort()
-      |> Enum.flat_map(fn {k, {v1, v2}} -> [Integer.to_string(k), v1, Integer.to_string(v2)] end)
+      |> Enum.flat_map(fn {k, v} -> [Integer.to_string(k), Integer.to_string(v)] end)
 
     data =
       [format, content || 0, blob_id || 0]
       |> Enum.concat(references_parts)
-      |> Enum.concat(paths_parts)
+      |> Enum.concat(assets_parts)
       |> Enum.intersperse(0)
 
     :crypto.hash(:sha256, data)
   end
 
   def get_or_create_value(db, value) do
-    {content, blob_id, format, references, paths} =
+    {content, blob_id, format, references, assets} =
       case value do
-        {{:raw, content}, format, references, paths} ->
-          {content, nil, format, references, paths}
+        {{:raw, content}, format, references, assets} ->
+          {content, nil, format, references, assets}
 
-        {{:blob, blob_key, metadata}, format, references, paths} ->
+        {{:blob, blob_key, metadata}, format, references, assets} ->
           {:ok, blob_id} = get_or_create_blob(db, blob_key, metadata)
 
-          {nil, blob_id, format, references, paths}
+          {nil, blob_id, format, references, assets}
       end
 
-    paths =
-      Enum.reduce(paths, %{}, fn {placeholder, {path, blob_key, metadata}}, paths ->
-        {:ok, blob_id} = get_or_create_blob(db, blob_key, metadata)
-        Map.put(paths, placeholder, {path, blob_id})
-      end)
-
-    hash = hash_value(content, blob_id, format, references, paths)
+    hash = hash_value(content, blob_id, format, references, assets)
 
     case query_one(db, "SELECT id FROM values_ WHERE hash = ?1", {hash}) do
       {:ok, {id}} ->
@@ -339,10 +329,10 @@ defmodule Coflux.Orchestration.Results do
         {:ok, _} =
           insert_many(
             db,
-            :value_paths,
-            {:value_id, :placeholder, :path, :blob_id},
-            Enum.map(paths, fn {placeholder, {path, blob_id}} ->
-              {value_id, placeholder, path, blob_id}
+            :value_assets,
+            {:value_id, :placeholder, :asset_id},
+            Enum.map(assets, fn {placeholder, asset_id} ->
+              {value_id, placeholder, asset_id}
             end)
           )
 
@@ -388,6 +378,42 @@ defmodule Coflux.Orchestration.Results do
           )
 
         {:ok, error_id}
+    end
+  end
+
+  def create_asset(db, execution_id, type, path, blob_key, metadata) do
+    {:ok, blob_id} = get_or_create_blob(db, blob_key, metadata)
+
+    insert_one(db, :assets, %{
+      execution_id: execution_id,
+      type: type,
+      path: path,
+      blob_id: blob_id
+    })
+  end
+
+  def get_asset_by_id(db, asset_id, load_metadata) do
+    case query_one!(
+           db,
+           "SELECT execution_id, type, path, blob_id FROM assets WHERE id = ?1",
+           {asset_id}
+         ) do
+      {:ok, {execution_id, type, path, blob_id}} ->
+        {:ok, {blob_key, metadata}} = get_blob_by_id(db, blob_id, load_metadata)
+
+        {:ok, {execution_id, type, path, blob_key, metadata}}
+    end
+  end
+
+  # TODO: get all assets for run?
+  def get_assets_for_execution(db, execution_id) do
+    case query(
+           db,
+           "SELECT id FROM assets WHERE execution_id = ?1",
+           {execution_id}
+         ) do
+      {:ok, rows} ->
+        {:ok, Enum.map(rows, fn {asset_id} -> asset_id end)}
     end
   end
 

@@ -6,13 +6,12 @@ T = t.TypeVar("T")
 
 Metadata = dict[str, t.Any]
 
-References = dict[int, str]
-
-Paths = dict[int, tuple[str, str, Metadata]]
+References = dict[int, int]
+Assets = dict[int, int]
 
 Value = t.Union[
-    tuple[t.Literal["raw"], bytes, str, References, Paths],
-    tuple[t.Literal["blob"], str, Metadata, str, References, Paths],
+    tuple[t.Literal["raw"], bytes, str, References, Assets],
+    tuple[t.Literal["blob"], str, Metadata, str, References, Assets],
 ]
 
 Result = t.Union[
@@ -27,14 +26,18 @@ class Execution(t.Generic[T]):
     def __init__(
         self,
         resolve_fn: t.Callable[[], T],
-        id: str | None,
+        id: int | None,
     ):
         self._resolve_fn = resolve_fn
         self._id = id
 
     @property
-    def id(self) -> str | None:
+    def id(self) -> int | None:
         return self._id
 
     def result(self) -> T:
         return self._resolve_fn()
+
+
+class Asset(t.NamedTuple):
+    id: int

@@ -213,6 +213,43 @@ defmodule Coflux.Handlers.Agent do
           {[{:close, 4000, "execution_invalid"}], nil}
         end
 
+      "put_asset" ->
+        [execution_id, type, path, blob_key, metadata] = message["params"]
+
+        if is_recognised_execution?(execution_id, state) do
+          {:ok, asset_id} =
+            Orchestration.put_asset(
+              state.project_id,
+              state.environment,
+              execution_id,
+              type,
+              path,
+              blob_key,
+              metadata
+            )
+
+          {[result_message(message["id"], asset_id)], state}
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
+        end
+
+      "get_asset" ->
+        [asset_id, from_execution_id] = message["params"]
+
+        if is_recognised_execution?(from_execution_id, state) do
+          case Orchestration.get_asset(
+                 state.project_id,
+                 state.environment,
+                 asset_id,
+                 from_execution_id
+               ) do
+            {:ok, asset_type, path, blob_key} ->
+              {[result_message(message["id"], [asset_type, path, blob_key])], state}
+          end
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
+        end
+
       "log_messages" ->
         messages =
           Enum.map(message["params"], fn [execution_id, timestamp, level, template, labels] ->
@@ -266,6 +303,7 @@ defmodule Coflux.Handlers.Agent do
     {:text, Jason.encode!([1, %{"command" => command, "params" => params}])}
   end
 
+  # TODO: rename (success_message?)
   defp result_message(id, result) do
     {:text, Jason.encode!([2, %{"id" => id, "result" => result}])}
   end
@@ -329,35 +367,28 @@ defmodule Coflux.Handlers.Agent do
     Map.new(references, fn {key, value} -> {String.to_integer(key), value} end)
   end
 
-  defp parse_paths(paths) do
-    Map.new(paths, fn {key, [path, blob_key, metadata]} ->
-      {String.to_integer(key), {path, blob_key, metadata}}
-    end)
+  # TODO: combine with parse_references?
+  defp parse_assets(assets) do
+    Map.new(assets, fn {key, value} -> {String.to_integer(key), value} end)
   end
 
   defp parse_value(value) do
     case value do
-      ["raw", content, format, references, paths] ->
-        {{:raw, content}, format, parse_references(references), parse_paths(paths)}
+      ["raw", content, format, references, assets] ->
+        {{:raw, content}, format, parse_references(references), parse_assets(assets)}
 
-      ["blob", blob_key, metadata, format, references, paths] ->
-        {{:blob, blob_key, metadata}, format, parse_references(references), parse_paths(paths)}
+      ["blob", blob_key, metadata, format, references, assets] ->
+        {{:blob, blob_key, metadata}, format, parse_references(references), parse_assets(assets)}
     end
-  end
-
-  defp compose_paths(paths) do
-    Map.new(paths, fn {key, {path, blob_key, metadata}} ->
-      {key, [path, blob_key, %{}]}
-    end)
   end
 
   defp compose_value(value) do
     case value do
-      {{:raw, content}, format, references, paths} ->
-        ["raw", content, format, references, compose_paths(paths)]
+      {{:raw, content}, format, references, assets} ->
+        ["raw", content, format, references, assets]
 
-      {{:blob, blob_key, metadata}, format, references, paths} ->
-        ["blob", blob_key, metadata, format, references, compose_paths(paths)]
+      {{:blob, blob_key, metadata}, format, references, assets} ->
+        ["blob", blob_key, metadata, format, references, assets]
     end
   end
 
