@@ -6,12 +6,11 @@ T = t.TypeVar("T")
 
 Metadata = dict[str, t.Any]
 
-References = dict[int, int]
-Assets = dict[int, int]
+Placeholders = dict[int, tuple[int, None] | tuple[None, int]]
 
 Value = t.Union[
-    tuple[t.Literal["raw"], bytes, str, References, Assets],
-    tuple[t.Literal["blob"], str, Metadata, str, References, Assets],
+    tuple[t.Literal["raw"], bytes, str, Placeholders],
+    tuple[t.Literal["blob"], str, Metadata, str, Placeholders],
 ]
 
 Result = t.Union[

@@ -48,12 +48,26 @@ def _build_manifest(targets: dict) -> dict:
     }
 
 
+def _parse_placeholder(placeholder: list) -> tuple[int, None] | tuple[None, int]:
+    match placeholder:
+        case [execution_id, None]:
+            return (execution_id, None)
+        case [None, asset_id]:
+            return (None, asset_id)
+        case other:
+            raise Exception(f"unhandle placeholder value: {other}")
+
+
+def _parse_placeholders(placeholders: dict[int, list]) -> models.Placeholders:
+    return {key: _parse_placeholder(value) for key, value in placeholders.items()}
+
+
 def _parse_value(value: list) -> models.Value:
     match value:
-        case ["raw", content, format, references, paths]:
-            return ("raw", content.encode(), format, references, paths)
-        case ["blob", key, metadata, format, references, paths]:
-            return ("blob", key, metadata, format, references, paths)
+        case ["raw", content, format, placeholders]:
+            return ("raw", content.encode(), format, _parse_placeholders(placeholders))
+        case ["blob", key, metadata, format, placeholders]:
+            return ("blob", key, metadata, format, _parse_placeholders(placeholders))
     raise Exception(f"unexpected value: {value}")
 
 

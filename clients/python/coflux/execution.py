@@ -204,16 +204,18 @@ def _parse_cache(
 def _value_key(value: models.Value) -> str:
     # TODO: tidy
     match value:
-        case ["raw", content, format, references, assets]:
-            refs = ";".join(f"{k}={v}" for k, v in sorted(references.items()))
+        case ["raw", content, format, placeholders]:
             # TODO: better/safer encoding
-            assets_ = ";".join(f"{k}={v}" for k, v in sorted(assets.items()))
-            return f"raw:{format}:{refs}:{assets_}:{content}"
-        case ["blob", key, _metadata, format, references, assets]:
-            refs = ";".join(f"{k}={v}" for k, v in sorted(references.items()))
+            placeholders_ = ";".join(
+                f"{k}={v1}|{v2}" for k, (v1, v2) in sorted(placeholders.items())
+            )
+            return f"raw:{format}:{placeholders_}:{content}"
+        case ["blob", key, _metadata, format, placeholders]:
             # TODO: better/safer encoding
-            assets_ = ";".join(f"{k}={v}" for k, v in sorted(assets.items()))
-            return f"blob:{format}:{refs}:{assets_}:{key}"
+            placeholders_ = ";".join(
+                f"{k}={v1}|{v2}" for k, (v1, v2) in sorted(placeholders.items())
+            )
+            return f"blob:{format}:{placeholders_}:{key}"
 
 
 def _build_key(
@@ -572,27 +574,26 @@ def _deserialise_result(
             raise Exception(f"unexeptected result ({result})")
 
 
+# TODO: move into serialisation module?
 def _deserialise_value(
     value: models.Value,
     channel: Channel,
     description: str,
 ) -> t.Any:
     match value:
-        case ("raw", content, format, references, assets):
+        case ("raw", content, format, placeholders):
             return serialisation.deserialise(
                 format,
                 content,
-                references,
-                assets,
+                placeholders,
                 channel.resolve_reference,
             )
-        case ("blob", blob_key, _metadata, format, references, assets):
+        case ("blob", blob_key, _metadata, format, placeholders):
             content = channel.blob_store.get(blob_key)
             return serialisation.deserialise(
                 format,
                 content,
-                references,
-                assets,
+                placeholders,
                 channel.resolve_reference,
             )
 
@@ -633,10 +634,10 @@ def _execute(
 def _json_safe_value(value: models.Value):
     # TODO: tidy
     match value:
-        case ("raw", content, format, references, assets):
-            return ["raw", content.decode(), format, references, assets]
-        case ("blob", key, metadata, format, references, assets):
-            return ["blob", key, metadata, format, references, assets]
+        case ("raw", content, format, placeholders):
+            return ["raw", content.decode(), format, placeholders]
+        case ("blob", key, metadata, format, placeholders):
+            return ["blob", key, metadata, format, placeholders]
 
 
 def _json_safe_arguments(arguments: list[models.Value]):
@@ -645,10 +646,10 @@ def _json_safe_arguments(arguments: list[models.Value]):
 
 def _parse_value(value: t.Any) -> models.Value:
     match value:
-        case ["raw", content, format, references, assets]:
-            return ("raw", content.encode(), format, references, assets)
-        case ["blob", key, metadata, format, references, assets]:
-            return ("blob", key, metadata, format, references, assets)
+        case ["raw", content, format, placeholders]:
+            return ("raw", content.encode(), format, placeholders)
+        case ["blob", key, metadata, format, placeholders]:
+            return ("blob", key, metadata, format, placeholders)
         case other:
             raise Exception(f"unrecognised value: {other}")
 

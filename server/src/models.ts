@@ -40,6 +40,18 @@ export type Asset = {
   execution?: Reference;
 };
 
+export type Placeholder =
+  | {
+      type: "execution";
+      executionId: string;
+      execution: Reference;
+    }
+  | {
+      type: "asset";
+      assetId: string;
+      asset: Asset;
+    };
+
 export type Value = (
   | {
       type: "raw";
@@ -52,8 +64,7 @@ export type Value = (
     }
 ) & {
   format: string;
-  references: Record<string, [string, Reference]>;
-  assets: Record<string, [string, Asset]>;
+  placeholders: Record<string, Placeholder>;
 };
 
 export type ErrorFrame = {

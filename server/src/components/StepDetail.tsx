@@ -251,39 +251,40 @@ function Value({ value, className }: ValueProps) {
   return (
     <span className={classNames("font-mono text-sm", className)}>
       {reactStringReplace(value.content, /"\{(\d+)\}"/g, (match, index) => {
-        const referenceNumber = parseInt(match, 10);
-        if (referenceNumber in value.references) {
-          const [_, reference] = value.references[referenceNumber];
-          return (
-            <StepLink
-              key={index}
-              runId={reference.runId}
-              stepId={reference.stepId}
-              attempt={reference.attempt}
-              className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 ring-offset-1 rounded"
-              hoveredClassName="ring-2 ring-slate-300"
-            >
-              <IconFunction size={16} className="inline-block" />
-            </StepLink>
-          );
-        } else if (referenceNumber in value.assets) {
-          const [_, asset] = value.assets[referenceNumber];
-          return (
-            <a
-              href={`/blobs/${asset.blobKey}`}
-              title={`${asset.path}\n${formatMetadata(asset)}`}
-              className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 rounded"
-              key={index}
-            >
-              {asset.type == 0 ? (
-                <IconFile size={16} className="inline-block" />
-              ) : asset.type == 1 ? (
-                <IconFolder size={16} className="inline-block" />
-              ) : undefined}
-            </a>
-          );
-        } else {
-          return `{${match}}`;
+        const placeholder = value.placeholders[parseInt(match, 10)];
+        switch (placeholder?.type) {
+          case "execution":
+            const execution = placeholder.execution;
+            return (
+              <StepLink
+                key={index}
+                runId={execution.runId}
+                stepId={execution.stepId}
+                attempt={execution.attempt}
+                className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 ring-offset-1 rounded"
+                hoveredClassName="ring-2 ring-slate-300"
+              >
+                <IconFunction size={16} className="inline-block" />
+              </StepLink>
+            );
+          case "asset":
+            const asset = placeholder.asset;
+            return (
+              <a
+                href={`/blobs/${asset.blobKey}`}
+                title={`${asset.path}\n${formatMetadata(asset)}`}
+                className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 rounded"
+                key={index}
+              >
+                {asset.type == 0 ? (
+                  <IconFile size={16} className="inline-block" />
+                ) : asset.type == 1 ? (
+                  <IconFolder size={16} className="inline-block" />
+                ) : undefined}
+              </a>
+            );
+          default:
+            return `"{${match}}"`;
         }
       })}
     </span>

@@ -933,28 +933,28 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp resolve_references(references, db) do
-    Map.new(references, fn {placeholder, execution_id} ->
-      {placeholder, {execution_id, resolve_execution(db, execution_id)}}
-    end)
-  end
+  defp resolve_placeholders(placeholders, db) do
+    Map.new(placeholders, fn {key, value} ->
+      value =
+        case value do
+          {execution_id, nil} ->
+            {:execution, execution_id, resolve_execution(db, execution_id)}
 
-  defp resolve_assets(assets, db) do
-    Map.new(assets, fn {placeholder, asset_id} ->
-      {placeholder, {asset_id, resolve_asset(db, asset_id, true)}}
+          {nil, asset_id} ->
+            {:asset, asset_id, resolve_asset(db, asset_id, true)}
+        end
+
+      {key, value}
     end)
   end
 
   defp build_value(value, state) do
-    db = state.db
-
     case value do
-      {{:raw, content}, format, references, assets} ->
-        {{:raw, content}, format, resolve_references(references, db), resolve_assets(assets, db)}
+      {{:raw, content}, format, placeholders} ->
+        {{:raw, content}, format, resolve_placeholders(placeholders, state.db)}
 
-      {{:blob, key, metadata}, format, references, assets} ->
-        {{:blob, key, metadata}, format, resolve_references(references, db),
-         resolve_assets(assets, db)}
+      {{:blob, key, metadata}, format, placeholders} ->
+        {{:blob, key, metadata}, format, resolve_placeholders(placeholders, state.db)}
     end
   end
 

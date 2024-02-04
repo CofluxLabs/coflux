@@ -38,35 +38,31 @@ def _choose_number(
     return _choose_number(existing, placeholders, counter + 1)
 
 
-def _do_substitution(substitutions: dict[int, T], value: T, existing: set[int]):
+def _do_substitution(placeholders: dict[int, T], value: T, existing: set[int]):
     number = next(
-        (k for k, v in substitutions.items() if v == value),
+        (k for k, v in placeholders.items() if v == value),
         None,
     )
     if not number:
-        number = _choose_number(existing, substitutions)
-        substitutions[number] = value
+        number = _choose_number(existing, placeholders)
+        placeholders[number] = value
     return f"{{{number}}}"
 
 
 def _substitute_placeholders(
     data: t.Any,
     existing: set[int],
-    references: models.References,
-    assets: models.Assets,
+    placeholders: models.Placeholders,
 ) -> t.Any:
     if isinstance(data, models.Execution) and data.id:
-        return _do_substitution(references, data.id, existing | assets.keys())
+        return _do_substitution(placeholders, (data.id, None), existing)
     elif isinstance(data, models.Asset):
-        return _do_substitution(assets, data.id, existing | references.keys())
+        return _do_substitution(placeholders, (None, data.id), existing)
     elif isinstance(data, list):
-        return [
-            _substitute_placeholders(item, existing, references, assets)
-            for item in data
-        ]
+        return [_substitute_placeholders(item, existing, placeholders) for item in data]
     elif isinstance(data, dict):
         return {
-            k: _substitute_placeholders(v, existing, references, assets)
+            k: _substitute_placeholders(v, existing, placeholders)
             for k, v in data.items()
         }
     else:
@@ -88,29 +84,28 @@ def _replace_placeholders(
 
 def _serialise(
     data: t.Any, blob_store: blobs.Store, execution_dir: Path
-) -> tuple[str, bytes, models.References, models.Assets, models.Metadata]:
-    references = {}
-    assets = {}
+) -> tuple[str, bytes, models.Placeholders, models.Metadata]:
+    placeholders = {}
     avoid_numbers = _find_numbers(data)
-    value = _substitute_placeholders(data, avoid_numbers, references, assets)
+    value = _substitute_placeholders(data, avoid_numbers, placeholders)
     try:
         json_value = _json_dumps(value).encode()
-        return "json", json_value, references, assets, {"size": len(json_value)}
+        return "json", json_value, placeholders, {"size": len(json_value)}
     except TypeError:
         pickle_value = pickle.dumps(value)
-        return "pickle", pickle_value, references, assets, {"size": len(pickle_value)}
+        return "pickle", pickle_value, placeholders, {"size": len(pickle_value)}
 
 
 def serialise(
     value: t.Any, blob_store: blobs.Store, execution_dir: Path
 ) -> models.Value:
-    format, serialised, references, assets, metadata = _serialise(
+    format, serialised, placeholders, metadata = _serialise(
         value, blob_store, execution_dir
     )
     if format != "json" or len(serialised) > _BLOB_THRESHOLD:
         key = blob_store.put(serialised)
-        return ("blob", key, metadata, format, references, assets)
-    return ("raw", serialised, format, references, assets)
+        return ("blob", key, metadata, format, placeholders)
+    return ("raw", serialised, format, placeholders)
 
 
 def _deserialise(format: str, content: bytes):
@@ -123,16 +118,28 @@ def _deserialise(format: str, content: bytes):
             raise Exception(f"unsupported format ({format})")
 
 
+def _compose_placeholder(
+    placeholder: tuple[int, None] | tuple[None, int],
+    resolve_fn: t.Callable[[int], t.Any],
+):
+    match placeholder:
+        case (execution_id, None):
+            return models.Execution(lambda: resolve_fn(execution_id), execution_id)
+        case (None, asset_id):
+            return models.Asset(asset_id)
+        case other:
+            raise Exception(f"unrecognised placeholder ({other})")
+
+
 def deserialise(
     format: str,
     content: bytes,
-    references: models.References,
-    assets: models.Assets,
+    placeholders: models.Placeholders,
     resolve_fn: t.Callable[[int], t.Any],
 ) -> t.Any:
     data = _deserialise(format, content)
-    placeholders = {
-        f"{{{k}}}": models.Execution(lambda: resolve_fn(v), v)
-        for k, v in references.items()
-    } | {f"{{{k}}}": models.Asset(v) for k, v in assets.items()}
-    return _replace_placeholders(data, placeholders)
+    placeholders_ = {
+        f"{{{key}}}": _compose_placeholder(value, resolve_fn)
+        for key, value in placeholders.items()
+    }
+    return _replace_placeholders(data, placeholders_)

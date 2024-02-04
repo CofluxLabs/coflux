@@ -363,32 +363,35 @@ defmodule Coflux.Handlers.Agent do
     end)
   end
 
-  defp parse_references(references) do
-    Map.new(references, fn {key, value} -> {String.to_integer(key), value} end)
-  end
-
-  # TODO: combine with parse_references?
-  defp parse_assets(assets) do
-    Map.new(assets, fn {key, value} -> {String.to_integer(key), value} end)
+  defp parse_placeholders(placeholders) do
+    Map.new(placeholders, fn {placeholder, [execution_id, asset_id]} ->
+      {String.to_integer(placeholder), {execution_id, asset_id}}
+    end)
   end
 
   defp parse_value(value) do
     case value do
-      ["raw", content, format, references, assets] ->
-        {{:raw, content}, format, parse_references(references), parse_assets(assets)}
+      ["raw", content, format, placeholders] ->
+        {{:raw, content}, format, parse_placeholders(placeholders)}
 
-      ["blob", blob_key, metadata, format, references, assets] ->
-        {{:blob, blob_key, metadata}, format, parse_references(references), parse_assets(assets)}
+      ["blob", blob_key, metadata, format, placeholders] ->
+        {{:blob, blob_key, metadata}, format, parse_placeholders(placeholders)}
     end
+  end
+
+  defp compose_placeholders(placeholders) do
+    Map.new(placeholders, fn {placeholder, {execution_id, asset_id}} ->
+      {Integer.to_string(placeholder), [execution_id, asset_id]}
+    end)
   end
 
   defp compose_value(value) do
     case value do
-      {{:raw, content}, format, references, assets} ->
-        ["raw", content, format, references, assets]
+      {{:raw, content}, format, placeholders} ->
+        ["raw", content, format, compose_placeholders(placeholders)]
 
-      {{:blob, blob_key, metadata}, format, references, assets} ->
-        ["blob", blob_key, metadata, format, references, assets]
+      {{:blob, blob_key, metadata}, format, placeholders} ->
+        ["blob", blob_key, metadata, format, compose_placeholders(placeholders)]
     end
   end
 

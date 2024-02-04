@@ -217,36 +217,45 @@ defmodule Coflux.Topics.Run do
 
   defp build_value(value) do
     case value do
-      {{:raw, content}, format, references, assets} ->
+      {{:raw, content}, format, placeholders} ->
         %{
           type: "raw",
           content: content,
           format: format,
-          references: build_references(references),
-          assets: build_assets(assets)
+          placeholders: build_placeholders(placeholders)
         }
 
-      {{:blob, key, metadata}, format, references, assets} ->
+      {{:blob, key, metadata}, format, placeholders} ->
         %{
           type: "blob",
           key: key,
           metadata: metadata,
           format: format,
-          references: build_references(references),
-          assets: build_assets(assets)
+          placeholders: build_placeholders(placeholders)
         }
     end
   end
 
-  defp build_references(references) do
-    Map.new(references, fn {placeholder, {execution_id, execution}} ->
-      {placeholder, [execution_id, build_execution(execution)]}
-    end)
-  end
+  defp build_placeholders(placeholders) do
+    Map.new(placeholders, fn {key, value} ->
+      value =
+        case value do
+          {:execution, execution_id, execution} ->
+            %{
+              type: "execution",
+              executionId: Integer.to_string(execution_id),
+              execution: build_execution(execution)
+            }
 
-  defp build_assets(assets) do
-    Map.new(assets, fn {placeholder, {asset_id, asset}} ->
-      {placeholder, [asset_id, build_asset(asset)]}
+          {:asset, asset_id, asset} ->
+            %{
+              type: "asset",
+              assetId: Integer.to_string(asset_id),
+              asset: build_asset(asset)
+            }
+        end
+
+      {key, value}
     end)
   end
 

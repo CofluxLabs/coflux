@@ -237,71 +237,65 @@ defmodule Coflux.Orchestration.Results do
            {value_id}
          ) do
       {:ok, {format, content, blob_id}} ->
-        references =
+        placeholders =
           case query(
                  db,
-                 "SELECT placeholder, reference_id FROM value_references WHERE value_id = ?1",
+                 "SELECT placeholder, execution_id, asset_id FROM value_placeholders WHERE value_id = ?1",
                  {value_id}
                ) do
-            {:ok, rows} -> Map.new(rows)
-          end
-
-        assets =
-          case query(
-                 db,
-                 "SELECT placeholder, asset_id FROM value_assets WHERE value_id = ?1",
-                 {value_id}
-               ) do
-            {:ok, rows} -> Map.new(rows)
+            {:ok, rows} ->
+              Map.new(rows, fn {placeholder, execution_id, asset_id} ->
+                {placeholder, {execution_id, asset_id}}
+              end)
           end
 
         value =
           case {content, blob_id} do
             {content, nil} ->
-              {{:raw, content}, format, references, assets}
+              {{:raw, content}, format, placeholders}
 
             {nil, blob_id} ->
               {:ok, {blob_key, metadata}} = get_blob_by_id(db, blob_id, load_metadata)
-              {{:blob, blob_key, metadata}, format, references, assets}
+              {{:blob, blob_key, metadata}, format, placeholders}
           end
 
         {:ok, value}
     end
   end
 
-  defp hash_value(content, blob_id, format, references, assets) do
-    references_parts =
-      references
+  defp hash_value(content, blob_id, format, placeholders) do
+    placeholder_parts =
+      placeholders
       |> Enum.sort()
-      |> Enum.flat_map(fn {k, v} -> [Integer.to_string(k), Integer.to_string(v)] end)
-
-    assets_parts =
-      assets
-      |> Enum.sort()
-      |> Enum.flat_map(fn {k, v} -> [Integer.to_string(k), Integer.to_string(v)] end)
+      |> Enum.flat_map(fn {placeholder, {execution_id, asset_id}} ->
+        [
+          Integer.to_string(placeholder),
+          Integer.to_string(execution_id || 0),
+          Integer.to_string(asset_id || 0)
+        ]
+      end)
 
     data =
       [format, content || 0, blob_id || 0]
-      |> Enum.concat(references_parts)
-      |> Enum.concat(assets_parts)
+      |> Enum.concat(placeholder_parts)
       |> Enum.intersperse(0)
 
     :crypto.hash(:sha256, data)
   end
 
   def get_or_create_value(db, value) do
-    {content, blob_id, format, references, assets} =
+    {content, blob_id, format, placeholders} =
       case value do
-        {{:raw, content}, format, references, assets} ->
-          {content, nil, format, references, assets}
+        {{:raw, content}, format, placeholders} ->
+          {content, nil, format, placeholders}
 
-        {{:blob, blob_key, metadata}, format, references, assets} ->
+        {{:blob, blob_key, metadata}, format, placeholders} ->
           {:ok, blob_id} = get_or_create_blob(db, blob_key, metadata)
 
-          {nil, blob_id, format, references, assets}
+          {nil, blob_id, format, placeholders}
       end
 
-    hash = hash_value(content, blob_id, format, references, assets)
+    hash = hash_value(content, blob_id, format, placeholders)
 
     case query_one(db, "SELECT id FROM values_ WHERE hash = ?1", {hash}) do
       {:ok, {id}} ->
@@ -319,20 +313,10 @@ defmodule Coflux.Orchestration.Results do
         {:ok, _} =
           insert_many(
             db,
-            :value_references,
-            {:value_id, :placeholder, :reference_id},
-            Enum.map(references, fn {placeholder, reference_id} ->
-              {value_id, placeholder, reference_id}
-            end)
-          )
-
-        {:ok, _} =
-          insert_many(
-            db,
-            :value_assets,
-            {:value_id, :placeholder, :asset_id},
-            Enum.map(assets, fn {placeholder, asset_id} ->
-              {value_id, placeholder, asset_id}
+            :value_placeholders,
+            {:value_id, :placeholder, :execution_id, :asset_id},
+            Enum.map(placeholders, fn {placeholder, {execution_id, asset_id}} ->
+              {value_id, placeholder, execution_id, asset_id}
             end)
           )
 

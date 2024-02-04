@@ -188,25 +188,16 @@ CREATE TABLE values_ (
   CHECK ((content IS NULL) != (blob_id IS NULL))
 );
 
-CREATE TABLE value_references (
+CREATE TABLE value_placeholders (
   value_id INTEGER NOT NULL,
   placeholder INTEGER NOT NULL,
-  reference_id INTEGER NOT NULL,
+  execution_id INTEGER,
+  asset_id INTEGER,
   PRIMARY KEY (value_id, placeholder),
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE,
-  FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT
-);
-
--- TODO: combine with value_references into value_placeholders (enforces placeholders don't overlap)
-CREATE TABLE value_assets (
-  value_id INTEGER NOT NULL,
-  placeholder INTEGER NOT NULL,
-  asset_id INTEGER NOT NULL,
-  -- path TEXT NOT NULL,
-  -- blob_id INTEGER NOT NULL,
-  PRIMARY KEY (value_id, placeholder),
-  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE,
-  FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE RESTRICT,
+  FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT,
+  CHECK ((execution_id IS NULL) != (asset_id IS NULL))
 );
 
 CREATE TABLE errors (
