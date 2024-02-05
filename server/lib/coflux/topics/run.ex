@@ -63,8 +63,6 @@ defmodule Coflux.Topics.Run do
         completedAt: nil,
         assets: %{},
         dependencies: %{},
-        # TODO: combine with dependencies?
-        assetDependencies: %{},
         children: [],
         result: nil,
         reference: nil
@@ -96,14 +94,14 @@ defmodule Coflux.Topics.Run do
     end)
   end
 
-  defp process_notification(topic, {:dependency, execution_id, dependency_id, dependency}) do
+  defp process_notification(topic, {:result_dependency, execution_id, dependency_id, dependency}) do
     dependency = build_execution(dependency)
 
     update_execution(
       topic,
       execution_id,
       fn topic, base_path ->
-        Topic.set(
+        Topic.merge(
           topic,
           base_path ++ [:dependencies, Integer.to_string(dependency_id)],
           dependency
@@ -114,15 +112,24 @@ defmodule Coflux.Topics.Run do
 
   defp process_notification(
          topic,
-         {:asset_dependency, execution_id, asset_id, asset}
+         {:asset_dependency, execution_id, asset_execution_id, asset_execution, asset_id, asset}
        ) do
     asset = build_asset(asset)
+    asset_execution = build_execution(asset_execution)
+
+    asset_execution_id_s = Integer.to_string(asset_execution_id)
+    asset_id_s = Integer.to_string(asset_id)
 
     update_execution(
       topic,
       execution_id,
       fn topic, base_path ->
-        Topic.set(topic, base_path ++ [:assetDependencies, Integer.to_string(asset_id)], asset)
+        topic
+        |> Topic.merge(base_path ++ [:dependencies, asset_execution_id_s], asset_execution)
+        |> Topic.set(
+          base_path ++ [:dependencies, asset_execution_id_s, :assets, asset_id_s],
+          asset
+        )
       end
     )
   end
@@ -174,13 +181,10 @@ defmodule Coflux.Topics.Run do
                         {Integer.to_string(asset_id), build_asset(asset)}
                       end),
                     dependencies:
-                      Map.new(execution.dependencies, fn {dependency_id, dependency} ->
-                        {Integer.to_string(dependency_id), build_execution(dependency)}
-                      end),
-                    assetDependencies:
-                      Map.new(execution.asset_dependencies, fn {asset_id, asset} ->
-                        {Integer.to_string(asset_id), build_asset(asset)}
-                      end),
+                      build_dependencies(
+                        execution.result_dependencies,
+                        execution.asset_dependencies
+                      ),
                     children: Enum.map(execution.children, &build_child(&1, run.external_id)),
                     result: build_result(execution.result)
                   }}
@@ -188,6 +192,23 @@ defmodule Coflux.Topics.Run do
            }}
         end)
     }
+  end
+
+  defp build_dependencies(result_dependencies, asset_dependencies) do
+    dependencies =
+      Map.new(result_dependencies, fn {execution_id, execution} ->
+        {execution_id, build_execution(execution)}
+      end)
+
+    Enum.reduce(asset_dependencies, dependencies, fn {asset_id, asset}, dependencies ->
+      dependencies
+      |> Map.put_new_lazy(asset.execution_id, fn ->
+        asset.execution |> build_execution() |> Map.put(:assets, %{})
+      end)
+      |> Map.update!(asset.execution_id, fn dependency ->
+        put_in(dependency.assets[asset_id], build_asset(asset))
+      end)
+    end)
   end
 
   defp build_execution(execution) do
@@ -201,18 +222,12 @@ defmodule Coflux.Topics.Run do
   end
 
   defp build_asset(asset) do
-    result = %{
+    %{
       type: asset.type,
       path: asset.path,
       metadata: asset.metadata,
       blobKey: asset.blob_key
     }
-
-    if Map.has_key?(asset, :execution) do
-      Map.put(result, :execution, build_execution(asset.execution))
-    else
-      result
-    end
   end
 
   defp build_value(value) do

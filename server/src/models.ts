@@ -106,13 +106,17 @@ export type QueuedExecution = {
   assignedAt: number | null;
 };
 
+export type Dependency = Reference & {
+  assets: Record<string, Asset>;
+};
+
 export type Execution = {
   executionId: string;
   createdAt: number;
   executeAfter: number | null;
   assignedAt: number | null;
   completedAt: number | null;
-  dependencies: Record<string, Reference>;
+  dependencies: Record<string, Dependency>;
   children: (string | Child)[];
   result: Result | null;
   assets: Record<string, Asset>;

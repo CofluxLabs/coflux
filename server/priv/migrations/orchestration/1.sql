@@ -117,8 +117,7 @@ CREATE TABLE assignments (
   FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE
 );
 
--- TODO: rename execution_dependencies
-CREATE TABLE dependencies (
+CREATE TABLE result_dependencies (
   execution_id INTEGER NOT NULL,
   dependency_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,

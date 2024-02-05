@@ -59,3 +59,15 @@ export function formatDiff(diff: Duration, concise = false, maxParts = 2) {
     }
   }
 }
+
+export function truncatePath(path: string) {
+  const parts = path.split("/");
+  if (parts.length <= 3) {
+    return path;
+  }
+  return [
+    parts[0],
+    ...parts.slice(1, -1).map((p) => p[0]),
+    parts[parts.length - 1],
+  ].join("/");
+}

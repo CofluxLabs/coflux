@@ -27,13 +27,13 @@ export function useHoverContext() {
         (!attempt || attempt == state[2])
       );
     },
-    [state]
+    [state],
   );
   const setHovered = useCallback(
     (runId?: string, stepId?: string, attempt?: number) => {
       setState(runId ? [runId, stepId, attempt] : undefined);
     },
-    []
+    [],
   );
   return { isHovered, setHovered };
 }

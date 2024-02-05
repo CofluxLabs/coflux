@@ -218,11 +218,11 @@ defmodule Coflux.Orchestration.Runs do
     end)
   end
 
-  def record_dependency(db, execution_id, dependency_id) do
+  def record_result_dependency(db, execution_id, dependency_id) do
     with_transaction(db, fn ->
       insert_one(
         db,
-        :dependencies,
+        :result_dependencies,
         %{
           execution_id: execution_id,
           dependency_id: dependency_id,
@@ -455,12 +455,12 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  def get_execution_dependencies(db, execution_id) do
+  def get_result_dependencies(db, execution_id) do
     query(
       db,
       """
       SELECT dependency_id
-      FROM dependencies
+      FROM result_dependencies
       WHERE execution_id = ?1
       """,
       {execution_id}

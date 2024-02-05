@@ -8,7 +8,7 @@
     "@dagrejs/dagre": "^1.0.4",
     "@headlessui/react": "^1.7.18",
     "@tabler/icons-react": "^2.45.0",
-    "@topical/react": "^0.1.9",
+    "@topical/react": "^0.2.0",
     "classnames": "^2.5.1",
     "lodash": "^4.17.21",
     "luxon": "^3.4.4",
