@@ -35,13 +35,15 @@ type Props = {
 
 export default function AssetLink({ asset, className, children }: Props) {
   const mimeType = asset.type == 0 ? asset.metadata["type"] : undefined;
+  const preview =
+    mimeType?.startsWith("image/") || mimeType?.startsWith("text/");
   const [open, setOpen] = useState<boolean>(false);
   const [content, setContent] = useState<
     ["image", string] | ["text", string]
   >();
   const handleClick = useCallback(
     (ev: MouseEvent) => {
-      if (!ev.ctrlKey) {
+      if (!ev.ctrlKey && preview) {
         ev.preventDefault();
         // TODO: confirm for large file?
         setOpen(true);
