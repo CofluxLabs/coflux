@@ -53,7 +53,9 @@ def resolve(target_execution_id: int) -> models.Execution[t.Any]:
     )
 
 
-def persist_asset(path: Path, *, match: str | None = None) -> models.Asset:
+def persist_asset(
+    path: Path | str | None = None, *, match: str | None = None
+) -> models.Asset:
     return _get_channel().persist_asset(path, match=match)
 
 

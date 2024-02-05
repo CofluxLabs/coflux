@@ -466,7 +466,7 @@ class Channel:
         self._send(RecordCheckpointRequest(serialised_arguments))
 
     def persist_asset(
-        self, path: Path | str | None, *, match: str | None = None
+        self, path: Path | str | None = None, *, match: str | None = None
     ) -> models.Asset:
         if isinstance(path, str):
             path = Path(path)
