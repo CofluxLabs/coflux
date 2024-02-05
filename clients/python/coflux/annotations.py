@@ -2,7 +2,7 @@ import functools
 import typing as t
 import datetime as dt
 
-from . import context, future
+from . import context, models
 
 TARGET_KEY = "_coflux_target"
 
@@ -22,8 +22,8 @@ def _decorate(
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
-    def decorator(fn: t.Callable[P, T]) -> t.Callable[P, future.Future[T]]:
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, models.Execution[T]]]:
+    def decorator(fn: t.Callable[P, T]) -> t.Callable[P, models.Execution[T]]:
         name_ = name or fn.__name__
         repository_ = repository or fn.__module__
 
@@ -31,7 +31,6 @@ def _decorate(
         # TODO: type?
         def submit(*args):
             try:
-                # TODO: handle args being futures?
                 execution_id = context.schedule(
                     repository_,
                     name_,
@@ -48,8 +47,8 @@ def _decorate(
             except context.NotInContextException:
                 result = fn(*args)
                 return (
-                    future.Future(lambda: result, None)
-                    if not isinstance(result, future.Future)
+                    models.Execution(lambda: result, None)
+                    if not isinstance(result, models.Execution)
                     else result
                 )
 
@@ -59,7 +58,7 @@ def _decorate(
         setattr(fn, "submit", submit)
 
         @functools.wraps(fn)
-        def wrapper(*args) -> future.Future[T]:  # TODO: support kwargs?
+        def wrapper(*args) -> models.Execution[T]:  # TODO: support kwargs?
             return submit(*args).result()
 
         return wrapper
@@ -77,7 +76,7 @@ def task(
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, models.Execution[T]]]:
     return _decorate(
         "task",
         name=name,
@@ -100,7 +99,7 @@ def workflow(
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, models.Execution[T]]]:
     return _decorate(
         "workflow",
         name=name,
@@ -124,7 +123,7 @@ def stub(
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, future.Future[T]]]:
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, models.Execution[T]]]:
     return _decorate(
         repository=repository,
         name=name,

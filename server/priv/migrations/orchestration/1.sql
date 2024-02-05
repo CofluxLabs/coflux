@@ -89,6 +89,16 @@ CREATE TABLE executions (
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
 );
 
+CREATE TABLE assets (
+  id INTEGER PRIMARY KEY,
+  execution_id INTEGER NOT NULL,
+  type INTEGER NOT NULL,
+  path TEXT NOT NULL,
+  blob_id INTEGER NOT NULL,
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
+);
+
 -- TODO: add 'type' (e.g., 'regular', memoised)
 CREATE TABLE children (
   parent_id INTEGER NOT NULL,
@@ -107,13 +117,22 @@ CREATE TABLE assignments (
   FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE
 );
 
-CREATE TABLE dependencies (
+CREATE TABLE result_dependencies (
   execution_id INTEGER NOT NULL,
   dependency_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   PRIMARY KEY (execution_id, dependency_id),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (dependency_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (dependency_id) REFERENCES executions ON DELETE RESTRICT
+);
+
+CREATE TABLE asset_dependencies (
+  execution_id INTEGER NOT NULL,
+  asset_id INTEGER,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (execution_id, asset_id),
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT
 );
 
 CREATE TABLE checkpoints(
@@ -142,31 +161,42 @@ CREATE TABLE heartbeats (
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
 );
 
+CREATE TABLE blobs (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL,
+  blob_key TEXT NOT NULL -- TODO: use type BLOB?
+);
+
+-- TODO: associate separately with value/asset?
+CREATE TABLE blob_metadata (
+  blob_id INTEGER NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (blob_id, key),
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE CASCADE
+);
+
 CREATE TABLE values_ (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL,
   format TEXT NOT NULL,
   content BLOB,
-  blob_key TEXT,
+  blob_id INTEGER,
   UNIQUE (hash),
-  CHECK ((content IS NULL) != (blob_key IS NULL))
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
+  CHECK ((content IS NULL) != (blob_id IS NULL))
 );
 
-CREATE TABLE value_references (
+CREATE TABLE value_placeholders (
   value_id INTEGER NOT NULL,
-  number INTEGER NOT NULL,
-  reference_id INTEGER NOT NULL,
-  PRIMARY KEY (value_id, number),
+  placeholder INTEGER NOT NULL,
+  execution_id INTEGER,
+  asset_id INTEGER,
+  PRIMARY KEY (value_id, placeholder),
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE,
-  FOREIGN KEY (reference_id) REFERENCES executions ON DELETE RESTRICT
-);
-
-CREATE TABLE value_metadata (
-  value_id INTEGER NOT NULL,
-  key TEXT NOT NULL,
-  value TEXT NOT NULL,
-  PRIMARY KEY (value_id, key),
-  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE RESTRICT,
+  FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT,
+  CHECK ((execution_id IS NULL) != (asset_id IS NULL))
 );
 
 CREATE TABLE errors (

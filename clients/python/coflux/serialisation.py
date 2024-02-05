@@ -2,8 +2,11 @@ import typing as t
 import json
 import re
 import pickle
+from pathlib import Path
 
-from . import future
+from . import blobs, models
+
+T = t.TypeVar("T")
 
 _BLOB_THRESHOLD = 100
 
@@ -27,31 +30,39 @@ def _find_numbers(data: t.Any) -> set[int]:
     return numbers
 
 
-def _choose_number(existing: set[int], placeholders: dict[int, str], counter=0) -> int:
+def _choose_number(
+    existing: set[int], placeholders: dict[int, t.Any], counter=0
+) -> int:
     if counter not in existing and counter not in placeholders:
         return counter
     return _choose_number(existing, placeholders, counter + 1)
 
 
+def _do_substitution(placeholders: dict[int, T], value: T, existing: set[int]):
+    number = next(
+        (k for k, v in placeholders.items() if v == value),
+        None,
+    )
+    if not number:
+        number = _choose_number(existing, placeholders)
+        placeholders[number] = value
+    return f"{{{number}}}"
+
+
 def _substitute_placeholders(
-    data: t.Any, existing: set[int], substitutions: dict[int, str]
+    data: t.Any,
+    existing: set[int],
+    placeholders: models.Placeholders,
 ) -> t.Any:
-    if isinstance(data, future.Future) and data.execution_id:
-        number = next(
-            (key for key, value in substitutions.items() if value == data.execution_id),
-            None,
-        )
-        if not number:
-            number = _choose_number(existing, substitutions)
-            substitutions[number] = data.execution_id
-        return f"{{{number}}}"
+    if isinstance(data, models.Execution) and data.id:
+        return _do_substitution(placeholders, (data.id, None), existing)
+    elif isinstance(data, models.Asset):
+        return _do_substitution(placeholders, (None, data.id), existing)
     elif isinstance(data, list):
-        return [
-            _substitute_placeholders(item, existing, substitutions) for item in data
-        ]
+        return [_substitute_placeholders(item, existing, placeholders) for item in data]
     elif isinstance(data, dict):
         return {
-            k: _substitute_placeholders(v, existing, substitutions)
+            k: _substitute_placeholders(v, existing, placeholders)
             for k, v in data.items()
         }
     else:
@@ -59,22 +70,21 @@ def _substitute_placeholders(
 
 
 def _replace_placeholders(
-    data: t.Any, placeholders: dict[str, str], resolve_fn: t.Callable[[str], t.Any]
+    data: t.Any,
+    placeholders: dict[str, models.Execution | models.Asset],
 ):
-    if isinstance(data, str) and data in placeholders:
-        execution_id = placeholders[data]
-        return future.Future(lambda: resolve_fn(execution_id), execution_id)
+    if isinstance(data, str):
+        return placeholders.get(data) or data
     elif isinstance(data, list):
-        return [_replace_placeholders(item, placeholders, resolve_fn) for item in data]
+        return [_replace_placeholders(item, placeholders) for item in data]
     elif isinstance(data, dict):
-        return {
-            k: _replace_placeholders(v, placeholders, resolve_fn)
-            for k, v in data.items()
-        }
+        return {k: _replace_placeholders(v, placeholders) for k, v in data.items()}
     return data
 
 
-def serialise(data: t.Any) -> tuple[str, bytes, dict[int, str], dict[str, t.Any]]:
+def _serialise(
+    data: t.Any, blob_store: blobs.Store, execution_dir: Path
+) -> tuple[str, bytes, models.Placeholders, models.Metadata]:
     placeholders = {}
     avoid_numbers = _find_numbers(data)
     value = _substitute_placeholders(data, avoid_numbers, placeholders)
@@ -84,6 +94,18 @@ def serialise(data: t.Any) -> tuple[str, bytes, dict[int, str], dict[str, t.Any]
     except TypeError:
         pickle_value = pickle.dumps(value)
         return "pickle", pickle_value, placeholders, {"size": len(pickle_value)}
+
+
+def serialise(
+    value: t.Any, blob_store: blobs.Store, execution_dir: Path
+) -> models.Value:
+    format, serialised, placeholders, metadata = _serialise(
+        value, blob_store, execution_dir
+    )
+    if format != "json" or len(serialised) > _BLOB_THRESHOLD:
+        key = blob_store.put(serialised)
+        return ("blob", key, metadata, format, placeholders)
+    return ("raw", serialised, format, placeholders)
 
 
 def _deserialise(format: str, content: bytes):
@@ -96,12 +118,28 @@ def _deserialise(format: str, content: bytes):
             raise Exception(f"unsupported format ({format})")
 
 
+def _compose_placeholder(
+    placeholder: tuple[int, None] | tuple[None, int],
+    resolve_fn: t.Callable[[int], t.Any],
+):
+    match placeholder:
+        case (execution_id, None):
+            return models.Execution(lambda: resolve_fn(execution_id), execution_id)
+        case (None, asset_id):
+            return models.Asset(asset_id)
+        case other:
+            raise Exception(f"unrecognised placeholder ({other})")
+
+
 def deserialise(
     format: str,
     content: bytes,
-    references: dict[int, str],
-    resolve_fn: t.Callable[[str], t.Any],
+    placeholders: models.Placeholders,
+    resolve_fn: t.Callable[[int], t.Any],
 ) -> t.Any:
     data = _deserialise(format, content)
-    placeholders = {f"{{{k}}}": v for k, v in references.items()}
-    return _replace_placeholders(data, placeholders, resolve_fn)
+    placeholders_ = {
+        f"{{{key}}}": _compose_placeholder(value, resolve_fn)
+        for key, value in placeholders.items()
+    }
+    return _replace_placeholders(data, placeholders_)

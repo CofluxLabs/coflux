@@ -32,11 +32,27 @@ export type Reference = {
   target: string;
 };
 
-export type Value = {
-  format: string;
-  references: Record<string, [string, Reference]>;
+export type Asset = {
+  type: 0 | 1;
+  path: string;
+  blobKey: string;
   metadata: Record<string, any>;
-} & (
+  execution?: Reference;
+};
+
+export type Placeholder =
+  | {
+      type: "execution";
+      executionId: string;
+      execution: Reference;
+    }
+  | {
+      type: "asset";
+      assetId: string;
+      asset: Asset;
+    };
+
+export type Value = (
   | {
       type: "raw";
       content: string;
@@ -44,8 +60,12 @@ export type Value = {
   | {
       type: "blob";
       key: string;
+      metadata: Record<string, any>;
     }
-);
+) & {
+  format: string;
+  placeholders: Record<string, Placeholder>;
+};
 
 export type ErrorFrame = {
   file: string;
@@ -86,15 +106,20 @@ export type QueuedExecution = {
   assignedAt: number | null;
 };
 
+export type Dependency = Reference & {
+  assets: Record<string, Asset>;
+};
+
 export type Execution = {
   executionId: string;
   createdAt: number;
   executeAfter: number | null;
   assignedAt: number | null;
   completedAt: number | null;
-  dependencies: Record<string, Reference>;
+  dependencies: Record<string, Dependency>;
   children: (string | Child)[];
   result: Result | null;
+  assets: Record<string, Asset>;
 };
 
 export type Step = {

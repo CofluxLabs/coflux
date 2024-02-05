@@ -1,16 +1,35 @@
-import { CSSProperties, Fragment, useCallback, useState } from "react";
+import {
+  CSSProperties,
+  Fragment,
+  ReactNode,
+  useCallback,
+  useState,
+} from "react";
 import classNames from "classnames";
 import { sortBy } from "lodash";
 import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTopic } from "@topical/react";
-import { IconChevronDown, IconPinned } from "@tabler/icons-react";
+import {
+  IconChevronDown,
+  IconFile,
+  IconFileText,
+  IconFolder,
+  IconFunction,
+  IconPinned,
+} from "@tabler/icons-react";
 import reactStringReplace from "react-string-replace";
 
 import * as models from "../models";
 import Badge from "./Badge";
-import { buildUrl, formatDiff, humanSize } from "../utils";
+import {
+  buildUrl,
+  formatDiff,
+  humanSize,
+  pluralise,
+  truncatePath,
+} from "../utils";
 import Loading from "./Loading";
 import Button from "./common/Button";
 import RunLogs from "./RunLogs";
@@ -213,6 +232,75 @@ function BlobLink({ value }: BlobLinkProps) {
   );
 }
 
+function formatMetadata(asset: models.Asset) {
+  const parts = [];
+  switch (asset.type) {
+    case 0:
+      if ("size" in asset.metadata) {
+        parts.push(humanSize(asset.metadata.size));
+      }
+      if ("type" in asset.metadata && asset.metadata.type) {
+        parts.push(asset.metadata.type);
+      }
+      break;
+    case 1:
+      if ("count" in asset.metadata) {
+        parts.push(pluralise(asset.metadata.count, "file"));
+      }
+      if ("totalSize" in asset.metadata) {
+        parts.push(humanSize(asset.metadata.totalSize));
+      }
+      break;
+  }
+  return parts.join("; ");
+}
+
+type AssetLinkProps = {
+  asset: models.Asset;
+  className?: string;
+  children: ReactNode;
+};
+
+function AssetLink({ asset, className, children }: AssetLinkProps) {
+  return (
+    <a
+      href={`/blobs/${asset.blobKey}`}
+      title={`${asset.path}\n${formatMetadata(asset)}`}
+      className={className}
+    >
+      {children}
+    </a>
+  );
+}
+
+function iconForAsset(asset: models.Asset) {
+  switch (asset.type) {
+    case 0:
+      const type = asset.metadata["type"];
+      switch (type?.split("/")[0]) {
+        case "text":
+          return IconFileText;
+        default:
+          return IconFile;
+      }
+    case 1:
+      return IconFolder;
+    default:
+      throw new Error(`unrecognised asset type (${asset.type})`);
+  }
+}
+
+type AssetIconProps = {
+  asset: models.Asset;
+  size?: number;
+  className?: string;
+};
+
+function AssetIcon({ asset, size = 16, className }: AssetIconProps) {
+  const Icon = iconForAsset(asset);
+  return <Icon size={size} className={className} />;
+}
+
 type ValueProps = {
   value: Extract<models.Value, { type: "raw" }>;
   className?: string;
@@ -222,23 +310,37 @@ function Value({ value, className }: ValueProps) {
   return (
     <span className={classNames("font-mono text-sm", className)}>
       {reactStringReplace(value.content, /"\{(\d+)\}"/g, (match, index) => {
-        const referenceNumber = parseInt(match, 10);
-        if (referenceNumber in value.references) {
-          const [_, reference] = value.references[referenceNumber];
-          return (
-            <StepLink
-              key={index}
-              runId={reference.runId}
-              stepId={reference.stepId}
-              attempt={reference.attempt}
-              className="font-sans text-base px-1 bg-slate-200 ring-offset-1 text-slate-600 text-sm rounded"
-              hoveredClassName="ring-2 ring-slate-300"
-            >
-              ...
-            </StepLink>
-          );
-        } else {
-          return `{${match}}`;
+        const placeholder = value.placeholders[parseInt(match, 10)];
+        switch (placeholder?.type) {
+          case "execution": {
+            const execution = placeholder.execution;
+            return (
+              <StepLink
+                key={index}
+                runId={execution.runId}
+                stepId={execution.stepId}
+                attempt={execution.attempt}
+                className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 ring-offset-1 rounded"
+                hoveredClassName="ring-2 ring-slate-300"
+              >
+                <IconFunction size={16} className="inline-block" />
+              </StepLink>
+            );
+          }
+          case "asset": {
+            const asset = placeholder.asset;
+            return (
+              <AssetLink
+                key={index}
+                asset={asset}
+                className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 rounded"
+              >
+                <AssetIcon asset={asset} className="inline-block" />
+              </AssetLink>
+            );
+          }
+          default:
+            return `"{${match}}"`;
         }
       })}
     </span>
@@ -255,7 +357,7 @@ function Argument({ argument }: ArgumentProps) {
       return (
         <Value
           value={argument}
-          className="bg-white px-0.5 border border-slate-300 rounded"
+          className="bg-white p-1 border border-slate-300 rounded"
         />
       );
     case "blob":
@@ -275,7 +377,7 @@ function ArgumentsSection({ arguments_ }: ArgumentsSectionProps) {
       <h3 className="uppercase text-sm font-bold text-slate-400">Arguments</h3>
       <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs">
         {arguments_.map((argument, index) => (
-          <li key={index}>
+          <li key={index} className="my-1">
             <Argument argument={argument} />
           </li>
         ))}
@@ -350,12 +452,12 @@ function DependenciesSection({ execution }: DependenciesSectionProps) {
       <h3 className="uppercase text-sm font-bold text-slate-400">
         Dependencies
       </h3>
-      {Object.keys(execution.dependencies).length ? (
-        <ul className="">
+      {Object.keys(execution.dependencies).length > 0 ? (
+        <ul>
           {Object.entries(execution.dependencies).map(
             ([dependencyId, dependency]) => {
               return (
-                <li key={dependencyId}>
+                <li key={`r-${dependencyId}`}>
                   <StepLink
                     runId={dependency.runId}
                     stepId={dependency.stepId}
@@ -444,7 +546,7 @@ function ResultSection({ result }: ResultSectionProps) {
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
       {value.type == "raw" ? (
-        <div className="bg-white rounded block p-1 border border-slate-300 break-all whitespace-break-spaces">
+        <div className="bg-white rounded block p-1 border border-slate-300 break-all whitespace-break-spaces text-sm">
           {" "}
           <Value value={value} />
         </div>
@@ -453,18 +555,6 @@ function ResultSection({ result }: ResultSectionProps) {
       ) : undefined}
     </div>
   );
-}
-
-function truncatePath(path: string) {
-  const parts = path.split("/");
-  if (parts.length <= 3) {
-    return path;
-  }
-  return [
-    parts[0],
-    ...parts.slice(1, -1).map((p) => p[0]),
-    parts[parts.length - 1],
-  ].join("/");
 }
 
 type ErrorSectionProps = {
@@ -581,6 +671,46 @@ function CachedSection({ result }: CachedSectionProps) {
   );
 }
 
+type AssetItemProps = {
+  asset: models.Asset;
+};
+
+function AssetItem({ asset }: AssetItemProps) {
+  return (
+    <li className="flex items-center gap-1 my-1">
+      <AssetLink
+        asset={asset}
+        className="flex items-center gap-1 bg-white rounded px-1"
+      >
+        <AssetIcon asset={asset} />
+        <span title={asset.path}>{truncatePath(asset.path)}</span>
+      </AssetLink>
+      <span className="text-slate-500 text-xs">({formatMetadata(asset)})</span>
+    </li>
+  );
+}
+
+type AssetsSectionProps = {
+  execution: models.Execution;
+};
+
+function AssetsSection({ execution }: AssetsSectionProps) {
+  return (
+    <div>
+      <h3 className="uppercase text-sm font-bold text-slate-400">Assets</h3>
+      {Object.keys(execution.assets).length ? (
+        <ul>
+          {Object.entries(execution.assets).map(([assetId, asset]) => (
+            <AssetItem key={assetId} asset={asset} />
+          ))}
+        </ul>
+      ) : (
+        <p>None</p>
+      )}
+    </div>
+  );
+}
+
 type LogsSectionProps = {
   projectId: string;
   environmentName: string;
@@ -614,11 +744,13 @@ function LogsSection({
       {executionLogs === undefined ? (
         <Loading />
       ) : (
-        <RunLogs
-          startTime={scheduledAt}
-          logs={executionLogs}
-          darkerTimestampRule={true}
-        />
+        <div className="overflow-x-auto">
+          <RunLogs
+            startTime={scheduledAt}
+            logs={executionLogs}
+            darkerTimestampRule={true}
+          />
+        </div>
       )}
     </div>
   );
@@ -667,7 +799,6 @@ export default function StepDetail({
         {step.arguments?.length > 0 && (
           <ArgumentsSection arguments_={step.arguments} />
         )}
-        {/* TODO: link to run if cached? */}
         <ExecutionSection execution={execution} />
         {execution?.assignedAt && (
           <Fragment>
@@ -685,12 +816,15 @@ export default function StepDetail({
           <CachedSection result={execution.result} />
         ) : undefined}
         {execution?.assignedAt && (
-          <LogsSection
-            projectId={projectId}
-            environmentName={environmentName}
-            runId={runId}
-            execution={execution}
-          />
+          <Fragment>
+            <AssetsSection execution={execution} />
+            <LogsSection
+              projectId={projectId}
+              environmentName={environmentName}
+              runId={runId}
+              execution={execution}
+            />
+          </Fragment>
         )}
       </div>
     </div>

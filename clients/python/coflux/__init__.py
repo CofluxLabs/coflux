@@ -1,6 +1,14 @@
 from .annotations import workflow, task, stub, sensor
-from .context import checkpoint, log_debug, log_info, log_warning, log_error
-from .future import Future
+from .context import (
+    checkpoint,
+    persist_asset,
+    restore_asset,
+    log_debug,
+    log_info,
+    log_warning,
+    log_error,
+)
+from .models import Execution, Asset
 from .agent import Agent
 
 __all__ = [
@@ -13,6 +21,9 @@ __all__ = [
     "log_info",
     "log_warning",
     "log_error",
-    "Future",
+    "persist_asset",
+    "restore_asset",
+    "Execution",
+    "Asset",
     "Agent",
 ]

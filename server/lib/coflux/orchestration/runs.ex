@@ -218,14 +218,29 @@ defmodule Coflux.Orchestration.Runs do
     end)
   end
 
-  def record_dependency(db, execution_id, dependency_id) do
+  def record_result_dependency(db, execution_id, dependency_id) do
     with_transaction(db, fn ->
       insert_one(
         db,
-        :dependencies,
+        :result_dependencies,
         %{
           execution_id: execution_id,
           dependency_id: dependency_id,
+          created_at: current_timestamp()
+        },
+        on_conflict: "DO NOTHING"
+      )
+    end)
+  end
+
+  def record_asset_dependency(db, execution_id, asset_id) do
+    with_transaction(db, fn ->
+      insert_one(
+        db,
+        :asset_dependencies,
+        %{
+          execution_id: execution_id,
+          asset_id: asset_id,
           created_at: current_timestamp()
         },
         on_conflict: "DO NOTHING"
@@ -440,12 +455,24 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  def get_execution_dependencies(db, execution_id) do
+  def get_result_dependencies(db, execution_id) do
     query(
       db,
       """
       SELECT dependency_id
-      FROM dependencies
+      FROM result_dependencies
+      WHERE execution_id = ?1
+      """,
+      {execution_id}
+    )
+  end
+
+  def get_asset_dependencies(db, execution_id) do
+    query(
+      db,
+      """
+      SELECT asset_id
+      FROM asset_dependencies
       WHERE execution_id = ?1
       """,
       {execution_id}

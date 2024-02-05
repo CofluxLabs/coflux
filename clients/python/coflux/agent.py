@@ -48,12 +48,26 @@ def _build_manifest(targets: dict) -> dict:
     }
 
 
+def _parse_placeholder(placeholder: list) -> tuple[int, None] | tuple[None, int]:
+    match placeholder:
+        case [execution_id, None]:
+            return (execution_id, None)
+        case [None, asset_id]:
+            return (None, asset_id)
+        case other:
+            raise Exception(f"unhandle placeholder value: {other}")
+
+
+def _parse_placeholders(placeholders: dict[int, list]) -> models.Placeholders:
+    return {key: _parse_placeholder(value) for key, value in placeholders.items()}
+
+
 def _parse_value(value: list) -> models.Value:
     match value:
-        case ["raw", format, content, references, metadata]:
-            return ("raw", format, content.encode(), references, metadata)
-        case ["blob", format, key, references, metadata]:
-            return ("blob", format, key, references, metadata)
+        case ["raw", content, format, placeholders]:
+            return ("raw", content.encode(), format, _parse_placeholders(placeholders))
+        case ["blob", key, metadata, format, placeholders]:
+            return ("blob", key, metadata, format, _parse_placeholders(placeholders))
     raise Exception(f"unexpected value: {value}")
 
 
@@ -75,7 +89,8 @@ class Agent:
         self._connection = server.Connection(
             {"execute": self._handle_execute, "abort": self._handle_abort}
         )
-        self._execution_manager = execution.Manager(self._connection, server_host)
+        blob_url_format = f"http://{server_host}/blobs/{{key}}"
+        self._execution_manager = execution.Manager(self._connection, blob_url_format)
 
     async def _handle_execute(self, *args) -> None:
         (execution_id, repository, target_name, arguments) = args

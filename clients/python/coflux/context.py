@@ -1,7 +1,8 @@
 import typing as t
 import datetime as dt
+from pathlib import Path
 
-from . import execution, future
+from . import execution, models
 
 
 class NotInContextException(Exception):
@@ -44,12 +45,22 @@ def schedule(
     )
 
 
-def resolve(target_execution_id: str) -> future.Future[t.Any]:
+def resolve(target_execution_id: int) -> models.Execution[t.Any]:
     channel = _get_channel()
-    return future.Future(
+    return models.Execution(
         lambda: channel.resolve_reference(target_execution_id),
         target_execution_id,
     )
+
+
+def persist_asset(
+    path: Path | str | None = None, *, match: str | None = None
+) -> models.Asset:
+    return _get_channel().persist_asset(path, match=match)
+
+
+def restore_asset(asset: models.Asset, *, to: Path | str | None = None) -> Path:
+    return _get_channel().restore_asset(asset, to=to)
 
 
 def checkpoint(*arguments: t.Any) -> None:
