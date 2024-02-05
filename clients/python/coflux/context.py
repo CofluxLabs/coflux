@@ -53,12 +53,12 @@ def resolve(target_execution_id: int) -> models.Execution[t.Any]:
     )
 
 
-def persist(path: Path) -> models.Asset:
-    return _get_channel().persist(path)
+def persist_asset(path: Path, *, match: str | None = None) -> models.Asset:
+    return _get_channel().persist_asset(path, match=match)
 
 
-def restore(asset: models.Asset) -> Path:
-    return _get_channel().restore(asset)
+def restore_asset(asset: models.Asset, *, to: Path | str | None = None) -> Path:
+    return _get_channel().restore_asset(asset, to=to)
 
 
 def checkpoint(*arguments: t.Any) -> None:

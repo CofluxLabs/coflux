@@ -465,8 +465,11 @@ class Channel:
         ]
         self._send(RecordCheckpointRequest(serialised_arguments))
 
-    # TODO: support specifying filter (glob)
-    def persist(self, path: Path | None) -> models.Asset:
+    def persist_asset(
+        self, path: Path | str | None, *, match: str | None = None
+    ) -> models.Asset:
+        if isinstance(path, str):
+            path = Path(path)
         path = path or self._directory
         if not path.exists():
             raise Exception(f"path '{path}' doesn't exist")
@@ -476,6 +479,8 @@ class Channel:
         # TODO: zip all assets?
         path_str = str(path.relative_to(self._directory))
         if path.is_file():
+            if match:
+                raise Exception("match cannot be specified for file")
             asset_type = 0
             blob_key = self._blob_store.upload(path)
             (mime_type, _) = mimetypes.guess_type(path)
@@ -490,8 +495,11 @@ class Channel:
                         root = Path(root)
                         for file in files:
                             file_path = root.joinpath(file)
-                            zip.write(file_path, arcname=file_path.relative_to(path))
-                            sizes.append(file_path.stat().st_size)
+                            if not match or file_path.match(match):
+                                zip.write(
+                                    file_path, arcname=file_path.relative_to(path)
+                                )
+                                sizes.append(file_path.stat().st_size)
                 blob_key = self._blob_store.upload(zip_path)
             metadata = {"totalSize": sum(sizes), "count": len(sizes)}
         else:
@@ -505,28 +513,36 @@ class Channel:
         asset_id = future.result()
         return models.Asset(asset_id)
 
-    # TODO: specify where to restore to? or use asset's path?
-    def restore(self, asset: models.Asset) -> Path:
+    def restore_asset(
+        self, asset: models.Asset, *, to: Path | str | None = None
+    ) -> Path:
+        if to:
+            if isinstance(to, str):
+                to = Path(to)
+            if not to.is_absolute():
+                to = self._directory.joinpath(to)
+            if not to.is_relative_to(self._directory):
+                raise Exception("asset must be restored to execution directory")
         future = self._asset_resolves.get(asset.id)
         if not future:
             future = Future()
             self._asset_resolves[asset.id] = future
             self._send(ResolveAssetRequest(asset.id))
         asset_type, path_str, blob_key = future.result()
-        resolved_path = self._directory.joinpath(path_str)
-        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+        target = to or self._directory.joinpath(path_str)
+        target.parent.mkdir(parents=True, exist_ok=True)
         if asset_type == 0:
-            self._blob_store.download(blob_key, resolved_path)
+            self._blob_store.download(blob_key, target)
         elif asset_type == 1:
-            resolved_path.mkdir()
+            target.mkdir()
             with tempfile.NamedTemporaryFile() as zip_file:
                 zip_path = Path(zip_file.name)
                 self._blob_store.download(blob_key, zip_path)
                 with zipfile.ZipFile(zip_path, "r") as zip:
-                    zip.extractall(resolved_path)
+                    zip.extractall(target)
         else:
             raise Exception(f"unrecognised asset type ({asset_type})")
-        return resolved_path
+        return target
 
     def log_message(self, level, template, **kwargs):
         timestamp = time.time() * 1000
