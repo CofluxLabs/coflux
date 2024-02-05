@@ -1,10 +1,4 @@
-import {
-  CSSProperties,
-  Fragment,
-  ReactNode,
-  useCallback,
-  useState,
-} from "react";
+import { CSSProperties, Fragment, useCallback, useState } from "react";
 import classNames from "classnames";
 import { sortBy } from "lodash";
 import { DateTime } from "luxon";
@@ -34,6 +28,7 @@ import Loading from "./Loading";
 import Button from "./common/Button";
 import RunLogs from "./RunLogs";
 import StepLink from "./StepLink";
+import AssetLink from "./AssetLink";
 
 type AttemptSelectorOptionProps = {
   attempt: number;
@@ -229,47 +224,6 @@ function BlobLink({ value }: BlobLinkProps) {
       </a>
       <span className="text-slate-500 text-xs ml-1">({hints.join("; ")})</span>
     </span>
-  );
-}
-
-function formatMetadata(asset: models.Asset) {
-  const parts = [];
-  switch (asset.type) {
-    case 0:
-      if ("size" in asset.metadata) {
-        parts.push(humanSize(asset.metadata.size));
-      }
-      if ("type" in asset.metadata && asset.metadata.type) {
-        parts.push(asset.metadata.type);
-      }
-      break;
-    case 1:
-      if ("count" in asset.metadata) {
-        parts.push(pluralise(asset.metadata.count, "file"));
-      }
-      if ("totalSize" in asset.metadata) {
-        parts.push(humanSize(asset.metadata.totalSize));
-      }
-      break;
-  }
-  return parts.join("; ");
-}
-
-type AssetLinkProps = {
-  asset: models.Asset;
-  className?: string;
-  children: ReactNode;
-};
-
-function AssetLink({ asset, className, children }: AssetLinkProps) {
-  return (
-    <a
-      href={`/blobs/${asset.blobKey}`}
-      title={`${asset.path}\n${formatMetadata(asset)}`}
-      className={className}
-    >
-      {children}
-    </a>
   );
 }
 
@@ -683,9 +637,8 @@ function AssetItem({ asset }: AssetItemProps) {
         className="flex items-center gap-1 bg-white rounded px-1"
       >
         <AssetIcon asset={asset} />
-        <span title={asset.path}>{truncatePath(asset.path)}</span>
+        {truncatePath(asset.path)}
       </AssetLink>
-      <span className="text-slate-500 text-xs">({formatMetadata(asset)})</span>
     </li>
   );
 }
@@ -799,7 +752,7 @@ export default function StepDetail({
         {step.arguments?.length > 0 && (
           <ArgumentsSection arguments_={step.arguments} />
         )}
-        <ExecutionSection execution={execution} />
+        {execution && <ExecutionSection execution={execution} />}
         {execution?.assignedAt && (
           <Fragment>
             <DependenciesSection execution={execution} />
