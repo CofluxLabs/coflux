@@ -18,13 +18,11 @@ const sidebars: SidebarsConfig = {
     "async",
     "retries",
     "caching",
-    "deferring",
-    "memoising",
     "logging",
     {
       type: "category",
       label: "Advanced",
-      items: ["sensors", "stubs"],
+      items: ["deferring", "memoising", "assets", "sensors", "stubs"],
     },
   ],
 };
