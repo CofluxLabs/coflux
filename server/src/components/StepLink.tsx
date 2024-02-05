@@ -69,6 +69,7 @@ export default function StepLink({
       )}
       onMouseOver={handleMouseOver}
       onMouseOut={handleMouseOut}
+      title={`${stepId} (${attempt})`}
     >
       {children}
     </Link>

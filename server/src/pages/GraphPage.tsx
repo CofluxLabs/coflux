@@ -8,7 +8,7 @@ export default function GraphPage() {
   const { run: runId } = useParams();
   const [searchParams] = useSearchParams();
   const activeStepId = searchParams.get("step") || undefined;
-  const activeAttemptNumber = searchParams.has("attempt")
+  const activeAttempt = searchParams.has("attempt")
     ? parseInt(searchParams.get("attempt")!)
     : undefined;
   if (Object.keys(run.steps).length < 1000) {
@@ -19,7 +19,7 @@ export default function GraphPage() {
         height={height}
         runId={runId!}
         activeStepId={activeStepId}
-        activeAttemptNumber={activeAttemptNumber}
+        activeAttempt={activeAttempt}
       />
     );
   } else {
