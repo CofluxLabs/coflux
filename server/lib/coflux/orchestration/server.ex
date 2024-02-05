@@ -452,7 +452,7 @@ defmodule Coflux.Orchestration.Server do
 
         if id do
           {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
-          asset_execution = resolve_execution(state.db, from_execution_id)
+          asset_execution = resolve_execution(state.db, asset_execution_id)
           asset_ = resolve_asset(state.db, asset_id, false)
 
           notify_listeners(

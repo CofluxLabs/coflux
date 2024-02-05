@@ -95,7 +95,7 @@ defmodule Coflux.Topics.Run do
   end
 
   defp process_notification(topic, {:result_dependency, execution_id, dependency_id, dependency}) do
-    dependency = build_execution(dependency)
+    dependency = build_dependency(dependency)
 
     update_execution(
       topic,
@@ -115,7 +115,7 @@ defmodule Coflux.Topics.Run do
          {:asset_dependency, execution_id, asset_execution_id, asset_execution, asset_id, asset}
        ) do
     asset = build_asset(asset)
-    asset_execution = build_execution(asset_execution)
+    asset_execution = build_dependency(asset_execution)
 
     asset_execution_id_s = Integer.to_string(asset_execution_id)
     asset_id_s = Integer.to_string(asset_id)
@@ -197,13 +197,13 @@ defmodule Coflux.Topics.Run do
   defp build_dependencies(result_dependencies, asset_dependencies) do
     dependencies =
       Map.new(result_dependencies, fn {execution_id, execution} ->
-        {execution_id, build_execution(execution)}
+        {execution_id, build_dependency(execution)}
       end)
 
     Enum.reduce(asset_dependencies, dependencies, fn {asset_id, asset}, dependencies ->
       dependencies
       |> Map.put_new_lazy(asset.execution_id, fn ->
-        asset.execution |> build_execution() |> Map.put(:assets, %{})
+        build_dependency(asset.execution)
       end)
       |> Map.update!(asset.execution_id, fn dependency ->
         put_in(dependency.assets[asset_id], build_asset(asset))
@@ -219,6 +219,12 @@ defmodule Coflux.Topics.Run do
       repository: execution.repository,
       target: execution.target
     }
+  end
+
+  defp build_dependency(execution) do
+    execution
+    |> build_execution()
+    |> Map.put(:assets, %{})
   end
 
   defp build_asset(asset) do
