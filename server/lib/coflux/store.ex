@@ -120,6 +120,8 @@ defmodule Coflux.Store do
 
   defp build(row, model, columns) do
     if model do
+      Code.ensure_loaded!(model)
+
       prepare =
         if function_exported?(model, :prepare, 1),
           do: &model.prepare/1,
