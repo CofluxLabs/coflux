@@ -486,15 +486,18 @@ defmodule Coflux.Orchestration.Server do
 
     executions =
       Enum.reduce(executions, %{}, fn execution, executions ->
-        {execution_id, _, _, _, repository, _, _, execute_after, created_at} = execution
-
         executions
-        |> Map.put_new(repository, {MapSet.new(), %{}})
-        |> Map.update!(repository, fn {repo_executing, repo_scheduled} ->
-          if Enum.member?(executing, execution_id) do
-            {MapSet.put(repo_executing, execution_id), repo_scheduled}
+        |> Map.put_new(execution.repository, {MapSet.new(), %{}})
+        |> Map.update!(execution.repository, fn {repo_executing, repo_scheduled} ->
+          if Enum.member?(executing, execution.execution_id) do
+            {MapSet.put(repo_executing, execution.execution_id), repo_scheduled}
           else
-            {repo_executing, Map.put(repo_scheduled, execution_id, execute_after || created_at)}
+            {repo_executing,
+             Map.put(
+               repo_scheduled,
+               execution.execution_id,
+               execution.execute_after || execution.created_at
+             )}
           end
         end)
       end)
@@ -697,32 +700,51 @@ defmodule Coflux.Orchestration.Server do
         {state, [], []},
         fn
           execution, {state, assigned, unassigned} ->
-            {execution_id, step_id, _, external_run_id, repository, target, _, _, _} = execution
+            {:ok, arguments} =
+              case Results.get_latest_checkpoint(state.db, execution.step_id) do
+                {:ok, nil} ->
+                  Runs.get_step_arguments(state.db, execution.step_id)
 
-            case assign_execution(
-                   state,
-                   execution_id,
-                   step_id,
-                   repository,
-                   target,
-                   external_run_id
-                 ) do
-              {:ok, state, {_session_id, assigned_at}} ->
-                {state, [{execution, assigned_at} | assigned], unassigned}
+                {:ok, {checkpoint_id, _, _, _}} ->
+                  Results.get_checkpoint_arguments(state.db, checkpoint_id)
+              end
 
-              {:error, :no_session} ->
-                {state, assigned, [execution | unassigned]}
+            if is_execution_ready?(state, execution.wait_for, arguments) do
+              case choose_session(state, execution) do
+                {:ok, session_id} ->
+                  {:ok, assigned_at} =
+                    Runs.assign_execution(state.db, execution.execution_id, session_id)
+
+                  state =
+                    state
+                    |> update_in(
+                      [Access.key(:sessions), session_id, :starting],
+                      &MapSet.put(&1, execution.execution_id)
+                    )
+                    |> send_session(
+                      session_id,
+                      {:execute, execution.execution_id, execution.repository, execution.target,
+                       arguments, execution.run_external_id}
+                    )
+
+                  {state, [{execution, assigned_at} | assigned], unassigned}
+
+                {:error, :no_session} ->
+                  {state, assigned, [execution | unassigned]}
+              end
+            else
+              {state, assigned, [execution | unassigned]}
             end
         end
       )
 
     state =
       assigned
-      |> Enum.group_by(fn {execution, _assigned_at} -> elem(execution, 2) end)
+      |> Enum.group_by(fn {execution, _assigned_at} -> execution.run_id end)
       |> Enum.reduce(state, fn {run_id, executions}, state ->
         assigned =
           Map.new(executions, fn {execution, assigned_at} ->
-            {elem(execution, 0), assigned_at}
+            {execution.execution_id, assigned_at}
           end)
 
         notify_listeners(state, {:run, run_id}, {:assigned, assigned})
@@ -731,8 +753,8 @@ defmodule Coflux.Orchestration.Server do
     assigned_by_repository =
       assigned
       |> Enum.group_by(
-        fn {execution, _} -> elem(execution, 4) end,
-        fn {execution, _} -> elem(execution, 0) end
+        fn {execution, _} -> execution.repository end,
+        fn {execution, _} -> execution.execution_id end
       )
       |> Map.new(fn {k, v} -> {k, MapSet.new(v)} end)
 
@@ -742,10 +764,8 @@ defmodule Coflux.Orchestration.Server do
       Enum.reduce(assigned_by_repository, state, fn {repository, execution_ids}, state ->
         repository_executions =
           Enum.reduce(assigned, %{}, fn {execution, assigned_at}, repository_executions ->
-            execution_id = elem(execution, 0)
-
-            if MapSet.member?(execution_ids, execution_id) do
-              Map.put(repository_executions, execution_id, assigned_at)
+            if MapSet.member?(execution_ids, execution.execution_id) do
+              Map.put(repository_executions, execution.execution_id, assigned_at)
             else
               repository_executions
             end
@@ -760,7 +780,7 @@ defmodule Coflux.Orchestration.Server do
 
     next_execute_after =
       executions_future
-      |> Enum.map(&elem(&1, 7))
+      |> Enum.map(& &1.execute_after)
       |> Enum.min(fn -> nil end)
 
     state =
@@ -837,23 +857,24 @@ defmodule Coflux.Orchestration.Server do
       |> Enum.reduce(
         {[], [], [], %{}},
         fn execution, {due, future, defer, defer_keys} ->
-          {execution_id, _, run_id, _, repository, target, defer_key, execute_after, _} =
-            execution
+          defer_key =
+            execution.defer_key && {execution.repository, execution.target, execution.defer_key}
 
-          defer_key = defer_key && {repository, target, defer_key}
           defer_id = defer_key && Map.get(defer_keys, defer_key)
 
           if defer_id do
-            {due, future, [{execution_id, defer_id, run_id, repository} | defer], defer_keys}
+            {due, future,
+             [{execution.execution_id, defer_id, execution.run_id, execution.repository} | defer],
+             defer_keys}
           else
             defer_keys =
               if defer_key do
-                Map.put(defer_keys, defer_key, execution_id)
+                Map.put(defer_keys, defer_key, execution.execution_id)
               else
                 defer_keys
               end
 
-            if is_nil(execute_after) || execute_after <= now do
+            if is_nil(execution.execute_after) || execution.execute_after <= now do
               {[execution | due], future, defer, defer_keys}
             else
               {due, [execution | future], defer, defer_keys}
@@ -992,6 +1013,9 @@ defmodule Coflux.Orchestration.Server do
           )
           |> notify_listeners(:repositories, {:completed, repository, execution_id})
           |> notify_listeners({:repository, repository}, {:completed, execution_id})
+
+        # TODO: only if there's an execution waiting for this result?
+        send(self(), :execute)
 
         {:ok, state}
 
@@ -1345,40 +1369,34 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp assign_execution(state, execution_id, step_id, repository, target, external_run_id) do
+  defp is_execution_ready?(state, wait_for, arguments) do
+    Enum.all?(wait_for, fn index ->
+      case Enum.at(arguments, index) do
+        {_, _, placeholders} ->
+          placeholders
+          |> Map.values()
+          |> Enum.map(fn {execution_id, _} -> execution_id end)
+          |> Enum.reject(&is_nil/1)
+          |> Enum.all?(fn execution_id ->
+            case resolve_result(execution_id, state.db) do
+              {:ok, _} -> true
+              {:pending, _} -> false
+            end
+          end)
+      end
+    end)
+  end
+
+  defp choose_session(state, execution) do
     session_ids =
       state.targets
-      |> Map.get(repository, %{})
-      |> Map.get(target, MapSet.new())
+      |> Map.get(execution.repository, %{})
+      |> Map.get(execution.target, MapSet.new())
       |> Enum.reject(&session_at_capacity(state, &1))
       |> Enum.reject(&is_nil(state.sessions[&1].agent))
 
     if Enum.any?(session_ids) do
-      session_id = Enum.random(session_ids)
-
-      {:ok, arguments} =
-        case Results.get_latest_checkpoint(state.db, step_id) do
-          {:ok, nil} ->
-            Runs.get_step_arguments(state.db, step_id)
-
-          {:ok, {checkpoint_id, _, _, _}} ->
-            Results.get_checkpoint_arguments(state.db, checkpoint_id)
-        end
-
-      {:ok, assigned_at} = Runs.assign_execution(state.db, execution_id, session_id)
-
-      state =
-        state
-        |> update_in(
-          [Access.key(:sessions), session_id, :starting],
-          &MapSet.put(&1, execution_id)
-        )
-        |> send_session(
-          session_id,
-          {:execute, execution_id, repository, target, arguments, external_run_id}
-        )
-
-      {:ok, state, {session_id, assigned_at}}
+      {:ok, Enum.random(session_ids)}
     else
       {:error, :no_session}
     end

@@ -67,6 +67,7 @@ defmodule Coflux.Handlers.Agent do
           arguments,
           parent_id,
           execute_after,
+          wait_for,
           cache_key,
           cache_max_age,
           defer_key,
@@ -86,13 +87,14 @@ defmodule Coflux.Handlers.Agent do
                  target,
                  arguments,
                  parent_id: parent_id,
+                 execute_after: execute_after,
+                 wait_for: wait_for,
                  cache_key: cache_key,
                  cache_max_age: cache_max_age,
                  retry_count: retry_count,
                  retry_delay_min: retry_delay_min,
                  retry_delay_max: retry_delay_max,
                  defer_key: defer_key,
-                 execute_after: execute_after,
                  memo_key: memo_key
                ) do
             {:ok, _run_id, _step_id, execution_id} ->

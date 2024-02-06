@@ -32,6 +32,7 @@ defmodule Coflux.Orchestration.Runs do
         repository,
         target,
         priority,
+        wait_for,
         cache_key,
         retry_count,
         retry_delay_min,
@@ -57,6 +58,7 @@ defmodule Coflux.Orchestration.Runs do
         s.repository,
         s.target,
         s.priority,
+        s.wait_for,
         s.cache_key,
         s.retry_count,
         s.retry_delay_min,
@@ -92,6 +94,7 @@ defmodule Coflux.Orchestration.Runs do
        ) do
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
+    wait_for = Keyword.get(opts, :wait_for, [])
     cache_key = Keyword.get(opts, :cache_key)
     cache_max_age = Keyword.get(opts, :cache_max_age)
     defer_key = Keyword.get(opts, :defer_key)
@@ -132,6 +135,7 @@ defmodule Coflux.Orchestration.Runs do
               repository,
               target,
               priority,
+              wait_for,
               cache_key,
               defer_key,
               memo_key,
@@ -253,12 +257,13 @@ defmodule Coflux.Orchestration.Runs do
       db,
       """
       SELECT
-        e.id,
-        s.id,
+        e.id AS execution_id,
+        s.id AS step_id,
         s.run_id,
-        run.external_id,
+        run.external_id AS run_external_id,
         s.repository,
         s.target,
+        s.wait_for,
         s.defer_key,
         e.execute_after,
         e.created_at
@@ -269,7 +274,9 @@ defmodule Coflux.Orchestration.Runs do
       LEFT JOIN results AS r ON r.execution_id = e.id
       WHERE a.created_at IS NULL AND r.created_at IS NULL
       ORDER BY e.execute_after, e.created_at, s.priority DESC
-      """
+      """,
+      {},
+      Models.UnassignedExecution
     )
   end
 
@@ -539,6 +546,10 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
+  defp encode_wait_for(indexes) do
+    Enum.reduce(indexes, 0, &Bitwise.bor(&2, Bitwise.bsl(1, &1)))
+  end
+
   defp insert_step(
          db,
          run_id,
@@ -546,6 +557,7 @@ defmodule Coflux.Orchestration.Runs do
          repository,
          target,
          priority,
+         wait_for,
          cache_key,
          defer_key,
          memo_key,
@@ -563,6 +575,7 @@ defmodule Coflux.Orchestration.Runs do
                repository: repository,
                target: target,
                priority: priority,
+               wait_for: encode_wait_for(wait_for),
                cache_key: cache_key,
                defer_key: defer_key,
                memo_key: memo_key,
