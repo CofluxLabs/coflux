@@ -79,7 +79,7 @@ The relationships between the tasks is indicated in the graph view. The dashed l
 In the timeline above you can see that the `create_order` task is started immediately after being scheduled by the `process_order`. But it actually spends most of its time waiting for the results from the two 'load' tasks. We can avoid this idle time by specifying that execution of `process_order` shouldn't start until its dependencies are ready. To do this, we specify `wait_for=` on the `@task`, specifying the names of arguments that should be waited for:
 
 ```python
-@task(wait_for=["user_execution", "product_execution"])
+@task(wait_for={"user_execution", "product_execution"})
 def create_order(user_execution, product_execution):
     user = user_execution.result()
     product = product_execution.result()
