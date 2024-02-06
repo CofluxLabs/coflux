@@ -1,6 +1,7 @@
 import functools
 import typing as t
 import datetime as dt
+import inspect
 
 from . import context, models
 
@@ -10,11 +11,24 @@ T = t.TypeVar("T")
 P = t.ParamSpec("P")
 
 
+def _parse_wait_for(fn: t.Callable, wait_for: set[str] | None) -> set[int] | None:
+    if not wait_for:
+        return None
+    parameters = list(inspect.signature(fn).parameters.keys())
+    indexes = set()
+    for parameter in wait_for:
+        if parameter not in parameters:
+            raise Exception(f"no parameter '{parameter}' for function {fn.__name__}")
+        indexes.add(parameters.index(parameter))
+    return indexes
+
+
 def _decorate(
     type: t.Literal["workflow", "task", None] = None,
     *,
     repository: str | None = None,
     name: str | None = None,
+    wait_for: set[str] | None = None,
     cache: bool | int | float | dt.timedelta = False,
     cache_key: t.Callable[P, str] | None = None,
     cache_namespace: str | None = None,
@@ -27,6 +41,8 @@ def _decorate(
         name_ = name or fn.__name__
         repository_ = repository or fn.__module__
 
+        wait_for_ = _parse_wait_for(fn, wait_for)
+
         # TODO: better name?
         # TODO: type?
         def submit(*args):
@@ -35,6 +51,7 @@ def _decorate(
                     repository_,
                     name_,
                     args,
+                    wait_for=wait_for_,
                     cache=cache,
                     cache_key=cache_key,
                     cache_namespace=cache_namespace,
@@ -69,6 +86,7 @@ def _decorate(
 def task(
     *,
     name: str | None = None,
+    wait_for: set[str] | None = None,
     cache: bool | int | float | dt.timedelta = False,
     cache_key: t.Callable[P, str] | None = None,
     cache_namespace: str | None = None,
@@ -80,6 +98,7 @@ def task(
     return _decorate(
         "task",
         name=name,
+        wait_for=wait_for,
         cache=cache,
         cache_key=cache_key,
         cache_namespace=cache_namespace,
@@ -93,6 +112,7 @@ def task(
 def workflow(
     *,
     name: str | None = None,
+    wait_for: set[str] | None = None,
     cache: bool | int | float | dt.timedelta = False,
     cache_key: t.Callable[P, str] | None = None,
     cache_namespace: str | None = None,
@@ -103,6 +123,7 @@ def workflow(
     return _decorate(
         "workflow",
         name=name,
+        wait_for=wait_for,
         cache=cache,
         cache_key=cache_key,
         cache_namespace=cache_namespace,
@@ -116,6 +137,7 @@ def stub(
     repository: str,
     *,
     name: str | None = None,
+    wait_for: set[str] | None = None,
     cache: bool | int | float | dt.timedelta = False,
     cache_key: t.Callable[P, str] | None = None,
     cache_namespace: str | None = None,
@@ -127,6 +149,7 @@ def stub(
     return _decorate(
         repository=repository,
         name=name,
+        wait_for=wait_for,
         cache=cache,
         cache_key=cache_key,
         cache_namespace=cache_namespace,

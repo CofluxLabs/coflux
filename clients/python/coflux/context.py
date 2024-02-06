@@ -21,6 +21,7 @@ def schedule(
     target: str,
     arguments: tuple[t.Any, ...],
     *,
+    wait_for: set[int] | None = None,
     cache: bool | int | float | dt.timedelta = False,
     cache_key: t.Callable[[t.Tuple[t.Any, ...]], str] | None = None,
     cache_namespace: str | None = None,
@@ -29,11 +30,12 @@ def schedule(
     execute_after: dt.datetime | None = None,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
-) -> str:
+) -> int:
     return _get_channel().schedule_execution(
         repository,
         target,
         arguments,
+        wait_for=wait_for,
         cache=cache,
         cache_key=cache_key,
         cache_namespace=cache_namespace,

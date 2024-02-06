@@ -56,6 +56,7 @@ CREATE TABLE steps (
   repository TEXT NOT NULL,
   target TEXT NOT NULL,
   priority INTEGER NOT NULL, -- TODO: move to executions?
+  wait_for INTEGER NOT NULL,
   cache_key TEXT,
   defer_key TEXT,
   memo_key TEXT,
