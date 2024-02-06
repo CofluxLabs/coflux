@@ -29,6 +29,7 @@ import Button from "./common/Button";
 import RunLogs from "./RunLogs";
 import StepLink from "./StepLink";
 import AssetLink from "./AssetLink";
+import { getAssetMetadata } from "../assets";
 
 type AttemptSelectorOptionProps = {
   attempt: number;
@@ -631,13 +632,20 @@ type AssetItemProps = {
 
 function AssetItem({ asset }: AssetItemProps) {
   return (
-    <li className="flex items-center gap-1 my-1">
+    <li className="block my-1">
       <AssetLink
         asset={asset}
-        className="flex items-center gap-1 bg-white rounded px-1"
+        className="flex items-start gap-1 rounded hover:bg-white/50 p-1"
       >
-        <AssetIcon asset={asset} />
-        {truncatePath(asset.path)}
+        <AssetIcon asset={asset} size={18} className="mt-1" />
+        <span className="flex flex-col">
+          <span className="">
+            {truncatePath(asset.path) + (asset.type == 1 ? "/" : "")}
+          </span>
+          <span className="text-slate-500 text-xs">
+            {getAssetMetadata(asset).join(", ")}
+          </span>
+        </span>
       </AssetLink>
     </li>
   );

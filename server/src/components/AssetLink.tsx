@@ -2,30 +2,7 @@ import { Fragment, ReactNode, MouseEvent, useCallback, useState } from "react";
 import { IconX } from "@tabler/icons-react";
 
 import * as models from "../models";
-import { humanSize, pluralise } from "../utils";
-
-function formatMetadata(asset: models.Asset) {
-  const parts = [];
-  switch (asset.type) {
-    case 0:
-      if ("size" in asset.metadata) {
-        parts.push(humanSize(asset.metadata.size));
-      }
-      if ("type" in asset.metadata && asset.metadata.type) {
-        parts.push(asset.metadata.type);
-      }
-      break;
-    case 1:
-      if ("count" in asset.metadata) {
-        parts.push(pluralise(asset.metadata.count, "file"));
-      }
-      if ("totalSize" in asset.metadata) {
-        parts.push(humanSize(asset.metadata.totalSize));
-      }
-      break;
-  }
-  return parts.join("; ");
-}
+import { getAssetMetadata } from "../assets";
 
 type Props = {
   asset: models.Asset;
@@ -105,7 +82,7 @@ export default function AssetLink({ asset, className, children }: Props) {
       )}
       <a
         href={`/blobs/${asset.blobKey}`}
-        title={`${asset.path}\n${formatMetadata(asset)}`}
+        title={`${asset.path}\n${getAssetMetadata(asset).join("; ")}`}
         className={className}
         target={"_blank"}
         onClick={handleClick}
