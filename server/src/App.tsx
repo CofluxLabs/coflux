@@ -13,6 +13,7 @@ import {
   RunPage,
   GraphPage,
   TimelinePage,
+  AssetsPage,
   RunsPage,
   LogsPage,
   TargetPage,
@@ -53,6 +54,7 @@ export default function App() {
                   <Route index={true} element={<RunPage />} />
                   <Route path="graph" element={<GraphPage />} />
                   <Route path="timeline" element={<TimelinePage />} />
+                  <Route path="assets" element={<AssetsPage />} />
                   <Route path="runs" element={<RunsPage />} />
                   <Route path="logs" element={<LogsPage />} />
                 </Route>

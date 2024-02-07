@@ -5,14 +5,7 @@ import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTopic } from "@topical/react";
-import {
-  IconChevronDown,
-  IconFile,
-  IconFileText,
-  IconFolder,
-  IconFunction,
-  IconPinned,
-} from "@tabler/icons-react";
+import { IconChevronDown, IconFunction, IconPinned } from "@tabler/icons-react";
 import reactStringReplace from "react-string-replace";
 
 import * as models from "../models";
@@ -24,6 +17,7 @@ import RunLogs from "./RunLogs";
 import StepLink from "./StepLink";
 import AssetLink from "./AssetLink";
 import { getAssetMetadata } from "../assets";
+import AssetIcon from "./AssetIcon";
 
 type AttemptSelectorOptionProps = {
   attempt: number;
@@ -220,34 +214,6 @@ function BlobLink({ value }: BlobLinkProps) {
       <span className="text-slate-500 text-xs ml-1">({hints.join("; ")})</span>
     </span>
   );
-}
-
-function iconForAsset(asset: models.Asset) {
-  switch (asset.type) {
-    case 0:
-      const type = asset.metadata["type"];
-      switch (type?.split("/")[0]) {
-        case "text":
-          return IconFileText;
-        default:
-          return IconFile;
-      }
-    case 1:
-      return IconFolder;
-    default:
-      throw new Error(`unrecognised asset type (${asset.type})`);
-  }
-}
-
-type AssetIconProps = {
-  asset: models.Asset;
-  size?: number;
-  className?: string;
-};
-
-function AssetIcon({ asset, size = 16, className }: AssetIconProps) {
-  const Icon = iconForAsset(asset);
-  return <Icon size={size} className={className} />;
 }
 
 type ValueProps = {
