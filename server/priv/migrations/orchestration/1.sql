@@ -96,6 +96,7 @@ CREATE TABLE assets (
   type INTEGER NOT NULL,
   path TEXT NOT NULL,
   blob_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
 );

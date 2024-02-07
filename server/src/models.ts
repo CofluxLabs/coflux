@@ -38,6 +38,7 @@ export type Asset = {
   blobKey: string;
   metadata: Record<string, any>;
   execution?: Reference;
+  createdAt: number;
 };
 
 export type Placeholder =

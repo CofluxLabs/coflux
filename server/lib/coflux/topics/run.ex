@@ -232,7 +232,8 @@ defmodule Coflux.Topics.Run do
       type: asset.type,
       path: asset.path,
       metadata: asset.metadata,
-      blobKey: asset.blob_key
+      blobKey: asset.blob_key,
+      createdAt: asset.created_at
     }
   end
 
