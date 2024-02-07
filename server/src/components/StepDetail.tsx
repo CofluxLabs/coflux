@@ -1,39 +1,23 @@
-import {
-  CSSProperties,
-  Fragment,
-  ReactNode,
-  useCallback,
-  useState,
-} from "react";
+import { CSSProperties, Fragment, useCallback, useState } from "react";
 import classNames from "classnames";
 import { sortBy } from "lodash";
 import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTopic } from "@topical/react";
-import {
-  IconChevronDown,
-  IconFile,
-  IconFileText,
-  IconFolder,
-  IconFunction,
-  IconPinned,
-} from "@tabler/icons-react";
+import { IconChevronDown, IconFunction, IconPinned } from "@tabler/icons-react";
 import reactStringReplace from "react-string-replace";
 
 import * as models from "../models";
 import Badge from "./Badge";
-import {
-  buildUrl,
-  formatDiff,
-  humanSize,
-  pluralise,
-  truncatePath,
-} from "../utils";
+import { buildUrl, formatDiff, humanSize, truncatePath } from "../utils";
 import Loading from "./Loading";
 import Button from "./common/Button";
 import RunLogs from "./RunLogs";
 import StepLink from "./StepLink";
+import AssetLink from "./AssetLink";
+import { getAssetMetadata } from "../assets";
+import AssetIcon from "./AssetIcon";
 
 type AttemptSelectorOptionProps = {
   attempt: number;
@@ -230,75 +214,6 @@ function BlobLink({ value }: BlobLinkProps) {
       <span className="text-slate-500 text-xs ml-1">({hints.join("; ")})</span>
     </span>
   );
-}
-
-function formatMetadata(asset: models.Asset) {
-  const parts = [];
-  switch (asset.type) {
-    case 0:
-      if ("size" in asset.metadata) {
-        parts.push(humanSize(asset.metadata.size));
-      }
-      if ("type" in asset.metadata && asset.metadata.type) {
-        parts.push(asset.metadata.type);
-      }
-      break;
-    case 1:
-      if ("count" in asset.metadata) {
-        parts.push(pluralise(asset.metadata.count, "file"));
-      }
-      if ("totalSize" in asset.metadata) {
-        parts.push(humanSize(asset.metadata.totalSize));
-      }
-      break;
-  }
-  return parts.join("; ");
-}
-
-type AssetLinkProps = {
-  asset: models.Asset;
-  className?: string;
-  children: ReactNode;
-};
-
-function AssetLink({ asset, className, children }: AssetLinkProps) {
-  return (
-    <a
-      href={`/blobs/${asset.blobKey}`}
-      title={`${asset.path}\n${formatMetadata(asset)}`}
-      className={className}
-    >
-      {children}
-    </a>
-  );
-}
-
-function iconForAsset(asset: models.Asset) {
-  switch (asset.type) {
-    case 0:
-      const type = asset.metadata["type"];
-      switch (type?.split("/")[0]) {
-        case "text":
-          return IconFileText;
-        default:
-          return IconFile;
-      }
-    case 1:
-      return IconFolder;
-    default:
-      throw new Error(`unrecognised asset type (${asset.type})`);
-  }
-}
-
-type AssetIconProps = {
-  asset: models.Asset;
-  size?: number;
-  className?: string;
-};
-
-function AssetIcon({ asset, size = 16, className }: AssetIconProps) {
-  const Icon = iconForAsset(asset);
-  return <Icon size={size} className={className} />;
 }
 
 type ValueProps = {
@@ -677,15 +592,21 @@ type AssetItemProps = {
 
 function AssetItem({ asset }: AssetItemProps) {
   return (
-    <li className="flex items-center gap-1 my-1">
+    <li className="block my-1">
       <AssetLink
         asset={asset}
-        className="flex items-center gap-1 bg-white rounded px-1"
+        className="flex items-start gap-1 rounded hover:bg-white/50 p-1"
       >
-        <AssetIcon asset={asset} />
-        <span title={asset.path}>{truncatePath(asset.path)}</span>
+        <AssetIcon asset={asset} size={18} className="mt-1" />
+        <span className="flex flex-col">
+          <span className="">
+            {truncatePath(asset.path) + (asset.type == 1 ? "/" : "")}
+          </span>
+          <span className="text-slate-500 text-xs">
+            {getAssetMetadata(asset).join(", ")}
+          </span>
+        </span>
       </AssetLink>
-      <span className="text-slate-500 text-xs">({formatMetadata(asset)})</span>
     </li>
   );
 }
@@ -799,7 +720,7 @@ export default function StepDetail({
         {step.arguments?.length > 0 && (
           <ArgumentsSection arguments_={step.arguments} />
         )}
-        <ExecutionSection execution={execution} />
+        {execution && <ExecutionSection execution={execution} />}
         {execution?.assignedAt && (
           <Fragment>
             <DependenciesSection execution={execution} />

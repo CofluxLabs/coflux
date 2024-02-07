@@ -172,6 +172,7 @@ export default function RunLayout() {
                 </Fragment>
               )}
               <Tab page="logs">Logs</Tab>
+              {!run.recurrent && <Tab page="assets">Assets</Tab>}
             </div>
             <div className="flex-1 basis-0 overflow-auto" ref={ref}>
               <Outlet

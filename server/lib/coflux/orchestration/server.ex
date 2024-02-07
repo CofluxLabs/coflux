@@ -443,7 +443,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:get_asset, asset_id, from_execution_id}, _from, state) do
-    {:ok, {asset_execution_id, type, path, blob_key, _}} =
+    {:ok, {asset_execution_id, type, path, blob_key, _, _}} =
       Results.get_asset_by_id(state.db, asset_id, false)
 
     state =
@@ -940,7 +940,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp resolve_asset(db, asset_id, include_execution) do
-    {:ok, {execution_id, type, path, blob_key, metadata}} =
+    {:ok, {execution_id, type, path, blob_key, created_at, metadata}} =
       Results.get_asset_by_id(db, asset_id, true)
 
     result = %{
@@ -948,7 +948,8 @@ defmodule Coflux.Orchestration.Server do
       path: path,
       metadata: metadata,
       blob_key: blob_key,
-      execution_id: execution_id
+      execution_id: execution_id,
+      created_at: created_at
     }
 
     if include_execution do
