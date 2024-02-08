@@ -26,3 +26,6 @@ Workflows and tasks are collectively referred to as _targets_, although workflow
 
 When a workflow is scheduled, this initiates a _run_. A run is made up of _steps_, which each correspond to a target to be executed. The target (a workflow or task) can call other tasks, which cause those to scheduled as steps. Each step has at least one associated _execution_. Steps can be retried (manually or automatically), which will lead to multiple executions being associated with the step.
 
+# Assets
+
+Executions can 'persist' _assets_ (files or directories) so that they can be shared with other executions. A persisted asset is given a reference, which must be passed to other executions so that it be be 'restored'.
