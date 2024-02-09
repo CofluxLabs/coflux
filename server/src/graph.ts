@@ -282,15 +282,17 @@ export default function buildGraph(
         width,
         height,
       })),
-      edges: Object.entries(edges).map(([id, { from, to }]) => ({
-        id,
-        sources: [from],
-        targets: [to],
-      })),
-      layoutOptions: {
-        "elk.edgeRouting": "ORTHOGONAL",
-        "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-      },
+      edges: Object.entries(edges).map(([id, { from, to, type }]) => {
+        const priority = type == "parent" ? 2 : type == "child" ? 1 : 0;
+        return {
+          id,
+          sources: [from],
+          targets: [to],
+          layoutOptions: {
+            "elk.layered.priority.straightness": priority.toString(),
+          },
+        };
+      }),
     })
     .then((graph) => {
       const nodes_ = graph.children!.reduce((result, child) => {
