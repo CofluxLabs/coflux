@@ -1,9 +1,16 @@
-import { Fragment, ReactNode, MouseEvent, useCallback, useState } from "react";
+import {
+  Fragment,
+  ReactNode,
+  MouseEvent,
+  useCallback,
+  useState,
+  useEffect,
+} from "react";
 import { IconDownload, IconX } from "@tabler/icons-react";
 import * as zip from "@zip.js/zip.js";
 
 import * as models from "../models";
-import { getAssetMetadata, readZipContents } from "../assets";
+import { getAssetMetadata } from "../assets";
 import { humanSize } from "../utils";
 
 type Props = {
@@ -65,6 +72,9 @@ export default function AssetLink({ asset, className, children }: Props) {
   const handleCloseClick = useCallback(() => {
     setOpen(false);
   }, []);
+  useEffect(() => {
+    setContent(undefined);
+  }, [asset]);
   return (
     <Fragment>
       {open && (

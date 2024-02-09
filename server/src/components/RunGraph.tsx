@@ -1,15 +1,13 @@
 import {
   Fragment,
   useCallback,
-  useMemo,
   useState,
   MouseEvent as ReactMouseEvent,
   WheelEvent as ReactWheelEvent,
   useRef,
+  useEffect,
 } from "react";
-import dagre from "@dagrejs/dagre";
 import classNames from "classnames";
-import { max, sortBy } from "lodash";
 import {
   IconArrowForward,
   IconArrowUpRight,
@@ -21,225 +19,7 @@ import {
 import * as models from "../models";
 import StepLink from "./StepLink";
 import { useHoverContext } from "./HoverContext";
-
-type Node =
-  | {
-      type: "step";
-      step: models.Step;
-      stepId: string;
-      attempt: number;
-    }
-  | {
-      type: "parent";
-      parent: models.Reference;
-    }
-  | {
-      type: "child";
-      child: models.Child;
-      runId: string;
-    };
-
-function chooseStepAttempts(
-  run: models.Run,
-  activeStepId: string | undefined,
-  activeAttempt: number | undefined,
-) {
-  const stepAttempts: Record<string, number | undefined> = {};
-  if (activeStepId) {
-    stepAttempts[activeStepId] = activeAttempt;
-    const process = (stepId: string) => {
-      Object.keys(run.steps).forEach((sId) => {
-        if (!(sId in stepAttempts)) {
-          Object.entries(run.steps[sId].executions).forEach(
-            ([attempt, execution]) => {
-              if (execution.children.includes(stepId)) {
-                // TODO: keep as string?
-                stepAttempts[sId] = parseInt(attempt, 10);
-                process(sId);
-              }
-            },
-          );
-        }
-      });
-    };
-    process(activeStepId);
-  }
-  return stepAttempts;
-}
-
-function getStepAttempt(
-  run: models.Run,
-  stepAttempts: Record<string, number | undefined>,
-  stepId: string,
-) {
-  const step = run.steps[stepId];
-  return (
-    stepAttempts[stepId] ||
-    max(Object.keys(step.executions).map((s) => parseInt(s, 10)))
-  );
-}
-
-function traverseRun(
-  run: models.Run,
-  stepAttempts: Record<string, number | undefined>,
-  stepId: string,
-  callback: (stepId: string, attempt: number) => void,
-  seen: Record<string, true> = {},
-) {
-  const attempt = getStepAttempt(run, stepAttempts, stepId);
-  if (attempt) {
-    callback(stepId, attempt);
-    const execution = run.steps[stepId].executions[attempt];
-    execution?.children.forEach((child) => {
-      if (typeof child == "string" && !(child in seen)) {
-        traverseRun(run, stepAttempts, child, callback, {
-          ...seen,
-          [child]: true,
-        });
-      }
-    });
-  }
-}
-
-function buildGraph(
-  run: models.Run,
-  runId: string,
-  activeStepId: string | undefined,
-  activeAttempt: number | undefined,
-) {
-  const g = new dagre.graphlib.Graph<Node>();
-  g.setGraph({ rankdir: "LR", ranksep: 40, nodesep: 40 });
-
-  const stepAttempts = chooseStepAttempts(run, activeStepId, activeAttempt);
-
-  const initialStepId = sortBy(
-    Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
-    (stepId) => run.steps[stepId].createdAt,
-  )[0];
-
-  g.setNode(run.parent?.runId || "start", {
-    width: run.parent ? 100 : 30,
-    height: 30,
-    type: "parent",
-    parent: run.parent || null,
-  });
-  g.setEdge(run.parent?.runId || "start", initialStepId, {
-    type: "parent",
-    weight: 1000,
-  });
-
-  const visibleSteps: Record<string, number> = {};
-  traverseRun(
-    run,
-    stepAttempts,
-    initialStepId,
-    (stepId: string, attempt: number) => {
-      visibleSteps[stepId] = attempt;
-    },
-  );
-
-  traverseRun(
-    run,
-    stepAttempts,
-    initialStepId,
-    (stepId: string, attempt: number) => {
-      const step = run.steps[stepId];
-      g.setNode(stepId, {
-        width: 160,
-        height: 50,
-        type: "step",
-        step,
-        stepId,
-        attempt,
-      });
-      const execution = step.executions[attempt];
-      if (!execution) {
-        return;
-      }
-      Object.entries(execution.dependencies).forEach(
-        ([dependencyId, dependency]) => {
-          if (dependency.runId == runId) {
-            if (
-              !execution.children.some(
-                (c) =>
-                  typeof c == "string" &&
-                  Object.values(run.steps[c].executions).some(
-                    (e) =>
-                      e.result?.type == "cached" &&
-                      e.executionId == dependencyId,
-                  ),
-              )
-            ) {
-              g.setEdge(dependency.stepId, stepId, { type: "dependency" });
-            }
-          } else {
-            // TODO: connect to node for (child/parent) run? (if it exists?)
-          }
-        },
-      );
-      execution.children.forEach((child) => {
-        if (typeof child == "string") {
-          const childAttempt = getStepAttempt(run, stepAttempts, child);
-          const childExecution =
-            childAttempt && run.steps[child].executions[childAttempt];
-          if (childExecution) {
-            if (childExecution.result?.type == "cached") {
-              const cachedExecutionId = childExecution.executionId;
-              const cachedStepId = Object.keys(run.steps).find(
-                (sId) =>
-                  sId in visibleSteps &&
-                  Object.values(run.steps[sId].executions).some(
-                    (e) =>
-                      e.result?.type != "cached" &&
-                      e.executionId == cachedExecutionId,
-                  ),
-              );
-              if (cachedExecutionId in execution.dependencies) {
-                g.setEdge(child, stepId, { type: "dependency" });
-                if (cachedStepId) {
-                  g.setEdge(cachedStepId, child, { type: "transitive" });
-                }
-              } else {
-                g.setEdge(stepId, child, { type: "child" });
-                if (cachedStepId) {
-                  g.setEdge(child, cachedStepId, { type: "transitive" });
-                }
-              }
-            } else if (
-              !Object.values(execution.dependencies).some(
-                (d) => d.stepId == child,
-              )
-            ) {
-              g.setEdge(stepId, child, { type: "child" });
-            }
-          } else {
-            // TODO
-          }
-        } else {
-          g.setNode(child.runId, {
-            width: 160,
-            height: 50,
-            type: "child",
-            child,
-            runId: child.runId,
-          });
-          if (
-            Object.values(execution.dependencies).some(
-              (d) => d.runId == child.runId,
-            )
-          ) {
-            g.setEdge(child.runId, stepId, { type: "dependency" });
-          } else {
-            g.setEdge(stepId, child.runId, { type: "child" });
-          }
-        }
-      });
-    },
-  );
-
-  dagre.layout(g);
-  return g;
-}
+import buildGraph, { Graph, Edge } from "../graph";
 
 function classNameForExecution(execution: models.Execution) {
   const result = execution.result;
@@ -391,59 +171,36 @@ function ChildNode({ runId, child }: ChildNodeProps) {
   );
 }
 
-function buildPath(points: { x: number; y: number }[]): string {
-  const parts = [`M ${points[0].x} ${points[0].y}`];
+function buildEdgePath(edge: Edge, offset: [number, number]): string {
+  const formatPoint = ({ x, y }: { x: number; y: number }) =>
+    `${x + offset[0]},${y + offset[1]}`;
 
-  if (points.length === 2) {
-    parts.push(`L ${points[1].x} ${points[1].y}`);
-  } else if (points.length === 3) {
-    parts.push(`Q ${points[1].x} ${points[1].y} ${points[2].x} ${points[2].y}`);
-  } else {
-    for (let i = 1; i < points.length - 2; i++) {
-      const p0 = points[i - 1];
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const p3 = points[i + 2];
-
-      const x1 = p1.x + (p2.x - p0.x) / 6;
-      const y1 = p1.y + (p2.y - p0.y) / 6;
-
-      const x2 = p2.x - (p3.x - p1.x) / 6;
-      const y2 = p2.y - (p3.y - p1.y) / 6;
-
-      parts.push(`C ${x1} ${y1} ${x2} ${y2} ${p2.x} ${p2.y}`);
-    }
-
-    const q0 = points[points.length - 2];
-    const q1 = points[points.length - 1];
-    parts.push(`S ${q0.x} ${q0.y} ${q1.x} ${q1.y}`);
-  }
-
-  return parts.join(" ");
+  return [
+    `M ${formatPoint(edge.path[0])}`,
+    ...edge.path.slice(1).map((p) => `L ${formatPoint(p)}`),
+  ].join(" ");
 }
-type EdgeProps = {
-  edge: dagre.GraphEdge;
+
+type EdgePathProps = {
+  edge: Edge;
   offset: [number, number];
   highlight?: boolean;
 };
 
-function Edge({ edge, offset, highlight }: EdgeProps) {
-  const { points, type } = edge;
+function EdgePath({ edge, offset, highlight }: EdgePathProps) {
   return (
     <path
       className={
         highlight
           ? "stroke-slate-400"
-          : type == "transitive"
+          : edge.type == "transitive"
           ? "stroke-slate-100"
           : "stroke-slate-200"
       }
       fill="none"
-      strokeWidth={highlight || type == "dependency" ? 3 : 2}
-      strokeDasharray={type != "dependency" ? "5" : undefined}
-      d={buildPath(
-        points.map(({ x, y }) => ({ x: x + offset[0], y: y + offset[1] })),
-      )}
+      strokeWidth={highlight || edge.type == "dependency" ? 3 : 2}
+      strokeDasharray={edge.type != "dependency" ? "5" : undefined}
+      d={buildEdgePath(edge, offset)}
     />
   );
 }
@@ -494,12 +251,14 @@ export default function RunGraph({
   const [dragging, setDragging] = useState<[number, number]>();
   const [zoomOverride, setZoomOverride] = useState<number>();
   const { isHovered } = useHoverContext();
-  const graph = useMemo(
-    () => buildGraph(run, runId, activeStepId, activeAttempt),
-    [run, activeStepId, activeAttempt],
-  );
-  const graphWidth = graph.graph().width || 0;
-  const graphHeight = graph.graph().height || 0;
+  const [graph, setGraph] = useState<Graph>();
+  useEffect(() => {
+    buildGraph(run, runId, activeStepId, activeAttempt)
+      .then(setGraph)
+      .catch(() => setGraph(undefined));
+  }, [run, runId, activeStepId, activeAttempt]);
+  const graphWidth = graph?.width || 0;
+  const graphHeight = graph?.height || 0;
   const [marginX, marginY] = calculateMargins(
     containerWidth,
     containerHeight,
@@ -595,52 +354,53 @@ export default function RunGraph({
             </pattern>
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
-          {graph.edges().flatMap((edge) => {
-            const highlight =
-              isHovered(edge.v) ||
-              isHovered(edge.w) ||
-              isHovered(runId, edge.v) ||
-              isHovered(runId, edge.w);
-            return (
-              <Edge
-                key={`${edge.v}-${edge.w}`}
-                offset={[marginX, marginY]}
-                edge={graph.edge(edge)}
-                highlight={highlight}
-              />
-            );
-          })}
+          {graph &&
+            Object.entries(graph.edges).flatMap(([edgeId, edge]) => {
+              const highlight =
+                isHovered(edge.from) ||
+                isHovered(edge.to) ||
+                isHovered(runId, edge.from) ||
+                isHovered(runId, edge.to);
+              return (
+                <EdgePath
+                  key={edgeId}
+                  offset={[marginX, marginY]}
+                  edge={edge}
+                  highlight={highlight}
+                />
+              );
+            })}
         </svg>
         <div className="absolute">
-          {graph.nodes().map((nodeId) => {
-            const node = graph.node(nodeId);
-            return (
-              <div
-                key={nodeId}
-                className="absolute flex"
-                style={{
-                  left: node.x - node.width / 2 + marginX,
-                  top: node.y - node.height / 2 + marginY,
-                  width: node.width,
-                  height: node.height,
-                }}
-              >
-                {node.type == "step" ? (
-                  <StepNode
-                    stepId={node.stepId}
-                    step={node.step}
-                    attempt={node.attempt}
-                    runId={runId}
-                    isActive={nodeId == activeStepId}
-                  />
-                ) : node.type == "parent" ? (
-                  <ParentNode parent={node.parent} />
-                ) : node.type == "child" ? (
-                  <ChildNode runId={node.runId} child={node.child} />
-                ) : undefined}
-              </div>
-            );
-          })}
+          {graph &&
+            Object.entries(graph.nodes).map(([nodeId, node]) => {
+              return (
+                <div
+                  key={nodeId}
+                  className="absolute flex"
+                  style={{
+                    left: node.x + marginX,
+                    top: node.y + marginY,
+                    width: node.width,
+                    height: node.height,
+                  }}
+                >
+                  {node.type == "parent" ? (
+                    <ParentNode parent={node.parent} />
+                  ) : node.type == "step" ? (
+                    <StepNode
+                      stepId={node.stepId}
+                      step={node.step}
+                      attempt={node.attempt}
+                      runId={runId}
+                      isActive={node.stepId == activeStepId}
+                    />
+                  ) : node.type == "child" ? (
+                    <ChildNode runId={node.runId} child={node.child} />
+                  ) : undefined}
+                </div>
+              );
+            })}
         </div>
       </div>
       <div className="absolute flex right-1 bottom-1 bg-white/90 rounded-xl px-2 py-1">
