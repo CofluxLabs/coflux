@@ -403,7 +403,7 @@ class Channel:
         execute_after: dt.datetime | None = None,
         delay: int | float | dt.timedelta = 0,
         memo: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
-    ) -> int:
+    ) -> models.Execution[t.Any]:
         if delay:
             delay = (
                 dt.timedelta(seconds=delay)
@@ -450,7 +450,11 @@ class Channel:
                 retry_delay_max,
             )
         )
-        return future.result()
+        execution_id = future.result()
+        return models.Execution(
+            lambda: self.resolve_reference(execution_id),
+            execution_id,
+        )
 
     def resolve_reference(self, execution_id):
         future = self._execution_resolves.get(execution_id)

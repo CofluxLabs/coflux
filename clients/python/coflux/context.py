@@ -30,7 +30,7 @@ def schedule(
     execute_after: dt.datetime | None = None,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
-) -> int:
+) -> models.Execution[t.Any]:
     return _get_channel().schedule_execution(
         repository,
         target,
@@ -44,14 +44,6 @@ def schedule(
         execute_after=execute_after,
         delay=delay,
         memo=memo,
-    )
-
-
-def resolve(target_execution_id: int) -> models.Execution[t.Any]:
-    channel = _get_channel()
-    return models.Execution(
-        lambda: channel.resolve_reference(target_execution_id),
-        target_execution_id,
     )
 
 

@@ -47,7 +47,7 @@ def _decorate(
         # TODO: type?
         def submit(*args):
             try:
-                execution_id = context.schedule(
+                return context.schedule(
                     repository_,
                     name_,
                     args,
@@ -60,7 +60,6 @@ def _decorate(
                     memo=memo,
                     delay=delay,
                 )
-                return context.resolve(execution_id)
             except context.NotInContextException:
                 result = fn(*args)
                 return (
