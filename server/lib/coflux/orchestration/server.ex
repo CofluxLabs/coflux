@@ -443,32 +443,35 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:get_asset, asset_id, from_execution_id}, _from, state) do
-    {:ok, {asset_execution_id, type, path, blob_key, _, _}} =
-      Results.get_asset_by_id(state.db, asset_id, false)
+    case Results.get_asset_by_id(state.db, asset_id, false) do
+      {:ok, {asset_execution_id, type, path, blob_key, _, _}} ->
+        state =
+          if from_execution_id do
+            {:ok, id} = Runs.record_asset_dependency(state.db, from_execution_id, asset_id)
 
-    state =
-      if from_execution_id do
-        {:ok, id} = Runs.record_asset_dependency(state.db, from_execution_id, asset_id)
+            if id do
+              {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
+              asset_execution = resolve_execution(state.db, asset_execution_id)
+              asset_ = resolve_asset(state.db, asset_id, false)
 
-        if id do
-          {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
-          asset_execution = resolve_execution(state.db, asset_execution_id)
-          asset_ = resolve_asset(state.db, asset_id, false)
+              notify_listeners(
+                state,
+                {:run, step.run_id},
+                {:asset_dependency, from_execution_id, asset_execution_id, asset_execution,
+                 asset_id, asset_}
+              )
+            else
+              state
+            end
+          else
+            state
+          end
 
-          notify_listeners(
-            state,
-            {:run, step.run_id},
-            {:asset_dependency, from_execution_id, asset_execution_id, asset_execution, asset_id,
-             asset_}
-          )
-        else
-          state
-        end
-      else
-        state
-      end
+        {:reply, {:ok, type, path, blob_key}, state}
 
-    {:reply, {:ok, type, path, blob_key}, state}
+      {:ok, nil} ->
+        {:reply, {:error, :not_found}, state}
+    end
   end
 
   def handle_call({:subscribe_repositories, pid}, _from, state) do
