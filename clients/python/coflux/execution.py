@@ -1,12 +1,12 @@
 import typing as t
 import multiprocessing
+import multiprocessing.connection
 import threading
 import time
 import enum
 import asyncio
 import datetime as dt
 import hashlib
-import contextvars
 import traceback
 import sys
 import tempfile
@@ -15,9 +15,11 @@ import contextlib
 import mimetypes
 import zipfile
 import itertools
+import signal
+import importlib
 from pathlib import Path
 
-from . import server, blobs, models, serialisation
+from . import server, blobs, models, serialisation, annotations
 
 
 _EXECUTION_THRESHOLD_S = 1.0
@@ -26,7 +28,7 @@ _AGENT_THRESHOLD_S = 5.0
 
 T = t.TypeVar("T")
 
-channel_context = contextvars.ContextVar("channel")
+_channel_context: t.Optional["Channel"] = None
 
 
 class Future(t.Generic[T]):
@@ -523,6 +525,7 @@ class Channel:
     def restore_asset(
         self, asset: models.Asset, *, to: Path | str | None = None
     ) -> Path:
+        assert isinstance(asset, models.Asset)
         if to:
             if isinstance(to, str):
                 to = Path(to)
@@ -556,8 +559,8 @@ class Channel:
         self._send(LogMessageRequest(level, template, kwargs, int(timestamp)))
 
 
-def get_channel() -> Channel:
-    return channel_context.get(None)
+def get_channel() -> Channel | None:
+    return _channel_context
 
 
 def _deserialise(
@@ -632,26 +635,32 @@ def _resolve_arguments(
 
 
 def _execute(
-    target: t.Callable,
+    module_name: str,
+    target_name: str,
     arguments: list[models.Value],
     execution_id: str,
     blob_url_format: str,
     conn,
 ):
+    global _channel_context
     with Channel(execution_id, blob_url_format, conn) as channel:
-        thread = threading.Thread(target=channel.run)
-        thread.start()
-        token = channel_context.set(channel)
+        threading.Thread(target=channel.run).start()
+        _channel_context = channel
         try:
             resolved_arguments = _resolve_arguments(arguments, channel)
             channel.notify_executing()
-            value = target(*resolved_arguments)
+            module = importlib.import_module(module_name)
+            target = getattr(module, target_name)
+            fn = getattr(target, annotations.TARGET_KEY)[1][1]
+            value = fn(*resolved_arguments)
+        except KeyboardInterrupt:
+            pass
         except Exception as e:
             channel.record_error(e)
         else:
             channel.record_result(value)
         finally:
-            channel_context.reset(token)
+            _channel_context = None
 
 
 def _json_safe_value(value: models.Value):
@@ -695,7 +704,8 @@ class Execution:
     def __init__(
         self,
         execution_id: str,
-        target: t.Callable,
+        module: str,
+        target: str,
         arguments: list[models.Value],
         blob_url_format: str,
         server_connection: server.Connection,
@@ -706,12 +716,12 @@ class Execution:
         self._loop = loop
         self._timestamp = time.time()  # TODO: better name
         self._status = ExecutionStatus.STARTING
-        mp_context = multiprocessing.get_context("fork")
+        mp_context = multiprocessing.get_context("spawn")
         parent_conn, child_conn = mp_context.Pipe()
         self._connection = parent_conn
         self._process = mp_context.Process(
             target=_execute,
-            args=(target, arguments, execution_id, blob_url_format, child_conn),
+            args=(module, target, arguments, execution_id, blob_url_format, child_conn),
             name=f"Execution-{execution_id}",
         )
 
@@ -730,10 +740,23 @@ class Execution:
     def touch(self, timestamp):
         self._timestamp = timestamp
 
-    def abort(self) -> bool:
+    @property
+    def sentinel(self):
+        return self._process.sentinel
+
+    def interrupt(self):
+        self._status = ExecutionStatus.ABORTING
+        pid = self._process.pid
+        if pid:
+            os.kill(pid, signal.SIGINT)
+
+    def kill(self):
         self._status = ExecutionStatus.ABORTING
         self._process.kill()
-        return True
+
+    def join(self, timeout):
+        self._process.join(timeout)
+        return self._process.exitcode
 
     def _server_notify(self, request, params):
         coro = self._server.notify(request, params)
@@ -865,6 +888,16 @@ class Execution:
                     self._handle_message(message)
 
 
+def _wait_processes(sentinels: t.Iterable[int], until: float) -> set[int]:
+    remaining = set(sentinels)
+    while sentinels and time.time() < until:
+        ready = multiprocessing.connection.wait(remaining, until - time.time())
+        for sentinel in ready:
+            assert isinstance(sentinel, int)
+            remaining.remove(sentinel)
+    return remaining
+
+
 class Manager:
     def __init__(self, connection: server.Connection, blob_url_format: str):
         self._connection = connection
@@ -900,7 +933,8 @@ class Manager:
     def execute(
         self,
         execution_id: str,
-        target: t.Callable,
+        module: str,
+        target: str,
         arguments: list[models.Value],
         loop: asyncio.AbstractEventLoop,
     ):
@@ -908,14 +942,17 @@ class Manager:
             raise Exception(f"Execution ({execution_id}) already running")
         execution = Execution(
             execution_id,
+            module,
             target,
             arguments,
             self._blob_url_format,
             self._connection,
             loop,
         )
-        thread = threading.Thread(target=self._run_execution, args=(execution, loop))
-        thread.start()
+        threading.Thread(
+            target=self._run_execution,
+            args=(execution, loop),
+        ).start()
 
     def _run_execution(self, execution: Execution, loop: asyncio.AbstractEventLoop):
         self._executions[execution.id] = execution
@@ -927,12 +964,28 @@ class Manager:
             future = asyncio.run_coroutine_threadsafe(coro, loop)
             future.result()
 
-    def abort(self, execution_id: str) -> bool:
+    def abort(self, execution_id: str, timeout: int = 5) -> bool:
         execution = self._executions.get(execution_id)
         if not execution:
             return False
-        return execution.abort()
+        execution.interrupt()
+        if execution.join(timeout) is not None:
+            print(
+                f"Execution ({execution_id}) hasn't exited within timeout {timeout}. Killing..."
+            )
+            execution.kill()
+        return True
 
-    def abort_all(self):
-        for execution in self._executions.values():
-            execution.abort()
+    def abort_all(self, timeout: int = 5):
+        until = time.time() + timeout
+        executions = {e.sentinel: e for e in self._executions.values()}
+        for execution in executions.values():
+            execution.interrupt()
+        remaining = _wait_processes(executions.keys(), until)
+        if remaining:
+            remaining_ids = [str(executions[s].id) for s in remaining]
+            print(
+                f"Executions ({', '.join(remaining_ids)}) haven't exited within timeout {timeout}. Killing..."
+            )
+            for execution in executions.values():
+                execution.kill()
