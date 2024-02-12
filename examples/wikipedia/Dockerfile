@@ -1,11 +1,13 @@
-FROM python:3.9-slim
+FROM python:3.11
+WORKDIR /app
 
-COPY requirements.txt ./
+ENV PYTHONPATH=/app
+
+COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-WORKDIR /app
-COPY . ./
+RUN python -m nltk.downloader punkt
 
-ENV PYTHONPATH=/packages
+ADD . /app
 
-CMD python -u -m coflux -p $PROJECT -e $ENVIRONMENT -h $HOST -m $MODULE -v $VERSION --reload
+ENTRYPOINT ["coflux", "agent.run", "wikipedia.repo"]

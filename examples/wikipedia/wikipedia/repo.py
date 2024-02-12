@@ -3,7 +3,7 @@ import datetime as dt
 import typing as t
 import nltk
 import collections
-import coflux
+import coflux as cf
 
 from bs4 import BeautifulSoup
 
@@ -17,54 +17,51 @@ def _wiki_get(url):
     return r
 
 
-@coflux.task(memo=True)
+@cf.task(memo=True)
 def top_pages(date):
-    coflux.log_info("Fetching top pages for {date}...", date=date)
+    cf.log_info("Fetching top pages for {date}...", date=date)
     date = dt.date.fromisoformat(date)
     url = f"https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access/{date.year}/{date.month:02d}/{date.day:02d}"
     return _wiki_get(url).json()["items"][0]["articles"]
 
 
-@coflux.task(memo=True)
+@cf.task(memo=True)
 def fetch_article_metadata(name: str):
-    coflux.log_info("Fetching metadata for page '{name}'...", name=name)
+    cf.log_info("Fetching metadata for page '{name}'...", name=name)
     return _wiki_get(f"https://en.wikipedia.org/api/rest_v1/page/title/{name}").json()[
         "items"
     ][0]
 
 
-@coflux.task(cache=True)
+@cf.task(cache=True)
 def fetch_article_content(name: str, revision: int):
-    coflux.log_info(
-        "Fetching content for page '{name}'...", name=name, revision=revision
-    )
+    cf.log_info("Fetching content for page '{name}'...", name=name, revision=revision)
     return _wiki_get(
         f"https://en.wikipedia.org/api/rest_v1/page/html/{name}/{revision}"
     ).text
 
 
-@coflux.task(cache=True)
+@cf.task(memo=True)
 def convert_to_text(html: str):
     soup = BeautifulSoup(html, "html.parser")
     return soup.get_text()
 
 
-@coflux.task(cache=True)
-def tokenise(text: str):
-    nltk.download("punkt")
-    return nltk.word_tokenize(text)
+@cf.task(wait_for={"text_"})
+def tokenise(text_: cf.Execution[str]):
+    return nltk.word_tokenize(text_.result())
 
 
-@coflux.task()
-def count_tokens(tokens: t.List[str]):
-    return collections.Counter(tokens).most_common(100)
+@cf.task(wait_for={"tokens_"})
+def count_tokens(tokens_: cf.Execution[t.List[str]]):
+    return collections.Counter(tokens_.result()).most_common(100)
 
 
-@coflux.task()
+@cf.task()
 def process_article(name: str):
     metadata = fetch_article_metadata(name)
     content = fetch_article_content(name, metadata["rev"])
-    return count_tokens(tokenise(convert_to_text(content)))
+    return count_tokens.submit(tokenise.submit(convert_to_text.submit(content)))
 
 
 def _iso_yesterday():
@@ -79,12 +76,12 @@ def _filter_articles(article_names: list[str]) -> list[str]:
     ]
 
 
-@coflux.workflow()
+@cf.workflow()
 def wikipedia_workflow(date: str | None = None, n: int = 3):
     date = date or _iso_yesterday()
-    coflux.log_info("Starting workflow...", date=date)
+    cf.log_info("Starting workflow...", date=date)
     article_names = _filter_articles([a["article"] for a in top_pages(date)])
-    coflux.log_info(
+    cf.log_info(
         "Found {count} articles. Using top {n}...",
         count=len(article_names),
         n=n,
