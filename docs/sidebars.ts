@@ -24,6 +24,7 @@ const sidebars: SidebarsConfig = {
       label: "Advanced",
       items: ["deferring", "memoising", "assets", "sensors", "stubs"],
     },
+    "examples",
   ],
 };
 

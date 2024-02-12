@@ -3,11 +3,12 @@ WORKDIR /app
 
 ENV PYTHONPATH=/app
 
+RUN apt-get update && \
+  apt-get install -y libgl1-mesa-glx
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-RUN python -m nltk.downloader punkt
-
 ADD . /app
 
-ENTRYPOINT ["coflux", "agent.run", "wikipedia.repo"]
+ENTRYPOINT ["coflux", "agent.run", "imagepipeline.repo"]

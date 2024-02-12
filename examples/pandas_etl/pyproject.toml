@@ -1,19 +1,18 @@
 [tool.poetry]
-name = "example"
+name = "dataprocessing"
 version = "0.1.0"
 description = ""
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
-packages = [{include = "example"}]
 
 [tool.poetry.dependencies]
-python = "^3.10"
-requests = "^2.28.2"
-coflux = {path = "../../clients/python", develop = true}
+python = "^3.11"
+Faker = "^23.1.0"
+coflux = "^0.2.3"
+pandas = "^2.2.0"
+matplotlib = "^3.8.2"
+pyarrow = "^15.0.0"
 
-
-[tool.poetry.group.dev.dependencies]
-black = "^23.1.0"
 
 [build-system]
 requires = ["poetry-core"]

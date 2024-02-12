@@ -1,7 +1,4 @@
-aiohttp
-click
-watchfiles
-
+coflux
 requests
 beautifulsoup4
 nltk
