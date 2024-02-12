@@ -1,15 +1,26 @@
+## 0.2.1
+
+Enhancements:
+
+- Updated graph rendering in web UI, using elkjs.
+
+Fixes:
+
+- Reliable cancellation of recurrent (i.e., sensor) runs.
+- Rendering of sensor runs page in web UI.
+
 ## 0.2.0
 
 Features:
 
- - Supports persisting and restorig assets (files or directories) within tasks, and previewing these in the web UI.
- - Supports explicitly waiting for executions in specific parameters before starting a task.
+- Supports persisting and restorig assets (files or directories) within tasks, and previewing these in the web UI.
+- Supports explicitly waiting for executions in specific parameters before starting a task.
 
 ## 0.1.1
 
-Fixes:
+Enhancements:
 
- - Supports configuring the data directory from an environment variable.
+- Supports configuring the data directory from an environment variable.
 
 ## 0.1.0
 
