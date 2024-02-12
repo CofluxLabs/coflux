@@ -1,3 +1,9 @@
+## 0.2.4
+
+Enhancements:
+
+- Executions are started in spawned (rather than forked) processes, and better handle interrupt signals (SIGINT) for more graceful shutdown.
+
 ## 0.2.3
 
 Features:

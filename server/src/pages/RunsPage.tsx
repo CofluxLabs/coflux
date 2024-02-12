@@ -13,8 +13,8 @@ export default function RunsPage() {
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
   const runs = Object.values(run.steps)
-    .flatMap((s) => Object.values(s.attempts))
-    .flatMap((a) => a.children)
+    .flatMap((s) => Object.values(s.executions))
+    .flatMap((e) => e.children)
     .filter((c): c is models.Child => typeof c != "string")
     .reduce<Record<string, models.Child>>(
       (runs, child) => ({ ...runs, [child.runId]: child }),

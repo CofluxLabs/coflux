@@ -247,6 +247,9 @@ defmodule Coflux.Handlers.Agent do
                ) do
             {:ok, asset_type, path, blob_key} ->
               {[result_message(message["id"], [asset_type, path, blob_key])], state}
+
+            {:error, error} ->
+              {[error_message(message["id"], error)], state}
           end
         else
           {[{:close, 4000, "execution_invalid"}], nil}

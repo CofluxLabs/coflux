@@ -101,8 +101,8 @@ def _init(
     concurrency: int,
 ) -> None:
     try:
-        agent = Agent(project, environment, version, host, concurrency)
-        asyncio.run(_run(agent, list(modules)))
+        with Agent(project, environment, version, host, concurrency) as agent:
+            asyncio.run(_run(agent, list(modules)))
     except KeyboardInterrupt:
         pass
 

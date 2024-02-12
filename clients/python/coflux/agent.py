@@ -92,13 +92,21 @@ class Agent:
         blob_url_format = f"http://{server_host}/blobs/{{key}}"
         self._execution_manager = execution.Manager(self._connection, blob_url_format)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._execution_manager.abort_all()
+
     async def _handle_execute(self, *args) -> None:
         (execution_id, repository, target_name, arguments) = args
         print(f"Handling execute '{target_name}' ({execution_id})...")
-        target = self._modules[repository][target_name][1]
+        target = self._modules[repository][target_name][1].__name__
         arguments = [_parse_value(a) for a in arguments]
         loop = asyncio.get_running_loop()
-        self._execution_manager.execute(execution_id, target, arguments, loop)
+        self._execution_manager.execute(
+            execution_id, repository, target, arguments, loop
+        )
 
     async def _handle_abort(self, *args) -> None:
         (execution_id,) = args

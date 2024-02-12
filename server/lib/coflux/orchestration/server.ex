@@ -261,23 +261,23 @@ defmodule Coflux.Orchestration.Server do
         state =
           Enum.reduce(executions, state, fn {execution_id, repository, assigned_at, completed_at},
                                             state ->
-            state =
-              if assigned_at && !completed_at do
+            if !completed_at do
+              state =
+                case record_and_notify_result(
+                       state,
+                       execution_id,
+                       :cancelled,
+                       run.id,
+                       repository
+                     ) do
+                  {:ok, state} -> state
+                  {:error, :already_recorded} -> state
+                end
+
+              if assigned_at do
                 abort_execution(state, execution_id)
               else
                 state
-              end
-
-            if !completed_at do
-              case record_and_notify_result(
-                     state,
-                     execution_id,
-                     :cancelled,
-                     run.id,
-                     repository
-                   ) do
-                {:ok, state} -> state
-                {:error, :already_recorded} -> state
               end
             else
               state
@@ -443,32 +443,35 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:get_asset, asset_id, from_execution_id}, _from, state) do
-    {:ok, {asset_execution_id, type, path, blob_key, _, _}} =
-      Results.get_asset_by_id(state.db, asset_id, false)
+    case Results.get_asset_by_id(state.db, asset_id, false) do
+      {:ok, {asset_execution_id, type, path, blob_key, _, _}} ->
+        state =
+          if from_execution_id do
+            {:ok, id} = Runs.record_asset_dependency(state.db, from_execution_id, asset_id)
 
-    state =
-      if from_execution_id do
-        {:ok, id} = Runs.record_asset_dependency(state.db, from_execution_id, asset_id)
+            if id do
+              {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
+              asset_execution = resolve_execution(state.db, asset_execution_id)
+              asset_ = resolve_asset(state.db, asset_id, false)
 
-        if id do
-          {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
-          asset_execution = resolve_execution(state.db, asset_execution_id)
-          asset_ = resolve_asset(state.db, asset_id, false)
+              notify_listeners(
+                state,
+                {:run, step.run_id},
+                {:asset_dependency, from_execution_id, asset_execution_id, asset_execution,
+                 asset_id, asset_}
+              )
+            else
+              state
+            end
+          else
+            state
+          end
 
-          notify_listeners(
-            state,
-            {:run, step.run_id},
-            {:asset_dependency, from_execution_id, asset_execution_id, asset_execution, asset_id,
-             asset_}
-          )
-        else
-          state
-        end
-      else
-        state
-      end
+        {:reply, {:ok, type, path, blob_key}, state}
 
-    {:reply, {:ok, type, path, blob_key}, state}
+      {:ok, nil} ->
+        {:reply, {:error, :not_found}, state}
+    end
   end
 
   def handle_call({:subscribe_repositories, pid}, _from, state) do
@@ -1026,78 +1029,81 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp record_result(state, execution_id, result) do
-    # TODO: check whether result is already recorded (if so, don't re-run, etc)
+    case Results.has_result?(state.db, execution_id) do
+      {:ok, true} ->
+        {:ok, state}
 
-    {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
+      {:ok, false} ->
+        {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
 
-    {retry_id, state} =
-      if result_retryable?(result) && step.retry_count > 0 do
-        {:ok, executions} = Runs.get_step_executions(state.db, step.id)
+        {retry_id, state} =
+          if result_retryable?(result) && step.retry_count > 0 do
+            {:ok, executions} = Runs.get_step_executions(state.db, step.id)
 
-        attempts = Enum.count(executions)
+            attempts = Enum.count(executions)
 
-        if attempts <= step.retry_count do
-          # TODO: add jitter (within min/max delay)
-          delay_s =
-            step.retry_delay_min +
-              (attempts - 1) / (step.retry_count - 1) *
-                (step.retry_delay_max - step.retry_delay_min)
+            if attempts <= step.retry_count do
+              # TODO: add jitter (within min/max delay)
+              delay_s =
+                step.retry_delay_min +
+                  (attempts - 1) / (step.retry_count - 1) *
+                    (step.retry_delay_max - step.retry_delay_min)
 
-          execute_after = System.os_time(:millisecond) + delay_s * 1000
-          # TODO: do cache lookup?
-          {:ok, retry_id, _, state} = rerun_step(state, step, execute_after)
-          {retry_id, state}
-        else
-          {nil, state}
-        end
-      else
-        {:ok, run} = Runs.get_run_by_id(state.db, step.run_id)
-
-        if run.recurrent do
-          {:ok, executions} = Runs.get_step_executions(state.db, step.id)
-
-          if Enum.all?(executions, &elem(&1, 5)) do
-            now = System.os_time(:millisecond)
-
-            last_assigned_at =
-              executions |> Enum.map(&elem(&1, 5)) |> Enum.max(&>=/2, fn -> nil end)
-
-            execute_after =
-              if last_assigned_at && now - last_assigned_at < @recurrent_rate_limit_ms do
-                last_assigned_at + @recurrent_rate_limit_ms
-              end
-
-            {:ok, _, _, state} = rerun_step(state, step, execute_after)
-
-            {nil, state}
+              execute_after = System.os_time(:millisecond) + delay_s * 1000
+              # TODO: do cache lookup?
+              {:ok, retry_id, _, state} = rerun_step(state, step, execute_after)
+              {retry_id, state}
+            else
+              {nil, state}
+            end
           else
-            {nil, state}
+            {:ok, run} = Runs.get_run_by_id(state.db, step.run_id)
+
+            if run.recurrent do
+              {:ok, executions} = Runs.get_step_executions(state.db, step.id)
+
+              if Enum.all?(executions, &elem(&1, 5)) do
+                now = System.os_time(:millisecond)
+
+                last_assigned_at =
+                  executions |> Enum.map(&elem(&1, 5)) |> Enum.max(&>=/2, fn -> nil end)
+
+                execute_after =
+                  if last_assigned_at && now - last_assigned_at < @recurrent_rate_limit_ms do
+                    last_assigned_at + @recurrent_rate_limit_ms
+                  end
+
+                {:ok, _, _, state} = rerun_step(state, step, execute_after)
+
+                {nil, state}
+              else
+                {nil, state}
+              end
+            else
+              {nil, state}
+            end
           end
-        else
-          {nil, state}
-        end
-      end
 
-    result =
-      case result do
-        {:error, type, message, frames} -> {:error, type, message, frames, retry_id}
-        :abandoned -> {:abandoned, retry_id}
-        other -> other
-      end
+        result =
+          case result do
+            {:error, type, message, frames} -> {:error, type, message, frames, retry_id}
+            :abandoned -> {:abandoned, retry_id}
+            other -> other
+          end
 
-    state =
-      case record_and_notify_result(
-             state,
-             execution_id,
-             result,
-             step.run_id,
-             step.repository
-           ) do
-        {:ok, state} -> state
-        {:error, :already_recorded} -> state
-      end
+        state =
+          case record_and_notify_result(
+                 state,
+                 execution_id,
+                 result,
+                 step.run_id,
+                 step.repository
+               ) do
+            {:ok, state} -> state
+          end
 
-    {:ok, state}
+        {:ok, state}
+    end
   end
 
   defp resolve_result(execution_id, db) do

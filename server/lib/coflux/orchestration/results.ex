@@ -379,15 +379,17 @@ defmodule Coflux.Orchestration.Results do
   end
 
   def get_asset_by_id(db, asset_id, load_metadata) do
-    case query_one!(
+    case query_one(
            db,
            "SELECT execution_id, type, path, blob_id, created_at FROM assets WHERE id = ?1",
            {asset_id}
          ) do
       {:ok, {execution_id, type, path, blob_id, created_at}} ->
         {:ok, {blob_key, metadata}} = get_blob_by_id(db, blob_id, load_metadata)
-
         {:ok, {execution_id, type, path, blob_key, created_at, metadata}}
+
+      {:ok, nil} ->
+        {:ok, nil}
     end
   end
 
