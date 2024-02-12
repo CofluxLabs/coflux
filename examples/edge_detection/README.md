@@ -1,12 +1,16 @@
+# Examples → Edge detection
+
 This example shows a basic image processing pipeline. A random image is downloaded from an API, edge detection is performed, and then edges are rendered over the original image.
 
 ![Graph](graph.png)
 
 This makes use of 'assets', which can then be previewed in the web UI:
 
-![Output](output.png)
+<p align="center">
+  <img src="output.png" alt="Example output" width="500" />
+</p>
 
-# Running
+## Running
 
 Build Docker image:
 

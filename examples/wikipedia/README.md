@@ -1,10 +1,12 @@
+# Examples → Wikipedia
+
 This example makes calls to the Wikipedia API to get the most viewed articles for the specified day and does some basic text operations on the pages (extracting text from HTML, tokenising, and counting tokens).
 
 ![Graph](graph.png)
 
 It makes use of caching/memoising, and shows how dependencies (e.g., the nltk model) can be bundled in a Docker file to simplify deployment.
 
-# Running
+## Running
 
 Build Docker image:
 
