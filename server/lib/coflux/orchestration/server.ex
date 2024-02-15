@@ -1377,7 +1377,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp is_execution_ready?(state, wait_for, arguments) do
-    Enum.all?(wait_for, fn index ->
+    Enum.all?(wait_for || [], fn index ->
       case Enum.at(arguments, index) do
         {_, _, placeholders} ->
           placeholders
@@ -1390,6 +1390,9 @@ defmodule Coflux.Orchestration.Server do
               {:pending, _} -> false
             end
           end)
+
+        nil ->
+          true
       end
     end)
   end

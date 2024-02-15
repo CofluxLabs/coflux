@@ -94,7 +94,7 @@ defmodule Coflux.Orchestration.Runs do
        ) do
     priority = Keyword.get(opts, :priority, 0)
     execute_after = Keyword.get(opts, :execute_after)
-    wait_for = Keyword.get(opts, :wait_for, [])
+    wait_for = Keyword.get(opts, :wait_for)
     cache_key = Keyword.get(opts, :cache_key)
     cache_max_age = Keyword.get(opts, :cache_max_age)
     defer_key = Keyword.get(opts, :defer_key)
@@ -547,7 +547,7 @@ defmodule Coflux.Orchestration.Runs do
   end
 
   defp encode_wait_for(indexes) do
-    Enum.reduce(indexes, 0, &Bitwise.bor(&2, Bitwise.bsl(1, &1)))
+    indexes && Enum.reduce(indexes, 0, &Bitwise.bor(&2, Bitwise.bsl(1, &1)))
   end
 
   defp insert_step(

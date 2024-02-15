@@ -49,7 +49,7 @@ def _load_ids(asset):
         return {row["id"] for row in csv.DictReader(file)}
 
 
-@cx.task(wait_for={"categories_"})
+@cx.task(wait={"categories_"})
 def generate_products(count: int, categories_: cx.Execution[cx.Asset]):
     category_ids = list(_load_ids(categories_.result()))
     return _write_csv_asset(
@@ -67,7 +67,7 @@ def generate_products(count: int, categories_: cx.Execution[cx.Asset]):
     )
 
 
-@cx.task(wait_for={"products_", "customers_"})
+@cx.task(wait={"products_", "customers_"})
 def generate_sales(
     count: int, products_: cx.Execution[cx.Asset], customers_: cx.Execution[cx.Asset]
 ):
@@ -115,7 +115,7 @@ def _load_csv(execution):
     return pd.read_csv(cx.restore_asset(execution.result()))
 
 
-@cx.task(wait_for={"dataset_"})
+@cx.task(wait={"dataset_"})
 def generate_sales_summary(dataset_):
     dataset = dataset_.result()
     sales_data = _load_csv(dataset["sales"])
@@ -147,7 +147,7 @@ def generate_sales_summary(dataset_):
     return sales_summary
 
 
-@cx.task(wait_for={"sales_summary_"})
+@cx.task(wait=True)
 def write_sales_summary(sales_summary_):
     sales_summary = sales_summary_.result()
     return _write_csv_asset(
@@ -157,7 +157,7 @@ def write_sales_summary(sales_summary_):
     )
 
 
-@cx.task(wait_for={"sales_summary_", "dataset_"})
+@cx.task(wait=True)
 def render_chart(sales_summary_, dataset_):
     sales_summary = sales_summary_.result()
     categories_asset = dataset_.result()["categories"].result()

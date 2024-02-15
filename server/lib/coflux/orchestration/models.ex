@@ -1,15 +1,17 @@
 defmodule Coflux.Orchestration.Models do
   defmodule Utils do
     def decode_wait_for(value) do
-      value
-      |> Integer.digits(2)
-      |> Enum.reverse()
-      |> Enum.with_index()
-      |> Enum.filter(fn
-        {0, _} -> false
-        {1, _} -> true
-      end)
-      |> Enum.map(fn {_, i} -> i end)
+      if value do
+        value
+        |> Integer.digits(2)
+        |> Enum.reverse()
+        |> Enum.with_index()
+        |> Enum.filter(fn
+          {0, _} -> false
+          {1, _} -> true
+        end)
+        |> Enum.map(fn {_, i} -> i end)
+      end
     end
   end
 

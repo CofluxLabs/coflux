@@ -1,3 +1,9 @@
+## 0.2.2
+
+Fixes:
+
+- Handling of 'wait' arguments that aren't present (e.g., because they have default values).
+
 ## 0.2.1
 
 Enhancements:

@@ -47,12 +47,12 @@ def convert_to_text(html: str):
     return soup.get_text()
 
 
-@cf.task(wait_for={"text_"})
+@cf.task(wait=True)
 def tokenise(text_: cf.Execution[str]):
     return nltk.word_tokenize(text_.result())
 
 
-@cf.task(wait_for={"tokens_"})
+@cf.task(wait=True)
 def count_tokens(tokens_: cf.Execution[t.List[str]]):
     return collections.Counter(tokens_.result()).most_common(100)
 
