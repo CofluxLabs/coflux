@@ -83,7 +83,7 @@ class ScheduleExecutionRequest(t.NamedTuple):
     target: str
     arguments: list[models.Value]
     execute_after: dt.datetime | None
-    wait: set[int]
+    wait: set[int] | None
     cache_key: str | None
     cache_max_age: int | float | None
     defer_key: str | None
@@ -442,7 +442,7 @@ class Channel:
                 target,
                 serialised_arguments,
                 execute_after,
-                wait or set(),
+                wait,
                 cache_key_,
                 cache_max_age,
                 defer_key,
@@ -818,7 +818,7 @@ class Execution:
                         _json_safe_arguments(arguments),
                         self._id,
                         execute_after_ms,
-                        list(wait),
+                        list(wait) if wait else None,
                         cache_key,
                         cache_max_age,
                         defer_key,
