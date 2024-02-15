@@ -1390,6 +1390,9 @@ defmodule Coflux.Orchestration.Server do
               {:pending, _} -> false
             end
           end)
+
+        nil ->
+          true
       end
     end)
   end
