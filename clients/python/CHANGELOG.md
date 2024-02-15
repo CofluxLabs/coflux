@@ -1,3 +1,9 @@
+## 0.2.5
+
+Enhancements:
+
+- The 'wait_for' option has been renamed to 'wait', and now supports boolean/string values (e.g., `wait=True`, or `wait="foo, bar"`).
+
 ## 0.2.4
 
 Enhancements:
