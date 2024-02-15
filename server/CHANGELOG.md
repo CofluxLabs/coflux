@@ -1,3 +1,9 @@
+## 0.2.3
+
+Fixes:
+
+- Creating Git tag as part of the release.
+
 ## 0.2.2
 
 Fixes:
