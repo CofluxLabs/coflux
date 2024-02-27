@@ -16,10 +16,9 @@ import mimetypes
 import zipfile
 import itertools
 import signal
-import importlib
 from pathlib import Path
 
-from . import server, blobs, models, serialisation, annotations
+from . import server, blobs, models, serialisation, annotations, loader
 
 
 _EXECUTION_THRESHOLD_S = 1.0
@@ -643,13 +642,13 @@ def _execute(
     conn,
 ):
     global _channel_context
+    module = loader.load_module(module_name)
     with Channel(execution_id, blob_url_format, conn) as channel:
         threading.Thread(target=channel.run).start()
         _channel_context = channel
         try:
             resolved_arguments = _resolve_arguments(arguments, channel)
             channel.notify_executing()
-            module = importlib.import_module(module_name)
             target = getattr(module, target_name)
             fn = getattr(target, annotations.TARGET_KEY)[1][1]
             value = fn(*resolved_arguments)
