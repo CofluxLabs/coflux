@@ -1,7 +1,5 @@
 import asyncio
 import click
-import importlib
-import importlib.util
 import os
 import types
 import typing as t
@@ -9,7 +7,7 @@ import watchfiles
 import httpx
 from pathlib import Path
 
-from . import Agent, config
+from . import Agent, config, loader
 
 T = t.TypeVar("T")
 
@@ -80,14 +78,7 @@ def _get_host(argument: str | None) -> str:
 async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
     for module in modules:
         if isinstance(module, str):
-            path = Path(module)
-            if path.is_file():
-                spec = importlib.util.spec_from_file_location(module, path)
-                assert spec
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-            else:
-                module = importlib.import_module(module)
+            module = loader.load_module(module)
         await agent.register_module(module)
     await agent.run()
 

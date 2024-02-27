@@ -1,3 +1,9 @@
+## 0.2.6
+
+Fixes:
+
+- Loading of file-based (as opposed to module-based) repositories with the agent (i.e., `coflux agent.run path/to/repo.py`).
+
 ## 0.2.5
 
 Enhancements:

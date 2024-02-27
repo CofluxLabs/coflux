@@ -90,7 +90,9 @@ export default function TargetsList({
             <div key={repository} className="py-2">
               <Link
                 to={buildUrl(
-                  `/projects/${projectId}/repositories/${repository}`,
+                  `/projects/${projectId}/repositories/${encodeURIComponent(
+                    repository,
+                  )}`,
                   { environment: environmentName },
                 )}
                 className={classNames(
@@ -153,7 +155,9 @@ export default function TargetsList({
                         name={name}
                         icon={target.type == "sensor" ? IconCpu : IconSubtask}
                         url={buildUrl(
-                          `/projects/${projectId}/targets/${repository}/${name}`,
+                          `/projects/${projectId}/targets/${encodeURIComponent(
+                            repository,
+                          )}/${name}`,
                           { environment: environmentName },
                         )}
                         isActive={isActive}
