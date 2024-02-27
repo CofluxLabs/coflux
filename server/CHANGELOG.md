@@ -1,3 +1,9 @@
+## 0.2.4
+
+Fixes:
+
+- Handling (file-based) repositories containing slashes in the frontend.
+
 ## 0.2.3
 
 Fixes:
