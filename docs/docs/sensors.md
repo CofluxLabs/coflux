@@ -5,13 +5,13 @@ Triggering runs on demand may suit some use cases, but often you'll want to be a
 Sensors are also defined in a repository, along with workflows and tasks, and hosted by your agent:
 
 ```python
-import coflux
+import coflux as cf
 
-@coflux.workflow():
+@cf.workflow():
 def process_file():
     ...
 
-@coflux.sensor()
+@cf.sensor()
 def new_files():
     ...
 ```

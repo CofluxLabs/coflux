@@ -9,13 +9,13 @@ The annotations are designed to be unimposing so that functions can be executed 
 Let's start with a simple example:
 
 ```python
-import coflux
+import coflux as cf
 
-@coflux.task()
+@cf.task()
 def build_greeting(name: str):
     return f"Hello, {name}"
 
-@coflux.workflow()
+@cf.workflow()
 def print_greeting(name: str):
     print(build_greeting(name))
 ```
