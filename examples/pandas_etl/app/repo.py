@@ -1,4 +1,4 @@
-import coflux as cx
+import coflux as cf
 import csv
 from faker import Faker
 from pathlib import Path
@@ -15,10 +15,10 @@ def _write_csv_asset(filename, fieldnames, data):
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(data)
-    return cx.persist_asset(file_path)
+    return cf.persist_asset(file_path)
 
 
-@cx.task()
+@cf.task()
 def generate_customers(count: int):
     return _write_csv_asset(
         "customers.csv",
@@ -35,7 +35,7 @@ def generate_customers(count: int):
     )
 
 
-@cx.task()
+@cf.task()
 def generate_categories(count: int):
     return _write_csv_asset(
         "categories.csv",
@@ -45,12 +45,12 @@ def generate_categories(count: int):
 
 
 def _load_ids(asset):
-    with open(cx.restore_asset(asset), newline="") as file:
+    with open(cf.restore_asset(asset), newline="") as file:
         return {row["id"] for row in csv.DictReader(file)}
 
 
-@cx.task(wait={"categories_"})
-def generate_products(count: int, categories_: cx.Execution[cx.Asset]):
+@cf.task(wait={"categories_"})
+def generate_products(count: int, categories_: cf.Execution[cf.Asset]):
     category_ids = list(_load_ids(categories_.result()))
     return _write_csv_asset(
         "products.csv",
@@ -67,9 +67,9 @@ def generate_products(count: int, categories_: cx.Execution[cx.Asset]):
     )
 
 
-@cx.task(wait={"products_", "customers_"})
+@cf.task(wait={"products_", "customers_"})
 def generate_sales(
-    count: int, products_: cx.Execution[cx.Asset], customers_: cx.Execution[cx.Asset]
+    count: int, products_: cf.Execution[cf.Asset], customers_: cf.Execution[cf.Asset]
 ):
     product_ids = list(_load_ids(products_.result()))
     customer_ids = list(_load_ids(customers_.result()))
@@ -97,7 +97,7 @@ def generate_sales(
     )
 
 
-@cx.task(memo=True)
+@cf.task(memo=True)
 def load_dataset():
     customers_ = generate_customers.submit(2000)
     categories_ = generate_categories.submit(25)
@@ -112,10 +112,10 @@ def load_dataset():
 
 
 def _load_csv(execution):
-    return pd.read_csv(cx.restore_asset(execution.result()))
+    return pd.read_csv(cf.restore_asset(execution.result()))
 
 
-@cx.task(wait={"dataset_"})
+@cf.task(wait={"dataset_"})
 def generate_sales_summary(dataset_):
     dataset = dataset_.result()
     sales_data = _load_csv(dataset["sales"])
@@ -147,7 +147,7 @@ def generate_sales_summary(dataset_):
     return sales_summary
 
 
-@cx.task(wait=True)
+@cf.task(wait=True)
 def write_sales_summary(sales_summary_):
     sales_summary = sales_summary_.result()
     return _write_csv_asset(
@@ -157,12 +157,12 @@ def write_sales_summary(sales_summary_):
     )
 
 
-@cx.task(wait=True)
+@cf.task(wait=True)
 def render_chart(sales_summary_, dataset_):
     sales_summary = sales_summary_.result()
     categories_asset = dataset_.result()["categories"].result()
 
-    with open(cx.restore_asset(categories_asset), newline="") as file:
+    with open(cf.restore_asset(categories_asset), newline="") as file:
         categories_by_id = {row["id"]: row["name"] for row in csv.DictReader(file)}
 
     category_sales = (
@@ -182,10 +182,10 @@ def render_chart(sales_summary_, dataset_):
     path = Path.cwd().joinpath("sales_summary_chart.png")
     plt.savefig(path)
 
-    return cx.persist_asset(path)
+    return cf.persist_asset(path)
 
 
-@cx.workflow()
+@cf.workflow()
 def workflow():
     dataset = load_dataset.submit()
     sales_summary = generate_sales_summary.submit(dataset)

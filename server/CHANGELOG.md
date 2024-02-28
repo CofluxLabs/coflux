@@ -1,3 +1,9 @@
+## 0.2.5
+
+Fixes:
+
+- Upgrades and pins versions of the base images used in the Docker image.
+
 ## 0.2.4
 
 Fixes:
