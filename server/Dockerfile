@@ -1,4 +1,4 @@
-FROM node:16 as npm_build
+FROM node:18.19 as npm_build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -9,7 +9,7 @@ COPY src src/
 RUN npm run build -- --minify
 
 
-FROM elixir:1.14 as mix_build
+FROM elixir:1.15.7 as mix_build
 WORKDIR /app
 
 RUN mix local.hex --force && \
@@ -25,7 +25,7 @@ COPY --from=npm_build /app/priv/static priv/static/
 RUN MIX_ENV=prod mix release
 
 
-FROM debian:bullseye
+FROM debian:bookworm-20240211
 WORKDIR /app
 
 ARG data_dir=/data
