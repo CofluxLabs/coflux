@@ -34,23 +34,23 @@ class Future(t.Generic[T]):
     def __init__(self):
         self._event = threading.Event()
         self._result: T | None = None
-        self._exception: BaseException | None = None
+        self._error: t.Any | None = None
 
     def result(self, timeout: float | None = None):
         self._event.wait(timeout)
-        if self._exception:
-            raise self._exception
+        if self._error:
+            raise Exception(self._error)
         else:
             return t.cast(T, self._result)
 
     def set_result(self, result):
-        assert not self._result and not self._exception
+        assert not self._result and not self._error
         self._result = result
         self._event.set()
 
-    def set_exception(self, exception):
-        assert not self._result and not self._exception
-        self._exception = exception
+    def set_error(self, error):
+        assert not self._result and not self._error
+        self._error = error
         self._event.set()
 
 
@@ -77,7 +77,6 @@ class RecordErrorRequest(t.NamedTuple):
 
 
 class ScheduleExecutionRequest(t.NamedTuple):
-    schedule_id: int
     repository: str
     target: str
     arguments: list[models.Value]
@@ -97,7 +96,6 @@ class ResolveReferenceRequest(t.NamedTuple):
 
 
 class PersistAssetRequest(t.NamedTuple):
-    persist_id: int
     type: int
     path: str
     blob_key: str
@@ -117,48 +115,6 @@ class LogMessageRequest(t.NamedTuple):
     template: str
     labels: dict[str, t.Any]
     timestamp: int
-
-
-class ExecutionScheduledResponse(t.NamedTuple):
-    schedule_id: int
-    execution_id: int
-
-
-class ScheduleExecutionFailedResponse(t.NamedTuple):
-    schedule_id: int
-    error: str
-
-
-class ResultResolvedResponse(t.NamedTuple):
-    execution_id: int
-    result: models.Result
-
-
-class ResolveResultFailedResponse(t.NamedTuple):
-    execution_id: int
-    error: str
-
-
-class AssetPersistedResponse(t.NamedTuple):
-    persist_id: int
-    asset_id: str
-
-
-class PersistAssetFailedResponse(t.NamedTuple):
-    persist_id: int
-    error: str
-
-
-class AssetResolvedResponse(t.NamedTuple):
-    asset_id: int
-    asset_type: int
-    path: str
-    blob_key: str
-
-
-class ResolveAssetFailedResponse(t.NamedTuple):
-    asset_id: int
-    error: str
 
 
 class RemoteException(Exception):
@@ -308,12 +264,9 @@ class Channel:
         self._execution_id = execution_id
         self._blob_url_format = blob_url_format
         self._connection = connection
-        self._next_schedule_id = counter()
-        self._next_persist_id = counter()
-        self._schedules: dict[int, Future[str]] = {}
-        self._persists: dict[int, Future[str]] = {}
-        self._execution_resolves: dict[int, Future[models.Result]] = {}
-        self._asset_resolves: dict[int, Future[tuple[int, str, str]]] = {}
+        self._request_id = counter()
+        self._requests: dict[int, Future[t.Any]] = {}
+        self._cache: dict[t.Any, Future[t.Any]] = {}
         self._running = True
         self._exit_stack = contextlib.ExitStack()
 
@@ -346,46 +299,42 @@ class Channel:
             if self._connection.poll(1):
                 message = self._connection.recv()
                 match message:
-                    case ExecutionScheduledResponse(schedule_id, execution_id):
-                        self._schedules.pop(schedule_id).set_result(execution_id)
-                    case ScheduleExecutionFailedResponse(schedule_id, error):
-                        self._schedules.pop(schedule_id).set_exception(Exception(error))
-                    case ResultResolvedResponse(execution_id, result):
-                        self._execution_resolves.pop(execution_id).set_result(result)
-                    case ResolveResultFailedResponse(execution_id, error):
-                        self._execution_resolves.pop(execution_id).set_exception(
-                            Exception(error)
-                        )
-                    case AssetPersistedResponse(persist_id, asset_id):
-                        self._persists.pop(persist_id).set_result(asset_id)
-                    case PersistAssetFailedResponse(persist_id, error):
-                        self._persists.pop(persist_id).set_exception(Exception(error))
-                    case AssetResolvedResponse(asset_id, asset_type, path, blob_key):
-                        self._asset_resolves.pop(asset_id).set_result(
-                            (asset_type, path, blob_key)
-                        )
-                    case ResolveAssetFailedResponse(asset_id, error):
-                        self._asset_resolves.pop(asset_id).set_exception(
-                            Exception(error)
-                        )
+                    case ("result", request_id, result):
+                        self._requests.pop(request_id).set_result(result)
+                    case ("error", request_id, error):
+                        self._requests.pop(request_id).set_error(error)
                     case other:
                         raise Exception(f"Received unhandled response: {other}")
 
-    def _send(self, message):
+    def _send(self, *message):
         self._connection.send(message)
 
+    def _request(self, request, key=None):
+        if key and key in self._cache:
+            return self._cache[key].result()
+        request_id = self._request_id()
+        future = Future()
+        self._requests[request_id] = future
+        if key:
+            self._cache[key] = future
+        self._send("request", request_id, request)
+        return future.result()
+
+    def _notify(self, notification):
+        self._send("notify", notification)
+
     def notify_executing(self):
-        self._send(ExecutingNotification())
+        self._notify(ExecutingNotification())
 
     def record_result(self, data: t.Any):
         value = serialisation.serialise(data, self._blob_store, self._directory)
-        self._send(RecordResultRequest(value))
+        self._notify(RecordResultRequest(value))
         # TODO: wait for confirmation?
         self._running = False
 
     def record_error(self, exception):
         type_, message, frames = _serialise_exception(exception)
-        self._send(RecordErrorRequest(type_, message, frames))
+        self._notify(RecordErrorRequest(type_, message, frames))
         # TODO: wait for confirmation?
         self._running = False
 
@@ -430,13 +379,8 @@ class Channel:
         )
         memo_key = _build_key(memo, arguments, serialised_arguments, default_namespace)
         retry_count, retry_delay_min, retry_delay_max = _parse_retries(retries)
-
-        schedule_id = self._next_schedule_id()
-        future = Future()
-        self._schedules[schedule_id] = future
-        self._send(
+        execution_id = self._request(
             ScheduleExecutionRequest(
-                schedule_id,
                 repository,
                 target,
                 serialised_arguments,
@@ -451,19 +395,15 @@ class Channel:
                 retry_delay_max,
             )
         )
-        execution_id = future.result()
         return models.Execution(
             lambda: self.resolve_reference(execution_id),
             execution_id,
         )
 
     def resolve_reference(self, execution_id):
-        future = self._execution_resolves.get(execution_id)
-        if not future:
-            future = Future()
-            self._execution_resolves[execution_id] = future
-            self._send(ResolveReferenceRequest(execution_id))
-        result = future.result()
+        result = self._request(
+            ResolveReferenceRequest(execution_id), ("result", execution_id)
+        )
         return _deserialise_result(result, self._blob_store, self, "reference")
 
     def record_checkpoint(self, arguments):
@@ -471,7 +411,7 @@ class Channel:
             serialisation.serialise(a, self._blob_store, self._directory)
             for a in arguments
         ]
-        self._send(RecordCheckpointRequest(serialised_arguments))
+        self._notify(RecordCheckpointRequest(serialised_arguments))
 
     def persist_asset(
         self, path: Path | str | None = None, *, match: str | None = None
@@ -512,13 +452,9 @@ class Channel:
             metadata = {"totalSize": sum(sizes), "count": len(sizes)}
         else:
             raise Exception(f"path ({path}) isn't a file or a directory")
-        persist_id = self._next_persist_id()
-        future = Future()
-        self._persists[persist_id] = future
-        self._send(
-            PersistAssetRequest(persist_id, asset_type, path_str, blob_key, metadata)
+        asset_id = self._request(
+            PersistAssetRequest(asset_type, path_str, blob_key, metadata)
         )
-        asset_id = future.result()
         return models.Asset(asset_id)
 
     def restore_asset(
@@ -532,12 +468,9 @@ class Channel:
                 to = self._directory.joinpath(to)
             if not to.is_relative_to(self._directory):
                 raise Exception("asset must be restored to execution directory")
-        future = self._asset_resolves.get(asset.id)
-        if not future:
-            future = Future()
-            self._asset_resolves[asset.id] = future
-            self._send(ResolveAssetRequest(asset.id))
-        asset_type, path_str, blob_key = future.result()
+        asset_type, path_str, blob_key = self._request(
+            ResolveAssetRequest(asset.id), ("asset", asset.id)
+        )
         target = to or self._directory.joinpath(path_str)
         target.parent.mkdir(parents=True, exist_ok=True)
         if asset_type == 0:
@@ -555,7 +488,7 @@ class Channel:
 
     def log_message(self, level, template, **kwargs):
         timestamp = time.time() * 1000
-        self._send(LogMessageRequest(level, template, kwargs, int(timestamp)))
+        self._notify(LogMessageRequest(level, template, kwargs, int(timestamp)))
 
 
 def get_channel() -> Channel | None:
@@ -762,18 +695,26 @@ class Execution:
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         future.result()
 
-    def _server_request(self, request, params, on_success, on_error):
-        coro = self._server.request(request, params, on_success, on_error)
+    def _server_request(self, request, params, request_id, parser=None):
+        parser = parser or (lambda x: x)
+        coro = self._server.request(
+            request,
+            params,
+            lambda result: self._try_send("result", request_id, parser(result)),
+            lambda error: self._try_send("error", request_id, error),
+        )
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result()
 
-    def _try_send(self, message):
+    def _try_send(
+        self, type: t.Literal["result", "error"], request_id: int, value: t.Any
+    ):
         try:
-            self._connection.send(message)
+            self._connection.send((type, request_id, value))
         except BrokenPipeError:
             pass
 
-    def _handle_message(self, message):
+    def _handle_notify(self, message):
         match message:
             case ExecutingNotification():
                 self._status = ExecutionStatus.EXECUTING
@@ -793,8 +734,16 @@ class Execution:
                     "record_checkpoint",
                     (self._id, _json_safe_arguments(arguments)),
                 )
+            case LogMessageRequest(level, template, labels, timestamp):
+                self._server_notify(
+                    "log_messages", ([self._id, timestamp, level, template, labels],)
+                )
+            case other:
+                raise Exception(f"Received unhandled notify: {other!r}")
+
+    def _handle_request(self, request_id, request):
+        match request:
             case ScheduleExecutionRequest(
-                schedule_id,
                 repository,
                 target,
                 arguments,
@@ -826,54 +775,21 @@ class Execution:
                         retry_delay_min,
                         retry_delay_max,
                     ),
-                    lambda execution_id: self._try_send(
-                        ExecutionScheduledResponse(schedule_id, execution_id)
-                    ),
-                    lambda error: self._try_send(
-                        ScheduleExecutionFailedResponse(schedule_id, error)
-                    ),
+                    request_id,
                 )
             case ResolveReferenceRequest(execution_id):
                 # TODO: set (and unset) state on Execution to indicate waiting?
                 self._server_request(
-                    "get_result",
-                    (execution_id, self._id),
-                    lambda result: self._try_send(
-                        ResultResolvedResponse(execution_id, _parse_result(result))
-                    ),
-                    lambda error: self._try_send(
-                        ResolveResultFailedResponse(execution_id, error)
-                    ),
+                    "get_result", (execution_id, self._id), request_id, _parse_result
                 )
-            case PersistAssetRequest(persist_id, type, path, blob_key, metadata):
+            case PersistAssetRequest(type, path, blob_key, metadata):
                 self._server_request(
-                    "put_asset",
-                    (self._id, type, path, blob_key, metadata),
-                    lambda asset_id: self._try_send(
-                        AssetPersistedResponse(persist_id, asset_id)
-                    ),
-                    lambda error: self._try_send(
-                        PersistAssetFailedResponse(persist_id, error)
-                    ),
+                    "put_asset", (self._id, type, path, blob_key, metadata), request_id
                 )
-
             case ResolveAssetRequest(asset_id):
-                self._server_request(
-                    "get_asset",
-                    (asset_id, self._id),
-                    lambda result: self._try_send(
-                        AssetResolvedResponse(asset_id, *result)
-                    ),
-                    lambda error: self._try_send(
-                        ResolveAssetFailedResponse(asset_id, error)
-                    ),
-                )
-            case LogMessageRequest(level, template, labels, timestamp):
-                self._server_notify(
-                    "log_messages", ([self._id, timestamp, level, template, labels],)
-                )
+                self._server_request("get_asset", (asset_id, self._id), request_id)
             case other:
-                raise Exception(f"Received unhandled message: {other!r}")
+                raise Exception(f"Received unhandled request: {other!r}")
 
     def run(self):
         self._process.start()
@@ -884,7 +800,13 @@ class Execution:
                 except EOFError:
                     pass
                 else:
-                    self._handle_message(message)
+                    match message:
+                        case ("notify", notify):
+                            self._handle_notify(notify)
+                        case ("request", request_id, request):
+                            self._handle_request(request_id, request)
+                        case other:
+                            raise Exception(f"Received unhandled message: {other!r}")
 
 
 def _wait_processes(sentinels: t.Iterable[int], until: float) -> set[int]:
