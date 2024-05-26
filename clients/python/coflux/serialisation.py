@@ -2,7 +2,6 @@ import typing as t
 import json
 import re
 import pickle
-from pathlib import Path
 
 from . import blobs, models
 
@@ -83,7 +82,7 @@ def _replace_placeholders(
 
 
 def _serialise(
-    data: t.Any, blob_store: blobs.Store, execution_dir: Path
+    data: t.Any
 ) -> tuple[str, bytes, models.Placeholders, models.Metadata]:
     placeholders = {}
     avoid_numbers = _find_numbers(data)
@@ -97,10 +96,10 @@ def _serialise(
 
 
 def serialise(
-    value: t.Any, blob_store: blobs.Store, execution_dir: Path
+    value: t.Any, blob_store: blobs.Store
 ) -> models.Value:
     format, serialised, placeholders, metadata = _serialise(
-        value, blob_store, execution_dir
+        value
     )
     if format != "json" or len(serialised) > _BLOB_THRESHOLD:
         key = blob_store.put(serialised)

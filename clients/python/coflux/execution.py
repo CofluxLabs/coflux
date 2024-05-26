@@ -327,7 +327,7 @@ class Channel:
         self._notify(ExecutingNotification())
 
     def record_result(self, data: t.Any):
-        value = serialisation.serialise(data, self._blob_store, self._directory)
+        value = serialisation.serialise(data, self._blob_store)
         self._notify(RecordResultRequest(value))
         # TODO: wait for confirmation?
         self._running = False
@@ -363,7 +363,7 @@ class Channel:
             execute_after = (execute_after or dt.datetime.now()) + delay
         # TODO: parallelise?
         serialised_arguments = [
-            serialisation.serialise(a, self._blob_store, self._directory)
+            serialisation.serialise(a, self._blob_store)
             for a in arguments
         ]
         default_namespace = f"{repository}:{target}"
@@ -404,11 +404,11 @@ class Channel:
         result = self._request(
             ResolveReferenceRequest(execution_id), ("result", execution_id)
         )
-        return _deserialise_result(result, self._blob_store, self, "reference")
+        return _deserialise_result(result, self, "reference")
 
     def record_checkpoint(self, arguments):
         serialised_arguments = [
-            serialisation.serialise(a, self._blob_store, self._directory)
+            serialisation.serialise(a, self._blob_store)
             for a in arguments
         ]
         self._notify(RecordCheckpointRequest(serialised_arguments))
@@ -488,20 +488,11 @@ class Channel:
 
     def log_message(self, level, template, **kwargs):
         timestamp = time.time() * 1000
-        self._notify(LogMessageRequest(level, template, kwargs, int(timestamp)))
+        self._notify(LogMessageRequest(level, str(template), kwargs, int(timestamp)))
 
 
 def get_channel() -> Channel | None:
     return _channel_context
-
-
-def _deserialise(
-    data: T, deserialiser: t.Callable[[T], t.Any], description: str
-) -> t.Any:
-    try:
-        return deserialiser(data)
-    except ValueError as e:
-        raise Exception(f"Failed to deserialise {description}") from e
 
 
 def _build_exception(type_, message):
@@ -517,7 +508,7 @@ def _build_exception(type_, message):
 
 
 def _deserialise_result(
-    result: models.Result, blob_store: blobs.Store, channel: Channel, description: str
+    result: models.Result, channel: Channel, description: str
 ):
     match result:
         case ["value", value]:
