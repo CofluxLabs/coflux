@@ -409,7 +409,7 @@ defmodule Coflux.Handlers.Agent do
     end
   end
 
-  def parse_level(level) do
+  defp parse_level(level) do
     case level do
       0 -> :stdout
       1 -> :stderr

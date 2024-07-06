@@ -45,16 +45,14 @@ def _decorate(
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, models.Execution[T]]]:
-    def decorator(fn: t.Callable[P, T]) -> t.Callable[P, models.Execution[T]]:
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, T]]:
+    def decorator(fn: t.Callable[P, T]) -> t.Callable[P, T]:
         name_ = name or fn.__name__
         repository_ = repository or fn.__module__
 
         wait_ = _parse_wait(fn, wait)
 
-        # TODO: better name?
-        # TODO: type?
-        def submit(*args):
+        def submit(*args: P.args, **kwargs: P.kwargs) -> models.Execution[T]:
             try:
                 return context.schedule(
                     repository_,
@@ -70,7 +68,7 @@ def _decorate(
                     delay=delay,
                 )
             except context.NotInContextException:
-                result = fn(*args)
+                result = fn(*args, **kwargs)
                 return (
                     models.Execution(lambda: result, None)
                     if not isinstance(result, models.Execution)
@@ -83,8 +81,8 @@ def _decorate(
         setattr(fn, "submit", submit)
 
         @functools.wraps(fn)
-        def wrapper(*args) -> models.Execution[T]:  # TODO: support kwargs?
-            return submit(*args).result()
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            return submit(*args, **kwargs).result()
 
         return wrapper
 
@@ -102,7 +100,7 @@ def task(
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, models.Execution[T]]]:
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, T]]:
     return _decorate(
         "task",
         name=name,
@@ -127,7 +125,7 @@ def workflow(
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, models.Execution[T]]]:
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, T]]:
     return _decorate(
         "workflow",
         name=name,
@@ -153,7 +151,7 @@ def stub(
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, models.Execution[T]]]:
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, T]]:
     return _decorate(
         repository=repository,
         name=name,
@@ -170,8 +168,8 @@ def stub(
 
 def sensor(
     *, name=None
-) -> t.Callable[[t.Callable[[T | None], None]], t.Callable[[T | None], None]]:
-    def decorate(fn: t.Callable[[T | None], None]) -> t.Iterator[T]:
+) -> t.Callable[[t.Callable[P, None]], t.Callable[P, None]]:
+    def decorate(fn: t.Callable[P, None]) -> t.Callable[P, None]:
         setattr(fn, TARGET_KEY, (name or fn.__name__, ("sensor", fn)))
         return fn
 

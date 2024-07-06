@@ -11,4 +11,4 @@ RUN pip install -r requirements.txt
 
 ADD . /app
 
-ENTRYPOINT ["coflux", "agent.run", "imagepipeline.repo"]
+ENTRYPOINT ["coflux", "agent.run", "app.repo"]
