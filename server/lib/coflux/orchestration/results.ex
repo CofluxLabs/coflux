@@ -366,16 +366,18 @@ defmodule Coflux.Orchestration.Results do
   end
 
   def create_asset(db, execution_id, type, path, blob_key, metadata) do
-    now = current_timestamp()
-    {:ok, blob_id} = get_or_create_blob(db, blob_key, metadata)
+    with_transaction(db, fn ->
+      now = current_timestamp()
+      {:ok, blob_id} = get_or_create_blob(db, blob_key, metadata)
 
-    insert_one(db, :assets, %{
-      execution_id: execution_id,
-      type: type,
-      path: path,
-      blob_id: blob_id,
-      created_at: now
-    })
+      insert_one(db, :assets, %{
+        execution_id: execution_id,
+        type: type,
+        path: path,
+        blob_id: blob_id,
+        created_at: now
+      })
+    end)
   end
 
   def get_asset_by_id(db, asset_id, load_metadata) do
