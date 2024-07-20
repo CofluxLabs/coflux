@@ -13,9 +13,6 @@ websockets = "^12.0"
 httpx = "^0.26.0"
 pyyaml = "^6.0.1"
 
-[tool.poetry.group.dev.dependencies]
-black = "^23.1.0"
-
 [tool.poetry.scripts]
 coflux = "coflux.__main__:cli"
 
