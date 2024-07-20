@@ -574,8 +574,9 @@ def _execute(
             resolved_arguments = _resolve_arguments(arguments, channel)
             channel.notify_executing()
             target = getattr(module, target_name)
-            fn = getattr(target, annotations.TARGET_KEY)[1][1]
-            value = fn(*resolved_arguments)
+            if not isinstance(target, annotations.Target) or not target.type:
+                raise Exception("not valid target")
+            value = target.fn(*resolved_arguments)
         except KeyboardInterrupt:
             pass
         except Exception as e:

@@ -12,6 +12,81 @@ T = t.TypeVar("T")
 P = t.ParamSpec("P")
 
 
+TargetType = t.Literal["workflow", "task", "sensor"]
+
+
+class Target(t.Generic[P, T]):
+    _type: TargetType | None
+
+    def __init__(
+        self,
+        fn: t.Callable[P, T],
+        type: TargetType | None = None,
+        *,
+        repository: str | None = None,
+        name: str | None = None,
+        wait: bool | t.Iterable[str] | str = False,
+        cache: bool | int | float | dt.timedelta = False,
+        cache_key: t.Callable[P, str] | None = None,
+        cache_namespace: str | None = None,
+        retries: int | tuple[int, int] | tuple[int, int, int] = 0,
+        defer: bool | t.Callable[P, str] = False,
+        delay: int | float | dt.timedelta = 0,
+        memo: bool | t.Callable[P, str] = False,
+    ):
+        self._fn = fn
+        self._type = type
+        self._name = name or fn.__name__
+        self._repository = repository or fn.__module__
+        self._wait = _parse_wait(fn, wait)
+        self._cache = cache
+        self._cache_key = cache_key
+        self._cache_namespace = cache_namespace
+        self._retries = retries
+        self._defer = defer
+        self._delay = delay
+        self._memo = memo
+        functools.update_wrapper(self, fn)
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def type(self) -> TargetType | None:
+        return self._type
+
+    @property
+    def fn(self) -> t.Callable[P, T]:
+        return self._fn
+
+    def submit(self, *args: P.args, **kwargs: P.kwargs) -> models.Execution[T]:
+        try:
+            return context.schedule(
+                self._repository,
+                self._name,
+                args,
+                wait=self._wait,
+                cache=self._cache,
+                cache_key=self._cache_key,
+                cache_namespace=self._cache_namespace,
+                retries=self._retries,
+                defer=self._defer,
+                memo=self._memo,
+                delay=self._delay,
+            )
+        except context.NotInContextException:
+            result = self._fn(*args, **kwargs)
+            return (
+                models.Execution(lambda: result, None)
+                if not isinstance(result, models.Execution)
+                else result
+            )
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T:
+        return self.submit(*args, **kwargs).result()
+
+
 def _parse_wait(fn: t.Callable, wait: bool | t.Iterable[str] | str) -> set[int] | None:
     if not wait:
         return None
@@ -32,63 +107,6 @@ def _parse_wait(fn: t.Callable, wait: bool | t.Iterable[str] | str) -> set[int] 
     return indexes
 
 
-def _decorate(
-    type: t.Literal["workflow", "task", None] = None,
-    *,
-    repository: str | None = None,
-    name: str | None = None,
-    wait: bool | t.Iterable[str] | str = False,
-    cache: bool | int | float | dt.timedelta = False,
-    cache_key: t.Callable[P, str] | None = None,
-    cache_namespace: str | None = None,
-    retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    defer: bool | t.Callable[P, str] = False,
-    delay: int | float | dt.timedelta = 0,
-    memo: bool | t.Callable[P, str] = False,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, T]]:
-    def decorator(fn: t.Callable[P, T]) -> t.Callable[P, T]:
-        name_ = name or fn.__name__
-        repository_ = repository or fn.__module__
-
-        wait_ = _parse_wait(fn, wait)
-
-        def submit(*args: P.args, **kwargs: P.kwargs) -> models.Execution[T]:
-            try:
-                return context.schedule(
-                    repository_,
-                    name_,
-                    args,
-                    wait=wait_,
-                    cache=cache,
-                    cache_key=cache_key,
-                    cache_namespace=cache_namespace,
-                    retries=retries,
-                    defer=defer,
-                    memo=memo,
-                    delay=delay,
-                )
-            except context.NotInContextException:
-                result = fn(*args, **kwargs)
-                return (
-                    models.Execution(lambda: result, None)
-                    if not isinstance(result, models.Execution)
-                    else result
-                )
-
-        if type:
-            setattr(fn, TARGET_KEY, (name_, (type, fn)))
-
-        setattr(fn, "submit", submit)
-
-        @functools.wraps(fn)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            return submit(*args, **kwargs).result()
-
-        return wrapper
-
-    return decorator
-
-
 def task(
     *,
     name: str | None = None,
@@ -100,19 +118,23 @@ def task(
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, T]]:
-    return _decorate(
-        "task",
-        name=name,
-        wait=wait,
-        cache=cache,
-        cache_key=cache_key,
-        cache_namespace=cache_namespace,
-        retries=retries,
-        defer=defer,
-        delay=delay,
-        memo=memo,
-    )
+) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
+    def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
+        return Target(
+            fn,
+            "task",
+            name=name,
+            wait=wait,
+            cache=cache,
+            cache_key=cache_key,
+            cache_namespace=cache_namespace,
+            retries=retries,
+            defer=defer,
+            delay=delay,
+            memo=memo,
+        )
+
+    return decorator
 
 
 def workflow(
@@ -125,18 +147,22 @@ def workflow(
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, T]]:
-    return _decorate(
-        "workflow",
-        name=name,
-        wait=wait,
-        cache=cache,
-        cache_key=cache_key,
-        cache_namespace=cache_namespace,
-        retries=retries,
-        defer=defer,
-        delay=delay,
-    )
+) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
+    def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
+        return Target(
+            fn,
+            "workflow",
+            name=name,
+            wait=wait,
+            cache=cache,
+            cache_key=cache_key,
+            cache_namespace=cache_namespace,
+            retries=retries,
+            defer=defer,
+            delay=delay,
+        )
+
+    return decorator
 
 
 def stub(
@@ -151,26 +177,27 @@ def stub(
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
-) -> t.Callable[[t.Callable[P, T]], t.Callable[P, T]]:
-    return _decorate(
-        repository=repository,
-        name=name,
-        wait=wait,
-        cache=cache,
-        cache_key=cache_key,
-        cache_namespace=cache_namespace,
-        retries=retries,
-        defer=defer,
-        delay=delay,
-        memo=memo,
-    )
+) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
+    def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
+        return Target(
+            fn,
+            repository=repository,
+            name=name,
+            wait=wait,
+            cache=cache,
+            cache_key=cache_key,
+            cache_namespace=cache_namespace,
+            retries=retries,
+            defer=defer,
+            delay=delay,
+            memo=memo,
+        )
+
+    return decorator
 
 
-def sensor(
-    *, name=None
-) -> t.Callable[[t.Callable[P, None]], t.Callable[P, None]]:
-    def decorate(fn: t.Callable[P, None]) -> t.Callable[P, None]:
-        setattr(fn, TARGET_KEY, (name or fn.__name__, ("sensor", fn)))
-        return fn
+def sensor(*, name=None) -> t.Callable[[t.Callable[P, None]], t.Callable[P, None]]:
+    def decorator(fn: t.Callable[P, None]) -> t.Callable[P, None]:
+        return Target(fn, "sensor", name=name)
 
-    return decorate
+    return decorator
