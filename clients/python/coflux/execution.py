@@ -520,7 +520,7 @@ def _deserialise_result(
         case ["cancelled"]:
             raise Exception("cancelled")
         case result:
-            raise Exception(f"unexeptected result ({result})")
+            raise Exception(f"unexpected result ({result})")
 
 
 # TODO: move into serialisation module?
