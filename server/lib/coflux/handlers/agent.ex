@@ -25,7 +25,6 @@ defmodule Coflux.Handlers.Agent do
                  project_id: project_id,
                  environment: environment,
                  session_id: session_id,
-                 requests: %{},
                  executions: executions
                }}
 
@@ -204,13 +203,13 @@ defmodule Coflux.Handlers.Agent do
                  state.environment,
                  execution_id,
                  from_execution_id,
-                 self()
+                 state.session_id,
+                 message["id"]
                ) do
             {:ok, result} ->
               {[success_message(message["id"], compose_result(result))], state}
 
-            {:wait, ref} ->
-              state = put_in(state.requests[ref], message["id"])
+            :wait ->
               {[], state}
           end
         else
@@ -289,9 +288,8 @@ defmodule Coflux.Handlers.Agent do
     {[command_message("execute", [execution_id, repository, target, arguments])], state}
   end
 
-  def websocket_info({:result, ref, result}, state) do
-    {id, state} = pop_in(state.requests[ref])
-    {[success_message(id, compose_result(result))], state}
+  def websocket_info({:result, request_id, result}, state) do
+    {[success_message(request_id, compose_result(result))], state}
   end
 
   def websocket_info({:abort, execution_id}, state) do

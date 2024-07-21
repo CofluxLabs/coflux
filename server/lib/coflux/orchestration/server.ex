@@ -35,7 +35,7 @@ defmodule Coflux.Orchestration.Server do
               # topic -> [notification]
               notifications: %{},
 
-              # execution_id -> [{pid, ref}]
+              # execution_id -> [{session_id, request_id}]
               waiting: %{}
   end
 
@@ -386,7 +386,11 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:get_result, execution_id, from_execution_id, pid}, _from, state) do
+  def handle_call(
+        {:get_result, execution_id, from_execution_id, external_session_id, request_id},
+        _from,
+        state
+      ) do
     # TODO: check execution_id exists? (call resolve_result first?)
 
     state =
@@ -414,16 +418,16 @@ defmodule Coflux.Orchestration.Server do
     {result, state} =
       case resolve_result(execution_id, state.db) do
         {:pending, execution_id} ->
-          ref = make_ref()
+          session_id = Map.fetch!(state.session_ids, external_session_id)
 
           state =
             update_in(
               state,
               [Access.key(:waiting), Access.key(execution_id, [])],
-              &[{pid, ref} | &1]
+              &[{session_id, request_id} | &1]
             )
 
-          {{:wait, ref}, state}
+          {:wait, state}
 
         {:ok, result} ->
           {{:ok, result}, state}
@@ -658,6 +662,19 @@ defmodule Coflux.Orchestration.Server do
           )
         end)
         |> Map.update!(:session_ids, &Map.delete(&1, session.external_id))
+        |> Map.update!(:waiting, fn waiting ->
+          waiting
+          |> Enum.map(fn {execution_id, execution_waiting} ->
+            {execution_id,
+             Enum.reject(execution_waiting, fn {s_id, _} ->
+               s_id == session_id
+             end)}
+          end)
+          |> Enum.reject(fn {_execution_id, execution_waiting} ->
+            Enum.empty?(execution_waiting)
+          end)
+          |> Map.new()
+        end)
 
       state = flush_notifications(state)
 
@@ -807,7 +824,6 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_info({:DOWN, ref, :process, pid, _reason}, state) do
-    # TODO: clear up 'waiting'
     cond do
       Map.has_key?(state.agents, ref) ->
         {{^pid, session_id}, state} = pop_in(state.agents[ref])
@@ -1413,25 +1429,26 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp notify_waiting(state, execution_id) do
-    Map.update!(state, :waiting, fn waiting ->
-      case Map.pop(waiting, execution_id) do
-        {nil, waiting} ->
-          waiting
+    {execution_waiting, waiting} = Map.pop(state.waiting, execution_id)
 
-        {execution_waiting, waiting} ->
-          case resolve_result(execution_id, state.db) do
-            {:pending, execution_id} ->
-              Map.update(waiting, execution_id, execution_waiting, &(&1 ++ execution_waiting))
+    if execution_waiting do
+      case resolve_result(execution_id, state.db) do
+        {:pending, execution_id} ->
+          waiting =
+            Map.update(waiting, execution_id, execution_waiting, &(&1 ++ execution_waiting))
 
-            {:ok, result} ->
-              Enum.each(execution_waiting, fn {pid, ref} ->
-                send(pid, {:result, ref, result})
-              end)
+          Map.put(state, :waiting, waiting)
 
-              waiting
-          end
+        {:ok, result} ->
+          state = Map.put(state, :waiting, waiting)
+
+          Enum.reduce(execution_waiting, state, fn {session_id, request_id}, state ->
+            send_session(state, session_id, {:result, request_id, result})
+          end)
       end
-    end)
+    else
+      state
+    end
   end
 
   defp find_session_for_execution(state, execution_id) do
