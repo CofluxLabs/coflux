@@ -118,36 +118,45 @@ defmodule Coflux.Store do
     end
   end
 
-  defp build(row, model, columns) do
-    if model do
-      Code.ensure_loaded!(model)
+  defp build(row, builder, columns) do
+    cond do
+      is_function(builder) ->
+        columns
+        |> Enum.map(&String.to_atom/1)
+        |> Enum.zip(row)
+        |> Map.new()
+        |> builder.()
 
-      prepare =
-        if function_exported?(model, :prepare, 1),
-          do: &model.prepare/1,
-          else: &Function.identity/1
+      builder ->
+        Code.ensure_loaded!(builder)
 
-      columns
-      |> Enum.map(&String.to_existing_atom/1)
-      |> Enum.zip(row)
-      |> prepare.()
-      |> then(&struct(model, &1))
-    else
-      List.to_tuple(row)
+        prepare =
+          if function_exported?(builder, :prepare, 1),
+            do: &builder.prepare/1,
+            else: &Function.identity/1
+
+        columns
+        |> Enum.map(&String.to_atom/1)
+        |> Enum.zip(row)
+        |> prepare.()
+        |> then(&struct(builder, &1))
+
+      true ->
+        List.to_tuple(row)
     end
   end
 
-  def query(db, sql, args \\ {}, model \\ nil) do
+  def query(db, sql, args \\ {}, builder \\ nil) do
     with_prepare(db, sql, fn statement ->
       :ok = Sqlite3.bind(db, statement, Tuple.to_list(args))
       {:ok, columns} = Sqlite3.columns(db, statement)
       {:ok, rows} = Sqlite3.fetch_all(db, statement)
-      {:ok, Enum.map(rows, &build(&1, model, columns))}
+      {:ok, Enum.map(rows, &build(&1, builder, columns))}
     end)
   end
 
-  def query_one(db, sql, args, model \\ nil) do
-    case query(db, sql, args, model) do
+  def query_one(db, sql, args, builder \\ nil) do
+    case query(db, sql, args, builder) do
       {:ok, [row]} ->
         {:ok, row}
 
@@ -156,8 +165,8 @@ defmodule Coflux.Store do
     end
   end
 
-  def query_one!(db, sql, args, model \\ nil) do
-    case query(db, sql, args, model) do
+  def query_one!(db, sql, args, builder \\ nil) do
+    case query(db, sql, args, builder) do
       {:ok, [row]} ->
         {:ok, row}
     end
