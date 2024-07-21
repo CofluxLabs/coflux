@@ -276,7 +276,7 @@ defmodule Coflux.Orchestration.Results do
       end)
 
     data =
-      [format, content || 0, blob_id || 0]
+      [format, content || 0, if(blob_id, do: Integer.to_string(blob_id), else: 0)]
       |> Enum.concat(placeholder_parts)
       |> Enum.intersperse(0)
 
