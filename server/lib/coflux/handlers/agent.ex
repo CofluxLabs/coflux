@@ -177,15 +177,17 @@ defmodule Coflux.Handlers.Agent do
         end
 
       "put_error" ->
-        [execution_id, type, message, frames] = message["params"]
+        [execution_id, error] = message["params"]
 
         if is_recognised_execution?(execution_id, state) do
+          {type, message, frames} = parse_error(error)
+
           :ok =
             Orchestration.record_result(
               state.project_id,
               state.environment,
               execution_id,
-              {:error, type, message, parse_frames(frames)}
+              {:error, type, message, frames}
             )
 
           {[], state}
@@ -365,6 +367,16 @@ defmodule Coflux.Handlers.Agent do
     Enum.map(frames, fn [file, line, name, code] ->
       {file, line, name, code}
     end)
+  end
+
+  defp parse_error(error) do
+    case error do
+      nil ->
+        nil
+
+      [type, message, frames] ->
+        {type, message, parse_frames(frames)}
+    end
   end
 
   defp parse_placeholders(placeholders) do

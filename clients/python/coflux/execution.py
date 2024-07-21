@@ -62,6 +62,12 @@ class ExecutionStatus(enum.Enum):
     STOPPING = 3
 
 
+class Error(t.NamedTuple):
+    type: str
+    message: str
+    frames: list[tuple[str, int, str, str | None]]
+
+
 class ExecutingNotification(t.NamedTuple):
     pass
 
@@ -71,9 +77,7 @@ class RecordResultRequest(t.NamedTuple):
 
 
 class RecordErrorRequest(t.NamedTuple):
-    type: str
-    message: str
-    frames: list[tuple[str, int, str, str | None]]
+    error: Error
 
 
 class ScheduleExecutionRequest(t.NamedTuple):
@@ -203,16 +207,14 @@ def _exception_type(exception: Exception):
     return f"{t.__module__}.{t.__name__}"
 
 
-def _serialise_exception(
-    exception: Exception,
-) -> tuple[str, str, list[tuple[str, int, str, str | None]]]:
+def _serialise_exception(exception: Exception) -> Error:
     type_ = _exception_type(exception)
     message = getattr(exception, "message", str(exception))
     frames = [
         (f.filename, f.lineno or 0, f.name, f.line)
         for f in traceback.extract_tb(exception.__traceback__)
     ]
-    return type_, message, frames
+    return Error(type_, message, frames)
 
 
 class LineBuffer(t.IO[str]):
@@ -333,8 +335,7 @@ class Channel:
         self._running = False
 
     def record_error(self, exception):
-        type_, message, frames = _serialise_exception(exception)
-        self._notify(RecordErrorRequest(type_, message, frames))
+        self._notify(RecordErrorRequest(_serialise_exception(exception)))
         # TODO: wait for confirmation?
         self._running = False
 
@@ -725,8 +726,9 @@ class Execution:
                     (self._id, _json_safe_value(value)),
                 )
                 self._process.join()
-            case RecordErrorRequest(type_, message_, frames):
+            case RecordErrorRequest(error):
                 self._status = ExecutionStatus.STOPPING
+                type_, message_, frames = error
                 self._server_notify("put_error", (self._id, type_, message_, frames))
                 self._process.join()
             case RecordCheckpointRequest(arguments):
