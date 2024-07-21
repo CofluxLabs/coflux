@@ -365,8 +365,7 @@ class Channel:
             execute_after = (execute_after or dt.datetime.now()) + delay
         # TODO: parallelise?
         serialised_arguments = [
-            serialisation.serialise(a, self._blob_store)
-            for a in arguments
+            serialisation.serialise(a, self._blob_store) for a in arguments
         ]
         default_namespace = f"{repository}:{target}"
         cache_key_, cache_max_age = _parse_cache(
@@ -410,8 +409,7 @@ class Channel:
 
     def record_checkpoint(self, arguments):
         serialised_arguments = [
-            serialisation.serialise(a, self._blob_store)
-            for a in arguments
+            serialisation.serialise(a, self._blob_store) for a in arguments
         ]
         self._notify(RecordCheckpointRequest(serialised_arguments))
 
@@ -509,9 +507,7 @@ def _build_exception(type_, message):
     return RemoteException(message, type_)
 
 
-def _deserialise_result(
-    result: models.Result, channel: Channel, description: str
-):
+def _deserialise_result(result: models.Result, channel: Channel, description: str):
     match result:
         case ["value", value]:
             return _deserialise_value(value, channel, description)
