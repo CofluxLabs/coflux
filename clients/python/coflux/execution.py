@@ -228,6 +228,7 @@ class LineBuffer(t.IO[str]):
         for line in lines[:-1]:
             self._fn(line)
         self._buffer = lines[-1]
+        return len(content)
 
     def flush(self):
         if self._buffer:
