@@ -98,7 +98,7 @@ defmodule Coflux.Handlers.Agent do
                  memo_key: memo_key
                ) do
             {:ok, _run_id, _step_id, execution_id} ->
-              {[result_message(message["id"], execution_id)], state}
+              {[success_message(message["id"], execution_id)], state}
 
             {:error, error} ->
               {[error_message(message["id"], error)], state}
@@ -205,7 +205,7 @@ defmodule Coflux.Handlers.Agent do
                  self()
                ) do
             {:ok, result} ->
-              {[result_message(message["id"], compose_result(result))], state}
+              {[success_message(message["id"], compose_result(result))], state}
 
             {:wait, ref} ->
               state = put_in(state.requests[ref], message["id"])
@@ -230,7 +230,7 @@ defmodule Coflux.Handlers.Agent do
               metadata
             )
 
-          {[result_message(message["id"], asset_id)], state}
+          {[success_message(message["id"], asset_id)], state}
         else
           {[{:close, 4000, "execution_invalid"}], nil}
         end
@@ -246,7 +246,7 @@ defmodule Coflux.Handlers.Agent do
                  from_execution_id
                ) do
             {:ok, asset_type, path, blob_key} ->
-              {[result_message(message["id"], [asset_type, path, blob_key])], state}
+              {[success_message(message["id"], [asset_type, path, blob_key])], state}
 
             {:error, error} ->
               {[error_message(message["id"], error)], state}
@@ -289,7 +289,7 @@ defmodule Coflux.Handlers.Agent do
 
   def websocket_info({:result, ref, result}, state) do
     {id, state} = pop_in(state.requests[ref])
-    {[result_message(id, compose_result(result))], state}
+    {[success_message(id, compose_result(result))], state}
   end
 
   def websocket_info({:abort, execution_id}, state) do
@@ -308,13 +308,12 @@ defmodule Coflux.Handlers.Agent do
     {:text, Jason.encode!([1, %{"command" => command, "params" => params}])}
   end
 
-  # TODO: rename (success_message?)
-  defp result_message(id, result) do
-    {:text, Jason.encode!([2, %{"id" => id, "result" => result}])}
+  defp success_message(id, result) do
+    {:text, Jason.encode!([2, id, result])}
   end
 
-  defp error_message(id, result) do
-    {:text, Jason.encode!([2, %{"id" => id, "error" => result}])}
+  defp error_message(id, error) do
+    {:text, Jason.encode!([3, id, error])}
   end
 
   defp get_query_param(qs, key, fun \\ nil) do

@@ -43,7 +43,7 @@ class Future(t.Generic[T]):
         else:
             return t.cast(T, self._result)
 
-    def set_result(self, result):
+    def set_success(self, result):
         assert not self._result and not self._error
         self._result = result
         self._event.set()
@@ -299,9 +299,9 @@ class Channel:
             if self._connection.poll(1):
                 message = self._connection.recv()
                 match message:
-                    case ("result", request_id, result):
-                        self._requests.pop(request_id).set_result(result)
-                    case ("error", request_id, error):
+                    case ("success_result", (request_id, result)):
+                        self._requests.pop(request_id).set_success(result)
+                    case ("error_result", (request_id, error)):
                         self._requests.pop(request_id).set_error(error)
                     case other:
                         raise Exception(f"Received unhandled response: {other}")
@@ -687,22 +687,30 @@ class Execution:
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         future.result()
 
-    def _server_request(self, request, params, request_id, parser=None):
-        parser = parser or (lambda x: x)
+    def _server_request(self, request, params, request_id, success_parser=None):
+        success_parser = success_parser or (lambda x: x)
         coro = self._server.request(
             request,
             params,
-            lambda result: self._try_send("result", request_id, parser(result)),
-            lambda error: self._try_send("error", request_id, error),
+            server.Callbacks(
+                on_success=lambda result: self._try_send(
+                    "success_result", (request_id, success_parser(result))
+                ),
+                on_error=lambda error: self._try_send(
+                    "error_result", (request_id, error)
+                ),
+            ),
         )
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result()
 
     def _try_send(
-        self, type: t.Literal["result", "error"], request_id: int, value: t.Any
+        self,
+        type: t.Literal["success_result", "error_result"],
+        value: t.Any,
     ):
         try:
-            self._connection.send((type, request_id, value))
+            self._connection.send((type, value))
         except BrokenPipeError:
             pass
 
