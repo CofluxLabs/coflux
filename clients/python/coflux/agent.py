@@ -11,13 +11,15 @@ import traceback
 from . import server, execution, annotations, models
 
 
-def _load_module(module: types.ModuleType) -> dict:
+def _load_module(
+    module: types.ModuleType,
+) -> dict[str, tuple[annotations.TargetType, t.Callable]]:
     attrs = (getattr(module, k) for k in dir(module))
-    return dict(
-        getattr(a, annotations.TARGET_KEY)
+    return {
+        a.name: (a.type, a.fn)
         for a in attrs
-        if hasattr(a, annotations.TARGET_KEY)
-    )
+        if isinstance(a, annotations.Target) and a.type
+    }
 
 
 def _json_dumps(obj: t.Any) -> str:

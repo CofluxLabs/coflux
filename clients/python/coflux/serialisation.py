@@ -96,11 +96,10 @@ def _serialise(
 
 
 def serialise(
-    value: t.Any, blob_store: blobs.Store
+    value: t.Any,
+    blob_store: blobs.Store,
 ) -> models.Value:
-    format, serialised, placeholders, metadata = _serialise(
-        value
-    )
+    format, serialised, placeholders, metadata = _serialise(value)
     if format != "json" or len(serialised) > _BLOB_THRESHOLD:
         key = blob_store.put(serialised)
         return ("blob", key, metadata, format, placeholders)

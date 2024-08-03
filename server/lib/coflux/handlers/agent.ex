@@ -25,7 +25,6 @@ defmodule Coflux.Handlers.Agent do
                  project_id: project_id,
                  environment: environment,
                  session_id: session_id,
-                 requests: %{},
                  executions: executions
                }}
 
@@ -98,7 +97,7 @@ defmodule Coflux.Handlers.Agent do
                  memo_key: memo_key
                ) do
             {:ok, _run_id, _step_id, execution_id} ->
-              {[result_message(message["id"], execution_id)], state}
+              {[success_message(message["id"], execution_id)], state}
 
             {:error, error} ->
               {[error_message(message["id"], error)], state}
@@ -177,15 +176,17 @@ defmodule Coflux.Handlers.Agent do
         end
 
       "put_error" ->
-        [execution_id, type, message, frames] = message["params"]
+        [execution_id, error] = message["params"]
 
         if is_recognised_execution?(execution_id, state) do
+          {type, message, frames} = parse_error(error)
+
           :ok =
             Orchestration.record_result(
               state.project_id,
               state.environment,
               execution_id,
-              {:error, type, message, parse_frames(frames)}
+              {:error, type, message, frames}
             )
 
           {[], state}
@@ -202,13 +203,13 @@ defmodule Coflux.Handlers.Agent do
                  state.environment,
                  execution_id,
                  from_execution_id,
-                 self()
+                 state.session_id,
+                 message["id"]
                ) do
             {:ok, result} ->
-              {[result_message(message["id"], compose_result(result))], state}
+              {[success_message(message["id"], compose_result(result))], state}
 
-            {:wait, ref} ->
-              state = put_in(state.requests[ref], message["id"])
+            :wait ->
               {[], state}
           end
         else
@@ -230,7 +231,7 @@ defmodule Coflux.Handlers.Agent do
               metadata
             )
 
-          {[result_message(message["id"], asset_id)], state}
+          {[success_message(message["id"], asset_id)], state}
         else
           {[{:close, 4000, "execution_invalid"}], nil}
         end
@@ -246,7 +247,7 @@ defmodule Coflux.Handlers.Agent do
                  from_execution_id
                ) do
             {:ok, asset_type, path, blob_key} ->
-              {[result_message(message["id"], [asset_type, path, blob_key])], state}
+              {[success_message(message["id"], [asset_type, path, blob_key])], state}
 
             {:error, error} ->
               {[error_message(message["id"], error)], state}
@@ -287,9 +288,8 @@ defmodule Coflux.Handlers.Agent do
     {[command_message("execute", [execution_id, repository, target, arguments])], state}
   end
 
-  def websocket_info({:result, ref, result}, state) do
-    {id, state} = pop_in(state.requests[ref])
-    {[result_message(id, compose_result(result))], state}
+  def websocket_info({:result, request_id, result}, state) do
+    {[success_message(request_id, compose_result(result))], state}
   end
 
   def websocket_info({:abort, execution_id}, state) do
@@ -308,13 +308,12 @@ defmodule Coflux.Handlers.Agent do
     {:text, Jason.encode!([1, %{"command" => command, "params" => params}])}
   end
 
-  # TODO: rename (success_message?)
-  defp result_message(id, result) do
-    {:text, Jason.encode!([2, %{"id" => id, "result" => result}])}
+  defp success_message(id, result) do
+    {:text, Jason.encode!([2, id, result])}
   end
 
-  defp error_message(id, result) do
-    {:text, Jason.encode!([2, %{"id" => id, "error" => result}])}
+  defp error_message(id, error) do
+    {:text, Jason.encode!([3, id, error])}
   end
 
   defp get_query_param(qs, key, fun \\ nil) do
@@ -366,6 +365,16 @@ defmodule Coflux.Handlers.Agent do
     Enum.map(frames, fn [file, line, name, code] ->
       {file, line, name, code}
     end)
+  end
+
+  defp parse_error(error) do
+    case error do
+      nil ->
+        nil
+
+      [type, message, frames] ->
+        {type, message, parse_frames(frames)}
+    end
   end
 
   defp parse_placeholders(placeholders) do

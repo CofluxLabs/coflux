@@ -1,6 +1,4 @@
 defmodule Coflux.Handlers.Root do
-  @version Mix.Project.config()[:app] |> Application.spec(:vsn) |> to_string()
-
   def init(req, opts) do
     req =
       :cowboy_req.reply(

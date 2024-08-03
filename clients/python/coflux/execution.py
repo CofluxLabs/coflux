@@ -43,7 +43,7 @@ class Future(t.Generic[T]):
         else:
             return t.cast(T, self._result)
 
-    def set_result(self, result):
+    def set_success(self, result):
         assert not self._result and not self._error
         self._result = result
         self._event.set()
@@ -62,6 +62,12 @@ class ExecutionStatus(enum.Enum):
     STOPPING = 3
 
 
+class Error(t.NamedTuple):
+    type: str
+    message: str
+    frames: list[tuple[str, int, str, str | None]]
+
+
 class ExecutingNotification(t.NamedTuple):
     pass
 
@@ -71,9 +77,7 @@ class RecordResultRequest(t.NamedTuple):
 
 
 class RecordErrorRequest(t.NamedTuple):
-    type: str
-    message: str
-    frames: list[tuple[str, int, str, str | None]]
+    error: Error
 
 
 class ScheduleExecutionRequest(t.NamedTuple):
@@ -203,16 +207,14 @@ def _exception_type(exception: Exception):
     return f"{t.__module__}.{t.__name__}"
 
 
-def _serialise_exception(
-    exception: Exception,
-) -> tuple[str, str, list[tuple[str, int, str, str | None]]]:
+def _serialise_exception(exception: Exception) -> Error:
     type_ = _exception_type(exception)
     message = getattr(exception, "message", str(exception))
     frames = [
         (f.filename, f.lineno or 0, f.name, f.line)
         for f in traceback.extract_tb(exception.__traceback__)
     ]
-    return type_, message, frames
+    return Error(type_, message, frames)
 
 
 class LineBuffer(t.IO[str]):
@@ -226,6 +228,7 @@ class LineBuffer(t.IO[str]):
         for line in lines[:-1]:
             self._fn(line)
         self._buffer = lines[-1]
+        return len(content)
 
     def flush(self):
         if self._buffer:
@@ -299,9 +302,9 @@ class Channel:
             if self._connection.poll(1):
                 message = self._connection.recv()
                 match message:
-                    case ("result", request_id, result):
-                        self._requests.pop(request_id).set_result(result)
-                    case ("error", request_id, error):
+                    case ("success_result", (request_id, result)):
+                        self._requests.pop(request_id).set_success(result)
+                    case ("error_result", (request_id, error)):
                         self._requests.pop(request_id).set_error(error)
                     case other:
                         raise Exception(f"Received unhandled response: {other}")
@@ -333,8 +336,7 @@ class Channel:
         self._running = False
 
     def record_error(self, exception):
-        type_, message, frames = _serialise_exception(exception)
-        self._notify(RecordErrorRequest(type_, message, frames))
+        self._notify(RecordErrorRequest(_serialise_exception(exception)))
         # TODO: wait for confirmation?
         self._running = False
 
@@ -363,8 +365,7 @@ class Channel:
             execute_after = (execute_after or dt.datetime.now()) + delay
         # TODO: parallelise?
         serialised_arguments = [
-            serialisation.serialise(a, self._blob_store)
-            for a in arguments
+            serialisation.serialise(a, self._blob_store) for a in arguments
         ]
         default_namespace = f"{repository}:{target}"
         cache_key_, cache_max_age = _parse_cache(
@@ -408,8 +409,7 @@ class Channel:
 
     def record_checkpoint(self, arguments):
         serialised_arguments = [
-            serialisation.serialise(a, self._blob_store)
-            for a in arguments
+            serialisation.serialise(a, self._blob_store) for a in arguments
         ]
         self._notify(RecordCheckpointRequest(serialised_arguments))
 
@@ -507,9 +507,7 @@ def _build_exception(type_, message):
     return RemoteException(message, type_)
 
 
-def _deserialise_result(
-    result: models.Result, channel: Channel, description: str
-):
+def _deserialise_result(result: models.Result, channel: Channel, description: str):
     match result:
         case ["value", value]:
             return _deserialise_value(value, channel, description)
@@ -520,7 +518,7 @@ def _deserialise_result(
         case ["cancelled"]:
             raise Exception("cancelled")
         case result:
-            raise Exception(f"unexeptected result ({result})")
+            raise Exception(f"unexpected result ({result})")
 
 
 # TODO: move into serialisation module?
@@ -574,8 +572,9 @@ def _execute(
             resolved_arguments = _resolve_arguments(arguments, channel)
             channel.notify_executing()
             target = getattr(module, target_name)
-            fn = getattr(target, annotations.TARGET_KEY)[1][1]
-            value = fn(*resolved_arguments)
+            if not isinstance(target, annotations.Target) or not target.type:
+                raise Exception("not valid target")
+            value = target.fn(*resolved_arguments)
         except KeyboardInterrupt:
             pass
         except Exception as e:
@@ -686,22 +685,30 @@ class Execution:
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         future.result()
 
-    def _server_request(self, request, params, request_id, parser=None):
-        parser = parser or (lambda x: x)
+    def _server_request(self, request, params, request_id, success_parser=None):
+        success_parser = success_parser or (lambda x: x)
         coro = self._server.request(
             request,
             params,
-            lambda result: self._try_send("result", request_id, parser(result)),
-            lambda error: self._try_send("error", request_id, error),
+            server.Callbacks(
+                on_success=lambda result: self._try_send(
+                    "success_result", (request_id, success_parser(result))
+                ),
+                on_error=lambda error: self._try_send(
+                    "error_result", (request_id, error)
+                ),
+            ),
         )
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result()
 
     def _try_send(
-        self, type: t.Literal["result", "error"], request_id: int, value: t.Any
+        self,
+        type: t.Literal["success_result", "error_result"],
+        value: t.Any,
     ):
         try:
-            self._connection.send((type, request_id, value))
+            self._connection.send((type, value))
         except BrokenPipeError:
             pass
 
@@ -716,8 +723,9 @@ class Execution:
                     (self._id, _json_safe_value(value)),
                 )
                 self._process.join()
-            case RecordErrorRequest(type_, message_, frames):
+            case RecordErrorRequest(error):
                 self._status = ExecutionStatus.STOPPING
+                type_, message_, frames = error
                 self._server_notify("put_error", (self._id, type_, message_, frames))
                 self._process.join()
             case RecordCheckpointRequest(arguments):

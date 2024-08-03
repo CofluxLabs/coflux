@@ -48,8 +48,19 @@ defmodule Coflux.Orchestration do
     call_server(project_id, environment, {:record_result, execution_id, result})
   end
 
-  def get_result(project_id, environment, execution_id, from_execution_id \\ nil, pid) do
-    call_server(project_id, environment, {:get_result, execution_id, from_execution_id, pid})
+  def get_result(
+        project_id,
+        environment,
+        execution_id,
+        from_execution_id \\ nil,
+        session_id,
+        request_id
+      ) do
+    call_server(
+      project_id,
+      environment,
+      {:get_result, execution_id, from_execution_id, session_id, request_id}
+    )
   end
 
   def put_asset(project_id, environment, execution_id, type, path, blob_key, metadata) do

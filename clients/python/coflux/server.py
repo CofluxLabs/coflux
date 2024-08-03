@@ -4,6 +4,11 @@ import json
 import typing as t
 
 
+class Callbacks(t.NamedTuple):
+    on_success: t.Callable
+    on_error: t.Callable
+
+
 class Connection:
     def __init__(
         self,
@@ -11,7 +16,7 @@ class Connection:
     ):
         self._handlers = handlers
         self._last_id = 0
-        self._requests: dict[int, tuple[t.Callable, t.Callable]] = {}
+        self._requests: dict[int, Callbacks] = {}
         self._session_id = None
         self._queue = collections.deque()
         self._cond = asyncio.Condition()
@@ -23,11 +28,9 @@ class Connection:
     async def notify(self, request: str, params: tuple) -> None:
         await self._enqueue(request, params)
 
-    async def request(
-        self, request: str, params: tuple, on_success: t.Callable, on_error: t.Callable
-    ) -> None:
+    async def request(self, request: str, params: tuple, callbacks: Callbacks) -> None:
         id = self._next_id()
-        self._requests[id] = (on_success, on_error)
+        self._requests[id] = callbacks
         await self._enqueue(request, params, id)
 
     async def run(self, websocket) -> None:
@@ -71,13 +74,12 @@ class Connection:
                     handler = self._handlers[data["command"]]
                     params = data.get("params", [])
                     await handler(*params)
-                case [2, data]:
-                    on_success, on_error = self._requests[data["id"]]
-                    if "result" in data:
-                        on_success(data["result"])
-                    elif "error" in data:
-                        on_error(data["error"])
-                    del self._requests[data["id"]]
+                case [2, request_id, result]:
+                    self._requests[request_id].on_success(result)
+                    del self._requests[request_id]
+                case [3, request_id, error]:
+                    self._requests[request_id].on_error(error)
+                    del self._requests[request_id]
 
     async def _send(self, websocket) -> t.NoReturn:
         while True:

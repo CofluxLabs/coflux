@@ -209,14 +209,15 @@ defmodule Coflux.Orchestration.Runs do
     with_transaction(db, fn ->
       now = current_timestamp()
 
-      insert_many(
-        db,
-        :heartbeats,
-        {:execution_id, :status, :created_at},
-        Enum.map(executions, fn {execution_id, status} ->
-          {execution_id, status, now}
-        end)
-      )
+      {:ok, _} =
+        insert_many(
+          db,
+          :heartbeats,
+          {:execution_id, :status, :created_at},
+          Enum.map(executions, fn {execution_id, status} ->
+            {execution_id, status, now}
+          end)
+        )
 
       {:ok, now}
     end)
