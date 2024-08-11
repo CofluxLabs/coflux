@@ -725,8 +725,7 @@ class Execution:
                 self._process.join()
             case RecordErrorRequest(error):
                 self._status = ExecutionStatus.STOPPING
-                type_, message_, frames = error
-                self._server_notify("put_error", (self._id, type_, message_, frames))
+                self._server_notify("put_error", (self._id, error))
                 self._process.join()
             case RecordCheckpointRequest(arguments):
                 self._server_notify(
