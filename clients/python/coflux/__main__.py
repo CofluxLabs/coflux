@@ -5,6 +5,8 @@ import types
 import typing as t
 import watchfiles
 import httpx
+import yaml
+import re
 from pathlib import Path
 
 from . import Agent, config, loader
@@ -21,13 +23,19 @@ def _get_environ(name: str, parser: t.Callable[[str], T] = lambda x: x) -> T | N
     return parser(value) if value else None
 
 
+def _api_request(host: str, action: str, json: t.Any) -> t.Any:
+    with httpx.Client() as client:
+        response = client.post(f"http://{host}/api/{action}", json=json)
+        response.raise_for_status()
+        return response.json()
+
+
 @t.overload
 def _get_option(
     argument: T | None,
     env_name: tuple[str, t.Callable[[str], T]],
     config_name: str | None,
-) -> T | None:
-    ...
+) -> T | None: ...
 
 
 @t.overload
@@ -36,8 +44,7 @@ def _get_option(
     env_name: tuple[str, t.Callable[[str], T]],
     config_name: str | None = None,
     default: T = None,
-) -> T:
-    ...
+) -> T: ...
 
 
 def _get_option(
@@ -103,82 +110,60 @@ def cli():
     pass
 
 
-@cli.command()
+@cli.command("environment.define")
 @click.option(
     "-p",
     "--project",
-    prompt=True,
-    default=lambda: config.load().get("project"),
     help="Project ID",
-)
-@click.option(
-    "environment",
-    "-e",
-    "--environment",
-    prompt=True,
-    default=lambda: config.load().get("environment") or "development",
-    help="Environment name",
 )
 @click.option(
     "-h",
     "--host",
-    default=lambda: config.load().get("host"),
     help="Host to connect to",
 )
-@click.option(
-    "--concurrency",
-    type=int,
-    default=lambda: config.load().get("concurrency"),
-    help="Limit on number of executions to process at once",
-)
-@click.option(
-    "--repo",
-    help="Name of the Python module to setup (if it doesn't already exist; e.g., 'my_package.repo')",
-)
-def init(
-    project: str,
-    environment: str,
+@click.argument("environment_name")
+def environment_define(
+    project: str | None,
     host: str | None,
-    concurrency: int | None,
-    repo: str | None,
+    environment_name: str,
 ):
     """
-    Initialise a project by populating the configuration file.
+    Register an environment definition with the server.
 
-    Will also setup files for a Python module for the repository, if needed.
+    A configuration file for the environment will be created, at `environments/my_environment.yaml`, if it doesn't already exist.
     """
+    project_ = _get_project(project)
+    host_ = _get_host(host)
+    if not re.match(r"^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$", environment_name):
+        raise click.BadArgumentUsage(
+            "Environment name must consist of alphanumeric characters, underscores or hyphens, and may contain forward slashes."
+        )
 
-    # TODO: connect to server to check details?
+    # TODO: support custom environments directory
+    environments_dir = Path("environments")
+    environment_file = environments_dir.joinpath(f"{environment_name}.yaml")
+    if not environment_file.exists():
+        click.secho(
+            f"Environment file doesn't exist. Creating '{environment_file}'...",
+            fg="blue",
+        )
+        environment_file.parent.mkdir(parents=True, exist_ok=True)
+        environment_file.touch()
 
-    click.secho("Writing configuration...", fg="black")
-    config.write(
+    with environment_file.open() as file:
+        content = yaml.safe_load(file) or {}
+
+    # TODO: handle response
+    _api_request(
+        host_,
+        "define_environment",
         {
-            "project": project,
-            "environment": environment,
-            "host": host,
-            "concurrency": concurrency,
-        }
+            "projectId": project_,
+            "name": environment_name,
+            "cacheFrom": content.get("cache_from"),
+        },
     )
-    click.secho(f"Configuration written to '{config.path}'.", fg="green")
-
-    if repo:
-        click.secho("Creating repo...", fg="black")
-        package, *namespaces, module = repo.split(".")
-        path = Path(package)
-        path.mkdir(exist_ok=True)
-        path.joinpath("__init__.py").touch(exist_ok=True)
-
-        for namespace in namespaces:
-            path = path.joinpath(namespace)
-            path.mkdir(exist_ok=True)
-            path.joinpath("__init__.py").touch(exist_ok=True)
-
-        path = path.joinpath(f"{module}.py")
-        if path.exists():
-            click.secho(f"Module ({path}) already exists.", fg="yellow")
-        else:
-            path.touch()
-            click.secho("Created package.", fg="green")
+    click.secho("Registered environment.", fg="green")
 
 
 @cli.command("agent.run")
@@ -295,18 +280,18 @@ def workflow_run(
     project_ = _get_project(project)
     environment_ = _get_environment(environment)
     host_ = _get_host(host)
-    with httpx.Client() as client:
-        response = client.post(
-            f"http://{host_}/api/schedule",
-            json={
-                "projectId": project_,
-                "environment": environment_,
-                "repository": repository,
-                "target": target,
-                "arguments": [["json", a] for a in argument],
-            },
-        )
-        response.raise_for_status()
+    # TODO: handle response
+    _api_request(
+        host_,
+        "schedule",
+        {
+            "projectId": project_,
+            "environment": environment_,
+            "repository": repository,
+            "target": target,
+            "arguments": [["json", a] for a in argument],
+        },
+    )
     # TODO: follow logs?
     # TODO: wait for result?
 

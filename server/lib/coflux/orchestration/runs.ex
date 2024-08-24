@@ -1,5 +1,5 @@
 defmodule Coflux.Orchestration.Runs do
-  alias Coflux.Orchestration.{Models, Results}
+  alias Coflux.Orchestration.{Models, Results, Sessions}
 
   import Coflux.Store
 
@@ -162,7 +162,9 @@ defmodule Coflux.Orchestration.Runs do
             if cache_key do
               recorded_after = if cache_max_age, do: now - cache_max_age * 1000, else: 0
 
-              case find_cached_execution(db, environment_id, cache_key, recorded_after) do
+              {:ok, environment_ids} = Sessions.get_cache_environment_ids(db, environment_id)
+
+              case find_cached_execution(db, environment_ids, cache_key, recorded_after) do
                 {:ok, cached_execution_id} ->
                   cached_execution_id
               end
@@ -555,31 +557,22 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  defp find_cached_execution(db, environment_id, cache_key, recorded_after) do
+  defp find_cached_execution(db, environment_ids, cache_key, recorded_after) do
     case query(
            db,
            """
-           WITH RECURSIVE
-             environment_ids(id) AS (
-               VALUES(?1)
-               UNION
-               SELECT e.base_id
-               FROM environments AS e
-               INNER JOIN environment_ids AS ei ON ei.id = e.id
-               WHERE e.base_id IS NOT NULL
-             )
            SELECT e.id
            FROM steps AS s
            INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id
            WHERE
-             e.environment_id IN environment_ids
+             e.environment_id IN (?1)
              AND s.cache_key = ?2
              AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?3))
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           {environment_id, cache_key, recorded_after}
+           {environment_ids, cache_key, recorded_after}
          ) do
       {:ok, [{execution_id}]} ->
         {:ok, execution_id}

@@ -1,38 +1,122 @@
 defmodule Coflux.Orchestration.Sessions do
   import Coflux.Store
 
-  def create_environment(db, name, base_name) do
+  def define_environment(db, name, cache_from, archived \\ false) do
     with_transaction(db, fn ->
-      case get_environment_by_name(db, name) do
-        {:ok, nil} ->
-          base_id =
-            if base_name do
-              case get_environment_by_name(db, base_name) do
-                {:ok, {base_id}} -> base_id
-              end
-            end
+      cache_from_id =
+        if cache_from do
+          # TODO: handle not recognised
+          case get_environment_by_name(db, cache_from) do
+            {:ok, {cache_from_id}} -> cache_from_id
+            {:ok, nil} -> nil
+          end
+        end
 
-          if !base_name || base_id do
-            case insert_one(db, :environments, %{
-                   name: name,
-                   base_id: base_id,
-                   created_at: current_timestamp()
-                 }) do
-              {:ok, environment_id} ->
-                {:ok, environment_id}
-            end
-          else
-            {:error, :base_invalid}
+      if cache_from && !cache_from_id do
+        {:error, :cache_from_invalid}
+      else
+        {environment_id, latest_version} =
+          case get_environment_by_name(db, name) do
+            {:ok, {environment_id}} ->
+              case get_latest_environment_version(db, environment_id) do
+                {:ok, latest_version} ->
+                  {environment_id, latest_version}
+              end
+
+            {:ok, nil} ->
+              case insert_one(db, :environments, %{name: name}) do
+                {:ok, environment_id} -> {environment_id, nil}
+              end
           end
 
-        {:ok, _existing} ->
-          {:error, :environment_exists}
+        archived = if archived, do: 1, else: 0
+
+        case latest_version do
+          {version, ^cache_from_id, ^archived} ->
+            {:ok, version}
+
+          {version, _, _} ->
+            new_version = version + 1
+
+            case insert_environment_version(
+                   db,
+                   environment_id,
+                   new_version,
+                   cache_from_id,
+                   archived
+                 ) do
+              {:ok, _} -> {:ok, new_version}
+            end
+
+          nil ->
+            version = 1
+
+            case insert_environment_version(
+                   db,
+                   environment_id,
+                   version,
+                   cache_from_id,
+                   archived
+                 ) do
+              {:ok, _} -> {:ok, version}
+            end
+        end
       end
     end)
   end
 
+  defp get_latest_environment_version(db, environment_id) do
+    query_one(
+      db,
+      """
+      SELECT version, cache_from_id, archived
+      FROM environment_versions
+      WHERE environment_id = ?1
+      ORDER BY version DESC
+      LIMIT 1
+      """,
+      {environment_id}
+    )
+  end
+
+  def get_cache_environment_ids(db, environment_id, ids \\ []) do
+    # TODO: check environment_id isn't in ids?
+    case get_latest_environment_version(db, environment_id) do
+      {:ok, {_, nil, _}} ->
+        {:ok, [environment_id | ids]}
+
+      {:ok, {_, id, _}} ->
+        get_cache_environment_ids(db, id, [environment_id | ids])
+    end
+  end
+
+  defp insert_environment_version(db, environment_id, version, cache_from_id, archived) do
+    insert_one(db, :environment_versions, %{
+      environment_id: environment_id,
+      version: version,
+      cache_from_id: cache_from_id,
+      archived: archived,
+      created_at: current_timestamp()
+    })
+  end
+
   def get_environments(db) do
-    query(db, "SELECT id, name, base_id FROM environments ORDER BY name")
+    query(
+      db,
+      """
+      SELECT e.id, e.name, ev.cache_from_id, ev.archived
+      FROM environments AS e
+      JOIN environment_versions AS ev ON e.id = ev.environment_id
+      JOIN (
+        SELECT environment_id, MAX(version) AS max_version
+        FROM environment_versions
+        GROUP BY environment_id
+      ) AS latest ON (
+        ev.environment_id = latest.environment_id
+        AND ev.version = latest.max_version
+      )
+      """
+    )
   end
 
   def get_environment_by_name(db, name) do

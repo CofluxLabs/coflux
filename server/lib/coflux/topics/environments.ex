@@ -6,6 +6,12 @@ defmodule Coflux.Topics.Environments do
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
     {:ok, environments, ref} = Orchestration.subscribe_environments(project_id, self())
+
+    environments =
+      Map.new(environments, fn {name, environment} ->
+        {name, build_environment(environment)}
+      end)
+
     {:ok, Topic.new(environments, %{ref: ref})}
   end
 
@@ -14,7 +20,14 @@ defmodule Coflux.Topics.Environments do
     {:ok, topic}
   end
 
-  defp process_notification(topic, {:environment_created, name, environment}) do
-    Topic.set(topic, [name], environment)
+  defp process_notification(topic, {:environment_defined, name, environment}) do
+    Topic.set(topic, [name], build_environment(environment))
+  end
+
+  defp build_environment(environment) do
+    %{
+      cacheFrom: environment.cache_from,
+      archived: environment.archived
+    }
   end
 end

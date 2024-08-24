@@ -1,9 +1,18 @@
 CREATE TABLE environments (
   id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE,
-  base_id INTEGER,
+  name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE environment_versions (
+  id INTEGER PRIMARY KEY,
+  environment_id INTEGER NOT NULL,
+  version INTEGER NOT NULL,
+  cache_from_id INTEGER,
+  archived INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (base_id) REFERENCES environments ON DELETE SET NULL
+  UNIQUE (environment_id, version),
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
+  FOREIGN KEY (cache_from_id) REFERENCES environments ON DELETE CASCADE
 );
 
 CREATE TABLE sessions (
@@ -192,11 +201,10 @@ CREATE TABLE blob_metadata (
 
 CREATE TABLE values_ (
   id INTEGER PRIMARY KEY,
-  hash BLOB NOT NULL,
+  hash BLOB NOT NULL UNIQUE,
   format TEXT NOT NULL,
   content BLOB,
   blob_id INTEGER,
-  UNIQUE (hash),
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
   CHECK ((content IS NULL) != (blob_id IS NULL))
 );
@@ -215,10 +223,9 @@ CREATE TABLE value_placeholders (
 
 CREATE TABLE errors (
   id INTEGER PRIMARY KEY,
-  hash BLOB NOT NULL,
+  hash BLOB NOT NULL UNIQUE,
   type TEXT NOT NULL,
-  message TEXT NOT NULL,
-  UNIQUE (hash)
+  message TEXT NOT NULL
 );
 
 CREATE TABLE error_frames(

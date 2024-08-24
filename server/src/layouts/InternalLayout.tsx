@@ -27,7 +27,7 @@ function Header({ projectId }: HeaderProps) {
           <IconChevronCompactRight size={16} className="text-white/40" />
           <div className="flex items-center gap-2">
             <ProjectSelector projects={projects} />
-            {environments && (
+            {environments && Object.keys(environments).length > 0 && (
               <EnvironmentSelector environments={environments} />
             )}
           </div>

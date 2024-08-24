@@ -17,7 +17,6 @@ import {
 import * as models from "../models";
 import TargetsList from "../components/TargetsList";
 import { pluralise } from "../utils";
-import Loading from "../components/Loading";
 import { useTitlePart } from "../components/TitleContext";
 
 type Target = { repository: string; target: string | null };
@@ -103,11 +102,9 @@ export default function ProjectLayout() {
   useTitlePart(
     project && environmentName && `${project.name} (${environmentName})`,
   );
-  if (!repositories) {
-    return <Loading />;
-  } else {
-    return (
-      <div className="flex-auto flex overflow-hidden">
+  return (
+    <div className="flex-auto flex overflow-hidden">
+      {repositories && (
         <div className="w-64 bg-slate-100 text-slate-100 border-r border-slate-200 flex-none flex flex-col">
           <div className="flex-1 overflow-auto">
             <TargetsList
@@ -120,12 +117,12 @@ export default function ProjectLayout() {
           </div>
           <ConnectionStatus agents={agents} />
         </div>
-        <div className="flex-1 flex flex-col">
-          <Outlet context={{ setActiveTarget }} />
-        </div>
+      )}
+      <div className="flex-1 flex flex-col">
+        <Outlet context={{ setActiveTarget }} />
       </div>
-    );
-  }
+    </div>
+  );
 }
 
 export function useSetActiveTarget(target: Target | undefined) {

@@ -1,8 +1,8 @@
 defmodule Coflux.Orchestration do
   alias Coflux.Orchestration
 
-  def create_environment(project_id, environment_name, base_name) do
-    call_server(project_id, {:create_environment, environment_name, base_name})
+  def define_environment(project_id, environment_name, cache_from) do
+    call_server(project_id, {:define_environment, environment_name, cache_from})
   end
 
   def connect(project_id, session_id, environment, concurrency, pid) do

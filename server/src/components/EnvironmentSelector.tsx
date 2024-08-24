@@ -1,11 +1,10 @@
-import { Fragment, useCallback, useState } from "react";
+import { Fragment } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import classNames from "classnames";
 import { Menu, Transition } from "@headlessui/react";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 
 import { buildUrl } from "../utils";
-import AddEnvironmentDialog from "./AddEnvironmentDialog";
 import * as models from "../models";
 import EnvironmentLabel from "./EnvironmentLabel";
 
@@ -17,15 +16,6 @@ export default function EnvironmentSelector({ environments }: Props) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const activeEnvironment = searchParams.get("environment");
-  const [addEnvironmentDialogOpen, setAddEnvironmentDialogOpen] = useState(
-    Object.keys(environments).length == 0,
-  );
-  const handleAddEnvironmentClick = useCallback(() => {
-    setAddEnvironmentDialogOpen(true);
-  }, []);
-  const handleAddEnvironmentDialogClose = useCallback(() => {
-    setAddEnvironmentDialogOpen(false);
-  }, []);
   return (
     <Fragment>
       <Menu as="div" className="relative">
@@ -39,7 +29,10 @@ export default function EnvironmentSelector({ environments }: Props) {
               }
             />
           ) : (
-            <span>Select environment...</span>
+            <span className="flex items-center gap-1 rounded px-2 py-0.5 text-slate-100 hover:bg-white/10 text-sm">
+              Select environment...
+              <IconChevronDown size={14} className="opacity-40 mt-0.5" />
+            </span>
           )}
         </Menu.Button>
         <Transition
@@ -82,29 +75,9 @@ export default function EnvironmentSelector({ environments }: Props) {
                 ))}
               </div>
             )}
-            <div className="p-1">
-              <Menu.Item>
-                {({ active }) => (
-                  <button
-                    className={classNames(
-                      "w-full flex px-2 py-1 rounded whitespace-nowrap text-sm",
-                      active && "bg-slate-100",
-                    )}
-                    onClick={handleAddEnvironmentClick}
-                  >
-                    Add environment...
-                  </button>
-                )}
-              </Menu.Item>
-            </div>
           </Menu.Items>
         </Transition>
       </Menu>
-      <AddEnvironmentDialog
-        environments={Object.keys(environments)}
-        open={addEnvironmentDialogOpen}
-        onClose={handleAddEnvironmentDialogClose}
-      />
     </Fragment>
   );
 }

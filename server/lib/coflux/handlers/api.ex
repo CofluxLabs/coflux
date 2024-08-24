@@ -33,28 +33,25 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp handle(req, "POST", ["create_environment"]) do
+  defp handle(req, "POST", ["define_environment"]) do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
         name: {"name", &validate_environment_name/1},
-        base: {"base", nil}
+        cache_from: {"cacheFrom", nil}
       })
 
     if Enum.empty?(errors) do
-      case Orchestration.create_environment(
+      case Orchestration.define_environment(
              arguments.project_id,
              arguments.name,
-             arguments.base
+             arguments.cache_from
            ) do
-        :ok ->
-          json_response(req, %{})
+        {:ok, version} ->
+          json_response(req, %{version: version})
 
-        {:error, :environment_exists} ->
-          json_error_response(req, "bad_request", details: %{environment: "exists"})
-
-        {:error, :base_invalid} ->
-          json_error_response(req, "bad_request", details: %{base: "invalid"})
+        {:error, :cache_from_invalid} ->
+          json_error_response(req, "bad_request", details: %{cacheFrom: "invalid"})
       end
     else
       json_error_response(req, "bad_request", details: errors)
@@ -138,14 +135,18 @@ defmodule Coflux.Handlers.Api do
   end
 
   defp is_valid_json(value) do
-    case Jason.decode(value) do
-      {:ok, _} -> true
-      {:error, _} -> false
+    if value do
+      case Jason.decode(value) do
+        {:ok, _} -> true
+        {:error, _} -> false
+      end
+    else
+      false
     end
   end
 
   defp validate_environment_name(name) do
-    if Regex.match?(~r/^[a-z0-9_\/]+$/i, name) do
+    if name && Regex.match?(~r/^[a-z0-9_-]+(\/[a-z0-9_-]+)*$/i, name) do
       {:ok, name}
     else
       {:error, :invalid}
