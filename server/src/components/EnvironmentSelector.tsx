@@ -50,29 +50,31 @@ export default function EnvironmentSelector({ environments }: Props) {
           >
             {Object.keys(environments).length > 0 && (
               <div className="p-1">
-                {Object.keys(environments).map((environmentName) => (
-                  <Menu.Item key={environmentName}>
-                    {({ active }) => (
-                      <Link
-                        to={buildUrl(location.pathname, {
-                          ...Object.fromEntries(searchParams),
-                          environment: environmentName,
-                        })}
-                        className={classNames(
-                          "flex items-center gap-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm",
-                          active && "bg-slate-100",
-                        )}
-                      >
-                        {environmentName == activeEnvironment ? (
-                          <IconCheck size={16} className="mt-0.5" />
-                        ) : (
-                          <span className="w-[16px]" />
-                        )}
-                        {environmentName}
-                      </Link>
-                    )}
-                  </Menu.Item>
-                ))}
+                {Object.keys(environments)
+                  .filter((n) => !environments[n].archived)
+                  .map((environmentName) => (
+                    <Menu.Item key={environmentName}>
+                      {({ active }) => (
+                        <Link
+                          to={buildUrl(location.pathname, {
+                            ...Object.fromEntries(searchParams),
+                            environment: environmentName,
+                          })}
+                          className={classNames(
+                            "flex items-center gap-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm",
+                            active && "bg-slate-100",
+                          )}
+                        >
+                          {environmentName == activeEnvironment ? (
+                            <IconCheck size={16} className="mt-0.5" />
+                          ) : (
+                            <span className="w-[16px]" />
+                          )}
+                          {environmentName}
+                        </Link>
+                      )}
+                    </Menu.Item>
+                  ))}
               </div>
             )}
           </Menu.Items>

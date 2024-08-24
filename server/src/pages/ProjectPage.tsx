@@ -135,7 +135,7 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
           Register an environment with the server, using the CLI:
           <CodeBlock
             code={[
-              "coflux environment.define \\",
+              "coflux environment.register \\",
               `  --host=${window.location.host} \\`,
               `  --project=${projectId} \\`,
               `  ${environmentName || exampleEnvironmentName}`,

@@ -69,16 +69,15 @@ defmodule Coflux.Orchestration.Server do
     {:noreply, state}
   end
 
-  def handle_call({:define_environment, name, cache_from}, _from, state) do
-    case Sessions.define_environment(state.db, name, cache_from) do
+  def handle_call({:register_environment, name, cache_from, archived}, _from, state) do
+    case Sessions.register_environment(state.db, name, cache_from, archived) do
       {:ok, version} ->
         state =
           state
-          |> notify_listeners(:project, {
-            :environment_defined,
-            name,
-            %{cache_from: cache_from, archived: false}
-          })
+          |> notify_listeners(
+            :project,
+            {:environment, name, %{cache_from: cache_from, archived: archived}}
+          )
           |> flush_notifications()
 
         {:reply, {:ok, version}, state}

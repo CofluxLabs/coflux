@@ -33,7 +33,7 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp handle(req, "POST", ["define_environment"]) do
+  defp handle(req, "POST", ["register_environment"]) do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
@@ -42,10 +42,35 @@ defmodule Coflux.Handlers.Api do
       })
 
     if Enum.empty?(errors) do
-      case Orchestration.define_environment(
+      case Orchestration.register_environment(
              arguments.project_id,
              arguments.name,
              arguments.cache_from
+           ) do
+        {:ok, version} ->
+          json_response(req, %{version: version})
+
+        {:error, :cache_from_invalid} ->
+          json_error_response(req, "bad_request", details: %{cacheFrom: "invalid"})
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["archive_environment"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(req, %{
+        project_id: "projectId",
+        name: {"name", &validate_environment_name/1}
+      })
+
+    if Enum.empty?(errors) do
+      case Orchestration.register_environment(
+             arguments.project_id,
+             arguments.name,
+             nil,
+             true
            ) do
         {:ok, version} ->
           json_response(req, %{version: version})

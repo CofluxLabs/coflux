@@ -20,7 +20,7 @@ defmodule Coflux.Topics.Environments do
     {:ok, topic}
   end
 
-  defp process_notification(topic, {:environment_defined, name, environment}) do
+  defp process_notification(topic, {:environment, name, environment}) do
     Topic.set(topic, [name], build_environment(environment))
   end
 

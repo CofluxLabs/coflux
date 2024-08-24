@@ -1,7 +1,8 @@
 defmodule Coflux.Orchestration.Sessions do
   import Coflux.Store
 
-  def define_environment(db, name, cache_from, archived \\ false) do
+  def register_environment(db, name, cache_from, archived \\ false) do
+    # TODO: prevent archiving an environment that others are caching from?
     with_transaction(db, fn ->
       cache_from_id =
         if cache_from do

@@ -110,7 +110,7 @@ def cli():
     pass
 
 
-@cli.command("environment.define")
+@cli.command("environment.register")
 @click.option(
     "-p",
     "--project",
@@ -122,13 +122,13 @@ def cli():
     help="Host to connect to",
 )
 @click.argument("environment_name")
-def environment_define(
+def environment_register(
     project: str | None,
     host: str | None,
     environment_name: str,
 ):
     """
-    Register an environment definition with the server.
+    Register an environment with the server.
 
     A configuration file for the environment will be created, at `environments/my_environment.yaml`, if it doesn't already exist.
     """
@@ -156,7 +156,7 @@ def environment_define(
     # TODO: handle response
     _api_request(
         host_,
-        "define_environment",
+        "register_environment",
         {
             "projectId": project_,
             "name": environment_name,
@@ -164,6 +164,39 @@ def environment_define(
         },
     )
     click.secho("Registered environment.", fg="green")
+
+
+@cli.command("environment.archive")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+)
+@click.argument("environment_name")
+def environment_archive(
+    project: str | None,
+    host: str | None,
+    environment_name: str,
+):
+    """
+    Archive an environment on the server (but retain the configuration file locally).
+    """
+    project_ = _get_project(project)
+    host_ = _get_host(host)
+    _api_request(
+        host_,
+        "archive_environment",
+        {
+            "projectId": project_,
+            "name": environment_name,
+        },
+    )
+    click.secho("Archived environment.", fg="green")
 
 
 @cli.command("agent.run")
