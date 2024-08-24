@@ -50,10 +50,9 @@ export default function RepositoryPage() {
   const [executions] = useTopic<Record<string, models.QueuedExecution>>(
     "projects",
     projectId,
-    "environments",
-    environmentName,
     "repositories",
     repositoryName,
+    environmentName,
   );
   useTitlePart(repositoryName);
   const target = useMemo(

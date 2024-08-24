@@ -64,6 +64,7 @@ defmodule Coflux.Orchestration.Models do
       :target,
       :wait_for,
       :defer_key,
+      :environment_id,
       :execute_after,
       :created_at
     ]

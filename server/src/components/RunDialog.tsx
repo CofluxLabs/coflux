@@ -45,15 +45,28 @@ function Argument({ parameter, value, error, onChange }: ArgumentProps) {
 
 type Props = {
   target: models.Target;
+  activeEnvironmentName: string | undefined;
   open: boolean;
-  onRun: (arguments_: ["json", string][]) => Promise<void>;
+  onRun: (
+    environmentName: string,
+    arguments_: ["json", string][],
+  ) => Promise<void>;
   onClose: () => void;
 };
 
-export default function RunDialog({ target, open, onRun, onClose }: Props) {
+export default function RunDialog({
+  target,
+  activeEnvironmentName,
+  open,
+  onRun,
+  onClose,
+}: Props) {
   const [starting, setStarting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>();
   const [values, setValues] = useState<Record<string, string>>({});
+  const [environmentName, setEnvironmentName] = useState(
+    activeEnvironmentName || "",
+  );
   const handleValueChange = useCallback(
     (name: string, value: string) =>
       setValues((vs) => ({ ...vs, [name]: value })),
@@ -63,7 +76,10 @@ export default function RunDialog({ target, open, onRun, onClose }: Props) {
     (ev: FormEvent) => {
       ev.preventDefault();
       setStarting(true);
-      onRun(target.parameters.map((p) => ["json", values[p.name] || p.default]))
+      onRun(
+        environmentName,
+        target.parameters.map((p) => ["json", values[p.name] || p.default]),
+      )
         .then(() => {
           setErrors(undefined);
           setStarting(false);
@@ -80,7 +96,7 @@ export default function RunDialog({ target, open, onRun, onClose }: Props) {
           setStarting(false);
         });
     },
-    [target, values, onRun],
+    [target, values, environmentName, onRun],
   );
   return (
     <Dialog
@@ -99,6 +115,10 @@ export default function RunDialog({ target, open, onRun, onClose }: Props) {
             <p>Failed to start run. Please check errors below.</p>
           </Alert>
         )}
+        {/* TODO: handle error? */}
+        <Field label="Environment">
+          <Input value={environmentName} onChange={setEnvironmentName} />
+        </Field>
         {target.parameters.length > 0 && (
           <div>
             {target.parameters.map((parameter, index) => (

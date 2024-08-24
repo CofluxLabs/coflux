@@ -3,7 +3,7 @@ defmodule Coflux.Orchestration.Runs do
 
   import Coflux.Store
 
-  def start_run(db, repository, target, arguments, opts \\ []) do
+  def start_run(db, repository, target, arguments, environment_id, opts \\ []) do
     idempotency_key = Keyword.get(opts, :idempotency_key)
     parent_id = Keyword.get(opts, :parent_id)
     recurrent = Keyword.get(opts, :recurrent)
@@ -13,7 +13,18 @@ defmodule Coflux.Orchestration.Runs do
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
       {:ok, step_id, external_step_id, execution_id, attempt, now, false, result, child_added} =
-        do_schedule_step(db, run_id, parent_id, repository, target, arguments, true, now, opts)
+        do_schedule_step(
+          db,
+          run_id,
+          parent_id,
+          repository,
+          target,
+          arguments,
+          true,
+          environment_id,
+          now,
+          opts
+        )
 
       {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, attempt, result,
        now, child_added}
@@ -73,11 +84,41 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  def schedule_step(db, run_id, parent_id, repository, target, arguments, opts \\ []) do
+  def get_environment_for_execution(db, execution_id) do
+    case query_one!(
+           db,
+           "SELECT environment_id FROM executions WHERE id = ?1",
+           {execution_id}
+         ) do
+      {:ok, {environment_id}} -> {:ok, environment_id}
+    end
+  end
+
+  def schedule_step(
+        db,
+        run_id,
+        parent_id,
+        repository,
+        target,
+        arguments,
+        environment_id,
+        opts \\ []
+      ) do
     now = current_timestamp()
 
     with_transaction(db, fn ->
-      do_schedule_step(db, run_id, parent_id, repository, target, arguments, false, now, opts)
+      do_schedule_step(
+        db,
+        run_id,
+        parent_id,
+        repository,
+        target,
+        arguments,
+        false,
+        environment_id,
+        now,
+        opts
+      )
     end)
   end
 
@@ -89,6 +130,7 @@ defmodule Coflux.Orchestration.Runs do
          target,
          arguments,
          is_initial,
+         environment_id,
          now,
          opts
        ) do
@@ -120,7 +162,7 @@ defmodule Coflux.Orchestration.Runs do
             if cache_key do
               recorded_after = if cache_max_age, do: now - cache_max_age * 1000, else: 0
 
-              case find_cached_execution(db, cache_key, recorded_after) do
+              case find_cached_execution(db, environment_id, cache_key, recorded_after) do
                 {:ok, cached_execution_id} ->
                   cached_execution_id
               end
@@ -155,7 +197,7 @@ defmodule Coflux.Orchestration.Runs do
           attempt = 1
 
           {:ok, execution_id} =
-            insert_execution(db, step_id, attempt, execute_after, now)
+            insert_execution(db, step_id, attempt, environment_id, execute_after, now)
 
           result =
             if cached_execution_id do
@@ -180,12 +222,15 @@ defmodule Coflux.Orchestration.Runs do
     {:ok, step_id, external_step_id, execution_id, attempt, now, memoised, result, child_added}
   end
 
-  def rerun_step(db, step_id, execute_after \\ nil) do
+  def rerun_step(db, step_id, environment_id, execute_after) do
     with_transaction(db, fn ->
       now = current_timestamp()
       # TODO: cancel pending executions for step?
       {:ok, attempt} = get_next_execution_attempt(db, step_id)
-      {:ok, execution_id} = insert_execution(db, step_id, attempt, execute_after, now)
+
+      {:ok, execution_id} =
+        insert_execution(db, step_id, attempt, environment_id, execute_after, now)
+
       {:ok, execution_id, attempt, now}
     end)
   end
@@ -266,6 +311,7 @@ defmodule Coflux.Orchestration.Runs do
         s.target,
         s.wait_for,
         s.defer_key,
+        e.environment_id,
         e.execute_after,
         e.created_at
       FROM executions AS e
@@ -417,7 +463,7 @@ defmodule Coflux.Orchestration.Runs do
     query(
       db,
       """
-      SELECT e.id, e.attempt, e.execute_after, e.created_at, a.session_id, a.created_at
+      SELECT e.id, e.attempt, e.environment_id, e.execute_after, e.created_at, a.session_id, a.created_at
       FROM executions AS e
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       WHERE e.step_id = ?1
@@ -509,19 +555,31 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  defp find_cached_execution(db, cache_key, recorded_after) do
+  defp find_cached_execution(db, environment_id, cache_key, recorded_after) do
     case query(
            db,
            """
+           WITH RECURSIVE
+             environment_ids(id) AS (
+               VALUES(?1)
+               UNION
+               SELECT e.base_id
+               FROM environments AS e
+               INNER JOIN environment_ids AS ei ON ei.id = e.id
+               WHERE e.base_id IS NOT NULL
+             )
            SELECT e.id
            FROM steps AS s
            INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id
-           WHERE s.cache_key = ?1 AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?2))
+           WHERE
+             e.environment_id IN environment_ids
+             AND s.cache_key = ?2
+             AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?3))
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           {cache_key, recorded_after}
+           {environment_id, cache_key, recorded_after}
          ) do
       {:ok, [{execution_id}]} ->
         {:ok, execution_id}
@@ -617,10 +675,11 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  defp insert_execution(db, step_id, attempt, execute_after, created_at) do
+  defp insert_execution(db, step_id, attempt, environment_id, execute_after, created_at) do
     insert_one(db, :executions, %{
       step_id: step_id,
       attempt: attempt,
+      environment_id: environment_id,
       execute_after: execute_after,
       created_at: created_at
     })

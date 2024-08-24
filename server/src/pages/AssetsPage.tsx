@@ -78,7 +78,7 @@ export default function AssetsPage() {
           </tbody>
         </table>
       ) : (
-        <p>None</p>
+        <p className="italic">None</p>
       )}
     </div>
   );

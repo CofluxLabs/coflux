@@ -9,6 +9,7 @@ import {
 } from "react-router-dom";
 import { Transition } from "@headlessui/react";
 import useResizeObserver from "use-resize-observer";
+import { minBy } from "lodash";
 
 import * as models from "../models";
 import * as api from "../api";
@@ -22,6 +23,14 @@ import TargetHeader from "../components/TargetHeader";
 import HoverContext from "../components/HoverContext";
 import { useTitlePart } from "../components/TitleContext";
 
+function getRunEnvironment(run: models.Run) {
+  const initialStepId = minBy(
+    Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
+    (stepId) => run.steps[stepId].createdAt,
+  )!;
+  return run.steps[initialStepId].executions[1].environment;
+}
+
 type TabProps = {
   page: string | null;
   children: ReactNode;
@@ -30,23 +39,17 @@ type TabProps = {
 function Tab({ page, children }: TabProps) {
   const { project: projectId, run: runId } = useParams();
   const [searchParams] = useSearchParams();
-  // TODO: tidy
-  const params = {
-    step: searchParams.get("step"),
-    attempt: searchParams.get("attempt"),
-    environment: searchParams.get("environment"),
-  };
   return (
     <NavLink
       to={buildUrl(
         `/projects/${projectId}/runs/${runId}${page ? "/" + page : ""}`,
-        params,
+        Object.fromEntries(searchParams),
       )}
       end={true}
       className={({ isActive }) =>
         classNames(
-          "px-2 py-1",
-          isActive && "inline-block border-b-4 border-cyan-500",
+          "px-2 py-1 text-sm",
+          isActive && "inline-block border-b-2 border-cyan-500 font-semibold",
         )
       }
     >
@@ -61,7 +64,7 @@ type DetailPanelProps = {
   attemptNumber: number | undefined;
   run: models.Run;
   projectId: string;
-  environmentName: string;
+  activeEnvironment: string;
   className?: string;
 };
 
@@ -71,7 +74,7 @@ function DetailPanel({
   attemptNumber,
   run,
   projectId,
-  environmentName,
+  activeEnvironment,
   className,
 }: DetailPanelProps) {
   const previousStepId = usePrevious(stepId);
@@ -79,10 +82,10 @@ function DetailPanel({
   const stepIdOrPrevious = stepId || previousStepId;
   const attemptNumberOrPrevious = attemptNumber || previousAttemptNumber;
   const handleRerunStep = useCallback(
-    (stepId: string) => {
-      return api.rerunStep(projectId, environmentName, stepId);
+    (stepId: string, environmentName: string) => {
+      return api.rerunStep(projectId, stepId, environmentName);
     },
-    [projectId, environmentName],
+    [projectId],
   );
   return (
     <Transition
@@ -95,24 +98,21 @@ function DetailPanel({
       leaveFrom="translate-x-0"
       leaveTo="translate-x-full"
     >
-      <div
-        className={classNames(
-          className,
-          "bg-slate-100 border-l border-slate-200 flex shadow-lg",
-        )}
-      >
-        {stepIdOrPrevious && (
-          <StepDetail
-            runId={runId}
-            stepId={stepIdOrPrevious}
-            attempt={attemptNumberOrPrevious || 1}
-            run={run}
-            projectId={projectId}
-            environmentName={environmentName}
-            className="flex-1"
-            onRerunStep={handleRerunStep}
-          />
-        )}
+      <div className={classNames(className, "pt-2 pr-2 pb-2 flex")}>
+        <div className="bg-slate-100 border border-slate-200 rounded-md flex flex-1">
+          {stepIdOrPrevious && (
+            <StepDetail
+              runId={runId}
+              stepId={stepIdOrPrevious}
+              attempt={attemptNumberOrPrevious || 1}
+              run={run}
+              projectId={projectId}
+              activeEnvironment={activeEnvironment}
+              className="flex-1"
+              onRerunStep={handleRerunStep}
+            />
+          )}
+        </div>
       </div>
     </Transition>
   );
@@ -131,14 +131,14 @@ export default function RunLayout() {
   const activeAttemptNumber = searchParams.has("attempt")
     ? parseInt(searchParams.get("attempt")!, 10)
     : undefined;
-  const environmentName = searchParams.get("environment") || undefined;
-  const run = useRunTopic(projectId, environmentName, runId);
+  const activeEnvironment = searchParams.get("environment") || undefined;
+  const run = useRunTopic(projectId, runId);
   const initialStep = run && Object.values(run.steps).find((s) => !s.parentId);
   const target = useTargetTopic(
     projectId,
-    environmentName,
     initialStep?.repository,
     initialStep?.target,
+    activeEnvironment,
   );
   useTitlePart(
     initialStep && `${initialStep.target} (${initialStep.repository})`,
@@ -151,44 +151,53 @@ export default function RunLayout() {
     const isRunning = Object.values(run.steps).some((s) =>
       Object.values(s.executions).some((e) => !e.result),
     );
+    const runEnvironment = getRunEnvironment(run);
     return (
       <HoverContext>
-        <div className="flex flex-1 overflow-hidden">
-          <div className="grow flex flex-col">
-            <TargetHeader
-              target={target}
-              projectId={projectId!}
-              runId={runId}
-              environmentName={environmentName}
-              isRunning={isRunning}
-            />
-            <div className="border-b px-4">
-              {run.recurrent ? (
-                <Tab page="runs">Runs</Tab>
-              ) : (
-                <Fragment>
-                  <Tab page="graph">Graph</Tab>
-                  <Tab page="timeline">Timeline</Tab>
-                </Fragment>
-              )}
-              <Tab page="logs">Logs</Tab>
-              {!run.recurrent && <Tab page="assets">Assets</Tab>}
-            </div>
-            <div className="flex-1 basis-0 overflow-auto" ref={ref}>
-              <Outlet
-                context={{ run, width: width || 0, height: height || 0 }}
-              />
-            </div>
-          </div>
-          <DetailPanel
-            runId={runId!}
-            stepId={activeStepId}
-            attemptNumber={activeAttemptNumber}
-            run={run}
+        <div
+          className={classNames(
+            "flex-1 flex flex-col relative",
+            activeStepId && "pr-[400px]",
+          )}
+        >
+          <TargetHeader
+            target={target}
             projectId={projectId!}
-            environmentName={environmentName!}
-            className="w-[400px] shrink-0"
+            runId={runId}
+            activeEnvironment={activeEnvironment}
+            runEnvironment={runEnvironment}
+            isRunning={isRunning}
           />
+          <div className="flex flex-1 overflow-hidden">
+            <div className="grow flex flex-col">
+              <div className="border-b px-4">
+                {run.recurrent ? (
+                  <Tab page="runs">Runs</Tab>
+                ) : (
+                  <Fragment>
+                    <Tab page="graph">Graph</Tab>
+                    <Tab page="timeline">Timeline</Tab>
+                  </Fragment>
+                )}
+                <Tab page="logs">Logs</Tab>
+                {!run.recurrent && <Tab page="assets">Assets</Tab>}
+              </div>
+              <div className="flex-1 basis-0 overflow-auto" ref={ref}>
+                <Outlet
+                  context={{ run, width: width || 0, height: height || 0 }}
+                />
+              </div>
+            </div>
+            <DetailPanel
+              runId={runId!}
+              stepId={activeStepId}
+              attemptNumber={activeAttemptNumber}
+              run={run}
+              projectId={projectId!}
+              activeEnvironment={activeEnvironment!}
+              className="absolute right-0 top-0 bottom-0 w-[400px] shrink-0"
+            />
+          </div>
         </div>
       </HoverContext>
     );

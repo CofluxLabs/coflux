@@ -1,113 +1,101 @@
 defmodule Coflux.Orchestration do
   alias Coflux.Orchestration
 
-  def connect(project_id, environment, session_id, concurrency, pid) do
-    call_server(project_id, environment, {:connect, session_id, concurrency, pid})
+  def create_environment(project_id, environment_name, base_name) do
+    call_server(project_id, {:create_environment, environment_name, base_name})
   end
 
-  def register_targets(project_id, environment, session_id, repository, targets) do
-    call_server(project_id, environment, {:register_targets, session_id, repository, targets})
+  def connect(project_id, session_id, environment, concurrency, pid) do
+    call_server(project_id, {:connect, session_id, environment, concurrency, pid})
   end
 
-  def schedule(
-        project_id,
-        environment,
-        repository,
-        target,
-        arguments,
-        opts \\ []
-      ) do
+  def register_targets(project_id, session_id, repository, targets) do
+    call_server(project_id, {:register_targets, session_id, repository, targets})
+  end
+
+  def schedule(project_id, repository, target, arguments, opts \\ []) do
+    call_server(project_id, {:schedule, repository, target, arguments, opts})
+  end
+
+  def cancel_run(project_id, run_id) do
+    call_server(project_id, {:cancel_run, run_id})
+  end
+
+  def rerun_step(project_id, step_id, environment_name) do
+    call_server(project_id, {:rerun_step, step_id, environment_name})
+  end
+
+  def record_heartbeats(project_id, executions, session_id) do
+    call_server(project_id, {:record_heartbeats, executions, session_id})
+  end
+
+  def notify_terminated(project_id, execution_ids) do
+    call_server(project_id, {:notify_terminated, execution_ids})
+  end
+
+  def record_checkpoint(project_id, execution_id, arguments) do
+    call_server(project_id, {:record_checkpoint, execution_id, arguments})
+  end
+
+  def record_result(project_id, execution_id, result) do
+    call_server(project_id, {:record_result, execution_id, result})
+  end
+
+  def get_result(project_id, execution_id, from_execution_id \\ nil, session_id, request_id) do
     call_server(
       project_id,
-      environment,
-      {:schedule, repository, target, arguments, opts}
-    )
-  end
-
-  def cancel_run(project_id, environment, run_id) do
-    call_server(project_id, environment, {:cancel_run, run_id})
-  end
-
-  def rerun_step(project_id, environment, step_id) do
-    call_server(project_id, environment, {:rerun_step, step_id})
-  end
-
-  def record_heartbeats(project_id, environment, executions, session_id) do
-    call_server(project_id, environment, {:record_heartbeats, executions, session_id})
-  end
-
-  def notify_terminated(project_id, environment, execution_ids) do
-    call_server(project_id, environment, {:notify_terminated, execution_ids})
-  end
-
-  def record_checkpoint(project_id, environment, execution_id, arguments) do
-    call_server(project_id, environment, {:record_checkpoint, execution_id, arguments})
-  end
-
-  def record_result(project_id, environment, execution_id, result) do
-    call_server(project_id, environment, {:record_result, execution_id, result})
-  end
-
-  def get_result(
-        project_id,
-        environment,
-        execution_id,
-        from_execution_id \\ nil,
-        session_id,
-        request_id
-      ) do
-    call_server(
-      project_id,
-      environment,
       {:get_result, execution_id, from_execution_id, session_id, request_id}
     )
   end
 
-  def put_asset(project_id, environment, execution_id, type, path, blob_key, metadata) do
+  def put_asset(project_id, execution_id, type, path, blob_key, metadata) do
     call_server(
       project_id,
-      environment,
       {:put_asset, execution_id, type, path, blob_key, metadata}
     )
   end
 
-  def get_asset(project_id, environment, asset_id, from_execution_id \\ nil) do
-    call_server(project_id, environment, {:get_asset, asset_id, from_execution_id})
+  def get_asset(project_id, asset_id, from_execution_id \\ nil) do
+    call_server(project_id, {:get_asset, asset_id, from_execution_id})
   end
 
-  def subscribe_repositories(project_id, environment, pid) do
-    call_server(project_id, environment, {:subscribe_repositories, pid})
+  def subscribe_environments(project_id, pid) do
+    call_server(project_id, {:subscribe_environments, pid})
   end
 
-  def subscribe_repository(project_id, environment, repository, pid) do
-    call_server(project_id, environment, {:subscribe_repository, repository, pid})
+  def subscribe_repositories(project_id, environment_name, pid) do
+    call_server(project_id, {:subscribe_repositories, environment_name, pid})
   end
 
-  def subscribe_agents(project_id, environment, pid) do
-    call_server(project_id, environment, {:subscribe_agents, pid})
+  def subscribe_repository(project_id, repository, environment_name, pid) do
+    call_server(project_id, {:subscribe_repository, repository, environment_name, pid})
   end
 
-  def subscribe_target(project_id, environment, repository, target, pid) do
-    call_server(project_id, environment, {:subscribe_target, repository, target, pid})
+  def subscribe_agents(project_id, environment_name, pid) do
+    call_server(project_id, {:subscribe_agents, environment_name, pid})
   end
 
-  def subscribe_run(project_id, environment, run_id, pid) do
-    call_server(project_id, environment, {:subscribe_run, run_id, pid})
+  def subscribe_target(project_id, repository, target, environment_name, pid) do
+    call_server(project_id, {:subscribe_target, repository, target, environment_name, pid})
   end
 
-  def unsubscribe(project_id, environment, ref) do
-    cast_server(project_id, environment, {:unsubscribe, ref})
+  def subscribe_run(project_id, run_id, pid) do
+    call_server(project_id, {:subscribe_run, run_id, pid})
   end
 
-  defp call_server(project_id, environment, request) do
-    case Orchestration.Supervisor.get_server(project_id, environment) do
+  def unsubscribe(project_id, ref) do
+    cast_server(project_id, {:unsubscribe, ref})
+  end
+
+  defp call_server(project_id, request) do
+    case Orchestration.Supervisor.get_server(project_id) do
       {:ok, server} ->
         GenServer.call(server, request)
     end
   end
 
-  defp cast_server(project_id, environment, request) do
-    case Orchestration.Supervisor.get_server(project_id, environment) do
+  defp cast_server(project_id, request) do
+    case Orchestration.Supervisor.get_server(project_id) do
       {:ok, server} ->
         GenServer.cast(server, request)
     end

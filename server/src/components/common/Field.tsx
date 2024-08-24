@@ -18,15 +18,11 @@ export default function Field({ label, hint, error, children }: Props) {
   return (
     <Context.Provider value={{ id, hasError: !!error }}>
       <div className="my-3">
-        <div className="mb-1">
-          <label className="flex" htmlFor={id}>
-            <span className="flex-1">
-              {label}
-              {hint && (
-                <span className="text-slate-400 ml-1 text-sm">({hint})</span>
-              )}
-            </span>
-          </label>
+        <div className="mb-1 flex">
+          <label htmlFor={id}>{label}</label>
+          {hint && (
+            <span className="text-slate-400 ml-1 text-sm">({hint})</span>
+          )}
         </div>
         <div>{children}</div>
         {error && (

@@ -12,12 +12,12 @@ import { useTitlePart } from "../components/TitleContext";
 export default function TargetPage() {
   const { project: projectId, repository, target: targetName } = useParams();
   const [searchParams] = useSearchParams();
-  const environmentName = searchParams.get("environment") || undefined;
+  const activeEnvironment = searchParams.get("environment") || undefined;
   const target = useTargetTopic(
     projectId,
-    environmentName,
     repository,
     targetName,
+    activeEnvironment,
   );
   useTitlePart(`${targetName} (${repository})`);
   useSetActiveTarget(target);
@@ -33,7 +33,7 @@ export default function TargetPage() {
         <Navigate
           replace
           to={buildUrl(`/projects/${projectId}/runs/${latestRunId}`, {
-            environment: environmentName,
+            environment: activeEnvironment,
           })}
         />
       );
@@ -43,7 +43,7 @@ export default function TargetPage() {
           <TargetHeader
             target={target}
             projectId={projectId!}
-            environmentName={environmentName}
+            activeEnvironment={activeEnvironment}
             isRunning={false}
           />
           <div className="p-4 flex-1">

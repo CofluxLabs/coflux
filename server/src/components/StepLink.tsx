@@ -64,8 +64,8 @@ export default function StepLink({
         isActive
           ? activeClassName
           : isHovered(runId, stepId, attempt)
-          ? hoveredClassName
-          : undefined,
+            ? hoveredClassName
+            : undefined,
       )}
       onMouseOver={handleMouseOver}
       onMouseOut={handleMouseOut}

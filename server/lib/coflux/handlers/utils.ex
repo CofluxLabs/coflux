@@ -45,6 +45,10 @@ defmodule Coflux.Handlers.Utils do
     end
   end
 
+  defp optional_parser(value) do
+    {:ok, value}
+  end
+
   def read_arguments(req, specs) do
     {:ok, body, req} = read_json_body(req)
 
@@ -52,7 +56,7 @@ defmodule Coflux.Handlers.Utils do
       Enum.reduce(specs, {%{}, %{}}, fn {key, spec}, {values, errors} ->
         {field, parser} =
           case spec do
-            {field, parser} -> {field, parser}
+            {field, parser} -> {field, parser || (&optional_parser/1)}
             field when is_binary(field) -> {field, &default_parser/1}
           end
 

@@ -115,7 +115,7 @@ function AttemptSelector({
 
 type HeaderProps = {
   projectId: string;
-  environmentName: string;
+  activeEnvironment: string;
   run: models.Run;
   stepId: string;
   step: models.Step;
@@ -125,7 +125,7 @@ type HeaderProps = {
 
 function Header({
   projectId,
-  environmentName,
+  activeEnvironment,
   run,
   stepId,
   step,
@@ -139,30 +139,28 @@ function Header({
     (attempt: number) => {
       navigate(
         buildUrl(location.pathname, {
-          environment: environmentName,
+          environment: activeEnvironment,
           step: stepId,
           attempt,
         }),
       );
     },
-    [projectId, run, environmentName, step, navigate, location],
+    [projectId, run, activeEnvironment, step, navigate, location],
   );
+  const executionEnvironmentName = step.executions[attempt].environment;
   const handleRerunClick = useCallback(() => {
     setRerunning(true);
-    onRerunStep(stepId, environmentName).then(({ attempt }) => {
+    onRerunStep(stepId, executionEnvironmentName).then(({ attempt }) => {
       setRerunning(false);
       changeAttempt(attempt);
     });
-  }, [onRerunStep, stepId, environmentName, changeAttempt]);
+  }, [onRerunStep, stepId, executionEnvironmentName, changeAttempt]);
   return (
     <div className="p-4 pt-5 flex items-start border-b border-slate-200">
       <div className="flex-1">
         <h2>
           <span
-            className={classNames(
-              "font-mono text-xl",
-              !step.parentId && "font-bold",
-            )}
+            className={classNames("font-mono", !step.parentId && "font-bold")}
           >
             {step.target}
           </span>{" "}
@@ -391,7 +389,7 @@ function DependenciesSection({ execution }: DependenciesSectionProps) {
           )}
         </ul>
       ) : (
-        <p>None</p>
+        <p className="italic">None</p>
       )}
     </div>
   );
@@ -445,7 +443,7 @@ function ChildrenSection({ runId, run, execution }: ChildrenSectionProps) {
           })}
         </ul>
       ) : (
-        <p>None</p>
+        <p className="italic">None</p>
       )}
     </div>
   );
@@ -626,7 +624,7 @@ function AssetsSection({ execution }: AssetsSectionProps) {
           ))}
         </ul>
       ) : (
-        <p>None</p>
+        <p className="italic">None</p>
       )}
     </div>
   );
@@ -634,22 +632,14 @@ function AssetsSection({ execution }: AssetsSectionProps) {
 
 type LogsSectionProps = {
   projectId: string;
-  environmentName: string;
   runId: string;
   execution: models.Execution;
 };
 
-function LogsSection({
-  projectId,
-  environmentName,
-  runId,
-  execution,
-}: LogsSectionProps) {
+function LogsSection({ projectId, runId, execution }: LogsSectionProps) {
   const [logs, _] = useTopic<models.LogMessage[]>(
     "projects",
     projectId,
-    "environments",
-    environmentName,
     "runs",
     runId,
     "logs",
@@ -683,7 +673,7 @@ type Props = {
   attempt: number;
   run: models.Run;
   projectId: string;
-  environmentName: string;
+  activeEnvironment: string;
   className?: string;
   style?: CSSProperties;
   onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
@@ -695,7 +685,7 @@ export default function StepDetail({
   attempt,
   run,
   projectId,
-  environmentName,
+  activeEnvironment,
   className,
   style,
   onRerunStep,
@@ -709,7 +699,7 @@ export default function StepDetail({
     >
       <Header
         projectId={projectId}
-        environmentName={environmentName}
+        activeEnvironment={activeEnvironment}
         run={run}
         stepId={stepId}
         step={step}
@@ -741,7 +731,6 @@ export default function StepDetail({
             <AssetsSection execution={execution} />
             <LogsSection
               projectId={projectId}
-              environmentName={environmentName}
               runId={runId}
               execution={execution}
             />

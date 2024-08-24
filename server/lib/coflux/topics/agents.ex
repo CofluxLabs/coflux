@@ -1,5 +1,5 @@
 defmodule Coflux.Topics.Agents do
-  use Topical.Topic, route: ["projects", :project_id, "environments", :environment_name, "agents"]
+  use Topical.Topic, route: ["projects", :project_id, "agents", :environment_name]
 
   alias Coflux.Orchestration
 

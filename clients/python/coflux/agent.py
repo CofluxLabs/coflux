@@ -124,7 +124,7 @@ class Agent:
     async def run(self) -> None:
         while True:
             print(
-                f"Connecting ({self._server_host}, {self._project_id}/{self._environment_name})..."
+                f"Connecting ({self._server_host}, {self._project_id}, {self._environment_name})..."
             )
             url = self._url(
                 "ws",

@@ -3,10 +3,10 @@ import { Outlet, useParams } from "react-router-dom";
 import { SocketProvider, useTopic } from "@topical/react";
 import { IconChevronCompactRight } from "@tabler/icons-react";
 
-import EnvironmentSelector from "../components/EnvironmentSelector";
 import Logo from "../components/Logo";
 import ProjectSelector from "../components/ProjectSelector";
 import * as models from "../models";
+import EnvironmentSelector from "../components/EnvironmentSelector";
 
 type HeaderProps = {
   projectId: string | undefined;
@@ -14,21 +14,23 @@ type HeaderProps = {
 
 function Header({ projectId }: HeaderProps) {
   const [projects] = useTopic<Record<string, models.Project>>("projects");
+  const [environments] = useTopic<Record<string, models.Environment>>(
+    "projects",
+    projectId,
+    "environments",
+  );
   return (
     <div className="flex p-3 items-center bg-cyan-600 gap-1">
       <Logo />
       {projects && (
         <Fragment>
           <IconChevronCompactRight size={16} className="text-white/40" />
-          <ProjectSelector projects={projects} />
-          {projectId && projects[projectId] && (
-            <Fragment>
-              <IconChevronCompactRight size={16} className="text-white/40" />
-              <EnvironmentSelector
-                environments={projects[projectId].environments}
-              />
-            </Fragment>
-          )}
+          <div className="flex items-center gap-2">
+            <ProjectSelector projects={projects} />
+            {environments && (
+              <EnvironmentSelector environments={environments} />
+            )}
+          </div>
         </Fragment>
       )}
       <span className="flex-1"></span>

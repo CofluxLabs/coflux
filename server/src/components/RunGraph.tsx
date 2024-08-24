@@ -44,9 +44,17 @@ type StepNodeProps = {
   attempt: number;
   runId: string;
   isActive: boolean;
+  runEnvironment: string;
 };
 
-function StepNode({ stepId, step, attempt, runId, isActive }: StepNodeProps) {
+function StepNode({
+  stepId,
+  step,
+  attempt,
+  runId,
+  isActive,
+  runEnvironment,
+}: StepNodeProps) {
   const execution = step.executions[attempt];
   const { isHovered } = useHoverContext();
   const isDeferred =
@@ -79,24 +87,29 @@ function StepNode({ stepId, step, attempt, runId, isActive }: StepNodeProps) {
         hoveredClassName="ring ring-slate-400"
       >
         <span className="flex-1 flex items-center overflow-hidden">
-          <span className="flex-1 truncate text-sm">
-            <span
-              className={classNames(
-                "font-mono",
-                !step.parentId && "font-bold",
-                isDeferred && "text-slate-500",
-              )}
-            >
-              {step.target}
-            </span>{" "}
-            <span
-              className={classNames(
-                "text-xs",
-                isDeferred ? "text-slate-400" : "text-slate-500",
-              )}
-            >
-              ({step.repository})
+          <span className="flex-1 flex flex-col overflow-hidden">
+            <span className="truncate text-sm">
+              <span
+                className={classNames(
+                  "font-mono",
+                  !step.parentId && "font-bold",
+                  isDeferred && "text-slate-500",
+                )}
+              >
+                {step.target}
+              </span>{" "}
+              <span
+                className={classNames(
+                  "text-xs",
+                  isDeferred ? "text-slate-400" : "text-slate-500",
+                )}
+              >
+                ({step.repository})
+              </span>
             </span>
+            {execution && execution.environment != runEnvironment && (
+              <span>{execution.environment} </span>
+            )}
           </span>
           {step.isMemoised && (
             <span className="text-slate-500" title="Memoised">
@@ -194,8 +207,8 @@ function EdgePath({ edge, offset, highlight }: EdgePathProps) {
         highlight
           ? "stroke-slate-400"
           : edge.type == "transitive"
-          ? "stroke-slate-100"
-          : "stroke-slate-200"
+            ? "stroke-slate-100"
+            : "stroke-slate-200"
       }
       fill="none"
       strokeWidth={highlight || edge.type == "dependency" ? 3 : 2}
@@ -235,7 +248,7 @@ type Props = {
   height: number;
   activeStepId: string | undefined;
   activeAttempt: number | undefined;
-  minimumMargin?: number;
+  runEnvironment: string;
 };
 
 export default function RunGraph({
@@ -245,6 +258,7 @@ export default function RunGraph({
   height: containerHeight,
   activeStepId,
   activeAttempt,
+  runEnvironment,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [offsetOverride, setOffsetOverride] = useState<[number, number]>();
@@ -338,8 +352,8 @@ export default function RunGraph({
             dragging
               ? "cursor-grabbing"
               : zoom > minZoom
-              ? "cursor-grab"
-              : undefined,
+                ? "cursor-grab"
+                : undefined,
           )}
           onMouseDown={handleMouseDown}
         >
@@ -394,6 +408,7 @@ export default function RunGraph({
                       attempt={node.attempt}
                       runId={runId}
                       isActive={node.stepId == activeStepId}
+                      runEnvironment={runEnvironment}
                     />
                   ) : node.type == "child" ? (
                     <ChildNode runId={node.runId} child={node.child} />
@@ -403,7 +418,7 @@ export default function RunGraph({
             })}
         </div>
       </div>
-      <div className="absolute flex right-1 bottom-1 bg-white/90 rounded-xl px-2 py-1">
+      <div className="absolute flex right-1 bottom-1 bg-white/90 rounded-xl px-2 py-1 mb-1">
         <input
           type="range"
           value={zoom}

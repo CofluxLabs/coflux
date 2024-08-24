@@ -1,32 +1,25 @@
 import { Fragment, useCallback, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import classNames from "classnames";
 import { Menu, Transition } from "@headlessui/react";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 
 import { buildUrl } from "../utils";
 import AddEnvironmentDialog from "./AddEnvironmentDialog";
-
-function classNameForEnvironment(name: string) {
-  if (name.startsWith("stag")) {
-    return "bg-yellow-300/90 text-yellow-700 hover:bg-yellow-300/80";
-  } else if (name.startsWith("prod")) {
-    return "bg-fuchsia-300/90 text-fuchsia-700 hover:bg-fuchsia-300/80";
-  } else {
-    return "bg-slate-300/90 text-slate-700 hover:bg-slate-300/80";
-  }
-}
+import * as models from "../models";
+import EnvironmentLabel from "./EnvironmentLabel";
 
 type Props = {
-  environments: string[];
+  environments: Record<string, models.Environment>;
 };
 
 export default function EnvironmentSelector({ environments }: Props) {
-  const { project: activeProjectId } = useParams();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const activeEnvironment = searchParams.get("environment");
-  const [addEnvironmentDialogOpen, setAddEnvironmentDialogOpen] =
-    useState(false);
+  const [addEnvironmentDialogOpen, setAddEnvironmentDialogOpen] = useState(
+    Object.keys(environments).length == 0,
+  );
   const handleAddEnvironmentClick = useCallback(() => {
     setAddEnvironmentDialogOpen(true);
   }, []);
@@ -36,18 +29,18 @@ export default function EnvironmentSelector({ environments }: Props) {
   return (
     <Fragment>
       <Menu as="div" className="relative">
-        <Menu.Button>
+        <Menu.Button className="flex items-center gap-1">
           {activeEnvironment ? (
-            <span
-              className={classNames(
-                "flex items-center gap-1 rounded px-1.5 py-0.5 text-sm",
-                classNameForEnvironment(activeEnvironment)
-              )}
-            >
-              {activeEnvironment}
-              <IconChevronDown size={14} className="opacity-40 mt-0.5" />
-            </span>
-          ) : null}
+            <EnvironmentLabel
+              name={activeEnvironment}
+              interactive={true}
+              right={
+                <IconChevronDown size={14} className="opacity-40 mt-0.5" />
+              }
+            />
+          ) : (
+            <span>Select environment...</span>
+          )}
         </Menu.Button>
         <Transition
           as={Fragment}
@@ -62,37 +55,40 @@ export default function EnvironmentSelector({ environments }: Props) {
             className="absolute z-10 overflow-y-scroll text-base bg-white rounded-md shadow-lg divide-y divide-slate-100 origin-top mt-1"
             static={true}
           >
-            <div className="p-1">
-              {environments.map((environmentName) => (
-                <Menu.Item key={`${activeProjectId}/${environmentName}`}>
-                  {({ active }) => (
-                    <Link
-                      to={buildUrl(`/projects/${activeProjectId}`, {
-                        environment: environmentName,
-                      })}
-                      className={classNames(
-                        "flex items-center gap-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm",
-                        active && "bg-slate-100"
-                      )}
-                    >
-                      {environmentName == activeEnvironment ? (
-                        <IconCheck size={16} className="mt-0.5" />
-                      ) : (
-                        <span className="w-[16px]" />
-                      )}
-                      {environmentName}
-                    </Link>
-                  )}
-                </Menu.Item>
-              ))}
-            </div>
+            {Object.keys(environments).length > 0 && (
+              <div className="p-1">
+                {Object.keys(environments).map((environmentName) => (
+                  <Menu.Item key={environmentName}>
+                    {({ active }) => (
+                      <Link
+                        to={buildUrl(location.pathname, {
+                          ...Object.fromEntries(searchParams),
+                          environment: environmentName,
+                        })}
+                        className={classNames(
+                          "flex items-center gap-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm",
+                          active && "bg-slate-100",
+                        )}
+                      >
+                        {environmentName == activeEnvironment ? (
+                          <IconCheck size={16} className="mt-0.5" />
+                        ) : (
+                          <span className="w-[16px]" />
+                        )}
+                        {environmentName}
+                      </Link>
+                    )}
+                  </Menu.Item>
+                ))}
+              </div>
+            )}
             <div className="p-1">
               <Menu.Item>
                 {({ active }) => (
                   <button
                     className={classNames(
-                      "flex px-2 py-1 rounded whitespace-nowrap text-sm",
-                      active && "bg-slate-100"
+                      "w-full flex px-2 py-1 rounded whitespace-nowrap text-sm",
+                      active && "bg-slate-100",
                     )}
                     onClick={handleAddEnvironmentClick}
                   >
@@ -105,6 +101,7 @@ export default function EnvironmentSelector({ environments }: Props) {
         </Transition>
       </Menu>
       <AddEnvironmentDialog
+        environments={Object.keys(environments)}
         open={addEnvironmentDialogOpen}
         onClose={handleAddEnvironmentDialogClose}
       />

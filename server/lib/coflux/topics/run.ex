@@ -1,17 +1,14 @@
 defmodule Coflux.Topics.Run do
-  use Topical.Topic,
-    route: ["projects", :project_id, "environments", :environment_name, "runs", :run_id]
+  use Topical.Topic, route: ["projects", :project_id, "runs", :run_id]
 
   alias Coflux.Orchestration
 
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
-    environment_name = Keyword.fetch!(params, :environment_name)
     external_run_id = Keyword.fetch!(params, :run_id)
 
     case Orchestration.subscribe_run(
            project_id,
-           environment_name,
            external_run_id,
            self()
          ) do
@@ -22,7 +19,6 @@ defmodule Coflux.Topics.Run do
         {:ok,
          Topic.new(build_run(run, parent, steps), %{
            project_id: project_id,
-           environment_name: environment_name,
            external_run_id: external_run_id
          })}
     end
@@ -50,13 +46,14 @@ defmodule Coflux.Topics.Run do
 
   defp process_notification(
          topic,
-         {:execution, step_id, attempt, execution_id, created_at, execute_after}
+         {:execution, step_id, attempt, execution_id, environment_name, created_at, execute_after}
        ) do
     Topic.set(
       topic,
       [:steps, step_id, :executions, Integer.to_string(attempt)],
       %{
         executionId: Integer.to_string(execution_id),
+        environment: environment_name,
         createdAt: created_at,
         executeAfter: execute_after,
         assignedAt: nil,
@@ -172,6 +169,7 @@ defmodule Coflux.Topics.Run do
                  {Integer.to_string(attempt),
                   %{
                     executionId: Integer.to_string(execution.execution_id),
+                    environment: execution.environment_name,
                     createdAt: execution.created_at,
                     executeAfter: execution.execute_after,
                     assignedAt: execution.assigned_at,

@@ -1,15 +1,13 @@
 defmodule Coflux.Topics.Logs do
-  use Topical.Topic,
-    route: ["projects", :project_id, "environments", :environment_name, "runs", :run_id, "logs"]
+  use Topical.Topic, route: ["projects", :project_id, "runs", :run_id, "logs"]
 
   alias Coflux.Observation
 
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
-    environment_name = Keyword.fetch!(params, :environment_name)
     run_id = Keyword.fetch!(params, :run_id)
 
-    case Observation.subscribe(project_id, environment_name, run_id, self()) do
+    case Observation.subscribe(project_id, run_id, self()) do
       {:ok, _ref, messages} ->
         topic =
           messages

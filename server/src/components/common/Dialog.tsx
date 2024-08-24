@@ -42,7 +42,7 @@ export default function Dialog({ title, open, children, onClose }: Props) {
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
+            <div className="inline-block w-full max-w-md p-6 my-8 text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
               {title && (
                 <HeadlessDialog.Title className="text-2xl font-bold text-slate-900 mb-4">
                   {title}

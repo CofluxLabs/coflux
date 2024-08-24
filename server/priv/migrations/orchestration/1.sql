@@ -1,7 +1,17 @@
+CREATE TABLE environments (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  base_id INTEGER,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (base_id) REFERENCES environments ON DELETE SET NULL
+);
+
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
+  environment_id INTEGER NOT NULL,
   external_id TEXT NOT NULL UNIQUE,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
 );
 
 CREATE TABLE manifests (
@@ -84,10 +94,12 @@ CREATE TABLE executions (
   id INTEGER PRIMARY KEY,
   step_id INTEGER NOT NULL,
   attempt INTEGER NOT NULL,
+  environment_id INTEGER NOT NULL,
   execute_after INTEGER,
   created_at INTEGER NOT NULL,
   UNIQUE (step_id, attempt),
-  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
+  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE,
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
 );
 
 CREATE TABLE assets (

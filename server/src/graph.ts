@@ -1,5 +1,5 @@
 import ELK from "elkjs/lib/elk.bundled.js";
-import { max, sortBy } from "lodash";
+import { max, minBy, sortBy } from "lodash";
 
 import * as models from "./models";
 
@@ -113,10 +113,10 @@ export default function buildGraph(
 ): Promise<Graph> {
   const stepAttempts = chooseStepAttempts(run, activeStepId, activeAttempt);
 
-  const initialStepId = sortBy(
+  const initialStepId = minBy(
     Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
     (stepId) => run.steps[stepId].createdAt,
-  )[0];
+  )!;
 
   const visibleSteps: Record<string, number> = {};
   traverseRun(

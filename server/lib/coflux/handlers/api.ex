@@ -12,24 +12,12 @@ defmodule Coflux.Handlers.Api do
 
   defp handle(req, "POST", ["create_project"]) do
     {:ok, arguments, errors, req} =
-      read_arguments(req, %{
-        project_name: "projectName",
-        environment: "environment"
-      })
+      read_arguments(req, %{project_name: "projectName"})
 
     if Enum.empty?(errors) do
-      case Projects.create_project(
-             @projects_server,
-             arguments.project_name,
-             arguments.environment
-           ) do
+      case Projects.create_project(@projects_server, arguments.project_name) do
         {:ok, project_id} ->
-          case Orchestration.Supervisor.get_server(project_id, arguments.environment) do
-            {:ok, _server} ->
-              json_response(req, %{
-                "projectId" => project_id
-              })
-          end
+          json_response(req, %{"projectId" => project_id})
 
         {:error, errors} ->
           errors =
@@ -45,29 +33,28 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp handle(req, "POST", ["add_environment"]) do
+  defp handle(req, "POST", ["create_environment"]) do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment: "environment"
+        name: {"name", &validate_environment_name/1},
+        base: {"base", nil}
       })
 
     if Enum.empty?(errors) do
-      case Projects.add_environment(
-             @projects_server,
+      case Orchestration.create_environment(
              arguments.project_id,
-             arguments.environment
+             arguments.name,
+             arguments.base
            ) do
         :ok ->
           json_response(req, %{})
 
-        {:error, errors} ->
-          errors =
-            MapUtils.translate_keys(errors, %{
-              environment_name: "environment"
-            })
+        {:error, :environment_exists} ->
+          json_error_response(req, "bad_request", details: %{environment: "exists"})
 
-          json_error_response(req, "bad_request", details: errors)
+        {:error, :base_invalid} ->
+          json_error_response(req, "bad_request", details: %{base: "invalid"})
       end
     else
       json_error_response(req, "bad_request", details: errors)
@@ -78,19 +65,19 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment: "environment",
         repository: "repository",
         target: "target",
+        environment: "environment",
         arguments: {"arguments", &parse_arguments/1}
       })
 
     if Enum.empty?(errors) do
       case Orchestration.schedule(
              arguments.project_id,
-             arguments.environment,
              arguments.repository,
              arguments.target,
-             arguments.arguments
+             arguments.arguments,
+             environment: arguments.environment
            ) do
         {:ok, run_id, step_id, execution_id} ->
           json_response(req, %{
@@ -108,14 +95,12 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment: "environment",
         run_id: "runId"
       })
 
     if Enum.empty?(errors) do
       case Orchestration.cancel_run(
              arguments.project_id,
-             arguments.environment,
              arguments.run_id
            ) do
         :ok ->
@@ -137,8 +122,8 @@ defmodule Coflux.Handlers.Api do
     if Enum.empty?(errors) do
       case Orchestration.rerun_step(
              arguments.project_id,
-             arguments.environment,
-             arguments.step_id
+             arguments.step_id,
+             arguments.environment
            ) do
         {:ok, execution_id, attempt} ->
           json_response(req, %{"executionId" => execution_id, "attempt" => attempt})
@@ -156,6 +141,14 @@ defmodule Coflux.Handlers.Api do
     case Jason.decode(value) do
       {:ok, _} -> true
       {:error, _} -> false
+    end
+  end
+
+  defp validate_environment_name(name) do
+    if Regex.match?(~r/^[a-z0-9_\/]+$/i, name) do
+      {:ok, name}
+    else
+      {:error, :invalid}
     end
   end
 

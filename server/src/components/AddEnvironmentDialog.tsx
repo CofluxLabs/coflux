@@ -10,6 +10,81 @@ import * as models from "../models";
 import * as api from "../api";
 import { RequestError } from "../api";
 import Alert from "./common/Alert";
+import { choose } from "../utils";
+import Select from "./common/Select";
+
+const adjectives = [
+  "bewitching",
+  "captivating",
+  "charming",
+  "clever",
+  "enchanting",
+  "funny",
+  "goofy",
+  "happy",
+  "jolly",
+  "lucky",
+  "majestic",
+  "mysterious",
+  "mystical",
+  "playful",
+  "quirky",
+  "silly",
+  "sleepy",
+  "soothing",
+  "whimsical",
+  "witty",
+  "zany",
+];
+
+const properNames = [
+  "banshee",
+  "centaur",
+  "chimera",
+  "chupacabra",
+  "cyclops",
+  "djinn",
+  "dragon",
+  "fairy",
+  "gargoyle",
+  "genie",
+  "gnome",
+  "goblin",
+  "griffin",
+  "grizzly",
+  "gryphon",
+  "hydra",
+  "kraken",
+  "leprechaun",
+  "mermaid",
+  "minotaur",
+  "mothman",
+  "nymph",
+  "ogre",
+  "oracle",
+  "pegasus",
+  "phantom",
+  "phoenix",
+  "pixie",
+  "sasquatch",
+  "satyr",
+  "shapeshifter",
+  "siren",
+  "sorcerer",
+  "spectre",
+  "sphinx",
+  "troll",
+  "unicorn",
+  "vampire",
+  "warlock",
+  "werewolf",
+  "wizard",
+  "yeti",
+];
+
+function randomName(): string {
+  return `${choose(adjectives)}_${choose(properNames)}`;
+}
 
 function translateError(error: string | undefined) {
   switch (error) {
@@ -23,15 +98,21 @@ function translateError(error: string | undefined) {
 }
 
 type Props = {
+  environments: string[];
   open: boolean;
   onClose: () => void;
 };
 
-export default function AddEnvironmentDialog({ open, onClose }: Props) {
+export default function AddEnvironmentDialog({
+  environments,
+  open,
+  onClose,
+}: Props) {
   const { project: activeProjectId } = useParams();
   const [_projects, { execute }] =
     useTopic<Record<string, models.Project>>("projects");
-  const [environmentName, setEnvironmentName] = useState("");
+  const [environmentName, setEnvironmentName] = useState(() => randomName());
+  const [baseEnvironment, setBaseEnvironment] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>();
   const [adding, setAdding] = useState(false);
   const navigate = useNavigate();
@@ -41,7 +122,7 @@ export default function AddEnvironmentDialog({ open, onClose }: Props) {
       setAdding(true);
       setErrors(undefined);
       api
-        .addEnvironment(activeProjectId!, environmentName)
+        .createEnvironment(activeProjectId!, environmentName, baseEnvironment)
         .then(() => {
           navigate(
             `/projects/${activeProjectId}?environment=${environmentName}`,
@@ -61,7 +142,7 @@ export default function AddEnvironmentDialog({ open, onClose }: Props) {
           setAdding(false);
         });
     },
-    [execute, navigate, environmentName],
+    [execute, navigate, environmentName, baseEnvironment],
   );
   return (
     <Dialog title="Add environment" open={open} onClose={onClose}>
@@ -80,6 +161,15 @@ export default function AddEnvironmentDialog({ open, onClose }: Props) {
             value={environmentName}
             className="w-full"
             onChange={setEnvironmentName}
+          />
+        </Field>
+        <Field label="Base environment" error={translateError(errors?.base)}>
+          <Select
+            options={environments}
+            empty="(None)"
+            size="md"
+            value={baseEnvironment}
+            onChange={setBaseEnvironment}
           />
         </Field>
         <div className="mt-4 flex gap-2">

@@ -15,7 +15,7 @@ export default function RunPage() {
       buildUrl(`/projects/${projectId}/runs/${runId}/${page}`, {
         environment: environmentName,
       }),
-      { replace: true }
+      { replace: true },
     );
   }, [run, navigate]);
   return <div></div>;

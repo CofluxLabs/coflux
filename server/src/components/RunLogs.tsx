@@ -178,10 +178,6 @@ export default function RunLogs({
       </table>
     );
   } else {
-    return (
-      <p>
-        <em>None</em>
-      </p>
-    );
+    return <p className="italic">None</p>;
   }
 }

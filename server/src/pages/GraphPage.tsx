@@ -1,7 +1,17 @@
 import { useParams, useSearchParams } from "react-router-dom";
+import * as models from "../models";
+import { minBy } from "lodash";
 
 import RunGraph from "../components/RunGraph";
 import { useContext } from "../layouts/RunLayout";
+
+function getRunEnvironment(run: models.Run) {
+  const initialStepId = minBy(
+    Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
+    (stepId) => run.steps[stepId].createdAt,
+  )!;
+  return run.steps[initialStepId].executions[1].environment;
+}
 
 export default function GraphPage() {
   const { run, width, height } = useContext();
@@ -20,6 +30,7 @@ export default function GraphPage() {
         runId={runId!}
         activeStepId={activeStepId}
         activeAttempt={activeAttempt}
+        runEnvironment={getRunEnvironment(run)}
       />
     );
   } else {

@@ -1,4 +1,4 @@
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useTopic } from "@topical/react";
 import { DateTime } from "luxon";
 
@@ -47,13 +47,9 @@ function StepIdentifier({ runId, run, executionId }: StepIdentifierProps) {
 export default function LogsPage() {
   const { run } = useContext();
   const { project: projectId, run: runId } = useParams();
-  const [searchParams] = useSearchParams();
-  const environmentName = searchParams.get("environment") || undefined;
   const [logs, _] = useTopic<models.LogMessage[]>(
     "projects",
     projectId,
-    "environments",
-    environmentName,
     "runs",
     runId,
     "logs",
