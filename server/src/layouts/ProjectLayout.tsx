@@ -72,7 +72,7 @@ export default function ProjectLayout() {
   const environmentName = searchParams.get("environment") || undefined;
   const [activeTarget, setActiveTarget] = useState<Target>();
   const [projects] = useTopic<Record<string, models.Project>>("projects");
-  const [environments] = useTopic<Record<string, models.Repository>>(
+  const [environments] = useTopic<Record<string, models.Environment>>(
     "projects",
     projectId,
     "environments",
@@ -90,7 +90,9 @@ export default function ProjectLayout() {
     environmentName,
   );
   const project = (projectId && projects && projects[projectId]) || undefined;
-  const defaultEnvironment = environments && Object.keys(environments)[0];
+  const defaultEnvironment =
+    environments &&
+    Object.keys(environments).filter((n) => !environments[n].archived)[0];
   useEffect(() => {
     if (projectId && !environmentName && defaultEnvironment) {
       // TODO: retain current url?

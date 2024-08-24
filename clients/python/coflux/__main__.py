@@ -82,6 +82,14 @@ def _get_host(argument: str | None) -> str:
     return _get_option(argument, ("COFLUX_HOST", str), "host", "localhost:7777")
 
 
+def _validate_environment_name(name: str) -> None:
+    if not re.match(r"^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$", name):
+        raise click.BadOptionUsage(
+            "environment",
+            "Environment name must consist of alphanumeric characters, underscores or hyphens, and may contain forward slashes.",
+        )
+
+
 async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
     for module in modules:
         if isinstance(module, str):
@@ -110,6 +118,51 @@ def cli():
     pass
 
 
+@cli.command("configure")
+@click.option(
+    "-h",
+    "--host",
+    prompt=True,
+    default=lambda: config.load().get("host") or "localhost:7777",
+    help="Host to connect to",
+)
+@click.option(
+    "-p",
+    "--project",
+    prompt=True,
+    default=lambda: config.load().get("project"),
+    help="Project ID",
+)
+@click.option(
+    "environment",
+    "-e",
+    "--environment",
+    prompt=True,
+    default=lambda: config.load().get("environment"),
+    help="Environment name",
+)
+def configure(
+    host: str | None,
+    project: str | None,
+    environment: str | None,
+):
+    """
+    Populate the configuration file with default values.
+    """
+    # TODO: connect to server to check details?
+    if environment is not None:
+        _validate_environment_name(environment)
+    click.secho("Writing configuration...", fg="black")
+    config.write(
+        {
+            "project": project,
+            "environment": environment,
+            "host": host,
+        }
+    )
+    click.secho(f"Configuration written to '{config.path}'.", fg="green")
+
+
 @cli.command("environment.register")
 @click.option(
     "-p",
@@ -117,15 +170,19 @@ def cli():
     help="Project ID",
 )
 @click.option(
+    "-e",
+    "--environment",
+    help="Environment name",
+)
+@click.option(
     "-h",
     "--host",
     help="Host to connect to",
 )
-@click.argument("environment_name")
 def environment_register(
     project: str | None,
+    environment: str | None,
     host: str | None,
-    environment_name: str,
 ):
     """
     Register an environment with the server.
@@ -133,15 +190,13 @@ def environment_register(
     A configuration file for the environment will be created, at `environments/my_environment.yaml`, if it doesn't already exist.
     """
     project_ = _get_project(project)
+    environment_ = _get_environment(environment)
     host_ = _get_host(host)
-    if not re.match(r"^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$", environment_name):
-        raise click.BadArgumentUsage(
-            "Environment name must consist of alphanumeric characters, underscores or hyphens, and may contain forward slashes."
-        )
+    _validate_environment_name(environment_)
 
     # TODO: support custom environments directory
     environments_dir = Path("environments")
-    environment_file = environments_dir.joinpath(f"{environment_name}.yaml")
+    environment_file = environments_dir.joinpath(f"{environment_}.yaml")
     if not environment_file.exists():
         click.secho(
             f"Environment file doesn't exist. Creating '{environment_file}'...",
@@ -159,11 +214,11 @@ def environment_register(
         "register_environment",
         {
             "projectId": project_,
-            "name": environment_name,
+            "name": environment_,
             "cacheFrom": content.get("cache_from"),
         },
     )
-    click.secho("Registered environment.", fg="green")
+    click.secho(f"Registered environment '{environment_}'.", fg="green")
 
 
 @cli.command("environment.archive")
@@ -173,30 +228,35 @@ def environment_register(
     help="Project ID",
 )
 @click.option(
+    "-e",
+    "--environment",
+    help="Environment name",
+)
+@click.option(
     "-h",
     "--host",
     help="Host to connect to",
 )
-@click.argument("environment_name")
 def environment_archive(
     project: str | None,
+    environment: str | None,
     host: str | None,
-    environment_name: str,
 ):
     """
     Archive an environment on the server (but retain the configuration file locally).
     """
     project_ = _get_project(project)
+    environment_ = _get_environment(environment)
     host_ = _get_host(host)
     _api_request(
         host_,
         "archive_environment",
         {
             "projectId": project_,
-            "name": environment_name,
+            "name": environment_,
         },
     )
-    click.secho("Archived environment.", fg="green")
+    click.secho(f"Archived environment '{environment_}'.", fg="green")
 
 
 @cli.command("agent.run")

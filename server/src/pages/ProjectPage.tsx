@@ -115,7 +115,9 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
   return (
     <div className="bg-slate-50 border border-slate-100 rounded-lg m-auto w-2/3 p-3 text-slate-600">
       <h1 className="text-3xl my-2">Your project is ready</h1>
-      <p className="my-2">Next, define an environment using the CLI.</p>
+      <p className="my-2">
+        Follow these steps to setup an environment and repository:
+      </p>
       <ol className="list-decimal pl-8 my-4">
         <li
           className={classNames(
@@ -132,17 +134,31 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
             environmentName && "line-through text-slate-400",
           )}
         >
-          Register an environment with the server, using the CLI:
+          Use the CLI to populate the configuration file:
           <CodeBlock
             code={[
-              "coflux environment.register \\",
+              "coflux configure \\",
               `  --host=${window.location.host} \\`,
               `  --project=${projectId} \\`,
-              `  ${environmentName || exampleEnvironmentName}`,
+              `  --environment=${environmentName || exampleEnvironmentName}`,
             ]}
           />
           <span className="text-sm">
-            This will create an empty configuration file at{" "}
+            This will create a configuration file at{" "}
+            <code className="text-xs">coflux.yaml</code>.
+          </span>
+        </li>
+        <li
+          className={classNames(
+            "my-4",
+            environmentName && "line-through text-slate-400",
+          )}
+        >
+          Register an environment with the server, using the CLI:
+          <CodeBlock code={["coflux environment.register"]} />
+          <span className="text-sm">
+            This will create an empty environment file for the environment
+            configured in the previous step, at{" "}
             <code className="text-xs">
               environments/{environmentName || exampleEnvironmentName}.yaml
             </code>
@@ -166,15 +182,9 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
             agentConnected && "line-through text-slate-400",
           )}
         >
-          Run the agent (watching for changes):
+          Run the agent (watching for changes to the repository):
           <CodeBlock
-            code={[
-              `coflux agent.run \\`,
-              `  --host=${window.location.host} \\`,
-              `  --project=${projectId} \\`,
-              `  --environment=${environmentName || exampleEnvironmentName} \\`,
-              `  ${exampleRepositoryName} --reload`,
-            ]}
+            code={[`coflux agent.run ${exampleRepositoryName} --reload`]}
           />
         </li>
         <li className="my-4">
