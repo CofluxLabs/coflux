@@ -452,6 +452,18 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
+  def get_run_target(db, run_id) do
+    query_one(
+      db,
+      """
+      SELECT repository, target
+      FROM steps
+      WHERE run_id = ?1 AND parent_id IS NULL
+      """,
+      {run_id}
+    )
+  end
+
   def get_run_steps(db, run_id) do
     query(
       db,

@@ -1146,19 +1146,17 @@ defmodule Coflux.Orchestration.Server do
     case Runs.rerun_step(state.db, step.id, environment_id, execute_after) do
       {:ok, execution_id, attempt, created_at} ->
         {:ok, {environment_name}} = Sessions.get_environment_by_id(state.db, environment_id)
-
-        state =
-          notify_listeners(
-            state,
-            {:run, step.run_id},
-            {:execution, step.external_id, attempt, execution_id, environment_name, created_at,
-             execute_after}
-          )
+        {:ok, {run_repository, run_target}} = Runs.get_run_target(state.db, run.id)
 
         execute_at = execute_after || created_at
 
         state =
           state
+          |> notify_listeners(
+            {:run, step.run_id},
+            {:execution, step.external_id, attempt, execution_id, environment_name, created_at,
+             execute_after}
+          )
           |> notify_listeners(
             {:repositories, environment_id},
             {:scheduled, step.repository, execution_id, execute_at}
@@ -1167,6 +1165,10 @@ defmodule Coflux.Orchestration.Server do
             {:repository, step.repository, environment_id},
             {:scheduled, execution_id, step.target, run.external_id, step.external_id, attempt,
              execute_after, created_at}
+          )
+          |> notify_listeners(
+            {:target, run_repository, run_target, environment_id},
+            {:run, run.external_id, run.created_at}
           )
 
         send(self(), :execute)
