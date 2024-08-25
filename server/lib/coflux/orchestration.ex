@@ -13,8 +13,12 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:register_targets, session_id, repository, targets})
   end
 
-  def schedule(project_id, repository, target, arguments, opts \\ []) do
-    call_server(project_id, {:schedule, repository, target, arguments, opts})
+  def schedule_run(project_id, repository, target, arguments, opts \\ []) do
+    call_server(project_id, {:schedule_run, repository, target, arguments, opts})
+  end
+
+  def schedule_task(project_id, parent_id, repository, target, arguments, opts \\ []) do
+    call_server(project_id, {:schedule_task, parent_id, repository, target, arguments, opts})
   end
 
   def cancel_run(project_id, run_id) do

@@ -81,6 +81,7 @@ class RecordErrorRequest(t.NamedTuple):
 
 
 class ScheduleExecutionRequest(t.NamedTuple):
+    type: t.Literal["workflow", "task"]
     repository: str
     target: str
     arguments: list[models.Value]
@@ -342,6 +343,7 @@ class Channel:
 
     def schedule_execution(
         self,
+        type: t.Literal["workflow", "task"],
         repository: str,
         target: str,
         arguments: tuple[t.Any, ...],
@@ -382,6 +384,7 @@ class Channel:
         retry_count, retry_delay_min, retry_delay_max = _parse_retries(retries)
         execution_id = self._request(
             ScheduleExecutionRequest(
+                type,
                 repository,
                 target,
                 serialised_arguments,
@@ -742,6 +745,7 @@ class Execution:
     def _handle_request(self, request_id, request):
         match request:
             case ScheduleExecutionRequest(
+                type,
                 repository,
                 target,
                 arguments,
@@ -759,6 +763,7 @@ class Execution:
                 self._server_request(
                     "schedule",
                     (
+                        type,
                         repository,
                         target,
                         _json_safe_arguments(arguments),

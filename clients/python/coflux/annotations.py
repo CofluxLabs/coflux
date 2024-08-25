@@ -61,8 +61,10 @@ class Target(t.Generic[P, T]):
         return self._fn
 
     def submit(self, *args: P.args, **kwargs: P.kwargs) -> models.Execution[T]:
+        assert self._type in ("workflow", "task")
         try:
             return context.schedule(
+                self._type,
                 self._repository,
                 self._name,
                 args,

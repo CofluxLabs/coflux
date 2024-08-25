@@ -3,7 +3,7 @@ defmodule Coflux.Orchestration.Runs do
 
   import Coflux.Store
 
-  def start_run(db, repository, target, arguments, environment_id, opts \\ []) do
+  def schedule_run(db, repository, target, arguments, environment_id, opts \\ []) do
     idempotency_key = Keyword.get(opts, :idempotency_key)
     parent_id = Keyword.get(opts, :parent_id)
     recurrent = Keyword.get(opts, :recurrent)
@@ -13,7 +13,7 @@ defmodule Coflux.Orchestration.Runs do
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
       {:ok, step_id, external_step_id, execution_id, attempt, now, false, result, child_added} =
-        do_schedule_step(
+        schedule_step(
           db,
           run_id,
           parent_id,
@@ -94,7 +94,7 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  def schedule_step(
+  def schedule_task(
         db,
         run_id,
         parent_id,
@@ -107,7 +107,7 @@ defmodule Coflux.Orchestration.Runs do
     now = current_timestamp()
 
     with_transaction(db, fn ->
-      do_schedule_step(
+      schedule_step(
         db,
         run_id,
         parent_id,
@@ -122,7 +122,7 @@ defmodule Coflux.Orchestration.Runs do
     end)
   end
 
-  defp do_schedule_step(
+  defp schedule_step(
          db,
          run_id,
          parent_id,

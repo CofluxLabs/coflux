@@ -94,7 +94,7 @@ defmodule Coflux.Handlers.Api do
       })
 
     if Enum.empty?(errors) do
-      case Orchestration.schedule(
+      case Orchestration.schedule_run(
              arguments.project_id,
              arguments.repository,
              arguments.target,

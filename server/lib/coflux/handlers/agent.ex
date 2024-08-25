@@ -58,6 +58,7 @@ defmodule Coflux.Handlers.Agent do
 
       "schedule" ->
         [
+          type,
           repository,
           target,
           arguments,
@@ -73,30 +74,55 @@ defmodule Coflux.Handlers.Agent do
           retry_delay_max
         ] = message["params"]
 
-        arguments = Enum.map(arguments, &parse_value/1)
-
         if is_recognised_execution?(parent_id, state) do
-          case Orchestration.schedule(
-                 state.project_id,
-                 repository,
-                 target,
-                 arguments,
-                 parent_id: parent_id,
-                 execute_after: execute_after,
-                 wait_for: wait_for,
-                 cache_key: cache_key,
-                 cache_max_age: cache_max_age,
-                 retry_count: retry_count,
-                 retry_delay_min: retry_delay_min,
-                 retry_delay_max: retry_delay_max,
-                 defer_key: defer_key,
-                 memo_key: memo_key
-               ) do
-            {:ok, _run_id, _step_id, execution_id} ->
-              {[success_message(message["id"], execution_id)], state}
+          case type do
+            "workflow" ->
+              case Orchestration.schedule_run(
+                     state.project_id,
+                     repository,
+                     target,
+                     Enum.map(arguments, &parse_value/1),
+                     parent_id: parent_id,
+                     execute_after: execute_after,
+                     wait_for: wait_for,
+                     cache_key: cache_key,
+                     cache_max_age: cache_max_age,
+                     retry_count: retry_count,
+                     retry_delay_min: retry_delay_min,
+                     retry_delay_max: retry_delay_max,
+                     defer_key: defer_key,
+                     memo_key: memo_key
+                   ) do
+                {:ok, _run_id, _step_id, execution_id} ->
+                  {[success_message(message["id"], execution_id)], state}
 
-            {:error, error} ->
-              {[error_message(message["id"], error)], state}
+                {:error, error} ->
+                  {[error_message(message["id"], error)], state}
+              end
+
+            "task" ->
+              case Orchestration.schedule_task(
+                     state.project_id,
+                     parent_id,
+                     repository,
+                     target,
+                     Enum.map(arguments, &parse_value/1),
+                     execute_after: execute_after,
+                     wait_for: wait_for,
+                     cache_key: cache_key,
+                     cache_max_age: cache_max_age,
+                     retry_count: retry_count,
+                     retry_delay_min: retry_delay_min,
+                     retry_delay_max: retry_delay_max,
+                     defer_key: defer_key,
+                     memo_key: memo_key
+                   ) do
+                {:ok, _run_id, _step_id, execution_id} ->
+                  {[success_message(message["id"], execution_id)], state}
+
+                {:error, error} ->
+                  {[error_message(message["id"], error)], state}
+              end
           end
         else
           {[{:close, 4000, "execution_invalid"}], nil}

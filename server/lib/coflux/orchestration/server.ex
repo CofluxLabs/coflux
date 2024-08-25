@@ -216,11 +216,7 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call(
-        {:schedule, repository, target_name, arguments, opts},
-        _from,
-        state
-      ) do
+  def handle_call({:schedule_run, repository, target_name, arguments, opts}, _from, state) do
     {:ok, parent} =
       case Keyword.get(opts, :parent_id) do
         nil ->
@@ -243,58 +239,166 @@ defmodule Coflux.Orchestration.Server do
           {:ok, environment_id}
       end
 
-    # TODO: don't require recognised target?
-    {:ok, target} = Sessions.get_target(state.db, repository, target_name, environment_id)
+    case Runs.schedule_run(state.db, repository, target_name, arguments, environment_id, opts) do
+      {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, attempt, result,
+       created_at, child_added} ->
+        state =
+          if child_added do
+            {parent_run_id, parent_id} = parent
 
-    if target do
-      opts = Keyword.put(opts, :recurrent, target.type == :sensor)
+            child =
+              {external_run_id, external_step_id, execution_id, repository, target_name,
+               created_at}
 
-      {result, state} =
-        case parent do
-          nil ->
-            if target.type in [:workflow, :sensor] do
-              start_run(state, repository, target_name, arguments, environment_id, opts)
-            else
-              {{:error, :invalid_target}, state}
-            end
+            notify_listeners(state, {:run, parent_run_id}, {:child, parent_id, child})
+          else
+            state
+          end
 
-          {parent_run_id, parent_id} ->
-            case target.type do
-              :workflow ->
-                start_run(
-                  state,
-                  repository,
-                  target_name,
-                  arguments,
-                  environment_id,
-                  opts,
-                  {parent_run_id, parent_id}
-                )
+        state =
+          notify_listeners(
+            state,
+            {:target, repository, target_name, environment_id},
+            {:run, external_run_id, created_at}
+          )
 
-              :task ->
-                schedule_step(
-                  state,
-                  parent_run_id,
-                  parent_id,
-                  repository,
-                  target_name,
-                  arguments,
-                  environment_id,
-                  opts
-                )
+        state =
+          if !result do
+            # TODO: neater way to get execute_after?
+            execute_after = Keyword.get(opts, :execute_after)
+            execute_at = execute_after || created_at
 
-              _ ->
-                {{:error, :invalid_target}, state}
-            end
-        end
+            state =
+              state
+              |> notify_listeners(
+                {:repositories, environment_id},
+                {:scheduled, repository, execution_id, execute_at}
+              )
+              |> notify_listeners(
+                {:repository, repository, environment_id},
+                {:scheduled, execution_id, target_name, external_run_id, external_step_id,
+                 attempt, execute_after, created_at}
+              )
 
-      state = flush_notifications(state)
+            send(self(), :execute)
 
-      {:reply, result, state}
-    else
-      {:reply, {:error, :invalid_target}, state}
+            state
+          else
+            state
+          end
+
+        state = flush_notifications(state)
+
+        {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
     end
   end
+
+  def handle_call(
+        {:schedule_task, parent_id, repository, target_name, arguments, opts},
+        _from,
+        state
+      ) do
+    {:ok, parent_step} = Runs.get_step_for_execution(state.db, parent_id)
+    {:ok, environment_id} = Runs.get_environment_for_execution(state.db, parent_id)
+    {:ok, run} = Runs.get_run_by_id(state.db, parent_step.run_id)
+
+    case Runs.schedule_task(
+           state.db,
+           run.id,
+           parent_id,
+           repository,
+           target_name,
+           arguments,
+           environment_id,
+           opts
+         ) do
+      {:ok, _step_id, external_step_id, execution_id, attempt, created_at, memoised, result,
+       child_added} ->
+        state =
+          if !memoised do
+            memo_key = Keyword.get(opts, :memo_key)
+            arguments = Enum.map(arguments, &build_value(&1, state))
+
+            notify_listeners(
+              state,
+              {:run, run.id},
+              {:step, external_step_id, repository, target_name, memo_key, parent_id, created_at,
+               arguments}
+            )
+          else
+            state
+          end
+
+        state =
+          if child_added do
+            child =
+              {run.external_id, external_step_id, execution_id, repository, target_name,
+               created_at}
+
+            notify_listeners(state, {:run, run.id}, {:child, parent_id, child})
+          else
+            state
+          end
+
+        execute_after = Keyword.get(opts, :execute_after)
+
+        state =
+          if !memoised do
+            {:ok, {environment_name}} = Sessions.get_environment_by_id(state.db, environment_id)
+
+            notify_listeners(
+              state,
+              {:run, run.id},
+              {:execution, external_step_id, attempt, execution_id, environment_name, created_at,
+               execute_after}
+            )
+          else
+            state
+          end
+
+        state =
+          if result do
+            result = build_result(result, state)
+
+            notify_listeners(
+              state,
+              {:run, run.id},
+              {:result, execution_id, result, created_at}
+            )
+          else
+            state
+          end
+
+        state =
+          if !memoised && !result do
+            execute_at = execute_after || created_at
+
+            state =
+              state
+              |> notify_listeners(
+                {:repositories, environment_id},
+                {:scheduled, repository, execution_id, execute_at}
+              )
+              |> notify_listeners(
+                {:repository, repository, environment_id},
+                {:scheduled, execution_id, target_name, run.external_id, external_step_id,
+                 attempt, execute_after, created_at}
+              )
+
+            send(self(), :execute)
+
+            state
+          else
+            state
+          end
+
+        state = flush_notifications(state)
+
+        {:reply, {:ok, run.external_id, external_step_id, execution_id}, state}
+    end
+  end
+
+  # TODO: start_sensor
 
   def handle_call({:cancel_run, external_run_id}, _from, state) do
     # TODO: use one query to get all execution ids?
@@ -1365,165 +1469,6 @@ defmodule Coflux.Orchestration.Server do
       state
     else
       update_in(state.sessions[session_id].queue, &[message | &1])
-    end
-  end
-
-  defp start_run(state, repository, target_name, arguments, environment_id, opts, parent \\ nil) do
-    case Runs.start_run(state.db, repository, target_name, arguments, environment_id, opts) do
-      {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, attempt, result,
-       created_at, child_added} ->
-        state =
-          if child_added do
-            {parent_run_id, parent_id} = parent
-
-            child =
-              {external_run_id, external_step_id, execution_id, repository, target_name,
-               created_at}
-
-            notify_listeners(state, {:run, parent_run_id}, {:child, parent_id, child})
-          else
-            state
-          end
-
-        state =
-          notify_listeners(
-            state,
-            {:target, repository, target_name, environment_id},
-            {:run, external_run_id, created_at}
-          )
-
-        state =
-          if !result do
-            # TODO: neater way to get execute_after?
-            execute_after = Keyword.get(opts, :execute_after)
-            execute_at = execute_after || created_at
-
-            state =
-              state
-              |> notify_listeners(
-                {:repositories, environment_id},
-                {:scheduled, repository, execution_id, execute_at}
-              )
-              |> notify_listeners(
-                {:repository, repository, environment_id},
-                {:scheduled, execution_id, target_name, external_run_id, external_step_id,
-                 attempt, execute_after, created_at}
-              )
-
-            send(self(), :execute)
-
-            state
-          else
-            state
-          end
-
-        {{:ok, external_run_id, external_step_id, execution_id}, state}
-    end
-  end
-
-  defp schedule_step(
-         state,
-         run_id,
-         parent_id,
-         repository,
-         target_name,
-         arguments,
-         environment_id,
-         opts
-       ) do
-    {:ok, run} = Runs.get_run_by_id(state.db, run_id)
-
-    case Runs.schedule_step(
-           state.db,
-           run_id,
-           parent_id,
-           repository,
-           target_name,
-           arguments,
-           environment_id,
-           opts
-         ) do
-      {:ok, _step_id, external_step_id, execution_id, attempt, created_at, memoised, result,
-       child_added} ->
-        state =
-          if !memoised do
-            memo_key = Keyword.get(opts, :memo_key)
-            arguments = Enum.map(arguments, &build_value(&1, state))
-
-            notify_listeners(
-              state,
-              {:run, run_id},
-              {:step, external_step_id, repository, target_name, memo_key, parent_id, created_at,
-               arguments}
-            )
-          else
-            state
-          end
-
-        state =
-          if child_added do
-            child =
-              {run.external_id, external_step_id, execution_id, repository, target_name,
-               created_at}
-
-            notify_listeners(state, {:run, run_id}, {:child, parent_id, child})
-          else
-            state
-          end
-
-        execute_after = Keyword.get(opts, :execute_after)
-
-        state =
-          if !memoised do
-            {:ok, {environment_name}} = Sessions.get_environment_by_id(state.db, environment_id)
-
-            notify_listeners(
-              state,
-              {:run, run_id},
-              {:execution, external_step_id, attempt, execution_id, environment_name, created_at,
-               execute_after}
-            )
-          else
-            state
-          end
-
-        state =
-          if result do
-            result = build_result(result, state)
-
-            notify_listeners(
-              state,
-              {:run, run_id},
-              {:result, execution_id, result, created_at}
-            )
-          else
-            state
-          end
-
-        state =
-          if !memoised && !result do
-            execute_at = execute_after || created_at
-
-            state =
-              state
-              |> notify_listeners(
-                {:repositories, environment_id},
-                {:scheduled, repository, execution_id, execute_at}
-              )
-              |> notify_listeners(
-                {:repository, repository, environment_id},
-                {:scheduled, execution_id, target_name, run.external_id, external_step_id,
-                 attempt, execute_after, created_at}
-              )
-
-            send(self(), :execute)
-
-            state
-          else
-            state
-          end
-
-        {{:ok, run.external_id, external_step_id, execution_id}, state}
     end
   end
 
