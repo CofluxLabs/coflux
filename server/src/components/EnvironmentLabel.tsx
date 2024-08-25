@@ -42,15 +42,21 @@ export default function EnvironmentLabel({
   return (
     <span
       className={classNames(
-        "flex items-center rounded-full",
+        "flex items-center rounded-full overflow-hidden",
         size == "sm" ? "px-1 py-px gap-0.5" : "px-2 py-0.5 gap-1",
         classNameForEnvironment(name, interactive),
       )}
       title={warning}
     >
-      {warning && <IconExclamationCircle size={size == "sm" ? 12 : 14} />}
+      {warning && (
+        <IconExclamationCircle
+          size={size == "sm" ? 12 : 14}
+          className="shrink-0"
+        />
+      )}
       <span
         className={classNames(
+          "whitespace-nowrap overflow-hidden text-ellipsis",
           size == "sm" ? "px-px text-xs" : "px-0.5 text-sm",
         )}
       >
