@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import classNames from "classnames";
 import { Menu, Transition } from "@headlessui/react";
@@ -7,6 +7,7 @@ import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 import { buildUrl } from "../utils";
 import * as models from "../models";
 import EnvironmentLabel from "./EnvironmentLabel";
+import AddEnvironmentDialog from "./AddEnvironmentDialog";
 
 type Props = {
   environments: Record<string, models.Environment>;
@@ -16,6 +17,14 @@ export default function EnvironmentSelector({ environments }: Props) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const activeEnvironment = searchParams.get("environment");
+  const [addEnvironmentDialogOpen, setAddEnvironmentDialogOpen] =
+    useState(false);
+  const handleAddEnvironmentClick = useCallback(() => {
+    setAddEnvironmentDialogOpen(true);
+  }, []);
+  const handleAddEnvironmentDialogClose = useCallback(() => {
+    setAddEnvironmentDialogOpen(false);
+  }, []);
   return (
     <Fragment>
       <Menu as="div" className="relative">
@@ -77,9 +86,28 @@ export default function EnvironmentSelector({ environments }: Props) {
                   ))}
               </div>
             )}
+            <div className="p-1">
+              <Menu.Item>
+                {({ active }) => (
+                  <button
+                    className={classNames(
+                      "flex px-2 py-1 rounded whitespace-nowrap text-sm",
+                      active && "bg-slate-100",
+                    )}
+                    onClick={handleAddEnvironmentClick}
+                  >
+                    Add environment...
+                  </button>
+                )}
+              </Menu.Item>
+            </div>
           </Menu.Items>
         </Transition>
       </Menu>
+      <AddEnvironmentDialog
+        open={addEnvironmentDialogOpen}
+        onClose={handleAddEnvironmentDialogClose}
+      />
     </Fragment>
   );
 }

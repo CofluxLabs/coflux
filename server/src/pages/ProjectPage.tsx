@@ -4,91 +4,8 @@ import { useParams, useSearchParams } from "react-router-dom";
 import classNames from "classnames";
 
 import * as models from "../models";
-import { choose } from "../utils";
-
-type CodeBlockProps = {
-  code: string[];
-};
-
-function CodeBlock({ code }: CodeBlockProps) {
-  return (
-    <code className="block whitespace-pre bg-white shadow-inner rounded-md p-2 my-2 text-sm">
-      {code.join("\n")}
-    </code>
-  );
-}
-const adjectives = [
-  "bewitching",
-  "captivating",
-  "charming",
-  "clever",
-  "enchanting",
-  "funny",
-  "goofy",
-  "happy",
-  "jolly",
-  "lucky",
-  "majestic",
-  "mysterious",
-  "mystical",
-  "playful",
-  "quirky",
-  "silly",
-  "sleepy",
-  "soothing",
-  "whimsical",
-  "witty",
-  "zany",
-];
-
-const properNames = [
-  "banshee",
-  "centaur",
-  "chimera",
-  "chupacabra",
-  "cyclops",
-  "djinn",
-  "dragon",
-  "fairy",
-  "gargoyle",
-  "genie",
-  "gnome",
-  "goblin",
-  "griffin",
-  "grizzly",
-  "gryphon",
-  "hydra",
-  "kraken",
-  "leprechaun",
-  "mermaid",
-  "minotaur",
-  "mothman",
-  "nymph",
-  "ogre",
-  "oracle",
-  "pegasus",
-  "phantom",
-  "phoenix",
-  "pixie",
-  "sasquatch",
-  "satyr",
-  "shapeshifter",
-  "siren",
-  "sorcerer",
-  "spectre",
-  "sphinx",
-  "troll",
-  "unicorn",
-  "vampire",
-  "warlock",
-  "werewolf",
-  "wizard",
-  "yeti",
-];
-
-function randomEnvironmentName(): string {
-  return `${choose(adjectives)}_${choose(properNames)}`;
-}
+import { randomName } from "../utils";
+import CodeBlock from "../components/CodeBlock";
 
 function generatePackageName(projectName: string | undefined) {
   return projectName?.replace(/[^a-z0-9_]/gi, "").toLowerCase() || "my_package";
@@ -109,7 +26,7 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
   );
   const project = (projectId && projects && projects[projectId]) || undefined;
   const packageName = generatePackageName(project?.name);
-  const exampleEnvironmentName = useMemo(() => randomEnvironmentName(), []);
+  const exampleEnvironmentName = useMemo(() => randomName(), []);
   const exampleRepositoryName = `${packageName}.repo`;
   const agentConnected = agents && Object.keys(agents).length > 0;
   return (
@@ -126,7 +43,7 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
           )}
         >
           Install the CLI:
-          <CodeBlock code={["pip install coflux"]} />
+          <CodeBlock className="bg-white" code={["pip install coflux"]} />
         </li>
         <li
           className={classNames(
@@ -136,6 +53,7 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
         >
           Use the CLI to populate the configuration file:
           <CodeBlock
+            className="bg-white"
             code={[
               "coflux configure \\",
               `  --host=${window.location.host} \\`,
@@ -155,7 +73,10 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
           )}
         >
           Register an environment with the server, using the CLI:
-          <CodeBlock code={["coflux environment.register"]} />
+          <CodeBlock
+            className="bg-white"
+            code={["coflux environment.register"]}
+          />
           <span className="text-sm">
             This will create an empty environment file for the environment
             configured in the previous step, at{" "}
@@ -173,6 +94,7 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
         >
           Initalise an empty repository:
           <CodeBlock
+            className="bg-white"
             code={[`mkdir -p ${packageName}`, `touch ${packageName}/repo.py`]}
           />
         </li>
@@ -184,6 +106,7 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
         >
           Run the agent (watching for changes to the repository):
           <CodeBlock
+            className="bg-white"
             code={[`coflux agent.run ${exampleRepositoryName} --reload`]}
           />
         </li>
@@ -191,6 +114,7 @@ function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
           Edit <code className="text-sm">{`${packageName}/repo.py`}</code> to
           add a workflow to your repository:
           <CodeBlock
+            className="bg-white"
             code={[
               "import coflux as cf",
               "",
