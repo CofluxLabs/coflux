@@ -309,10 +309,12 @@ defmodule Coflux.Orchestration.Runs do
         s.id AS step_id,
         s.run_id,
         run.external_id AS run_external_id,
+        run.recurrent AS run_recurrent,
         s.repository,
         s.target,
         s.wait_for,
         s.defer_key,
+        s.parent_id,
         e.environment_id,
         e.execute_after,
         e.created_at

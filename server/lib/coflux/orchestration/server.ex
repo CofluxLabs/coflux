@@ -1396,7 +1396,7 @@ defmodule Coflux.Orchestration.Server do
 
   defp register_targets(state, repository, targets, session_id) do
     targets
-    |> Map.keys()
+    |> Enum.map(fn {k, v} -> {v.type, k} end)
     |> Enum.reduce(state, fn target, state ->
       state
       |> update_in(
@@ -1503,10 +1503,17 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp choose_session(state, execution) do
+    target_type =
+      cond do
+        execution.parent_id -> :task
+        execution.run_recurrent -> :sensor
+        true -> :workflow
+      end
+
     session_ids =
       state.targets
       |> Map.get(execution.repository, %{})
-      |> Map.get(execution.target, MapSet.new())
+      |> Map.get({target_type, execution.target}, MapSet.new())
       |> Enum.filter(fn session_id ->
         session = state.sessions[session_id]
 

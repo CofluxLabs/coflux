@@ -60,17 +60,21 @@ defmodule Coflux.Orchestration.Models do
       :step_id,
       :run_id,
       :run_external_id,
+      :run_recurrent,
       :repository,
       :target,
       :wait_for,
       :defer_key,
+      :parent_id,
       :environment_id,
       :execute_after,
       :created_at
     ]
 
     def prepare(fields) do
-      Keyword.update!(fields, :wait_for, &Utils.decode_wait_for/1)
+      fields
+      |> Keyword.update!(:wait_for, &Utils.decode_wait_for/1)
+      |> Keyword.update!(:run_recurrent, &(&1 > 0))
     end
   end
 end
