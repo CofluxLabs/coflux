@@ -43,7 +43,11 @@ function Options({
 }: OptionsProps) {
   const location = useLocation();
   if (!Object.keys(runs).length) {
-    return <p>No runs</p>;
+    return (
+      <p className="p-2 italic whitespace-nowrap text-sm">
+        No runs in this environment
+      </p>
+    );
   } else {
     return (
       <Fragment>

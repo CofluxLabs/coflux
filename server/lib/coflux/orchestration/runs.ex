@@ -382,18 +382,19 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  def get_target_runs(db, repository, target, limit \\ 50) do
+  def get_target_runs(db, repository, target, environment_id, limit \\ 50) do
     query(
       db,
       """
       SELECT DISTINCT r.external_id, r.created_at
       FROM runs as r
       INNER JOIN steps AS s ON s.run_id = r.id
-      WHERE s.repository = ?1 AND s.target = ?2
+      INNER JOIN executions AS e ON e.step_id == s.id
+      WHERE s.repository = ?1 AND s.target = ?2 AND s.parent_id IS NULL AND e.environment_id = ?3
       ORDER BY r.created_at DESC
-      LIMIT ?3
+      LIMIT ?4
       """,
-      {repository, target, limit}
+      {repository, target, environment_id, limit}
     )
   end
 

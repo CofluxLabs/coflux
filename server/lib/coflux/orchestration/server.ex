@@ -750,7 +750,7 @@ defmodule Coflux.Orchestration.Server do
 
       {:ok, environment_id} ->
         {:ok, target} = Sessions.get_target(state.db, repository, target_name, environment_id)
-        {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name)
+        {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id)
 
         {:ok, ref, state} =
           add_listener(state, {:target, repository, target_name, environment_id}, pid)
