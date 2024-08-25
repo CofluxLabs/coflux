@@ -7,6 +7,7 @@ import Input from "./common/Input";
 import Button from "./common/Button";
 import { RequestError } from "../api";
 import Alert from "./common/Alert";
+import EnvironmentLabel from "./EnvironmentLabel";
 
 function translateArgumentError(error: string | undefined) {
   switch (error) {
@@ -45,17 +46,16 @@ function Argument({ parameter, value, error, onChange }: ArgumentProps) {
 
 type Props = {
   target: models.Target;
-  activeEnvironmentName: string | undefined;
+  parameters: models.Parameter[];
+  activeEnvironmentName: string;
   open: boolean;
-  onRun: (
-    environmentName: string,
-    arguments_: ["json", string][],
-  ) => Promise<void>;
+  onRun: (arguments_: ["json", string][]) => Promise<void>;
   onClose: () => void;
 };
 
 export default function RunDialog({
   target,
+  parameters,
   activeEnvironmentName,
   open,
   onRun,
@@ -64,9 +64,6 @@ export default function RunDialog({
   const [starting, setStarting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>();
   const [values, setValues] = useState<Record<string, string>>({});
-  const [environmentName, setEnvironmentName] = useState(
-    activeEnvironmentName || "",
-  );
   const handleValueChange = useCallback(
     (name: string, value: string) =>
       setValues((vs) => ({ ...vs, [name]: value })),
@@ -76,13 +73,9 @@ export default function RunDialog({
     (ev: FormEvent) => {
       ev.preventDefault();
       setStarting(true);
-      onRun(
-        environmentName,
-        target.parameters.map((p) => ["json", values[p.name] || p.default]),
-      )
+      onRun(parameters.map((p) => ["json", values[p.name] || p.default]))
         .then(() => {
           setErrors(undefined);
-          setStarting(false);
         })
         .catch((error) => {
           if (error instanceof RequestError) {
@@ -96,15 +89,22 @@ export default function RunDialog({
           setStarting(false);
         });
     },
-    [target, values, environmentName, onRun],
+    [parameters, values, onRun],
   );
   return (
     <Dialog
       title={
-        <span className="font-normal">
-          <span className="font-mono font-bold">{target.target}</span>{" "}
-          <span className="text-slate-500 text-sm">({target.repository})</span>
-        </span>
+        <div className="flex justify-between items-start font-normal text-base">
+          <div className="flex flex-col">
+            <span className="font-mono font-bold text-xl leading-tight">
+              {target.target}
+            </span>
+            <span className="text-slate-500 text-sm">
+              ({target.repository})
+            </span>
+          </div>
+          <EnvironmentLabel name={activeEnvironmentName} />
+        </div>
       }
       open={open}
       onClose={onClose}
@@ -115,13 +115,9 @@ export default function RunDialog({
             <p>Failed to start run. Please check errors below.</p>
           </Alert>
         )}
-        {/* TODO: handle error? */}
-        <Field label="Environment">
-          <Input value={environmentName} onChange={setEnvironmentName} />
-        </Field>
-        {target.parameters.length > 0 && (
+        {parameters.length > 0 && (
           <div>
-            {target.parameters.map((parameter, index) => (
+            {parameters.map((parameter, index) => (
               <Argument
                 key={parameter.name}
                 parameter={parameter}

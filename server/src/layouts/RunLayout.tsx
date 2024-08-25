@@ -99,7 +99,7 @@ function DetailPanel({
       leaveTo="translate-x-full"
     >
       <div className={classNames(className, "pt-2 pr-2 pb-2 flex")}>
-        <div className="bg-slate-100 border border-slate-200 rounded-md flex flex-1">
+        <div className="bg-slate-100 border border-slate-200 rounded-md flex flex-1 max-w-full">
           {stepIdOrPrevious && (
             <StepDetail
               runId={runId}
@@ -195,7 +195,7 @@ export default function RunLayout() {
               run={run}
               projectId={projectId!}
               activeEnvironment={activeEnvironment!}
-              className="absolute right-0 top-0 bottom-0 w-[400px] shrink-0"
+              className="absolute right-0 top-0 bottom-0 w-[400px]"
             />
           </div>
         </div>

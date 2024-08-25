@@ -1,5 +1,10 @@
 import { useCallback, useState } from "react";
-import { IconBolt, IconCpu, IconSubtask } from "@tabler/icons-react";
+import {
+  IconBolt,
+  IconCpu,
+  IconPlayerPlay,
+  IconSubtask,
+} from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
 import * as models from "../models";
@@ -63,21 +68,20 @@ export default function TargetHeader({
   const navigate = useNavigate();
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const handleRunSubmit = useCallback(
-    (environmentName: string, arguments_: ["json", string][]) => {
+    (arguments_: ["json", string][]) => {
       return api
         .schedule(
           projectId,
           target.repository,
           target.target,
-          environmentName,
+          activeEnvironment!,
           arguments_,
         )
         .then(({ runId }) => {
           setRunDialogOpen(false);
-          // TODO: keep 'active' environment?
           navigate(
             buildUrl(`/projects/${projectId}/runs/${runId}`, {
-              environment: environmentName,
+              environment: activeEnvironment,
             }),
           );
         });
@@ -92,23 +96,21 @@ export default function TargetHeader({
   }, []);
   const handleRunDialogClose = useCallback(() => setRunDialogOpen(false), []);
   const Icon = iconForTarget(target);
-  const runnable = target.type == "workflow" || target.type == "sensor";
-
   return (
     <div className="p-4 flex justify-between gap-2 items-start">
       <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <h1 className="flex items-center">
-            {Icon && (
-              <Icon
-                size={24}
-                strokeWidth={1.5}
-                className="text-slate-400 mr-1"
-              />
-            )}
-            <span className="text-lg font-bold font-mono">{target.target}</span>
-            <span className="ml-2 text-slate-500">({target.repository})</span>
-          </h1>
+        <div className="flex items-start gap-1">
+          {Icon && (
+            <Icon
+              size={24}
+              strokeWidth={1.5}
+              className="text-slate-400 shrink-0 mt-px"
+            />
+          )}
+          <div className="flex items-center flex-wrap gap-x-2">
+            <h1 className="text-lg font-bold font-mono">{target.target}</h1>
+            <span className="text-slate-500">({target.repository})</span>
+          </div>
         </div>
 
         {runId && (
@@ -128,16 +130,25 @@ export default function TargetHeader({
         )}
       </div>
       <div className="flex items-center gap-2">
-        <Button
-          onClick={handleRunClick}
-          left={<IconBolt size={16} />}
-          disabled={!runnable}
-        >
-          Run...
-        </Button>
-        {runnable && (
+        {(target.type == "workflow" || target.type == "sensor") && (
+          <Button
+            onClick={handleRunClick}
+            left={
+              target.type == "sensor" ? (
+                <IconPlayerPlay size={16} />
+              ) : (
+                <IconBolt size={16} />
+              )
+            }
+            disabled={!activeEnvironment || !target.parameters}
+          >
+            {target.type == "sensor" ? "Start..." : "Run..."}
+          </Button>
+        )}
+        {activeEnvironment && target.parameters && (
           <RunDialog
             target={target}
+            parameters={target.parameters}
             activeEnvironmentName={activeEnvironment}
             open={runDialogOpen}
             onRun={handleRunSubmit}
