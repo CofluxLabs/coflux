@@ -20,6 +20,7 @@ import * as models from "../models";
 import StepLink from "./StepLink";
 import { useHoverContext } from "./HoverContext";
 import buildGraph, { Graph, Edge } from "../graph";
+import EnvironmentLabel from "./EnvironmentLabel";
 
 function classNameForExecution(execution: models.Execution) {
   const result = execution.result;
@@ -87,7 +88,7 @@ function StepNode({
         hoveredClassName="ring ring-slate-400"
       >
         <span className="flex-1 flex items-center overflow-hidden">
-          <span className="flex-1 flex flex-col overflow-hidden">
+          <span className="flex-1 flex flex-col gap-0.5 overflow-hidden">
             <span className="truncate text-sm">
               <span
                 className={classNames(
@@ -107,9 +108,15 @@ function StepNode({
                 ({step.repository})
               </span>
             </span>
-            {execution && execution.environment != runEnvironment && (
-              <span>{execution.environment} </span>
-            )}
+            <span className="flex">
+              {execution && execution.environment != runEnvironment && (
+                <EnvironmentLabel
+                  name={execution.environment}
+                  size="sm"
+                  warning="This execution ran in a different environment"
+                />
+              )}
+            </span>
           </span>
           {step.isMemoised && (
             <span className="text-slate-500" title="Memoised">

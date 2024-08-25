@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import classNames from "classnames";
+import { IconExclamationCircle } from "@tabler/icons-react";
 
 function classNameForEnvironment(
   name: string,
@@ -17,7 +18,7 @@ function classNameForEnvironment(
     );
   } else {
     return classNames(
-      "bg-slate-300/70 text-slate-900",
+      "bg-slate-300/70 text-slate-700",
       interactive && "hover:bg-slate-300/60",
     );
   }
@@ -27,28 +28,35 @@ type Props = {
   name: string;
   size?: "sm" | "md";
   interactive?: boolean;
-  right?: ReactNode;
+  warning?: string;
+  accessory?: ReactNode;
 };
 
 export default function EnvironmentLabel({
   name,
   size,
   interactive,
-  right,
+  warning,
+  accessory,
 }: Props) {
   return (
     <span
       className={classNames(
-        "flex items-center gap-1 rounded-full px-2 py-0.5",
+        "flex items-center rounded-full",
+        size == "sm" ? "px-1 py-px gap-0.5" : "px-2 py-0.5 gap-1",
         classNameForEnvironment(name, interactive),
       )}
+      title={warning}
     >
+      {warning && <IconExclamationCircle size={size == "sm" ? 12 : 14} />}
       <span
-        className={classNames("px-0.5", size == "sm" ? "text-xs" : "text-sm")}
+        className={classNames(
+          size == "sm" ? "px-px text-xs" : "px-0.5 text-sm",
+        )}
       >
         {name}
       </span>
-      {right}
+      {accessory}
     </span>
   );
 }

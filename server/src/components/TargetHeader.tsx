@@ -127,7 +127,10 @@ export default function TargetHeader({
             />
 
             {runEnvironment && runEnvironment != activeEnvironment && (
-              <EnvironmentLabel name={runEnvironment} interactive={true} />
+              <EnvironmentLabel
+                name={runEnvironment}
+                warning="This run is from a different environment"
+              />
             )}
             {isRunning && <CancelButton onCancel={handleCancel} />}
           </div>

@@ -18,6 +18,7 @@ import StepLink from "./StepLink";
 import AssetLink from "./AssetLink";
 import { getAssetMetadata } from "../assets";
 import AssetIcon from "./AssetIcon";
+import EnvironmentLabel from "./EnvironmentLabel";
 
 type AttemptSelectorOptionProps = {
   attempt: number;
@@ -116,6 +117,7 @@ function AttemptSelector({
 type HeaderProps = {
   projectId: string;
   activeEnvironment: string;
+  runEnvironment: string;
   run: models.Run;
   stepId: string;
   step: models.Step;
@@ -126,6 +128,7 @@ type HeaderProps = {
 function Header({
   projectId,
   activeEnvironment,
+  runEnvironment,
   run,
   stepId,
   step,
@@ -147,47 +150,71 @@ function Header({
     },
     [projectId, run, activeEnvironment, step, navigate, location],
   );
-  const executionEnvironmentName = step.executions[attempt].environment;
+  const executionEnvironment = step.executions[attempt].environment;
   const handleRerunClick = useCallback(() => {
-    setRerunning(true);
-    onRerunStep(stepId, executionEnvironmentName).then(({ attempt }) => {
-      setRerunning(false);
-      changeAttempt(attempt);
-    });
-  }, [onRerunStep, stepId, executionEnvironmentName, changeAttempt]);
+    if (
+      executionEnvironment == activeEnvironment ||
+      confirm(
+        `Are you sure you want to re-run this execution in the active environment (${activeEnvironment})?`,
+      )
+    ) {
+      setRerunning(true);
+      onRerunStep(stepId, activeEnvironment).then(({ attempt }) => {
+        setRerunning(false);
+        changeAttempt(attempt);
+      });
+    }
+  }, [
+    onRerunStep,
+    stepId,
+    executionEnvironment,
+    activeEnvironment,
+    changeAttempt,
+  ]);
   return (
     <div className="p-4 pt-5 flex items-start border-b border-slate-200">
-      <div className="flex-1">
-        <h2>
-          <span
-            className={classNames("font-mono", !step.parentId && "font-bold")}
-          >
-            {step.target}
-          </span>{" "}
-          <span className="text-slate-500">({step.repository})</span>
-        </h2>
-        <div className="flex items-center gap-1 mt-1">
+      <div className="flex-1 flex flex-col gap-2">
+        <div className="flex justify-between items-center gap-2">
+          <div className="flex items-center flex-wrap gap-x-2">
+            <h2
+              className={classNames("font-mono", !step.parentId && "font-bold")}
+            >
+              {step.target}
+            </h2>
+            <span className="text-slate-500 text-sm">({step.repository})</span>
+            {step.isMemoised && (
+              <span
+                className="text-slate-500"
+                title="This execution has been memoised"
+              >
+                <IconPinned size={16} />
+              </span>
+            )}
+          </div>
+
+          {executionEnvironment != runEnvironment && (
+            <EnvironmentLabel
+              name={executionEnvironment}
+              warning="This execution ran in a different environment"
+            />
+          )}
+        </div>
+        <div className="flex items-center gap-1">
           <AttemptSelector
             selected={attempt}
             executions={step.executions}
             onChange={changeAttempt}
           />
-
           <Button
             disabled={rerunning}
             outline={true}
             size="sm"
             onClick={handleRerunClick}
           >
-            Re-run
+            {executionEnvironment != activeEnvironment ? "Re-run..." : "Re-run"}
           </Button>
         </div>
       </div>
-      {step.isMemoised && (
-        <span className="text-slate-500" title="Memoised">
-          <IconPinned size={20} />
-        </span>
-      )}
     </div>
   );
 }
@@ -674,6 +701,7 @@ type Props = {
   run: models.Run;
   projectId: string;
   activeEnvironment: string;
+  runEnvironment: string;
   className?: string;
   style?: CSSProperties;
   onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
@@ -686,6 +714,7 @@ export default function StepDetail({
   run,
   projectId,
   activeEnvironment,
+  runEnvironment,
   className,
   style,
   onRerunStep,
@@ -700,6 +729,7 @@ export default function StepDetail({
       <Header
         projectId={projectId}
         activeEnvironment={activeEnvironment}
+        runEnvironment={runEnvironment}
         run={run}
         stepId={stepId}
         step={step}

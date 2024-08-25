@@ -65,6 +65,7 @@ type DetailPanelProps = {
   run: models.Run;
   projectId: string;
   activeEnvironment: string;
+  runEnvironment: string;
   className?: string;
 };
 
@@ -75,6 +76,7 @@ function DetailPanel({
   run,
   projectId,
   activeEnvironment,
+  runEnvironment,
   className,
 }: DetailPanelProps) {
   const previousStepId = usePrevious(stepId);
@@ -108,6 +110,7 @@ function DetailPanel({
               run={run}
               projectId={projectId}
               activeEnvironment={activeEnvironment}
+              runEnvironment={runEnvironment}
               className="flex-1"
               onRerunStep={handleRerunStep}
             />
@@ -195,6 +198,7 @@ export default function RunLayout() {
               run={run}
               projectId={projectId!}
               activeEnvironment={activeEnvironment!}
+              runEnvironment={runEnvironment}
               className="absolute right-0 top-0 bottom-0 w-[400px]"
             />
           </div>

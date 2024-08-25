@@ -33,7 +33,7 @@ export default function EnvironmentSelector({ environments }: Props) {
             <EnvironmentLabel
               name={activeEnvironment}
               interactive={true}
-              right={
+              accessory={
                 <IconChevronDown size={14} className="opacity-40 mt-0.5" />
               }
             />
