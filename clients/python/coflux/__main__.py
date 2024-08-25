@@ -138,7 +138,7 @@ def cli():
     "-e",
     "--environment",
     prompt=True,
-    default=lambda: config.load().get("environment"),
+    default=lambda: config.load().get("environment") or "",
     help="Environment name",
 )
 def configure(
@@ -150,14 +150,15 @@ def configure(
     Populate the configuration file with default values.
     """
     # TODO: connect to server to check details?
-    if environment is not None:
+    if environment:
         _validate_environment_name(environment)
     click.secho("Writing configuration...", fg="black")
+
     config.write(
         {
             "project": project,
-            "environment": environment,
             "host": host,
+            "environment": environment or None,
         }
     )
     click.secho(f"Configuration written to '{config.path}'.", fg="green")
