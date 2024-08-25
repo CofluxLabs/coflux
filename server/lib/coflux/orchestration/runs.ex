@@ -558,6 +558,11 @@ defmodule Coflux.Orchestration.Runs do
   end
 
   defp find_cached_execution(db, environment_ids, cache_key, recorded_after) do
+    environment_placeholders =
+      1..length(environment_ids)
+      |> Enum.map_intersperse(", ", &"?#{&1}")
+      |> Enum.join()
+
     case query(
            db,
            """
@@ -566,13 +571,15 @@ defmodule Coflux.Orchestration.Runs do
            INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id
            WHERE
-             e.environment_id IN (?1)
-             AND s.cache_key = ?2
-             AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?3))
+             e.environment_id IN (#{environment_placeholders})
+             AND s.cache_key = ?#{length(environment_ids) + 1}
+             AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?#{length(environment_ids) + 2}))
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           {environment_ids, cache_key, recorded_after}
+           List.to_tuple(environment_ids)
+           |> Tuple.append(cache_key)
+           |> Tuple.append(recorded_after)
          ) do
       {:ok, [{execution_id}]} ->
         {:ok, execution_id}
