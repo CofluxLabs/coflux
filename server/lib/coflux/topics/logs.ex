@@ -1,29 +1,89 @@
 defmodule Coflux.Topics.Logs do
-  use Topical.Topic, route: ["projects", :project_id, "runs", :run_id, "logs"]
+  use Topical.Topic, route: ["projects", :project_id, "runs", :run_id, "logs", :environment_name]
 
-  alias Coflux.Observation
+  alias Coflux.{Observation, Orchestration}
 
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
     run_id = Keyword.fetch!(params, :run_id)
+    environment_name = Keyword.fetch!(params, :environment_name)
 
     case Observation.subscribe(project_id, run_id, self()) do
       {:ok, _ref, messages} ->
-        topic =
-          messages
-          |> Enum.map(&encode_message/1)
-          |> Topic.new()
+        case Orchestration.subscribe_run(project_id, run_id, self()) do
+          {:ok, _run, _parent, steps, _ref} ->
+            run_environment_name =
+              steps
+              |> Map.values()
+              |> Enum.reject(& &1.parent_id)
+              |> Enum.min_by(& &1.created_at)
+              |> Map.fetch!(:executions)
+              |> Map.values()
+              |> Enum.min_by(& &1.created_at)
+              |> Map.fetch!(:environment_name)
 
-        {:ok, topic}
+            environment_names = Enum.uniq([run_environment_name, environment_name])
+
+            execution_ids =
+              steps
+              |> Map.values()
+              |> Enum.flat_map(fn step ->
+                step.executions
+                |> Map.values()
+                |> Enum.filter(&(&1.environment_name in environment_names))
+                |> Enum.map(& &1.execution_id)
+              end)
+              |> MapSet.new()
+
+            topic =
+              messages
+              |> Enum.filter(&(elem(&1, 0) in execution_ids))
+              |> Enum.map(&encode_message/1)
+              |> Topic.new(%{
+                environment_names: environment_names,
+                execution_ids: execution_ids
+              })
+
+            {:ok, topic}
+        end
     end
   end
 
-  def handle_info({:messages, _ref, messages}, topic) do
-    topic =
-      Enum.reduce(messages, topic, fn message, topic ->
-        Topic.insert(topic, [], [encode_message(message)])
+  def handle_info({:topic, _ref, notifications}, topic) do
+    execution_ids =
+      Enum.reduce(notifications, topic.state.execution_ids, fn notification, execution_ids ->
+        case notification do
+          {:step, _, _, _, _, _, _, _, _, execution_id, environment_name, _} ->
+            if environment_name in topic.state.environment_names do
+              MapSet.put(execution_ids, execution_id)
+            else
+              execution_ids
+            end
+
+          {:execution, _, _, execution_id, environment_name, _, _} ->
+            if environment_name in topic.state.environment_names do
+              MapSet.put(execution_ids, execution_id)
+            else
+              execution_ids
+            end
+
+          _other ->
+            execution_ids
+        end
       end)
 
+    topic = put_in(topic.state.execution_ids, execution_ids)
+
+    {:ok, topic}
+  end
+
+  def handle_info({:messages, _ref, messages}, topic) do
+    encoded =
+      messages
+      |> Enum.filter(&(elem(&1, 0) in topic.state.execution_ids))
+      |> Enum.map(&encode_message/1)
+
+    topic = Topic.insert(topic, [], encoded)
     {:ok, topic}
   end
 

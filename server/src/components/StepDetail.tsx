@@ -661,15 +661,22 @@ type LogsSectionProps = {
   projectId: string;
   runId: string;
   execution: models.Execution;
+  activeEnvironment: string;
 };
 
-function LogsSection({ projectId, runId, execution }: LogsSectionProps) {
+function LogsSection({
+  projectId,
+  runId,
+  execution,
+  activeEnvironment,
+}: LogsSectionProps) {
   const [logs, _] = useTopic<models.LogMessage[]>(
     "projects",
     projectId,
     "runs",
     runId,
     "logs",
+    activeEnvironment,
   );
   const executionLogs =
     logs && logs.filter((l) => l[0] == execution.executionId);
@@ -763,6 +770,7 @@ export default function StepDetail({
               projectId={projectId}
               runId={runId}
               execution={execution}
+              activeEnvironment={activeEnvironment}
             />
           </Fragment>
         )}

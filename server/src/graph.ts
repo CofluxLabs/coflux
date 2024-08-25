@@ -1,5 +1,5 @@
 import ELK from "elkjs/lib/elk.bundled.js";
-import { max, minBy, sortBy } from "lodash";
+import { max, minBy } from "lodash";
 
 import * as models from "./models";
 
@@ -79,7 +79,7 @@ function getStepAttempt(
   const step = run.steps[stepId];
   return (
     stepAttempts[stepId] ||
-    max(Object.keys(step.executions).map((s) => parseInt(s, 10)))
+    max(Object.keys(step.executions).map((a) => parseInt(a, 10)))
   );
 }
 

@@ -66,7 +66,6 @@ export default function EnvironmentSelector({ environments }: Props) {
                       {({ active }) => (
                         <Link
                           to={buildUrl(location.pathname, {
-                            ...Object.fromEntries(searchParams),
                             environment: environmentName,
                           })}
                           className={classNames(

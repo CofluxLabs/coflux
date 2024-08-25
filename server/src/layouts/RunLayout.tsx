@@ -10,6 +10,7 @@ import {
 import { Transition } from "@headlessui/react";
 import useResizeObserver from "use-resize-observer";
 import { minBy } from "lodash";
+import { useTopic } from "@topical/react";
 
 import * as models from "../models";
 import * as api from "../api";
@@ -18,7 +19,7 @@ import StepDetail from "../components/StepDetail";
 import usePrevious from "../hooks/usePrevious";
 import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
-import { useRunTopic, useTargetTopic } from "../topics";
+import { useTargetTopic } from "../topics";
 import TargetHeader from "../components/TargetHeader";
 import HoverContext from "../components/HoverContext";
 import { useTitlePart } from "../components/TitleContext";
@@ -135,7 +136,13 @@ export default function RunLayout() {
     ? parseInt(searchParams.get("attempt")!, 10)
     : undefined;
   const activeEnvironment = searchParams.get("environment") || undefined;
-  const run = useRunTopic(projectId, runId);
+  const [run] = useTopic<models.Run>(
+    "projects",
+    projectId,
+    "runs",
+    runId,
+    activeEnvironment,
+  );
   const initialStep = run && Object.values(run.steps).find((s) => !s.parentId);
   const target = useTargetTopic(
     projectId,

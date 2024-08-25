@@ -312,16 +312,20 @@ defmodule Coflux.Orchestration.Server do
          ) do
       {:ok, _step_id, external_step_id, execution_id, attempt, created_at, memoised, result,
        child_added} ->
+        execute_after = Keyword.get(opts, :execute_after)
+
         state =
           if !memoised do
             memo_key = Keyword.get(opts, :memo_key)
             arguments = Enum.map(arguments, &build_value(&1, state))
 
+            {:ok, {environment_name}} = Sessions.get_environment_by_id(state.db, environment_id)
+
             notify_listeners(
               state,
               {:run, run.id},
               {:step, external_step_id, repository, target_name, memo_key, parent_id, created_at,
-               arguments}
+               arguments, attempt, execution_id, environment_name, execute_after}
             )
           else
             state
@@ -334,22 +338,6 @@ defmodule Coflux.Orchestration.Server do
                created_at}
 
             notify_listeners(state, {:run, run.id}, {:child, parent_id, child})
-          else
-            state
-          end
-
-        execute_after = Keyword.get(opts, :execute_after)
-
-        state =
-          if !memoised do
-            {:ok, {environment_name}} = Sessions.get_environment_by_id(state.db, environment_id)
-
-            notify_listeners(
-              state,
-              {:run, run.id},
-              {:execution, external_step_id, attempt, execution_id, environment_name, created_at,
-               execute_after}
-            )
           else
             state
           end
