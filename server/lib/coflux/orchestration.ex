@@ -1,8 +1,8 @@
 defmodule Coflux.Orchestration do
   alias Coflux.Orchestration
 
-  def register_environment(project_id, environment_name, cache_from, archived \\ false) do
-    call_server(project_id, {:register_environment, environment_name, cache_from, archived})
+  def register_environment(project_id, environment_name, base, archived \\ false) do
+    call_server(project_id, {:register_environment, environment_name, base, archived})
   end
 
   def connect(project_id, session_id, environment, concurrency, pid) do

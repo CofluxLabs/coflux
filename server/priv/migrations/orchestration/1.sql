@@ -7,12 +7,12 @@ CREATE TABLE environment_versions (
   id INTEGER PRIMARY KEY,
   environment_id INTEGER NOT NULL,
   version INTEGER NOT NULL,
-  cache_from_id INTEGER,
+  base_id INTEGER,
   archived INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   UNIQUE (environment_id, version),
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
-  FOREIGN KEY (cache_from_id) REFERENCES environments ON DELETE CASCADE
+  FOREIGN KEY (base_id) REFERENCES environments ON DELETE CASCADE
 );
 
 CREATE TABLE sessions (

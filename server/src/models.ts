@@ -3,7 +3,7 @@ export type Project = {
 };
 
 export type Environment = {
-  cacheFrom: string | null;
+  base: string | null;
   archived: boolean;
 };
 

@@ -26,7 +26,7 @@ defmodule Coflux.Topics.Environments do
 
   defp build_environment(environment) do
     %{
-      cacheFrom: environment.cache_from,
+      base: environment.base,
       archived: environment.archived
     }
   end

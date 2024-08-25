@@ -215,7 +215,7 @@ def environment_register(
         {
             "projectId": project_,
             "name": environment_,
-            "cacheFrom": content.get("cache_from"),
+            "base": content.get("base"),
         },
     )
     click.secho(f"Registered environment '{environment_}'.", fg="green")

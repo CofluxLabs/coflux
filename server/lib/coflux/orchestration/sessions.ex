@@ -1,18 +1,18 @@
 defmodule Coflux.Orchestration.Sessions do
   import Coflux.Store
 
-  def register_environment(db, name, cache_from, archived \\ false) do
+  def register_environment(db, name, base, archived \\ false) do
     # TODO: prevent archiving an environment that others are caching from?
     with_transaction(db, fn ->
-      cache_from_id =
-        if cache_from do
-          case get_environment_by_name(db, cache_from) do
-            {:ok, cache_from_id} -> cache_from_id
+      base_id =
+        if base do
+          case get_environment_by_name(db, base) do
+            {:ok, base_id} -> base_id
           end
         end
 
-      if cache_from && !cache_from_id do
-        {:error, :cache_from_invalid}
+      if base && !base_id do
+        {:error, :base_invalid}
       else
         {environment_id, latest_version} =
           case get_environment_by_name(db, name) do
@@ -31,7 +31,7 @@ defmodule Coflux.Orchestration.Sessions do
         archived = if archived, do: 1, else: 0
 
         case latest_version do
-          {version, ^cache_from_id, ^archived} ->
+          {version, ^base_id, ^archived} ->
             {:ok, version}
 
           {version, _, _} ->
@@ -41,7 +41,7 @@ defmodule Coflux.Orchestration.Sessions do
                    db,
                    environment_id,
                    new_version,
-                   cache_from_id,
+                   base_id,
                    archived
                  ) do
               {:ok, _} -> {:ok, new_version}
@@ -54,7 +54,7 @@ defmodule Coflux.Orchestration.Sessions do
                    db,
                    environment_id,
                    version,
-                   cache_from_id,
+                   base_id,
                    archived
                  ) do
               {:ok, _} -> {:ok, version}
@@ -68,7 +68,7 @@ defmodule Coflux.Orchestration.Sessions do
     query_one(
       db,
       """
-      SELECT version, cache_from_id, archived
+      SELECT version, base_id, archived
       FROM environment_versions
       WHERE environment_id = ?1
       ORDER BY version DESC
@@ -89,11 +89,11 @@ defmodule Coflux.Orchestration.Sessions do
     end
   end
 
-  defp insert_environment_version(db, environment_id, version, cache_from_id, archived) do
+  defp insert_environment_version(db, environment_id, version, base_id, archived) do
     insert_one(db, :environment_versions, %{
       environment_id: environment_id,
       version: version,
-      cache_from_id: cache_from_id,
+      base_id: base_id,
       archived: archived,
       created_at: current_timestamp()
     })
@@ -103,7 +103,7 @@ defmodule Coflux.Orchestration.Sessions do
     query(
       db,
       """
-      SELECT e.id, e.name, ev.cache_from_id, ev.archived
+      SELECT e.id, e.name, ev.base_id, ev.archived
       FROM environments AS e
       JOIN environment_versions AS ev ON e.id = ev.environment_id
       JOIN (

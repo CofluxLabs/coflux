@@ -69,14 +69,14 @@ defmodule Coflux.Orchestration.Server do
     {:noreply, state}
   end
 
-  def handle_call({:register_environment, name, cache_from, archived}, _from, state) do
-    case Sessions.register_environment(state.db, name, cache_from, archived) do
+  def handle_call({:register_environment, name, base, archived}, _from, state) do
+    case Sessions.register_environment(state.db, name, base, archived) do
       {:ok, version} ->
         state =
           state
           |> notify_listeners(
             :project,
-            {:environment, name, %{cache_from: cache_from, archived: archived}}
+            {:environment, name, %{base: base, archived: archived}}
           )
           |> flush_notifications()
 
@@ -625,21 +625,21 @@ defmodule Coflux.Orchestration.Server do
     case Sessions.get_environments(state.db) do
       {:ok, environments} ->
         environments_by_id =
-          Enum.reduce(environments, %{}, fn {id, name, cache_from_id, archived}, acc ->
-            Map.put(acc, id, %{name: name, cache_from_id: cache_from_id, archived: archived > 0})
+          Enum.reduce(environments, %{}, fn {id, name, base_id, archived}, acc ->
+            Map.put(acc, id, %{name: name, base_id: base_id, archived: archived > 0})
           end)
 
         environments_by_name =
           environments_by_id
           |> Map.values()
           |> Enum.reduce(%{}, fn environment, acc ->
-            cache_from_name =
-              if environment.cache_from_id do
-                Map.fetch!(environments_by_id, environment.cache_from_id).name
+            base_name =
+              if environment.base_id do
+                Map.fetch!(environments_by_id, environment.base_id).name
               end
 
             Map.put(acc, environment.name, %{
-              cache_from: cache_from_name,
+              base: base_name,
               archived: environment.archived
             })
           end)

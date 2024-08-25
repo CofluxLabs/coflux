@@ -38,20 +38,20 @@ defmodule Coflux.Handlers.Api do
       read_arguments(req, %{
         project_id: "projectId",
         name: {"name", &validate_environment_name/1},
-        cache_from: {"cacheFrom", nil}
+        base: {"base", nil}
       })
 
     if Enum.empty?(errors) do
       case Orchestration.register_environment(
              arguments.project_id,
              arguments.name,
-             arguments.cache_from
+             arguments.base
            ) do
         {:ok, version} ->
           json_response(req, %{version: version})
 
-        {:error, :cache_from_invalid} ->
-          json_error_response(req, "bad_request", details: %{cacheFrom: "invalid"})
+        {:error, :base_invalid} ->
+          json_error_response(req, "bad_request", details: %{base: "invalid"})
       end
     else
       json_error_response(req, "bad_request", details: errors)
@@ -74,9 +74,6 @@ defmodule Coflux.Handlers.Api do
            ) do
         {:ok, version} ->
           json_response(req, %{version: version})
-
-        {:error, :cache_from_invalid} ->
-          json_error_response(req, "bad_request", details: %{cacheFrom: "invalid"})
       end
     else
       json_error_response(req, "bad_request", details: errors)
