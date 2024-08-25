@@ -6,10 +6,8 @@ defmodule Coflux.Orchestration.Sessions do
     with_transaction(db, fn ->
       cache_from_id =
         if cache_from do
-          # TODO: handle not recognised
           case get_environment_by_name(db, cache_from) do
-            {:ok, {cache_from_id}} -> cache_from_id
-            {:ok, nil} -> nil
+            {:ok, cache_from_id} -> cache_from_id
           end
         end
 
@@ -18,15 +16,15 @@ defmodule Coflux.Orchestration.Sessions do
       else
         {environment_id, latest_version} =
           case get_environment_by_name(db, name) do
-            {:ok, {environment_id}} ->
-              case get_latest_environment_version(db, environment_id) do
-                {:ok, latest_version} ->
-                  {environment_id, latest_version}
-              end
-
             {:ok, nil} ->
               case insert_one(db, :environments, %{name: name}) do
                 {:ok, environment_id} -> {environment_id, nil}
+              end
+
+            {:ok, environment_id} ->
+              case get_latest_environment_version(db, environment_id) do
+                {:ok, latest_version} ->
+                  {environment_id, latest_version}
               end
           end
 
@@ -121,7 +119,10 @@ defmodule Coflux.Orchestration.Sessions do
   end
 
   def get_environment_by_name(db, name) do
-    query_one(db, "SELECT id FROM environments WHERE name = ?1", {name})
+    case query_one(db, "SELECT id FROM environments WHERE name = ?1", {name}) do
+      {:ok, {environment_id}} -> {:ok, environment_id}
+      {:ok, nil} -> {:ok, nil}
+    end
   end
 
   def get_environment_by_id(db, id) do
@@ -131,7 +132,10 @@ defmodule Coflux.Orchestration.Sessions do
   def start_session(db, environment) do
     with_transaction(db, fn ->
       case get_environment_by_name(db, environment) do
-        {:ok, {environment_id}} ->
+        {:ok, nil} ->
+          {:error, :environment_invalid}
+
+        {:ok, environment_id} ->
           case generate_external_id(db, :sessions, 30) do
             {:ok, external_id} ->
               case insert_one(db, :sessions, %{
@@ -143,9 +147,6 @@ defmodule Coflux.Orchestration.Sessions do
                   {:ok, session_id, external_id, environment_id}
               end
           end
-
-        {:ok, nil} ->
-          {:error, :environment_invalid}
       end
     end)
   end

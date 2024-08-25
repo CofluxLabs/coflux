@@ -234,9 +234,7 @@ defmodule Coflux.Orchestration.Server do
 
         nil ->
           environment_name = Keyword.get(opts, :environment)
-          # TODO: handle error
-          {:ok, {environment_id}} = Sessions.get_environment_by_name(state.db, environment_name)
-          {:ok, environment_id}
+          Sessions.get_environment_by_name(state.db, environment_name)
       end
 
     case Runs.schedule_run(state.db, repository, target_name, arguments, environment_id, opts) do
@@ -448,7 +446,7 @@ defmodule Coflux.Orchestration.Server do
       {:ok, nil} ->
         {:reply, {:error, :environment_invalid}, state}
 
-      {:ok, {environment_id}} ->
+      {:ok, environment_id} ->
         {:ok, execution_id, attempt, state} = rerun_step(state, step, environment_id, nil)
         state = flush_notifications(state)
         {:reply, {:ok, execution_id, attempt}, state}
@@ -664,67 +662,81 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:subscribe_repositories, environment_name, pid}, _from, state) do
-    {:ok, {environment_id}} = Sessions.get_environment_by_name(state.db, environment_name)
-    {:ok, targets} = Sessions.get_latest_targets(state.db, environment_id)
+    case Sessions.get_environment_by_name(state.db, environment_name) do
+      {:ok, nil} ->
+        {:reply, {:error, :environment_invalid}, state}
 
-    executing =
-      state.sessions
-      |> Map.values()
-      |> Enum.reduce(MapSet.new(), fn session, executing ->
-        executing |> MapSet.union(session.executing) |> MapSet.union(session.starting)
-      end)
+      {:ok, environment_id} ->
+        {:ok, targets} = Sessions.get_latest_targets(state.db, environment_id)
 
-    {:ok, executions} = Runs.get_unassigned_executions(state.db)
-    # TODO: get/include assigned (pending) executions
+        executing =
+          state.sessions
+          |> Map.values()
+          |> Enum.reduce(MapSet.new(), fn session, executing ->
+            executing |> MapSet.union(session.executing) |> MapSet.union(session.starting)
+          end)
 
-    executions =
-      Enum.reduce(executions, %{}, fn execution, executions ->
-        executions
-        |> Map.put_new(execution.repository, {MapSet.new(), %{}})
-        |> Map.update!(execution.repository, fn {repo_executing, repo_scheduled} ->
-          if Enum.member?(executing, execution.execution_id) do
-            {MapSet.put(repo_executing, execution.execution_id), repo_scheduled}
-          else
-            {repo_executing,
-             Map.put(
-               repo_scheduled,
-               execution.execution_id,
-               execution.execute_after || execution.created_at
-             )}
-          end
-        end)
-      end)
+        {:ok, executions} = Runs.get_unassigned_executions(state.db)
+        # TODO: get/include assigned (pending) executions
 
-    {:ok, ref, state} =
-      add_listener(state, {{:repositories, environment_id}, environment_id}, pid)
+        executions =
+          Enum.reduce(executions, %{}, fn execution, executions ->
+            executions
+            |> Map.put_new(execution.repository, {MapSet.new(), %{}})
+            |> Map.update!(execution.repository, fn {repo_executing, repo_scheduled} ->
+              if Enum.member?(executing, execution.execution_id) do
+                {MapSet.put(repo_executing, execution.execution_id), repo_scheduled}
+              else
+                {repo_executing,
+                 Map.put(
+                   repo_scheduled,
+                   execution.execution_id,
+                   execution.execute_after || execution.created_at
+                 )}
+              end
+            end)
+          end)
 
-    {:reply, {:ok, targets, executions, ref}, state}
+        {:ok, ref, state} =
+          add_listener(state, {{:repositories, environment_id}, environment_id}, pid)
+
+        {:reply, {:ok, targets, executions, ref}, state}
+    end
   end
 
   def handle_call({:subscribe_repository, repository, environment_name, pid}, _from, state) do
-    {:ok, {environment_id}} = Sessions.get_environment_by_name(state.db, environment_name)
-    {:ok, executions} = Runs.get_repository_executions(state.db, repository)
-    {:ok, ref, state} = add_listener(state, {:repository, repository, environment_id}, pid)
-    {:reply, {:ok, executions, ref}, state}
+    case Sessions.get_environment_by_name(state.db, environment_name) do
+      {:ok, nil} ->
+        {:reply, {:error, :environment_invalid}, state}
+
+      {:ok, environment_id} ->
+        {:ok, executions} = Runs.get_repository_executions(state.db, repository)
+        {:ok, ref, state} = add_listener(state, {:repository, repository, environment_id}, pid)
+        {:reply, {:ok, executions, ref}, state}
+    end
   end
 
   def handle_call({:subscribe_agents, environment_name, pid}, _from, state) do
-    {:ok, {environment_id}} = Sessions.get_environment_by_name(state.db, environment_name)
+    case Sessions.get_environment_by_name(state.db, environment_name) do
+      {:ok, nil} ->
+        {:reply, {:error, :environment_invalid}, state}
 
-    agents =
-      state.agents
-      |> Enum.map(fn {_, {_, session_id}} ->
-        {session_id, Map.fetch!(state.sessions, session_id)}
-      end)
-      |> Enum.filter(fn {_, session} ->
-        session.environment_id == environment_id
-      end)
-      |> Map.new(fn {session_id, session} ->
-        {session_id, session.targets}
-      end)
+      {:ok, environment_id} ->
+        agents =
+          state.agents
+          |> Enum.map(fn {_, {_, session_id}} ->
+            {session_id, Map.fetch!(state.sessions, session_id)}
+          end)
+          |> Enum.filter(fn {_, session} ->
+            session.environment_id == environment_id
+          end)
+          |> Map.new(fn {session_id, session} ->
+            {session_id, session.targets}
+          end)
 
-    {:ok, ref, state} = add_listener(state, {:agents, environment_id}, pid)
-    {:reply, {:ok, agents, ref}, state}
+        {:ok, ref, state} = add_listener(state, {:agents, environment_id}, pid)
+        {:reply, {:ok, agents, ref}, state}
+    end
   end
 
   def handle_call(
@@ -732,14 +744,19 @@ defmodule Coflux.Orchestration.Server do
         _from,
         state
       ) do
-    {:ok, {environment_id}} = Sessions.get_environment_by_name(state.db, environment_name)
-    {:ok, target} = Sessions.get_target(state.db, repository, target_name, environment_id)
-    {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name)
+    case Sessions.get_environment_by_name(state.db, environment_name) do
+      {:ok, nil} ->
+        {:reply, {:error, :environment_invalid}, state}
 
-    {:ok, ref, state} =
-      add_listener(state, {:target, repository, target_name, environment_id}, pid)
+      {:ok, environment_id} ->
+        {:ok, target} = Sessions.get_target(state.db, repository, target_name, environment_id)
+        {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name)
 
-    {:reply, {:ok, target, runs, ref}, state}
+        {:ok, ref, state} =
+          add_listener(state, {:target, repository, target_name, environment_id}, pid)
+
+        {:reply, {:ok, target, runs, ref}, state}
+    end
   end
 
   def handle_call({:subscribe_run, external_run_id, pid}, _from, state) do
