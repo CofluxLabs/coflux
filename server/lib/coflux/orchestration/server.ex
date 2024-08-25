@@ -398,8 +398,6 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  # TODO: start_sensor
-
   def handle_call({:cancel_run, external_run_id}, _from, state) do
     # TODO: use one query to get all execution ids?
     case Runs.get_run_by_external_id(state.db, external_run_id) do

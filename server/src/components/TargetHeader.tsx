@@ -69,11 +69,15 @@ export default function TargetHeader({
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const handleRunSubmit = useCallback(
     (arguments_: ["json", string][]) => {
+      if (target.type !== "workflow" && target.type !== "sensor") {
+        throw new Error("unexpected target type");
+      }
       return api
         .schedule(
           projectId,
           target.repository,
           target.target,
+          target.type,
           activeEnvironment!,
           arguments_,
         )

@@ -89,6 +89,7 @@ defmodule Coflux.Handlers.Api do
         project_id: "projectId",
         repository: "repository",
         target: "target",
+        type: {"type", &parse_target_type/1},
         environment: "environment",
         arguments: {"arguments", &parse_arguments/1}
       })
@@ -99,7 +100,8 @@ defmodule Coflux.Handlers.Api do
              arguments.repository,
              arguments.target,
              arguments.arguments,
-             environment: arguments.environment
+             environment: arguments.environment,
+             recurrent: arguments.type == :sensor
            ) do
         {:ok, run_id, step_id, execution_id} ->
           json_response(req, %{
@@ -175,6 +177,14 @@ defmodule Coflux.Handlers.Api do
       {:ok, name}
     else
       {:error, :invalid}
+    end
+  end
+
+  defp parse_target_type(type) do
+    case type do
+      "workflow" -> {:ok, :workflow}
+      "sensor" -> {:ok, :sensor}
+      _ -> {:error, :invalid}
     end
   end
 

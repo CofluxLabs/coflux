@@ -33,6 +33,7 @@ export function schedule(
   projectId: string,
   repository: string,
   target: string,
+  type: "workflow" | "sensor",
   environment: string,
   arguments_: ["json", string][],
 ) {
@@ -40,6 +41,7 @@ export function schedule(
     projectId,
     repository,
     target,
+    type,
     environment,
     arguments: arguments_,
   });

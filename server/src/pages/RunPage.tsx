@@ -8,13 +8,13 @@ export default function RunPage() {
   const { run } = useContext();
   const { project: projectId, run: runId } = useParams();
   const [searchParams] = useSearchParams();
-  const environmentName = searchParams.get("environment") || undefined;
   useEffect(() => {
     const page = run.recurrent ? "runs" : "graph";
     navigate(
-      buildUrl(`/projects/${projectId}/runs/${runId}/${page}`, {
-        environment: environmentName,
-      }),
+      buildUrl(
+        `/projects/${projectId}/runs/${runId}/${page}`,
+        Object.fromEntries(searchParams),
+      ),
       { replace: true },
     );
   }, [run, navigate]);
