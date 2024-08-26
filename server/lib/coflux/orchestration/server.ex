@@ -238,7 +238,7 @@ defmodule Coflux.Orchestration.Server do
     {:ok, environment_id} =
       case parent do
         {_run_id, parent_id} ->
-          Runs.get_environment_for_execution(state.db, parent_id)
+          Runs.get_environment_id_for_execution(state.db, parent_id)
 
         nil ->
           environment_name = Keyword.get(opts, :environment)
@@ -320,7 +320,7 @@ defmodule Coflux.Orchestration.Server do
         state
       ) do
     {:ok, parent_step} = Runs.get_step_for_execution(state.db, parent_id)
-    {:ok, environment_id} = Runs.get_environment_for_execution(state.db, parent_id)
+    {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, parent_id)
     {:ok, run} = Runs.get_run_by_id(state.db, parent_step.run_id)
 
     case Runs.schedule_task(
@@ -449,19 +449,34 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  # TODO: specify execution (by attempt?) instead of step (and then check that environment is a descendent of (or same as) the original)
   def handle_call({:rerun_step, external_step_id, environment_name}, _from, state) do
-    {:ok, step} = Runs.get_step_by_external_id(state.db, external_step_id)
-
     # TODO: abort/cancel any running/scheduled retry? (for the same environment) (and reference this retry?)
     case lookup_environment(state.db, environment_name) do
       {:error, error} ->
         {:reply, {:error, error}, state}
 
       {:ok, environment_id} ->
-        {:ok, execution_id, attempt, state} = rerun_step(state, step, environment_id, nil)
-        state = flush_notifications(state)
-        {:reply, {:ok, execution_id, attempt}, state}
+        {:ok, step} = Runs.get_step_by_external_id(state.db, external_step_id)
+
+        base_execution_id =
+          if step.parent_id do
+            step.parent_id
+          else
+            case Runs.get_first_step_execution_id(state.db, step.id) do
+              {:ok, execution_id} -> execution_id
+            end
+          end
+
+        {:ok, base_environment_id} =
+          Runs.get_environment_id_for_execution(state.db, base_execution_id)
+
+        if is_environment_ancestor_or_self?(state.db, base_environment_id, environment_id) do
+          {:ok, execution_id, attempt, state} = rerun_step(state, step, environment_id, nil)
+          state = flush_notifications(state)
+          {:reply, {:ok, execution_id, attempt}, state}
+        else
+          {:reply, {:error, :environment_invalid}, state}
+        end
     end
   end
 
@@ -1128,6 +1143,16 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
+  defp is_environment_ancestor_or_self?(db, maybe_ancestor_id, environment_id) do
+    if environment_id == maybe_ancestor_id do
+      true
+    else
+      case Sessions.is_environment_ancestor?(db, maybe_ancestor_id, environment_id) do
+        {:ok, is_ancestor} -> is_ancestor
+      end
+    end
+  end
+
   defp build_session(external_id) do
     %{
       external_id: external_id,
@@ -1300,7 +1325,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp record_and_notify_result(state, execution_id, result, run_id, repository) do
-    {:ok, environment_id} = Runs.get_environment_for_execution(state.db, execution_id)
+    {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, execution_id)
 
     case Results.record_result(state.db, execution_id, result) do
       {:ok, created_at} ->
@@ -1339,7 +1364,7 @@ defmodule Coflux.Orchestration.Server do
 
       {:ok, false} ->
         {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
-        {:ok, environment_id} = Runs.get_environment_for_execution(state.db, execution_id)
+        {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, execution_id)
 
         {retry_id, state} =
           if result_retryable?(result) && step.retry_count > 0 do

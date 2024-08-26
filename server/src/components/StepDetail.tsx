@@ -159,10 +159,14 @@ function Header({
       )
     ) {
       setRerunning(true);
-      onRerunStep(stepId, activeEnvironment).then(({ attempt }) => {
-        setRerunning(false);
-        changeAttempt(attempt);
-      });
+      onRerunStep(stepId, activeEnvironment)
+        .then(({ attempt }) => {
+          // TODO: wait for attempt to be synced to topic
+          changeAttempt(attempt);
+        })
+        .finally(() => {
+          setRerunning(false);
+        });
     }
   }, [
     onRerunStep,

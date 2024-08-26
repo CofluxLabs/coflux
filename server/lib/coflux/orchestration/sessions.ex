@@ -83,14 +83,26 @@ defmodule Coflux.Orchestration.Sessions do
     )
   end
 
-  def get_cache_environment_ids(db, environment_id, ids \\ []) do
-    # TODO: check environment_id isn't in ids?
+  def get_environment_ancestor_ids(db, environment_id, ids \\ []) do
     case get_latest_environment_version(db, environment_id) do
       {:ok, {_, nil, _}} ->
-        {:ok, [environment_id | ids]}
+        {:ok, ids}
 
-      {:ok, {_, id, _}} ->
-        get_cache_environment_ids(db, id, [environment_id | ids])
+      {:ok, {_, base_id, _}} ->
+        get_environment_ancestor_ids(db, base_id, [base_id | ids])
+    end
+  end
+
+  def is_environment_ancestor?(db, maybe_ancestor_id, environment_id) do
+    case get_latest_environment_version(db, environment_id) do
+      {:ok, {_, nil, _}} ->
+        {:ok, false}
+
+      {:ok, {_, ^maybe_ancestor_id, _}} ->
+        {:ok, true}
+
+      {:ok, {_, base_id, _}} ->
+        is_environment_ancestor?(db, maybe_ancestor_id, base_id)
     end
   end
 

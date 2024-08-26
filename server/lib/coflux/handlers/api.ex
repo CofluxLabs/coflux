@@ -51,7 +51,7 @@ defmodule Coflux.Handlers.Api do
           json_response(req, %{version: version})
 
         {:error, :base_invalid} ->
-          json_error_response(req, "bad_request", details: %{base: "invalid"})
+          json_error_response(req, "bad_request", details: %{"base" => "invalid"})
       end
     else
       json_error_response(req, "bad_request", details: errors)
@@ -148,6 +148,9 @@ defmodule Coflux.Handlers.Api do
            ) do
         {:ok, execution_id, attempt} ->
           json_response(req, %{"executionId" => execution_id, "attempt" => attempt})
+
+        {:error, :environment_invalid} ->
+          json_error_response(req, "bad_request", details: %{"environment" => "invalid"})
       end
     else
       json_error_response(req, "bad_request", details: errors)

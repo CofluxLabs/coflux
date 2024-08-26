@@ -84,7 +84,7 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  def get_environment_for_execution(db, execution_id) do
+  def get_environment_id_for_execution(db, execution_id) do
     case query_one!(
            db,
            "SELECT environment_id FROM executions WHERE id = ?1",
@@ -162,7 +162,8 @@ defmodule Coflux.Orchestration.Runs do
             if cache_key do
               recorded_after = if cache_max_age, do: now - cache_max_age * 1000, else: 0
 
-              {:ok, environment_ids} = Sessions.get_cache_environment_ids(db, environment_id)
+              {:ok, environment_ids} =
+                Sessions.get_environment_ancestor_ids(db, environment_id, [environment_id])
 
               case find_cached_execution(db, environment_ids, cache_key, recorded_after) do
                 {:ok, cached_execution_id} ->
@@ -487,6 +488,22 @@ defmodule Coflux.Orchestration.Runs do
       """,
       {step_id}
     )
+  end
+
+  def get_first_step_execution_id(db, step_id) do
+    case query_one(
+           db,
+           """
+           SELECT id
+           FROM executions
+           WHERE step_id = ?1
+           ORDER BY created_at DESC
+           LIMIT 1
+           """,
+           {step_id}
+         ) do
+      {:ok, {id}} -> {:ok, id}
+    end
   end
 
   def get_step_arguments(db, step_id, load_metadata \\ false) do
