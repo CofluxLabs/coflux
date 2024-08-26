@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { useTopic } from "@topical/react";
 import { IconBox } from "@tabler/icons-react";
 import { DateTime } from "luxon";
 
@@ -10,6 +9,8 @@ import Loading from "../components/Loading";
 import RepositoryQueue from "../components/RepositoryQueue";
 import useNow from "../hooks/useNow";
 import { useSetActiveTarget } from "../layouts/ProjectLayout";
+import { useEnvironments, useExecutions } from "../topics";
+import { findKey } from "lodash";
 
 function splitExecutions(
   executions: Record<string, models.QueuedExecution>,
@@ -47,13 +48,12 @@ export default function RepositoryPage() {
   const { project: projectId, repository: repositoryName } = useParams();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
-  const [executions] = useTopic<Record<string, models.QueuedExecution>>(
-    "projects",
-    projectId,
-    "repositories",
-    repositoryName,
-    environmentName,
+  const environments = useEnvironments(projectId);
+  const environmentId = findKey(
+    environments,
+    (e) => e.name == environmentName && e.status != 1,
   );
+  const executions = useExecutions(projectId, repositoryName, environmentId);
   useTitlePart(repositoryName);
   const target = useMemo(
     () =>

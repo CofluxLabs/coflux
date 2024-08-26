@@ -1,11 +1,16 @@
 import { useMemo } from "react";
-import { useTopic } from "@topical/react";
 import { useParams, useSearchParams } from "react-router-dom";
 import classNames from "classnames";
+import { findKey } from "lodash";
 
-import * as models from "../models";
 import { randomName } from "../utils";
 import CodeBlock from "../components/CodeBlock";
+import {
+  useAgents,
+  useEnvironments,
+  useProjects,
+  useRepositories,
+} from "../topics";
 
 function generatePackageName(projectName: string | undefined) {
   return projectName?.replace(/[^a-z0-9_]/gi, "").toLowerCase() || "my_package";
@@ -13,19 +18,16 @@ function generatePackageName(projectName: string | undefined) {
 
 type GettingStartedProps = {
   projectId: string;
-  environmentName: string | undefined;
+  environmentId: string | undefined;
 };
 
-function GettingStarted({ projectId, environmentName }: GettingStartedProps) {
-  const [projects] = useTopic<Record<string, models.Project>>("projects");
-  const [agents] = useTopic<Record<string, Record<string, string[]>>>(
-    "projects",
-    projectId,
-    "agents",
-    environmentName,
-  );
+function GettingStarted({ projectId, environmentId }: GettingStartedProps) {
+  const projects = useProjects();
+  const agents = useAgents(projectId, environmentId);
   const project = (projectId && projects && projects[projectId]) || undefined;
   const packageName = generatePackageName(project?.name);
+  const environments = useEnvironments(projectId);
+  const environmentName = environmentId && environments?.[environmentId].name;
   const exampleEnvironmentName = useMemo(() => randomName(), []);
   const exampleRepositoryName = `${packageName}.repo`;
   const agentConnected = agents && Object.keys(agents).length > 0;
@@ -134,12 +136,12 @@ export default function ProjectPage() {
   const { project: projectId } = useParams();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
-  const [repositories] = useTopic<Record<string, models.Repository>>(
-    "projects",
-    projectId,
-    "repositories",
-    environmentName,
+  const environments = useEnvironments(projectId);
+  const environmentId = findKey(
+    environments,
+    (e) => e.name == environmentName && e.status != 1,
   );
+  const repositories = useRepositories(projectId, environmentId);
   if (
     projectId &&
     (!environmentName ||
@@ -149,7 +151,7 @@ export default function ProjectPage() {
         )))
   ) {
     return (
-      <GettingStarted projectId={projectId} environmentName={environmentName} />
+      <GettingStarted projectId={projectId} environmentId={environmentId} />
     );
   } else {
     return <div></div>;

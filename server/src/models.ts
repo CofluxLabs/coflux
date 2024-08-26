@@ -3,8 +3,9 @@ export type Project = {
 };
 
 export type Environment = {
-  base: string | null;
-  archived: boolean;
+  name: string;
+  baseId: string | null;
+  status: 0 | 1;
 };
 
 export type Parameter = {
@@ -117,7 +118,7 @@ export type Dependency = Reference & {
 
 export type Execution = {
   executionId: string;
-  environment: string;
+  environmentId: string;
   createdAt: number;
   executeAfter: number | null;
   assignedAt: number | null;

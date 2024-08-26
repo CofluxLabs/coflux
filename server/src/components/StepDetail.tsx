@@ -4,7 +4,6 @@ import { sortBy } from "lodash";
 import { DateTime } from "luxon";
 import { Listbox, Transition } from "@headlessui/react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useTopic } from "@topical/react";
 import { IconChevronDown, IconFunction, IconPinned } from "@tabler/icons-react";
 import reactStringReplace from "react-string-replace";
 
@@ -19,6 +18,7 @@ import AssetLink from "./AssetLink";
 import { getAssetMetadata } from "../assets";
 import AssetIcon from "./AssetIcon";
 import EnvironmentLabel from "./EnvironmentLabel";
+import { useLogs } from "../topics";
 
 type AttemptSelectorOptionProps = {
   attempt: number;
@@ -116,8 +116,9 @@ function AttemptSelector({
 
 type HeaderProps = {
   projectId: string;
-  activeEnvironment: string;
-  runEnvironment: string;
+  activeEnvironmentId: string;
+  activeEnvironmentName: string;
+  runEnvironmentId: string;
   run: models.Run;
   stepId: string;
   step: models.Step;
@@ -127,8 +128,9 @@ type HeaderProps = {
 
 function Header({
   projectId,
-  activeEnvironment,
-  runEnvironment,
+  activeEnvironmentId,
+  activeEnvironmentName,
+  runEnvironmentId,
   run,
   stepId,
   step,
@@ -142,24 +144,25 @@ function Header({
     (attempt: number) => {
       navigate(
         buildUrl(location.pathname, {
-          environment: activeEnvironment,
+          environment: activeEnvironmentName,
           step: stepId,
           attempt,
         }),
       );
     },
-    [projectId, run, activeEnvironment, step, navigate, location],
+    [projectId, run, activeEnvironmentName, step, navigate, location],
   );
-  const executionEnvironment = step.executions[attempt].environment;
+  const executionEnvironmentId = step.executions[attempt].environmentId;
   const handleRerunClick = useCallback(() => {
+    // TODO: compare names instead of ids?
     if (
-      executionEnvironment == activeEnvironment ||
+      executionEnvironmentId == activeEnvironmentId ||
       confirm(
-        `Are you sure you want to re-run this execution in the active environment (${activeEnvironment})?`,
+        `Are you sure you want to re-run this execution in the active environment (${activeEnvironmentName})?`,
       )
     ) {
       setRerunning(true);
-      onRerunStep(stepId, activeEnvironment)
+      onRerunStep(stepId, activeEnvironmentName)
         .then(({ attempt }) => {
           // TODO: wait for attempt to be synced to topic
           changeAttempt(attempt);
@@ -171,8 +174,9 @@ function Header({
   }, [
     onRerunStep,
     stepId,
-    executionEnvironment,
-    activeEnvironment,
+    executionEnvironmentId,
+    activeEnvironmentId,
+    activeEnvironmentName,
     changeAttempt,
   ]);
   return (
@@ -196,9 +200,10 @@ function Header({
             )}
           </div>
 
-          {executionEnvironment != runEnvironment && (
+          {executionEnvironmentId != runEnvironmentId && (
             <EnvironmentLabel
-              name={executionEnvironment}
+              projectId={projectId}
+              environmentId={executionEnvironmentId}
               warning="This execution ran in a different environment"
             />
           )}
@@ -215,7 +220,9 @@ function Header({
             size="sm"
             onClick={handleRerunClick}
           >
-            {executionEnvironment != activeEnvironment ? "Re-run..." : "Re-run"}
+            {executionEnvironmentId != activeEnvironmentId
+              ? "Re-run..."
+              : "Re-run"}
           </Button>
         </div>
       </div>
@@ -665,23 +672,16 @@ type LogsSectionProps = {
   projectId: string;
   runId: string;
   execution: models.Execution;
-  activeEnvironment: string;
+  activeEnvironmentId: string;
 };
 
 function LogsSection({
   projectId,
   runId,
   execution,
-  activeEnvironment,
+  activeEnvironmentId,
 }: LogsSectionProps) {
-  const [logs, _] = useTopic<models.LogMessage[]>(
-    "projects",
-    projectId,
-    "runs",
-    runId,
-    "logs",
-    activeEnvironment,
-  );
+  const logs = useLogs(projectId, runId, activeEnvironmentId);
   const executionLogs =
     logs && logs.filter((l) => l[0] == execution.executionId);
   const scheduledAt = DateTime.fromMillis(
@@ -711,8 +711,9 @@ type Props = {
   attempt: number;
   run: models.Run;
   projectId: string;
-  activeEnvironment: string;
-  runEnvironment: string;
+  activeEnvironmentId: string;
+  activeEnvironmentName: string;
+  runEnvironmentId: string;
   className?: string;
   style?: CSSProperties;
   onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
@@ -724,8 +725,9 @@ export default function StepDetail({
   attempt,
   run,
   projectId,
-  activeEnvironment,
-  runEnvironment,
+  activeEnvironmentId,
+  activeEnvironmentName,
+  runEnvironmentId,
   className,
   style,
   onRerunStep,
@@ -739,8 +741,9 @@ export default function StepDetail({
     >
       <Header
         projectId={projectId}
-        activeEnvironment={activeEnvironment}
-        runEnvironment={runEnvironment}
+        activeEnvironmentId={activeEnvironmentId}
+        activeEnvironmentName={activeEnvironmentName}
+        runEnvironmentId={runEnvironmentId}
         run={run}
         stepId={stepId}
         step={step}
@@ -774,7 +777,7 @@ export default function StepDetail({
               projectId={projectId}
               runId={runId}
               execution={execution}
-              activeEnvironment={activeEnvironment}
+              activeEnvironmentId={activeEnvironmentId}
             />
           </Fragment>
         )}

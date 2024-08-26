@@ -6,18 +6,24 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { useSocket, useTopic } from "@topical/react";
+import { useSocket } from "@topical/react";
 import {
   IconAlertCircle,
   IconAlertTriangle,
   IconCircle,
   IconCircleCheck,
 } from "@tabler/icons-react";
+import { findKey } from "lodash";
 
-import * as models from "../models";
 import TargetsList from "../components/TargetsList";
 import { pluralise } from "../utils";
 import { useTitlePart } from "../components/TitleContext";
+import {
+  useAgents,
+  useEnvironments,
+  useProjects,
+  useRepositories,
+} from "../topics";
 
 type Target = { repository: string; target: string | null };
 
@@ -71,36 +77,26 @@ export default function ProjectLayout() {
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
   const [activeTarget, setActiveTarget] = useState<Target>();
-  const [projects] = useTopic<Record<string, models.Project>>("projects");
-  const [environments] = useTopic<Record<string, models.Environment>>(
-    "projects",
-    projectId,
-    "environments",
+  const projects = useProjects();
+  const environments = useEnvironments(projectId);
+  const environmentId = findKey(
+    environments,
+    (e) => e.name == environmentName && e.status != 1,
   );
-  const [repositories] = useTopic<Record<string, models.Repository>>(
-    "projects",
-    projectId,
-    "repositories",
-    environmentName,
-  );
-  const [agents] = useTopic<Record<string, Record<string, string[]>>>(
-    "projects",
-    projectId,
-    "agents",
-    environmentName,
-  );
+  const repositories = useRepositories(projectId, environmentId);
+  const agents = useAgents(projectId, environmentId);
   const project = (projectId && projects && projects[projectId]) || undefined;
-  const defaultEnvironment =
+  const defaultEnvironmentName =
     environments &&
-    Object.keys(environments).filter((n) => !environments[n].archived)[0];
+    Object.values(environments).find((e) => e.status != 1)?.name;
   useEffect(() => {
-    if (projectId && !environmentName && defaultEnvironment) {
+    if (projectId && !environmentName && defaultEnvironmentName) {
       // TODO: retain current url?
-      navigate(`/projects/${projectId}?environment=${defaultEnvironment}`, {
+      navigate(`/projects/${projectId}?environment=${defaultEnvironmentName}`, {
         replace: true,
       });
     }
-  }, [navigate, projectId, environmentName, defaultEnvironment]);
+  }, [navigate, projectId, environmentName, defaultEnvironmentName]);
   useTitlePart(
     project && environmentName && `${project.name} (${environmentName})`,
   );

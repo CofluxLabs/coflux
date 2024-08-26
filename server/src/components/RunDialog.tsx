@@ -45,18 +45,20 @@ function Argument({ parameter, value, error, onChange }: ArgumentProps) {
 }
 
 type Props = {
+  projectId: string;
   target: models.Target;
   parameters: models.Parameter[];
-  activeEnvironmentName: string;
+  activeEnvironmentId: string;
   open: boolean;
   onRun: (arguments_: ["json", string][]) => Promise<void>;
   onClose: () => void;
 };
 
 export default function RunDialog({
+  projectId,
   target,
   parameters,
-  activeEnvironmentName,
+  activeEnvironmentId,
   open,
   onRun,
   onClose,
@@ -103,7 +105,10 @@ export default function RunDialog({
               ({target.repository})
             </span>
           </div>
-          <EnvironmentLabel name={activeEnvironmentName} />
+          <EnvironmentLabel
+            projectId={projectId}
+            environmentId={activeEnvironmentId}
+          />
         </div>
       }
       open={open}

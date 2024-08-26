@@ -40,21 +40,23 @@ function classNameForExecution(execution: models.Execution) {
 }
 
 type StepNodeProps = {
+  projectId: string;
   stepId: string;
   step: models.Step;
   attempt: number;
   runId: string;
   isActive: boolean;
-  runEnvironment: string;
+  runEnvironmentId: string;
 };
 
 function StepNode({
+  projectId,
   stepId,
   step,
   attempt,
   runId,
   isActive,
-  runEnvironment,
+  runEnvironmentId,
 }: StepNodeProps) {
   const execution = step.executions[attempt];
   const { isHovered } = useHoverContext();
@@ -109,9 +111,10 @@ function StepNode({
               </span>
             </span>
             <span className="flex">
-              {execution && execution.environment != runEnvironment && (
+              {execution && execution.environmentId != runEnvironmentId && (
                 <EnvironmentLabel
-                  name={execution.environment}
+                  projectId={projectId}
+                  environmentId={execution.environmentId}
                   size="sm"
                   warning="This execution ran in a different environment"
                 />
@@ -249,23 +252,25 @@ function calculateMargins(
 }
 
 type Props = {
+  projectId: string;
   runId: string;
   run: models.Run;
   width: number;
   height: number;
   activeStepId: string | undefined;
   activeAttempt: number | undefined;
-  runEnvironment: string;
+  runEnvironmentId: string;
 };
 
 export default function RunGraph({
+  projectId,
   runId,
   run,
   width: containerWidth,
   height: containerHeight,
   activeStepId,
   activeAttempt,
-  runEnvironment,
+  runEnvironmentId,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [offsetOverride, setOffsetOverride] = useState<[number, number]>();
@@ -410,12 +415,13 @@ export default function RunGraph({
                     <ParentNode parent={node.parent} />
                   ) : node.type == "step" ? (
                     <StepNode
+                      projectId={projectId}
                       stepId={node.stepId}
                       step={node.step}
                       attempt={node.attempt}
                       runId={runId}
                       isActive={node.stepId == activeStepId}
-                      runEnvironment={runEnvironment}
+                      runEnvironmentId={runEnvironmentId}
                     />
                   ) : node.type == "child" ? (
                     <ChildNode runId={node.runId} child={node.child} />

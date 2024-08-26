@@ -9,8 +9,7 @@ import {
 } from "react-router-dom";
 import { Transition } from "@headlessui/react";
 import useResizeObserver from "use-resize-observer";
-import { minBy } from "lodash";
-import { useTopic } from "@topical/react";
+import { findKey, minBy } from "lodash";
 
 import * as models from "../models";
 import * as api from "../api";
@@ -19,17 +18,17 @@ import StepDetail from "../components/StepDetail";
 import usePrevious from "../hooks/usePrevious";
 import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
-import { useTargetTopic } from "../topics";
+import { useEnvironments, useRun, useTarget } from "../topics";
 import TargetHeader from "../components/TargetHeader";
 import HoverContext from "../components/HoverContext";
 import { useTitlePart } from "../components/TitleContext";
 
-function getRunEnvironment(run: models.Run) {
+function getRunEnvironmentId(run: models.Run) {
   const initialStepId = minBy(
     Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
     (stepId) => run.steps[stepId].createdAt,
   )!;
-  return run.steps[initialStepId].executions[1].environment;
+  return run.steps[initialStepId].executions[1].environmentId;
 }
 
 type TabProps = {
@@ -65,8 +64,9 @@ type DetailPanelProps = {
   attemptNumber: number | undefined;
   run: models.Run;
   projectId: string;
-  activeEnvironment: string;
-  runEnvironment: string;
+  activeEnvironmentId: string;
+  activeEnvironmentName: string;
+  runEnvironmentId: string;
   className?: string;
 };
 
@@ -76,8 +76,9 @@ function DetailPanel({
   attemptNumber,
   run,
   projectId,
-  activeEnvironment,
-  runEnvironment,
+  activeEnvironmentId,
+  activeEnvironmentName,
+  runEnvironmentId,
   className,
 }: DetailPanelProps) {
   const previousStepId = usePrevious(stepId);
@@ -110,8 +111,9 @@ function DetailPanel({
               attempt={attemptNumberOrPrevious || 1}
               run={run}
               projectId={projectId}
-              activeEnvironment={activeEnvironment}
-              runEnvironment={runEnvironment}
+              activeEnvironmentId={activeEnvironmentId}
+              activeEnvironmentName={activeEnvironmentName}
+              runEnvironmentId={runEnvironmentId}
               className="flex-1"
               onRerunStep={handleRerunStep}
             />
@@ -135,20 +137,19 @@ export default function RunLayout() {
   const activeAttemptNumber = searchParams.has("attempt")
     ? parseInt(searchParams.get("attempt")!, 10)
     : undefined;
-  const activeEnvironment = searchParams.get("environment") || undefined;
-  const [run] = useTopic<models.Run>(
-    "projects",
-    projectId,
-    "runs",
-    runId,
-    activeEnvironment,
+  const activeEnvironmentName = searchParams.get("environment") || undefined;
+  const environments = useEnvironments(projectId);
+  const activeEnvironmentId = findKey(
+    environments,
+    (e) => e.name == activeEnvironmentName && e.status != 1,
   );
+  const run = useRun(projectId, runId, activeEnvironmentId);
   const initialStep = run && Object.values(run.steps).find((s) => !s.parentId);
-  const target = useTargetTopic(
+  const target = useTarget(
     projectId,
     initialStep?.repository,
     initialStep?.target,
-    activeEnvironment,
+    activeEnvironmentId,
   );
   useTitlePart(
     initialStep && `${initialStep.target} (${initialStep.repository})`,
@@ -161,7 +162,7 @@ export default function RunLayout() {
     const isRunning = Object.values(run.steps).some((s) =>
       Object.values(s.executions).some((e) => !e.result),
     );
-    const runEnvironment = getRunEnvironment(run);
+    const runEnvironmentId = getRunEnvironmentId(run);
     return (
       <HoverContext>
         <div
@@ -174,8 +175,9 @@ export default function RunLayout() {
             target={target}
             projectId={projectId!}
             runId={runId}
-            activeEnvironment={activeEnvironment}
-            runEnvironment={runEnvironment}
+            activeEnvironmentId={activeEnvironmentId}
+            activeEnvironmentName={activeEnvironmentName}
+            runEnvironmentId={runEnvironmentId}
             isRunning={isRunning}
           />
           <div className="flex flex-1 overflow-hidden">
@@ -204,8 +206,9 @@ export default function RunLayout() {
               attemptNumber={activeAttemptNumber}
               run={run}
               projectId={projectId!}
-              activeEnvironment={activeEnvironment!}
-              runEnvironment={runEnvironment}
+              activeEnvironmentId={activeEnvironmentId!}
+              activeEnvironmentName={activeEnvironmentName!}
+              runEnvironmentId={runEnvironmentId}
               className="absolute right-0 top-0 bottom-0 w-[400px]"
             />
           </div>

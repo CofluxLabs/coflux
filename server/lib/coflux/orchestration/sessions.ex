@@ -1,152 +1,174 @@
 defmodule Coflux.Orchestration.Sessions do
   import Coflux.Store
 
-  def register_environment(db, name, base, archived \\ false) do
-    # TODO: prevent archiving an environment that others are inheriting from?
+  def get_environments(db) do
+    case query(
+           db,
+           """
+           SELECT ev.environment_id, ev.name, ev.base_id, ev.status, ev.version
+           FROM environment_versions AS ev
+           JOIN (
+             SELECT environment_id, MAX(version) AS max_version
+             FROM environment_versions
+             GROUP BY environment_id
+           ) AS latest
+           ON ev.environment_id = latest.environment_id AND ev.version = latest.max_version
+           """
+         ) do
+      {:ok, rows} ->
+        environments =
+          Enum.reduce(rows, %{}, fn {environment_id, name, base_id, status, version}, result ->
+            Map.put(result, environment_id, %{
+              name: name,
+              base_id: base_id,
+              status: status,
+              version: version
+            })
+          end)
+
+        {:ok, environments}
+    end
+  end
+
+  defp get_environment_by_name(db, environment_name) do
+    case query_one(
+           db,
+           """
+           SELECT ev.environment_id, ev.name, ev.base_id, ev.status, ev.version
+           FROM environment_versions AS ev
+           JOIN (
+             SELECT environment_id, MAX(version) AS max_version
+             FROM environment_versions
+             GROUP BY environment_id
+           ) AS latest
+           ON ev.environment_id = latest.environment_id AND ev.version = latest.max_version
+           WHERE ev.name = ?1 AND ev.status = 0
+           """,
+           {environment_name}
+         ) do
+      {:ok, nil} ->
+        {:ok, nil}
+
+      {:ok, {environment_id, name, base_id, status, version}} ->
+        {:ok, environment_id, %{name: name, base_id: base_id, status: status, version: version}}
+    end
+  end
+
+  defp get_environment_by_id(db, environment_id) do
+    case query_one(
+           db,
+           """
+           SELECT name, base_id, version, status
+           FROM environment_versions
+           WHERE environment_id = ?1
+           ORDER BY version DESC
+           LIMIT 1
+           """,
+           {environment_id}
+         ) do
+      {:ok, {name, base_id, version, status}} ->
+        {:ok, %{name: name, base_id: base_id, status: status, version: version}}
+
+      {:ok, {_, _, 1}} ->
+        {:ok, nil}
+
+      {:ok, nil} ->
+        {:ok, nil}
+    end
+  end
+
+  def register_environment(db, name, base_id) do
     with_transaction(db, fn ->
-      base_id =
-        if base do
-          case get_environment_id_by_name(db, base) do
-            {:ok, base_id} ->
-              case get_latest_environment_version(db, base_id) do
-                {:ok, {_, _, 0}} -> base_id
-                {:ok, _} -> nil
-              end
-          end
+      {environment_id, environment} =
+        case get_environment_by_name(db, name) do
+          {:ok, nil} ->
+            case insert_one(db, :environments, %{}) do
+              {:ok, environment_id} -> {environment_id, nil}
+            end
+
+          {:ok, _, %{status: 1}} ->
+            case insert_one(db, :environments, %{}) do
+              {:ok, environment_id} -> {environment_id, nil}
+            end
+
+          {:ok, environment_id, environment} ->
+            {environment_id, environment}
         end
 
-      if base && !base_id do
-        {:error, :base_invalid}
+      if environment && environment.name == name && environment.base_id == base_id do
+        {:ok, environment_id, environment}
       else
-        {environment_id, latest_version} =
-          case get_environment_id_by_name(db, name) do
-            {:ok, nil} ->
-              case insert_one(db, :environments, %{name: name}) do
-                {:ok, environment_id} -> {environment_id, nil}
-              end
+        new_version =
+          if environment, do: environment.version + 1, else: 1
 
-            {:ok, environment_id} ->
-              case get_latest_environment_version(db, environment_id) do
-                {:ok, latest_version} ->
-                  {environment_id, latest_version}
-              end
-          end
-
-        archived = if archived, do: 1, else: 0
-
-        case latest_version do
-          {version, ^base_id, ^archived} ->
-            {:ok, version}
-
-          {version, _, _} ->
-            new_version = version + 1
-
-            case insert_environment_version(
-                   db,
-                   environment_id,
-                   new_version,
-                   base_id,
-                   archived
-                 ) do
-              {:ok, _} -> {:ok, new_version}
-            end
-
-          nil ->
-            version = 1
-
-            case insert_environment_version(
-                   db,
-                   environment_id,
-                   version,
-                   base_id,
-                   archived
-                 ) do
-              {:ok, _} -> {:ok, version}
-            end
+        case insert_environment_version(db, environment_id, new_version, name, base_id, 0) do
+          {:ok, _} ->
+            {:ok, environment_id,
+             %{
+               name: name,
+               base_id: base_id,
+               status: 0,
+               version: new_version
+             }}
         end
       end
     end)
   end
 
-  def get_latest_environment_version(db, environment_id) do
-    # TODO: convert archived to boolean
-    query_one(
-      db,
-      """
-      SELECT version, base_id, archived
-      FROM environment_versions
-      WHERE environment_id = ?1
-      ORDER BY version DESC
-      LIMIT 1
-      """,
-      {environment_id}
-    )
+  def archive_environment(db, environment_id) do
+    with_transaction(db, fn ->
+      case get_environment_by_id(db, environment_id) do
+        {:ok, environment} ->
+          if environment.status == 1 do
+            {:ok, environment}
+          else
+            new_version = environment.version + 1
+
+            # TODO: check no (non-archived) descendents
+
+            case insert_environment_version(
+                   db,
+                   environment_id,
+                   new_version,
+                   environment.name,
+                   environment.base_id,
+                   1
+                 ) do
+              {:ok, _} ->
+                {:ok,
+                 %{
+                   name: environment.name,
+                   base_id: environment.base_id,
+                   status: 1,
+                   version: new_version
+                 }}
+            end
+          end
+      end
+    end)
   end
 
   def get_environment_ancestor_ids(db, environment_id, ids \\ []) do
-    case get_latest_environment_version(db, environment_id) do
-      {:ok, {_, nil, _}} ->
-        {:ok, ids}
-
-      {:ok, {_, base_id, _}} ->
-        get_environment_ancestor_ids(db, base_id, [base_id | ids])
+    # TODO: handle archived environment?
+    case get_environment_by_id(db, environment_id) do
+      {:ok, %{base_id: base_id}} ->
+        if base_id do
+          get_environment_ancestor_ids(db, base_id, [base_id | ids])
+        else
+          {:ok, ids}
+        end
     end
   end
 
-  def is_environment_ancestor?(db, maybe_ancestor_id, environment_id) do
-    case get_latest_environment_version(db, environment_id) do
-      {:ok, {_, nil, _}} ->
-        {:ok, false}
-
-      {:ok, {_, ^maybe_ancestor_id, _}} ->
-        {:ok, true}
-
-      {:ok, {_, base_id, _}} ->
-        is_environment_ancestor?(db, maybe_ancestor_id, base_id)
-    end
-  end
-
-  defp insert_environment_version(db, environment_id, version, base_id, archived) do
+  defp insert_environment_version(db, environment_id, version, name, base_id, status) do
     insert_one(db, :environment_versions, %{
       environment_id: environment_id,
       version: version,
+      name: name,
       base_id: base_id,
-      archived: archived,
+      status: status,
       created_at: current_timestamp()
     })
-  end
-
-  def get_environments(db) do
-    # TODO: convert archived to boolean
-    query(
-      db,
-      """
-      SELECT e.id, e.name, ev.base_id, ev.archived
-      FROM environments AS e
-      JOIN environment_versions AS ev ON e.id = ev.environment_id
-      JOIN (
-        SELECT environment_id, MAX(version) AS max_version
-        FROM environment_versions
-        GROUP BY environment_id
-      ) AS latest ON (
-        ev.environment_id = latest.environment_id
-        AND ev.version = latest.max_version
-      )
-      """
-    )
-  end
-
-  def get_environment_id_by_name(db, name) do
-    case query_one(db, "SELECT id FROM environments WHERE name = ?1", {name}) do
-      {:ok, {environment_id}} -> {:ok, environment_id}
-      {:ok, nil} -> {:ok, nil}
-    end
-  end
-
-  def get_environment_name_by_id(db, id) do
-    case query_one!(db, "SELECT name FROM environments WHERE id = ?1", {id}) do
-      {:ok, {name}} -> {:ok, name}
-    end
   end
 
   def start_session(db, environment_id) do

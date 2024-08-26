@@ -1,17 +1,18 @@
 import { ReactNode } from "react";
 import classNames from "classnames";
 import { IconExclamationCircle } from "@tabler/icons-react";
+import { useEnvironments } from "../topics";
 
 function classNameForEnvironment(
-  name: string,
+  name: string | undefined,
   interactive: boolean | undefined,
 ) {
-  if (name.startsWith("stag")) {
+  if (name?.startsWith("stag")) {
     return classNames(
       "bg-yellow-300/70 text-yellow-900",
       interactive && "hover:bg-yellow-300/60",
     );
-  } else if (name.startsWith("prod")) {
+  } else if (name?.startsWith("prod")) {
     return classNames(
       "bg-fuchsia-300/70 text-fuchsia-900",
       interactive && "hover:bg-fuchsia-300/60",
@@ -25,7 +26,8 @@ function classNameForEnvironment(
 }
 
 type Props = {
-  name: string;
+  projectId: string;
+  environmentId: string;
   size?: "sm" | "md";
   interactive?: boolean;
   warning?: string;
@@ -33,18 +35,21 @@ type Props = {
 };
 
 export default function EnvironmentLabel({
-  name,
+  projectId,
+  environmentId,
   size,
   interactive,
   warning,
   accessory,
 }: Props) {
+  const environments = useEnvironments(projectId);
+  const environment = environments?.[environmentId];
   return (
     <span
       className={classNames(
         "flex items-center gap-0.5 overflow-hidden",
         size == "sm" ? "px-1 py-px rounded-md" : "px-1.5 py-0.5 rounded-lg",
-        classNameForEnvironment(name, interactive),
+        classNameForEnvironment(environment?.name, interactive),
       )}
       title={warning}
     >
@@ -58,9 +63,10 @@ export default function EnvironmentLabel({
         className={classNames(
           "whitespace-nowrap overflow-hidden text-ellipsis",
           size == "sm" ? "px-px text-xs" : "px-0.5 text-sm",
+          environment?.status == 1 && "line-through opacity-50",
         )}
       >
-        {name}
+        {environment?.name}
       </span>
       {accessory}
     </span>

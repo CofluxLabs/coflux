@@ -22,7 +22,6 @@ defmodule Coflux.Handlers.Api do
         {:error, errors} ->
           errors =
             MapUtils.translate_keys(errors, %{
-              environment_name: "environment",
               project_name: "projectName"
             })
 
@@ -66,11 +65,9 @@ defmodule Coflux.Handlers.Api do
       })
 
     if Enum.empty?(errors) do
-      case Orchestration.register_environment(
+      case Orchestration.archive_environment(
              arguments.project_id,
-             arguments.name,
-             nil,
-             true
+             arguments.name
            ) do
         {:ok, version} ->
           json_response(req, %{version: version})
@@ -87,7 +84,7 @@ defmodule Coflux.Handlers.Api do
         repository: "repository",
         target: "target",
         type: {"type", &parse_target_type/1},
-        environment: "environment",
+        environment_name: "environmentName",
         arguments: {"arguments", &parse_arguments/1}
       })
 
@@ -97,7 +94,7 @@ defmodule Coflux.Handlers.Api do
              arguments.repository,
              arguments.target,
              arguments.arguments,
-             environment: arguments.environment,
+             environment: arguments.environment_name,
              recurrent: arguments.type == :sensor
            ) do
         {:ok, run_id, step_id, execution_id} ->
@@ -136,7 +133,7 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment: "environment",
+        environment_name: "environmentName",
         step_id: "stepId"
       })
 
@@ -144,7 +141,7 @@ defmodule Coflux.Handlers.Api do
       case Orchestration.rerun_step(
              arguments.project_id,
              arguments.step_id,
-             arguments.environment
+             arguments.environment_name
            ) do
         {:ok, execution_id, attempt} ->
           json_response(req, %{"executionId" => execution_id, "attempt" => attempt})

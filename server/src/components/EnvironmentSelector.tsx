@@ -10,10 +10,16 @@ import EnvironmentLabel from "./EnvironmentLabel";
 import AddEnvironmentDialog from "./AddEnvironmentDialog";
 
 type Props = {
+  projectId: string;
   environments: Record<string, models.Environment>;
+  activeEnvironmentId: string | undefined;
 };
 
-export default function EnvironmentSelector({ environments }: Props) {
+export default function EnvironmentSelector({
+  projectId,
+  environments,
+  activeEnvironmentId,
+}: Props) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const activeEnvironment = searchParams.get("environment");
@@ -29,9 +35,10 @@ export default function EnvironmentSelector({ environments }: Props) {
     <Fragment>
       <Menu as="div" className="relative">
         <Menu.Button className="flex items-center gap-1">
-          {activeEnvironment ? (
+          {activeEnvironmentId ? (
             <EnvironmentLabel
-              name={activeEnvironment}
+              projectId={projectId}
+              environmentId={activeEnvironmentId}
               interactive={true}
               accessory={
                 <IconChevronDown size={14} className="opacity-40 mt-0.5" />
@@ -59,26 +66,26 @@ export default function EnvironmentSelector({ environments }: Props) {
           >
             {Object.keys(environments).length > 0 && (
               <div className="p-1">
-                {Object.keys(environments)
-                  .filter((n) => !environments[n].archived)
-                  .map((environmentName) => (
-                    <Menu.Item key={environmentName}>
+                {Object.entries(environments)
+                  .filter(([_, e]) => e.status != 1)
+                  .map(([environmentId, environment]) => (
+                    <Menu.Item key={environmentId}>
                       {({ active }) => (
                         <Link
                           to={buildUrl(location.pathname, {
-                            environment: environmentName,
+                            environment: environment.name,
                           })}
                           className={classNames(
                             "flex items-center gap-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm",
                             active && "bg-slate-100",
                           )}
                         >
-                          {environmentName == activeEnvironment ? (
+                          {environment.name == activeEnvironment ? (
                             <IconCheck size={16} className="mt-0.5" />
                           ) : (
                             <span className="w-[16px]" />
                           )}
-                          {environmentName}
+                          {environment.name}
                         </Link>
                       )}
                     </Menu.Item>

@@ -1,18 +1,18 @@
 defmodule Coflux.Topics.Logs do
-  use Topical.Topic, route: ["projects", :project_id, "runs", :run_id, "logs", :environment_name]
+  use Topical.Topic, route: ["projects", :project_id, "runs", :run_id, "logs", :environment_id]
 
   alias Coflux.{Observation, Orchestration}
 
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
     run_id = Keyword.fetch!(params, :run_id)
-    environment_name = Keyword.fetch!(params, :environment_name)
+    environment_id = String.to_integer(Keyword.fetch!(params, :environment_id))
 
     case Observation.subscribe(project_id, run_id, self()) do
       {:ok, _ref, messages} ->
         case Orchestration.subscribe_run(project_id, run_id, self()) do
           {:ok, _run, _parent, steps, _ref} ->
-            run_environment_name =
+            run_environment_id =
               steps
               |> Map.values()
               |> Enum.reject(& &1.parent_id)
@@ -20,9 +20,9 @@ defmodule Coflux.Topics.Logs do
               |> Map.fetch!(:executions)
               |> Map.values()
               |> Enum.min_by(& &1.created_at)
-              |> Map.fetch!(:environment_name)
+              |> Map.fetch!(:environment_id)
 
-            environment_names = Enum.uniq([run_environment_name, environment_name])
+            environment_ids = Enum.uniq([run_environment_id, environment_id])
 
             execution_ids =
               steps
@@ -30,7 +30,7 @@ defmodule Coflux.Topics.Logs do
               |> Enum.flat_map(fn step ->
                 step.executions
                 |> Map.values()
-                |> Enum.filter(&(&1.environment_name in environment_names))
+                |> Enum.filter(&(&1.environment_id in environment_ids))
                 |> Enum.map(& &1.execution_id)
               end)
               |> MapSet.new()
@@ -40,7 +40,7 @@ defmodule Coflux.Topics.Logs do
               |> Enum.filter(&(elem(&1, 0) in execution_ids))
               |> Enum.map(&encode_message/1)
               |> Topic.new(%{
-                environment_names: environment_names,
+                environment_ids: environment_ids,
                 execution_ids: execution_ids
               })
 
@@ -53,15 +53,15 @@ defmodule Coflux.Topics.Logs do
     execution_ids =
       Enum.reduce(notifications, topic.state.execution_ids, fn notification, execution_ids ->
         case notification do
-          {:step, _, _, _, _, _, _, _, _, execution_id, environment_name, _} ->
-            if environment_name in topic.state.environment_names do
+          {:step, _, _, _, _, _, _, _, _, execution_id, environment_id, _} ->
+            if environment_id in topic.state.environment_ids do
               MapSet.put(execution_ids, execution_id)
             else
               execution_ids
             end
 
-          {:execution, _, _, execution_id, environment_name, _, _} ->
-            if environment_name in topic.state.environment_names do
+          {:execution, _, _, execution_id, environment_id, _, _} ->
+            if environment_id in topic.state.environment_ids do
               MapSet.put(execution_ids, execution_id)
             else
               execution_ids

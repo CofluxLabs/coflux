@@ -8,8 +8,8 @@ defmodule Coflux.Topics.Environments do
     {:ok, environments, ref} = Orchestration.subscribe_environments(project_id, self())
 
     environments =
-      Map.new(environments, fn {name, environment} ->
-        {name, build_environment(environment)}
+      Map.new(environments, fn {environment_id, environment} ->
+        {Integer.to_string(environment_id), build_environment(environment)}
       end)
 
     {:ok, Topic.new(environments, %{ref: ref})}
@@ -20,14 +20,15 @@ defmodule Coflux.Topics.Environments do
     {:ok, topic}
   end
 
-  defp process_notification(topic, {:environment, name, environment}) do
-    Topic.set(topic, [name], build_environment(environment))
+  defp process_notification(topic, {:environment, environment_id, environment}) do
+    Topic.set(topic, [Integer.to_string(environment_id)], build_environment(environment))
   end
 
   defp build_environment(environment) do
     %{
-      base: environment.base,
-      archived: environment.archived
+      name: environment.name,
+      baseId: environment.base_id,
+      status: environment.status
     }
   end
 end

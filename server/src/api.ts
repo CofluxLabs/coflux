@@ -34,7 +34,7 @@ export function schedule(
   repository: string,
   target: string,
   type: "workflow" | "sensor",
-  environment: string,
+  environmentName: string,
   arguments_: ["json", string][],
 ) {
   return request("schedule", {
@@ -42,7 +42,7 @@ export function schedule(
     repository,
     target,
     type,
-    environment,
+    environmentName,
     arguments: arguments_,
   });
 }
@@ -50,9 +50,9 @@ export function schedule(
 export function rerunStep(
   projectId: string,
   stepId: string,
-  environment: string,
+  environmentName: string,
 ) {
-  return request("rerun_step", { projectId, stepId, environment });
+  return request("rerun_step", { projectId, stepId, environmentName });
 }
 
 export function cancelRun(projectId: string, runId: string) {

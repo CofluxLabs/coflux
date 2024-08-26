@@ -52,8 +52,9 @@ type Props = {
   target: models.Target;
   projectId: string;
   runId?: string;
-  activeEnvironment: string | undefined;
-  runEnvironment?: string;
+  activeEnvironmentId: string | undefined;
+  activeEnvironmentName: string | undefined;
+  runEnvironmentId?: string;
   isRunning: boolean;
 };
 
@@ -61,8 +62,9 @@ export default function TargetHeader({
   target,
   projectId,
   runId,
-  activeEnvironment,
-  runEnvironment,
+  activeEnvironmentId,
+  activeEnvironmentName,
+  runEnvironmentId,
   isRunning,
 }: Props) {
   const navigate = useNavigate();
@@ -78,14 +80,14 @@ export default function TargetHeader({
           target.repository,
           target.target,
           target.type,
-          activeEnvironment!,
+          activeEnvironmentName!,
           arguments_,
         )
         .then(({ runId }) => {
           setRunDialogOpen(false);
           navigate(
             buildUrl(`/projects/${projectId}/runs/${runId}`, {
-              environment: activeEnvironment,
+              environment: activeEnvironmentName,
             }),
           );
         });
@@ -123,12 +125,13 @@ export default function TargetHeader({
               runs={target.runs}
               projectId={projectId}
               runId={runId}
-              activeEnvironment={activeEnvironment}
+              activeEnvironmentName={activeEnvironmentName}
             />
 
-            {runEnvironment && runEnvironment != activeEnvironment && (
+            {runEnvironmentId && runEnvironmentId != activeEnvironmentId && (
               <EnvironmentLabel
-                name={runEnvironment}
+                projectId={projectId}
+                environmentId={runEnvironmentId}
                 warning="This run is from a different environment"
               />
             )}
@@ -147,16 +150,17 @@ export default function TargetHeader({
                 <IconBolt size={16} />
               )
             }
-            disabled={!activeEnvironment || !target.parameters}
+            disabled={!activeEnvironmentId || !target.parameters}
           >
             {target.type == "sensor" ? "Start..." : "Run..."}
           </Button>
         )}
-        {activeEnvironment && target.parameters && (
+        {activeEnvironmentId && target.parameters && (
           <RunDialog
+            projectId={projectId}
             target={target}
             parameters={target.parameters}
-            activeEnvironmentName={activeEnvironment}
+            activeEnvironmentId={activeEnvironmentId}
             open={runDialogOpen}
             onRun={handleRunSubmit}
             onClose={handleRunDialogClose}

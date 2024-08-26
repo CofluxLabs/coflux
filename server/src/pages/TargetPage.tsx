@@ -1,23 +1,28 @@
-import { maxBy } from "lodash";
+import { findKey, maxBy } from "lodash";
 import { Fragment } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 
 import { useSetActiveTarget } from "../layouts/ProjectLayout";
 import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
-import { useTargetTopic } from "../topics";
+import { useEnvironments, useTarget } from "../topics";
 import TargetHeader from "../components/TargetHeader";
 import { useTitlePart } from "../components/TitleContext";
 
 export default function TargetPage() {
   const { project: projectId, repository, target: targetName } = useParams();
   const [searchParams] = useSearchParams();
-  const activeEnvironment = searchParams.get("environment") || undefined;
-  const target = useTargetTopic(
+  const activeEnvironmentName = searchParams.get("environment") || undefined;
+  const environments = useEnvironments(projectId);
+  const activeEnvironmentId = findKey(
+    environments,
+    (e) => e.name == activeEnvironmentName && e.status != 1,
+  );
+  const target = useTarget(
     projectId,
     repository,
     targetName,
-    activeEnvironment,
+    activeEnvironmentId,
   );
   useTitlePart(`${targetName} (${repository})`);
   useSetActiveTarget(target);
@@ -33,7 +38,7 @@ export default function TargetPage() {
         <Navigate
           replace
           to={buildUrl(`/projects/${projectId}/runs/${latestRunId}`, {
-            environment: activeEnvironment,
+            environment: activeEnvironmentName,
           })}
         />
       );
@@ -43,7 +48,8 @@ export default function TargetPage() {
           <TargetHeader
             target={target}
             projectId={projectId!}
-            activeEnvironment={activeEnvironment}
+            activeEnvironmentId={activeEnvironmentId}
+            activeEnvironmentName={activeEnvironmentName}
             isRunning={false}
           />
           <div className="p-4 flex-1">

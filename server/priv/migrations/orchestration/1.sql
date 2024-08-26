@@ -1,16 +1,15 @@
 CREATE TABLE environments (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE
+  id INTEGER PRIMARY KEY
 );
 
 CREATE TABLE environment_versions (
-  id INTEGER PRIMARY KEY,
   environment_id INTEGER NOT NULL,
   version INTEGER NOT NULL,
+  name TEXT NOT NULL,
   base_id INTEGER,
-  archived INTEGER NOT NULL,
+  status INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  UNIQUE (environment_id, version),
+  PRIMARY KEY (environment_id, version),
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
   FOREIGN KEY (base_id) REFERENCES environments ON DELETE CASCADE
 );

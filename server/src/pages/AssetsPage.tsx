@@ -44,7 +44,7 @@ export default function AssetsPage() {
         <table className="w-full">
           <tbody className="divide-y divide-slate-100">
             {assets.map(
-              ([stepId, step, attempt, execution, assetId, asset]) => (
+              ([stepId, step, attempt, _execution, assetId, asset]) => (
                 <tr key={assetId}>
                   <td className="py-1">
                     <StepLink

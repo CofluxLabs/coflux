@@ -31,14 +31,14 @@ function getRunUrl(
 type OptionsProps = {
   runs: Record<string, Pick<models.Run, "createdAt">>;
   projectId: string | null;
-  activeEnvironment: string | undefined;
+  activeEnvironmentName: string | undefined;
   selectedRunId: string;
 };
 
 function Options({
   runs,
   projectId,
-  activeEnvironment,
+  activeEnvironmentName,
   selectedRunId,
 }: OptionsProps) {
   const location = useLocation();
@@ -62,7 +62,7 @@ function Options({
                     to={getRunUrl(
                       projectId!,
                       runId,
-                      activeEnvironment,
+                      activeEnvironmentName,
                       location.pathname,
                     )}
                     className={classNames(
@@ -119,7 +119,7 @@ function getNextPrevious(
 
 type NextPreviousButtonProps = {
   projectId: string | null;
-  activeEnvironment: string | undefined;
+  activeEnvironmentName: string | undefined;
   runs: Record<string, Pick<models.Run, "createdAt">>;
   currentRunId: string;
   direction: "next" | "previous";
@@ -127,7 +127,7 @@ type NextPreviousButtonProps = {
 
 function NextPreviousButton({
   projectId,
-  activeEnvironment,
+  activeEnvironmentName,
   runs,
   currentRunId,
   direction,
@@ -145,7 +145,12 @@ function NextPreviousButton({
   if (runId) {
     return (
       <Link
-        to={getRunUrl(projectId!, runId, activeEnvironment, location.pathname)}
+        to={getRunUrl(
+          projectId!,
+          runId,
+          activeEnvironmentName,
+          location.pathname,
+        )}
         className={className}
       >
         <Icon size={16} />
@@ -164,7 +169,7 @@ type Props = {
   runs: Record<string, Pick<models.Run, "createdAt">>;
   projectId: string | null;
   runId: string;
-  activeEnvironment: string | undefined;
+  activeEnvironmentName: string | undefined;
   className?: string;
 };
 
@@ -172,7 +177,7 @@ export default function RunSelector({
   runs,
   projectId,
   runId,
-  activeEnvironment,
+  activeEnvironmentName,
   className,
 }: Props) {
   return (
@@ -180,7 +185,7 @@ export default function RunSelector({
       <NextPreviousButton
         direction="previous"
         projectId={projectId}
-        activeEnvironment={activeEnvironment}
+        activeEnvironmentName={activeEnvironmentName}
         runs={runs}
         currentRunId={runId}
       />
@@ -207,7 +212,7 @@ export default function RunSelector({
                   <Options
                     runs={runs}
                     projectId={projectId}
-                    activeEnvironment={activeEnvironment}
+                    activeEnvironmentName={activeEnvironmentName}
                     selectedRunId={runId}
                   />
                 )}
@@ -219,7 +224,7 @@ export default function RunSelector({
       <NextPreviousButton
         direction="next"
         projectId={projectId}
-        activeEnvironment={activeEnvironment}
+        activeEnvironmentName={activeEnvironmentName}
         runs={runs}
         currentRunId={runId}
       />

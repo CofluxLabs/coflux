@@ -1,16 +1,20 @@
 defmodule Coflux.Orchestration do
   alias Coflux.Orchestration
 
-  def register_environment(project_id, environment_name, base, archived \\ false) do
-    call_server(project_id, {:register_environment, environment_name, base, archived})
+  def register_environment(project_id, environment_name, base) do
+    call_server(project_id, {:register_environment, environment_name, base})
   end
 
-  def start_session(project_id, environment, concurrency, pid) do
-    call_server(project_id, {:start_session, environment, concurrency, pid})
+  def archive_environment(project_id, environment_name) do
+    call_server(project_id, {:archive_environment, environment_name})
   end
 
-  def resume_session(project_id, session_id, environment, concurrency, pid) do
-    call_server(project_id, {:resume_session, session_id, environment, concurrency, pid})
+  def start_session(project_id, environment_name, concurrency, pid) do
+    call_server(project_id, {:start_session, environment_name, concurrency, pid})
+  end
+
+  def resume_session(project_id, session_id, environment_name, concurrency, pid) do
+    call_server(project_id, {:resume_session, session_id, environment_name, concurrency, pid})
   end
 
   def register_targets(project_id, session_id, repository, targets) do
@@ -71,20 +75,20 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:subscribe_environments, pid})
   end
 
-  def subscribe_repositories(project_id, environment_name, pid) do
-    call_server(project_id, {:subscribe_repositories, environment_name, pid})
+  def subscribe_repositories(project_id, environment_id, pid) do
+    call_server(project_id, {:subscribe_repositories, environment_id, pid})
   end
 
-  def subscribe_repository(project_id, repository, environment_name, pid) do
-    call_server(project_id, {:subscribe_repository, repository, environment_name, pid})
+  def subscribe_repository(project_id, repository, environment_id, pid) do
+    call_server(project_id, {:subscribe_repository, repository, environment_id, pid})
   end
 
-  def subscribe_agents(project_id, environment_name, pid) do
-    call_server(project_id, {:subscribe_agents, environment_name, pid})
+  def subscribe_agents(project_id, environment_id, pid) do
+    call_server(project_id, {:subscribe_agents, environment_id, pid})
   end
 
-  def subscribe_target(project_id, repository, target, environment_name, pid) do
-    call_server(project_id, {:subscribe_target, repository, target, environment_name, pid})
+  def subscribe_target(project_id, repository, target, environment_id, pid) do
+    call_server(project_id, {:subscribe_target, repository, target, environment_id, pid})
   end
 
   def subscribe_run(project_id, run_id, pid) do
