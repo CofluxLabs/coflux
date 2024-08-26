@@ -42,8 +42,8 @@ export default function EnvironmentLabel({
   return (
     <span
       className={classNames(
-        "flex items-center rounded-full overflow-hidden",
-        size == "sm" ? "px-1 py-px gap-0.5" : "px-2 py-0.5 gap-1",
+        "flex items-center gap-0.5 overflow-hidden",
+        size == "sm" ? "px-1 py-px rounded-md" : "px-1.5 py-0.5 rounded-lg",
         classNameForEnvironment(name, interactive),
       )}
       title={warning}
