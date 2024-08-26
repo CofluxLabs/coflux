@@ -2,12 +2,16 @@ defmodule Coflux.Orchestration.Sessions do
   import Coflux.Store
 
   def register_environment(db, name, base, archived \\ false) do
-    # TODO: prevent archiving an environment that others are caching from?
+    # TODO: prevent archiving an environment that others are inheriting from?
     with_transaction(db, fn ->
       base_id =
         if base do
-          case get_environment_by_name(db, base) do
-            {:ok, base_id} -> base_id
+          case get_environment_id_by_name(db, base) do
+            {:ok, base_id} ->
+              case get_latest_environment_version(db, base_id) do
+                {:ok, {_, _, 0}} -> base_id
+                {:ok, _} -> nil
+              end
           end
         end
 
@@ -15,7 +19,7 @@ defmodule Coflux.Orchestration.Sessions do
         {:error, :base_invalid}
       else
         {environment_id, latest_version} =
-          case get_environment_by_name(db, name) do
+          case get_environment_id_by_name(db, name) do
             {:ok, nil} ->
               case insert_one(db, :environments, %{name: name}) do
                 {:ok, environment_id} -> {environment_id, nil}
@@ -64,7 +68,8 @@ defmodule Coflux.Orchestration.Sessions do
     end)
   end
 
-  defp get_latest_environment_version(db, environment_id) do
+  def get_latest_environment_version(db, environment_id) do
+    # TODO: convert archived to boolean
     query_one(
       db,
       """
@@ -100,6 +105,7 @@ defmodule Coflux.Orchestration.Sessions do
   end
 
   def get_environments(db) do
+    # TODO: convert archived to boolean
     query(
       db,
       """
@@ -118,15 +124,17 @@ defmodule Coflux.Orchestration.Sessions do
     )
   end
 
-  def get_environment_by_name(db, name) do
+  def get_environment_id_by_name(db, name) do
     case query_one(db, "SELECT id FROM environments WHERE name = ?1", {name}) do
       {:ok, {environment_id}} -> {:ok, environment_id}
       {:ok, nil} -> {:ok, nil}
     end
   end
 
-  def get_environment_by_id(db, id) do
-    query_one!(db, "SELECT name FROM environments WHERE id = ?1", {id})
+  def get_environment_name_by_id(db, id) do
+    case query_one!(db, "SELECT name FROM environments WHERE id = ?1", {id}) do
+      {:ok, {name}} -> {:ok, name}
+    end
   end
 
   def start_session(db, environment_id) do
