@@ -145,9 +145,17 @@ defmodule Coflux.Orchestration.Runs do
     retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
     retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
 
+    environment_ids =
+      if memo_key || cache_key do
+        case Sessions.get_environment_ancestor_ids(db, environment_id, [environment_id]) do
+          {:ok, environment_ids} ->
+            environment_ids
+        end
+      end
+
     memoised_execution =
       if memo_key do
-        case find_memoised_execution(db, run_id, memo_key) do
+        case find_memoised_execution(db, run_id, environment_ids, memo_key) do
           {:ok, memoised_execution} -> memoised_execution
         end
       end
@@ -161,9 +169,6 @@ defmodule Coflux.Orchestration.Runs do
           cached_execution_id =
             if cache_key do
               recorded_after = if cache_max_age, do: now - cache_max_age * 1000, else: 0
-
-              {:ok, environment_ids} =
-                Sessions.get_environment_ancestor_ids(db, environment_id, [environment_id])
 
               case find_cached_execution(db, environment_ids, cache_key, recorded_after) do
                 {:ok, cached_execution_id} ->
@@ -497,7 +502,7 @@ defmodule Coflux.Orchestration.Runs do
            SELECT id
            FROM executions
            WHERE step_id = ?1
-           ORDER BY created_at DESC
+           ORDER BY attempt ASC
            LIMIT 1
            """,
            {step_id}
@@ -567,7 +572,13 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  defp find_memoised_execution(db, run_id, memo_key) do
+  defp build_placeholders(count, offset \\ 0) do
+    1..count
+    |> Enum.map_intersperse(", ", &"?#{&1 + offset}")
+    |> Enum.join()
+  end
+
+  defp find_memoised_execution(db, run_id, environment_ids, memo_key) do
     case query(
            db,
            """
@@ -575,11 +586,15 @@ defmodule Coflux.Orchestration.Runs do
            FROM steps AS s
            INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id
-           WHERE s.run_id = ?1 AND s.memo_key = ?2 AND (r.type IS NULL OR r.type = 1)
+           WHERE
+             s.run_id = ?1
+             AND e.environment_id IN (#{build_placeholders(length(environment_ids), 1)})
+             AND s.memo_key = ?#{length(environment_ids) + 2}
+             AND (r.type IS NULL OR r.type = 1)
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           {run_id, memo_key}
+           List.to_tuple([run_id] ++ environment_ids ++ [memo_key])
          ) do
       {:ok, [row]} ->
         {:ok, row}
@@ -590,11 +605,6 @@ defmodule Coflux.Orchestration.Runs do
   end
 
   defp find_cached_execution(db, environment_ids, cache_key, recorded_after) do
-    environment_placeholders =
-      1..length(environment_ids)
-      |> Enum.map_intersperse(", ", &"?#{&1}")
-      |> Enum.join()
-
     case query(
            db,
            """
@@ -603,15 +613,13 @@ defmodule Coflux.Orchestration.Runs do
            INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id
            WHERE
-             e.environment_id IN (#{environment_placeholders})
+             e.environment_id IN (#{build_placeholders(length(environment_ids))})
              AND s.cache_key = ?#{length(environment_ids) + 1}
              AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?#{length(environment_ids) + 2}))
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           List.to_tuple(environment_ids)
-           |> Tuple.append(cache_key)
-           |> Tuple.append(recorded_after)
+           List.to_tuple(environment_ids ++ [cache_key, recorded_after])
          ) do
       {:ok, [{execution_id}]} ->
         {:ok, execution_id}
