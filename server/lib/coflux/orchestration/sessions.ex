@@ -129,23 +129,17 @@ defmodule Coflux.Orchestration.Sessions do
     query_one!(db, "SELECT name FROM environments WHERE id = ?1", {id})
   end
 
-  def start_session(db, environment) do
+  def start_session(db, environment_id) do
     with_transaction(db, fn ->
-      case get_environment_by_name(db, environment) do
-        {:ok, nil} ->
-          {:error, :environment_invalid}
-
-        {:ok, environment_id} ->
-          case generate_external_id(db, :sessions, 30) do
-            {:ok, external_id} ->
-              case insert_one(db, :sessions, %{
-                     environment_id: environment_id,
-                     external_id: external_id,
-                     created_at: current_timestamp()
-                   }) do
-                {:ok, session_id} ->
-                  {:ok, session_id, external_id, environment_id}
-              end
+      case generate_external_id(db, :sessions, 30) do
+        {:ok, external_id} ->
+          case insert_one(db, :sessions, %{
+                 environment_id: environment_id,
+                 external_id: external_id,
+                 created_at: current_timestamp()
+               }) do
+            {:ok, session_id} ->
+              {:ok, session_id, external_id, environment_id}
           end
       end
     end)

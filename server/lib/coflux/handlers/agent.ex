@@ -5,19 +5,19 @@ defmodule Coflux.Handlers.Agent do
     qs = :cowboy_req.parse_qs(req)
     # TODO: validate
     project_id = get_query_param(qs, "project")
-    environment = get_query_param(qs, "environment")
+    environment_name = get_query_param(qs, "environment")
     session_id = get_query_param(qs, "session")
     concurrency = get_query_param(qs, "concurrency", &String.to_integer/1) || 0
 
-    {:cowboy_websocket, req, {project_id, environment, session_id, concurrency}}
+    {:cowboy_websocket, req, {project_id, environment_name, session_id, concurrency}}
   end
 
-  def websocket_init({project_id, environment, session_id, concurrency}) do
+  def websocket_init({project_id, environment_name, session_id, concurrency}) do
     case Projects.get_project_by_id(Coflux.ProjectsServer, project_id) do
       {:ok, _} ->
         # TODO: authenticate
         # TODO: monitor server?
-        case Orchestration.connect(project_id, session_id, environment, concurrency, self()) do
+        case connect(project_id, session_id, environment_name, concurrency) do
           {:ok, session_id, executions} ->
             {[session_message(session_id)],
              %{
@@ -310,6 +310,31 @@ defmodule Coflux.Handlers.Agent do
 
   def websocket_info({:abort, execution_id}, state) do
     {[command_message("abort", [execution_id])], state}
+  end
+
+  defp connect(project_id, session_id, environment_name, concurrency) do
+    if session_id do
+      with {:ok, executions} <-
+             Orchestration.resume_session(
+               project_id,
+               session_id,
+               environment_name,
+               concurrency,
+               self()
+             ) do
+        {:ok, session_id, executions}
+      end
+    else
+      with {:ok, session_id} <-
+             Orchestration.start_session(
+               project_id,
+               environment_name,
+               concurrency,
+               self()
+             ) do
+        {:ok, session_id, %{}}
+      end
+    end
   end
 
   defp is_recognised_execution?(execution_id, state) do

@@ -87,67 +87,13 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:connect, external_session_id, environment, concurrency, pid}, _from, state) do
-    result =
-      if external_session_id do
-        # TODO: check environment matches existing session
-        case Map.fetch(state.session_ids, external_session_id) do
-          {:ok, session_id} ->
-            session = Map.fetch!(state.sessions, session_id)
+  def handle_call({:start_session, environment_name, concurrency, pid}, _from, state) do
+    case Sessions.get_environment_by_name(state.db, environment_name) do
+      {:ok, nil} ->
+        {:reply, {:error, :environment_invalid}, state}
 
-            if session.expire_timer do
-              Process.cancel_timer(session.expire_timer)
-            end
-
-            state =
-              if session.agent do
-                {{pid, ^session_id}, state} = pop_in(state.agents[session.agent])
-                # TODO: better reason?
-                Process.exit(pid, :kill)
-                state
-              else
-                state
-              end
-
-            ref = Process.monitor(pid)
-
-            state.sessions[session_id].queue
-            |> Enum.reverse()
-            |> Enum.each(&send(pid, &1))
-
-            state =
-              state
-              |> put_in([Access.key(:agents), ref], {pid, session_id})
-              |> update_in(
-                [Access.key(:sessions), session_id],
-                &Map.merge(&1, %{
-                  agent: ref,
-                  queue: [],
-                  concurrency: concurrency
-                })
-              )
-              |> notify_agent(session_id)
-
-            executions =
-              session.executing
-              |> MapSet.union(session.starting)
-              |> Map.new(fn execution_id ->
-                # TODO: more efficient way to load run IDs?
-                {:ok, external_run_id} =
-                  Runs.get_external_run_id_for_execution(state.db, execution_id)
-
-                {execution_id, external_run_id}
-              end)
-
-            send(self(), :execute)
-
-            {:ok, external_session_id, executions, state}
-
-          :error ->
-            {:error, :no_session}
-        end
-      else
-        case Sessions.start_session(state.db, environment) do
+      {:ok, environment_id} ->
+        case Sessions.start_session(state.db, environment_id) do
           {:ok, session_id, external_session_id, environment_id} ->
             ref = Process.monitor(pid)
 
@@ -165,20 +111,82 @@ defmodule Coflux.Orchestration.Server do
               |> put_in([Access.key(:session_ids), external_session_id], session_id)
               |> notify_agent(session_id)
 
-            {:ok, external_session_id, %{}, state}
-
-          {:error, :environment_invalid} ->
-            {:error, :environment_invalid}
+            state = flush_notifications(state)
+            {:reply, {:ok, external_session_id}, state}
         end
-      end
+    end
+  end
 
-    case result do
-      {:ok, external_session_id, executions, state} ->
-        state = flush_notifications(state)
-        {:reply, {:ok, external_session_id, executions}, state}
+  def handle_call(
+        {:resume_session, external_session_id, environment_name, concurrency, pid},
+        _from,
+        state
+      ) do
+    case Sessions.get_environment_by_name(state.db, environment_name) do
+      {:ok, nil} ->
+        {:reply, {:error, :environment_invalid}, state}
 
-      {:error, error} ->
-        {:reply, {:error, error}, state}
+      {:ok, environment_id} ->
+        case Map.fetch(state.session_ids, external_session_id) do
+          {:ok, session_id} ->
+            session = Map.fetch!(state.sessions, session_id)
+
+            if session.environment_id == environment_id do
+              if session.expire_timer do
+                Process.cancel_timer(session.expire_timer)
+              end
+
+              state =
+                if session.agent do
+                  {{pid, ^session_id}, state} = pop_in(state.agents[session.agent])
+                  # TODO: better reason?
+                  Process.exit(pid, :kill)
+                  state
+                else
+                  state
+                end
+
+              ref = Process.monitor(pid)
+
+              state.sessions[session_id].queue
+              |> Enum.reverse()
+              |> Enum.each(&send(pid, &1))
+
+              state =
+                state
+                |> put_in([Access.key(:agents), ref], {pid, session_id})
+                |> update_in(
+                  [Access.key(:sessions), session_id],
+                  &Map.merge(&1, %{
+                    agent: ref,
+                    queue: [],
+                    concurrency: concurrency
+                  })
+                )
+                |> notify_agent(session_id)
+
+              executions =
+                session.executing
+                |> MapSet.union(session.starting)
+                |> Map.new(fn execution_id ->
+                  # TODO: more efficient way to load run IDs?
+                  {:ok, external_run_id} =
+                    Runs.get_external_run_id_for_execution(state.db, execution_id)
+
+                  {execution_id, external_run_id}
+                end)
+
+              send(self(), :execute)
+
+              state = flush_notifications(state)
+              {:reply, {:ok, external_session_id, executions}, state}
+            else
+              {:reply, {:error, :no_session}, state}
+            end
+
+          :error ->
+            {:reply, {:error, :no_session}, state}
+        end
     end
   end
 
