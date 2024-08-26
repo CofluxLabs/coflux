@@ -18,7 +18,7 @@ def _load_module(
     return {
         a.name: (a.type, a.fn)
         for a in attrs
-        if isinstance(a, annotations.Target) and a.type
+        if isinstance(a, annotations.Target) and not a.is_stub
     }
 
 

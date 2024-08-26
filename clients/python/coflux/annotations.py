@@ -16,12 +16,12 @@ TargetType = t.Literal["workflow", "task", "sensor"]
 
 
 class Target(t.Generic[P, T]):
-    _type: TargetType | None
+    _type: TargetType
 
     def __init__(
         self,
         fn: t.Callable[P, T],
-        type: TargetType | None = None,
+        type: TargetType,
         *,
         repository: str | None = None,
         name: str | None = None,
@@ -33,6 +33,7 @@ class Target(t.Generic[P, T]):
         defer: bool | t.Callable[P, str] = False,
         delay: int | float | dt.timedelta = 0,
         memo: bool | t.Callable[P, str] = False,
+        is_stub: bool = False,
     ):
         self._fn = fn
         self._type = type
@@ -46,6 +47,7 @@ class Target(t.Generic[P, T]):
         self._defer = defer
         self._delay = delay
         self._memo = memo
+        self._is_stub = is_stub
         functools.update_wrapper(self, fn)
 
     @property
@@ -53,8 +55,12 @@ class Target(t.Generic[P, T]):
         return self._name
 
     @property
-    def type(self) -> TargetType | None:
+    def type(self) -> TargetType:
         return self._type
+
+    @property
+    def is_stub(self) -> bool:
+        return self._is_stub
 
     @property
     def fn(self) -> t.Callable[P, T]:
@@ -171,6 +177,7 @@ def stub(
     repository: str,
     *,
     name: str | None = None,
+    type: t.Literal["workflow", "task"] = "task",
     wait: bool | t.Iterable[str] | str = False,
     cache: bool | int | float | dt.timedelta = False,
     cache_key: t.Callable[P, str] | None = None,
@@ -183,6 +190,7 @@ def stub(
     def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
         return Target(
             fn,
+            type,
             repository=repository,
             name=name,
             wait=wait,
@@ -193,6 +201,7 @@ def stub(
             defer=defer,
             delay=delay,
             memo=memo,
+            is_stub=True,
         )
 
     return decorator
