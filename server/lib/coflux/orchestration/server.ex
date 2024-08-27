@@ -535,51 +535,56 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_call({:record_heartbeats, executions, external_session_id}, _from, state) do
     # TODO: handle execution statuses?
-    session_id = Map.fetch!(state.session_ids, external_session_id)
-    session = Map.fetch!(state.sessions, session_id)
+    case Map.fetch(state.session_ids, external_session_id) do
+      {:ok, session_id} ->
+        session = Map.fetch!(state.sessions, session_id)
 
-    execution_ids = executions |> Map.keys() |> MapSet.new()
+        execution_ids = executions |> Map.keys() |> MapSet.new()
 
-    state =
-      session.starting
-      |> MapSet.intersection(execution_ids)
-      |> Enum.reduce(state, fn execution_id, state ->
-        update_in(state.sessions[session_id].starting, &MapSet.delete(&1, execution_id))
-      end)
+        state =
+          session.starting
+          |> MapSet.intersection(execution_ids)
+          |> Enum.reduce(state, fn execution_id, state ->
+            update_in(state.sessions[session_id].starting, &MapSet.delete(&1, execution_id))
+          end)
 
-    state =
-      session.executing
-      |> MapSet.difference(execution_ids)
-      |> Enum.reduce(state, fn execution_id, state ->
-        case Results.has_result?(state.db, execution_id) do
-          {:ok, false} ->
-            {:ok, state} = record_result(state, execution_id, :abandoned)
-            state
+        state =
+          session.executing
+          |> MapSet.difference(execution_ids)
+          |> Enum.reduce(state, fn execution_id, state ->
+            case Results.has_result?(state.db, execution_id) do
+              {:ok, false} ->
+                {:ok, state} = record_result(state, execution_id, :abandoned)
+                state
 
-          {:ok, true} ->
-            state
+              {:ok, true} ->
+                state
+            end
+          end)
+
+        # TODO: notify agent (so it can remove executions)?
+        state =
+          execution_ids
+          |> MapSet.difference(session.starting)
+          |> MapSet.difference(session.executing)
+          |> Enum.reduce(state, fn execution_id, state ->
+            case Results.has_result?(state.db, execution_id) do
+              {:ok, false} ->
+                state
+
+              {:ok, true} ->
+                send_session(state, session_id, {:abort, execution_id})
+            end
+          end)
+
+        case Runs.record_hearbeats(state.db, executions) do
+          {:ok, _created_at} ->
+            state = put_in(state.sessions[session_id].executing, execution_ids)
+            {:reply, :ok, state}
         end
-      end)
 
-    # TODO: notify agent (so it can remove executions)?
-    state =
-      execution_ids
-      |> MapSet.difference(session.starting)
-      |> MapSet.difference(session.executing)
-      |> Enum.reduce(state, fn execution_id, state ->
-        case Results.has_result?(state.db, execution_id) do
-          {:ok, false} ->
-            state
-
-          {:ok, true} ->
-            send_session(state, session_id, {:abort, execution_id})
-        end
-      end)
-
-    case Runs.record_hearbeats(state.db, executions) do
-      {:ok, _created_at} ->
-        state = put_in(state.sessions[session_id].executing, execution_ids)
-        {:reply, :ok, state}
+      :error ->
+        {:reply, {:error, :session_invalid}, state}
     end
   end
 
