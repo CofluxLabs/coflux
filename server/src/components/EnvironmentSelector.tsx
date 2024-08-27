@@ -2,12 +2,30 @@ import { Fragment, useCallback, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import classNames from "classnames";
 import { Menu, Transition } from "@headlessui/react";
-import { IconCheck, IconChevronDown } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconChevronDown,
+  IconCornerDownRight,
+} from "@tabler/icons-react";
 
 import { buildUrl } from "../utils";
 import * as models from "../models";
 import EnvironmentLabel from "./EnvironmentLabel";
 import AddEnvironmentDialog from "./AddEnvironmentDialog";
+import { times } from "lodash";
+
+function traverseEnvironments(
+  environments: Record<string, models.Environment>,
+  parentId: string | null = null,
+  depth: number = 0,
+): [string, models.Environment, number][] {
+  return Object.entries(environments)
+    .filter(([_, e]) => e.baseId == parentId && e.status != 1)
+    .flatMap(([environmentId, environment]) => [
+      [environmentId, environment, depth],
+      ...traverseEnvironments(environments, environmentId, depth + 1),
+    ]);
+}
 
 type Props = {
   projectId: string;
@@ -66,9 +84,8 @@ export default function EnvironmentSelector({
           >
             {Object.keys(environments).length > 0 && (
               <div className="p-1">
-                {Object.entries(environments)
-                  .filter(([_, e]) => e.status != 1)
-                  .map(([environmentId, environment]) => (
+                {traverseEnvironments(environments).map(
+                  ([environmentId, environment, depth]) => (
                     <Menu.Item key={environmentId}>
                       {({ active }) => (
                         <Link
@@ -85,11 +102,23 @@ export default function EnvironmentSelector({
                           ) : (
                             <span className="w-[16px]" />
                           )}
+                          {times(depth).map((i) =>
+                            i == depth - 1 ? (
+                              <IconCornerDownRight
+                                key={i}
+                                size={16}
+                                className="text-slate-300"
+                              />
+                            ) : (
+                              <span key={i} className="w-2" />
+                            ),
+                          )}
                           {environment.name}
                         </Link>
                       )}
                     </Menu.Item>
-                  ))}
+                  ),
+                )}
               </div>
             )}
             <div className="p-1">
@@ -97,7 +126,7 @@ export default function EnvironmentSelector({
                 {({ active }) => (
                   <button
                     className={classNames(
-                      "flex px-2 py-1 rounded whitespace-nowrap text-sm",
+                      "w-full flex px-2 py-1 rounded whitespace-nowrap text-sm",
                       active && "bg-slate-100",
                     )}
                     onClick={handleAddEnvironmentClick}
