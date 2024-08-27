@@ -361,6 +361,20 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
+  def get_pending_executions_for_environment(db, environment_id) do
+    query(
+      db,
+      """
+      SELECT e.id, s.run_id, s.repository
+      FROM executions AS e
+      INNER JOIN steps AS s ON s.id = e.step_id
+      LEFT JOIN results AS r ON r.execution_id = e.id
+      WHERE e.environment_id = ?1 AND r.created_at IS NULL
+      """,
+      {environment_id}
+    )
+  end
+
   def get_pending_assignments(db) do
     query(
       db,

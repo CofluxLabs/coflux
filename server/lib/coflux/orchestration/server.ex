@@ -118,27 +118,51 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_call({:archive_environment, environment_name}, _from, state) do
     case lookup_environment_by_name(state, environment_name) do
-      {:ok, environment_id, _} ->
-        if Enum.any?(
-             Map.delete(state.environments, environment_id),
-             fn {_, environment} -> environment.base_id == environment_id end
-           ) do
-          {:reply, {:error, :has_dependencies}, state}
-        else
-          case Sessions.archive_environment(state.db, environment_id) do
-            {:ok, environment} ->
-              # TODO: cancel executions?
-              # TODO: invalidate sessions?
+      {:ok, environment_id, environment} ->
+        cond do
+          environment.status == 1 ->
+            {:reply, {:error, :environment_invalid}, state}
 
-              state =
-                state
-                |> put_in([Access.key(:environments), environment_id], environment)
-                |> notify_listeners(:environments, {:environment, environment_id, environment})
-                |> flush_notifications()
+          Enum.any?(state.environments, fn {e_id, e} ->
+            e_id != environment_id && e.status != 1 && e.base_id == environment_id
+          end) ->
+            {:reply, {:error, :has_dependencies}, state}
 
-              {:reply, {:ok, environment.version}, state}
-          end
+          true ->
+            case Sessions.archive_environment(state.db, environment_id) do
+              {:ok, environment} ->
+                state =
+                  case Runs.get_pending_executions_for_environment(state.db, environment_id) do
+                    {:ok, executions} ->
+                      Enum.reduce(executions, state, fn {execution_id, run_id, repository},
+                                                        state ->
+                        case record_and_notify_result(
+                               state,
+                               execution_id,
+                               :cancelled,
+                               run_id,
+                               repository
+                             ) do
+                          {:ok, state} -> state
+                          {:error, :already_recorded} -> state
+                        end
+                      end)
+                  end
+
+                # TODO: invalidate sessions?
+
+                state =
+                  state
+                  |> put_in([Access.key(:environments), environment_id], environment)
+                  |> notify_listeners(:environments, {:environment, environment_id, environment})
+                  |> flush_notifications()
+
+                {:reply, {:ok, environment.version}, state}
+            end
         end
+
+      {:error, :environment_invalid} ->
+        {:reply, {:error, :environment_invalid}, state}
     end
   end
 

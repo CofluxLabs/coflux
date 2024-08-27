@@ -71,6 +71,12 @@ defmodule Coflux.Handlers.Api do
            ) do
         {:ok, version} ->
           json_response(req, %{version: version})
+
+        {:error, :has_dependencies} ->
+          json_error_response(req, "bad_request", details: %{"name" => "has_dependencies"})
+
+        {:error, :environment_invalid} ->
+          json_error_response(req, "bad_request", details: %{"name" => "not_found"})
       end
     else
       json_error_response(req, "bad_request", details: errors)
