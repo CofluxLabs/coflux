@@ -41,18 +41,18 @@ function AttemptSelectorOption({
         <Badge intent="none" label="Cached" />
       ) : execution.result?.type == "deferred" ? (
         <Badge intent="none" label="Deferred" />
+      ) : execution.result?.type == "value" ? (
+        <Badge intent="success" label="Completed" />
+      ) : execution.result?.type == "error" ? (
+        <Badge intent="danger" label="Failed" />
+      ) : execution.result?.type == "abandoned" ? (
+        <Badge intent="warning" label="Abandoned" />
+      ) : execution.result?.type == "cancelled" ? (
+        <Badge intent="warning" label="Cancelled" />
       ) : !execution.assignedAt ? (
         <Badge intent="info" label="Assigning" />
       ) : !execution.result ? (
         <Badge intent="info" label="Running" />
-      ) : ["value"].includes(execution.result.type) ? (
-        <Badge intent="success" label="Completed" />
-      ) : execution.result.type == "error" ? (
-        <Badge intent="danger" label="Failed" />
-      ) : execution.result.type == "abandoned" ? (
-        <Badge intent="warning" label="Abandoned" />
-      ) : execution.result.type == "cancelled" ? (
-        <Badge intent="warning" label="Cancelled" />
       ) : null}
     </div>
   );
