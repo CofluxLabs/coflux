@@ -65,7 +65,6 @@ type DetailPanelProps = {
   run: models.Run;
   projectId: string;
   activeEnvironmentId: string;
-  activeEnvironmentName: string;
   runEnvironmentId: string;
   className?: string;
 };
@@ -77,7 +76,6 @@ function DetailPanel({
   run,
   projectId,
   activeEnvironmentId,
-  activeEnvironmentName,
   runEnvironmentId,
   className,
 }: DetailPanelProps) {
@@ -112,7 +110,6 @@ function DetailPanel({
               run={run}
               projectId={projectId}
               activeEnvironmentId={activeEnvironmentId}
-              activeEnvironmentName={activeEnvironmentName}
               runEnvironmentId={runEnvironmentId}
               className="flex-1"
               onRerunStep={handleRerunStep}
@@ -207,7 +204,6 @@ export default function RunLayout() {
               run={run}
               projectId={projectId!}
               activeEnvironmentId={activeEnvironmentId!}
-              activeEnvironmentName={activeEnvironmentName!}
               runEnvironmentId={runEnvironmentId}
               className="absolute right-0 top-0 bottom-0 w-[400px]"
             />

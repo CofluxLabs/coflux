@@ -27,7 +27,6 @@ defmodule Coflux.Topics.Run do
           |> Enum.min_by(& &1.created_at)
           |> Map.fetch!(:environment_id)
 
-        # TODO: get id of environment_name
         environment_ids = Enum.uniq([run_environment_id, environment_id])
 
         {:ok,

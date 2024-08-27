@@ -1,10 +1,15 @@
 import { CSSProperties, Fragment, useCallback, useState } from "react";
 import classNames from "classnames";
-import { sortBy } from "lodash";
+import { minBy, sortBy } from "lodash";
 import { DateTime } from "luxon";
-import { Listbox, Transition } from "@headlessui/react";
+import { Listbox, Menu, Transition } from "@headlessui/react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { IconChevronDown, IconFunction, IconPinned } from "@tabler/icons-react";
+import {
+  IconChevronDown,
+  IconFunction,
+  IconPinned,
+  IconReload,
+} from "@tabler/icons-react";
 import reactStringReplace from "react-string-replace";
 
 import * as models from "../models";
@@ -18,7 +23,7 @@ import AssetLink from "./AssetLink";
 import { getAssetMetadata } from "../assets";
 import AssetIcon from "./AssetIcon";
 import EnvironmentLabel from "./EnvironmentLabel";
-import { useLogs } from "../topics";
+import { useEnvironments, useLogs } from "../topics";
 
 type AttemptSelectorOptionProps = {
   attempt: number;
@@ -114,10 +119,40 @@ function AttemptSelector({
   );
 }
 
+function getEnvironmentDescendantIds(
+  environments: Record<string, models.Environment>,
+  parentId: string | null,
+): string[] {
+  return Object.entries(environments)
+    .filter(([_, e]) => e.baseId == parentId && e.status != 1)
+    .flatMap(([environmentId]) => [
+      environmentId,
+      ...getEnvironmentDescendantIds(environments, environmentId),
+    ]);
+}
+
+function getEnvironmentOptions(
+  environments: Record<string, models.Environment>,
+  parentId: string,
+) {
+  return [parentId, ...getEnvironmentDescendantIds(environments, parentId)];
+}
+
+function getBaseExecution(step: models.Step, run: models.Run) {
+  if (step.parentId) {
+    return Object.values(run.steps)
+      .flatMap((s) => Object.values(s.executions))
+      .find((e) => e.executionId == step.parentId)!;
+  } else {
+    const initialStep = Object.values(run.steps).find((s) => !s.parentId)!;
+    const initialAttempt = minBy(Object.keys(initialStep.executions), Number)!;
+    return initialStep.executions[initialAttempt];
+  }
+}
+
 type HeaderProps = {
   projectId: string;
   activeEnvironmentId: string;
-  activeEnvironmentName: string;
   runEnvironmentId: string;
   run: models.Run;
   stepId: string;
@@ -129,7 +164,6 @@ type HeaderProps = {
 function Header({
   projectId,
   activeEnvironmentId,
-  activeEnvironmentName,
   runEnvironmentId,
   run,
   stepId,
@@ -137,48 +171,42 @@ function Header({
   attempt,
   onRerunStep,
 }: HeaderProps) {
+  const environments = useEnvironments(projectId);
+  const activeEnvironmentName = environments?.[activeEnvironmentId].name;
   const [rerunning, setRerunning] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const changeAttempt = useCallback(
-    (attempt: number) => {
+    (attempt: number, environmentName?: string) => {
       navigate(
         buildUrl(location.pathname, {
-          environment: activeEnvironmentName,
+          environment: environmentName || activeEnvironmentName,
           step: stepId,
           attempt,
         }),
       );
     },
-    [projectId, run, activeEnvironmentName, step, navigate, location],
+    [stepId, activeEnvironmentName, navigate, location],
   );
   const executionEnvironmentId = step.executions[attempt].environmentId;
-  const handleRerunClick = useCallback(() => {
-    // TODO: compare names instead of ids?
-    if (
-      executionEnvironmentId == activeEnvironmentId ||
-      confirm(
-        `Are you sure you want to re-run this execution in the active environment (${activeEnvironmentName})?`,
-      )
-    ) {
+  const baseEnvironmentId = getBaseExecution(step, run).environmentId;
+  const childEnvironmentIds =
+    environments && getEnvironmentOptions(environments, baseEnvironmentId);
+  const handleRerunClick = useCallback(
+    (environmentId: string) => {
+      const environmentName = environments![environmentId].name;
       setRerunning(true);
-      onRerunStep(stepId, activeEnvironmentName)
+      onRerunStep(stepId, environmentName)
         .then(({ attempt }) => {
           // TODO: wait for attempt to be synced to topic
-          changeAttempt(attempt);
+          changeAttempt(attempt, environmentName);
         })
         .finally(() => {
           setRerunning(false);
         });
-    }
-  }, [
-    onRerunStep,
-    stepId,
-    executionEnvironmentId,
-    activeEnvironmentId,
-    activeEnvironmentName,
-    changeAttempt,
-  ]);
+    },
+    [environments, onRerunStep, stepId, changeAttempt],
+  );
   return (
     <div className="p-4 pt-5 flex items-start border-b border-slate-200">
       <div className="flex-1 flex flex-col gap-2">
@@ -214,16 +242,57 @@ function Header({
             executions={step.executions}
             onChange={changeAttempt}
           />
-          <Button
-            disabled={rerunning}
-            outline={true}
-            size="sm"
-            onClick={handleRerunClick}
-          >
-            {executionEnvironmentId != activeEnvironmentId
-              ? "Re-run..."
-              : "Re-run"}
-          </Button>
+          <div className="flex shadow-sm relative">
+            <Button
+              disabled={rerunning}
+              outline={true}
+              size="sm"
+              className="[&:not(:last-child)]:rounded-r-none"
+              left={<IconReload size={14} />}
+              onClick={() => handleRerunClick(executionEnvironmentId)}
+            >
+              Re-run
+            </Button>
+            {childEnvironmentIds?.length ? (
+              <Menu>
+                <Menu.Button
+                  as={Button}
+                  disabled={rerunning}
+                  outline={true}
+                  size="sm"
+                  className="rounded-l-none -ml-px"
+                >
+                  <IconChevronDown size={16} />
+                </Menu.Button>
+                <Transition
+                  as={Fragment}
+                  leave="transition ease-in duration-100"
+                  leaveFrom="opacity-100"
+                  leaveTo="opacity-0"
+                >
+                  <Menu.Items className="absolute top-full left-0 z-10 overflow-y-scroll bg-white rounded shadow-lg max-h-60 flex flex-col p-1 mt-1 min-w-full">
+                    {childEnvironmentIds
+                      .filter((id) => id != executionEnvironmentId)
+                      .map((environmentId) => (
+                        <Menu.Item key={environmentId} as={Fragment}>
+                          {({ active }) => (
+                            <button
+                              className={classNames(
+                                "p-1 text-left text-sm rounded",
+                                active && "bg-slate-100",
+                              )}
+                              onClick={() => handleRerunClick(environmentId)}
+                            >
+                              {environments?.[environmentId].name}
+                            </button>
+                          )}
+                        </Menu.Item>
+                      ))}
+                  </Menu.Items>
+                </Transition>
+              </Menu>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -712,7 +781,6 @@ type Props = {
   run: models.Run;
   projectId: string;
   activeEnvironmentId: string;
-  activeEnvironmentName: string;
   runEnvironmentId: string;
   className?: string;
   style?: CSSProperties;
@@ -726,7 +794,6 @@ export default function StepDetail({
   run,
   projectId,
   activeEnvironmentId,
-  activeEnvironmentName,
   runEnvironmentId,
   className,
   style,
@@ -742,7 +809,6 @@ export default function StepDetail({
       <Header
         projectId={projectId}
         activeEnvironmentId={activeEnvironmentId}
-        activeEnvironmentName={activeEnvironmentName}
         runEnvironmentId={runEnvironmentId}
         run={run}
         stepId={stepId}
