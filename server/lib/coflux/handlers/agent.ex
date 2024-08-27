@@ -312,6 +312,10 @@ defmodule Coflux.Handlers.Agent do
     {[command_message("abort", [execution_id])], state}
   end
 
+  def websocket_info(:stop, state) do
+    {[{:close, 4000, "environment_not_found"}], state}
+  end
+
   defp connect(project_id, session_id, environment_name, concurrency) do
     if session_id do
       with {:ok, executions} <-

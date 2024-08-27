@@ -118,47 +118,55 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_call({:archive_environment, environment_name}, _from, state) do
     case lookup_environment_by_name(state, environment_name) do
-      {:ok, environment_id, environment} ->
-        cond do
-          environment.status == 1 ->
-            {:reply, {:error, :environment_invalid}, state}
+      {:ok, environment_id, _} ->
+        if Enum.any?(state.environments, fn {e_id, e} ->
+             e_id != environment_id && e.status != 1 && e.base_id == environment_id
+           end) do
+          {:reply, {:error, :has_dependencies}, state}
+        else
+          case Sessions.archive_environment(state.db, environment_id) do
+            {:ok, environment} ->
+              state =
+                state.sessions
+                |> Enum.filter(fn {_, s} -> s.environment_id == environment_id end)
+                |> Enum.reduce(state, fn {session_id, session}, state ->
+                  state =
+                    if session.agent do
+                      {pid, ^session_id} = Map.fetch!(state.agents, session.agent)
+                      send(pid, :stop)
+                      Map.update!(state, :agents, &Map.delete(&1, session.agent))
+                    else
+                      state
+                    end
 
-          Enum.any?(state.environments, fn {e_id, e} ->
-            e_id != environment_id && e.status != 1 && e.base_id == environment_id
-          end) ->
-            {:reply, {:error, :has_dependencies}, state}
+                  remove_session(state, session_id)
+                end)
 
-          true ->
-            case Sessions.archive_environment(state.db, environment_id) do
-              {:ok, environment} ->
-                state =
-                  case Runs.get_pending_executions_for_environment(state.db, environment_id) do
-                    {:ok, executions} ->
-                      Enum.reduce(executions, state, fn {execution_id, run_id, repository},
-                                                        state ->
-                        case record_and_notify_result(
-                               state,
-                               execution_id,
-                               :cancelled,
-                               run_id,
-                               repository
-                             ) do
-                          {:ok, state} -> state
-                          {:error, :already_recorded} -> state
-                        end
-                      end)
-                  end
+              state =
+                case Runs.get_pending_executions_for_environment(state.db, environment_id) do
+                  {:ok, executions} ->
+                    Enum.reduce(executions, state, fn {execution_id, run_id, repository}, state ->
+                      case record_and_notify_result(
+                             state,
+                             execution_id,
+                             :cancelled,
+                             run_id,
+                             repository
+                           ) do
+                        {:ok, state} -> state
+                        {:error, :already_recorded} -> state
+                      end
+                    end)
+                end
 
-                # TODO: invalidate sessions?
+              state =
+                state
+                |> put_in([Access.key(:environments), environment_id], environment)
+                |> notify_listeners(:environments, {:environment, environment_id, environment})
+                |> flush_notifications()
 
-                state =
-                  state
-                  |> put_in([Access.key(:environments), environment_id], environment)
-                  |> notify_listeners(:environments, {:environment, environment_id, environment})
-                  |> flush_notifications()
-
-                {:reply, {:ok, environment.version}, state}
-            end
+              {:reply, {:ok, environment.version}, state}
+          end
         end
 
       {:error, :environment_invalid} ->
@@ -944,42 +952,10 @@ defmodule Coflux.Orchestration.Server do
       IO.puts("Ignoring session expire (#{inspect(session_id)})")
       {:noreply, state}
     else
-      {session, state} = pop_in(state.sessions[session_id])
-
       state =
-        session.executing
-        |> MapSet.union(session.starting)
-        |> Enum.reduce(state, fn execution_id, state ->
-          {:ok, state} = record_result(state, execution_id, :abandoned)
-          state
-        end)
-        |> Map.update!(:targets, fn all_targets ->
-          Enum.reduce(
-            session.targets,
-            all_targets,
-            fn {repository, repository_targets}, all_targets ->
-              Enum.reduce(repository_targets, all_targets, fn target, all_targets ->
-                MapUtils.delete_in(all_targets, [repository, target, session_id])
-              end)
-            end
-          )
-        end)
-        |> Map.update!(:session_ids, &Map.delete(&1, session.external_id))
-        |> Map.update!(:waiting, fn waiting ->
-          waiting
-          |> Enum.map(fn {execution_id, execution_waiting} ->
-            {execution_id,
-             Enum.reject(execution_waiting, fn {s_id, _} ->
-               s_id == session_id
-             end)}
-          end)
-          |> Enum.reject(fn {_execution_id, execution_waiting} ->
-            Enum.empty?(execution_waiting)
-          end)
-          |> Map.new()
-        end)
-
-      state = flush_notifications(state)
+        state
+        |> remove_session(session_id)
+        |> flush_notifications()
 
       {:noreply, state}
     end
@@ -1146,16 +1122,23 @@ defmodule Coflux.Orchestration.Server do
       Map.has_key?(state.agents, ref) ->
         {{^pid, session_id}, state} = pop_in(state.agents[ref])
 
-        # TODO: (re-)schedule timer when receiving heartbeats?
-        expire_timer =
-          Process.send_after(self(), {:expire_session, session_id}, @session_timeout_ms)
+        state =
+          if Map.has_key?(state.sessions, session_id) do
+            # TODO: (re-)schedule timer when receiving heartbeats?
+            expire_timer =
+              Process.send_after(self(), {:expire_session, session_id}, @session_timeout_ms)
+
+            update_in(
+              state,
+              [Access.key(:sessions), session_id],
+              &Map.merge(&1, %{agent: nil, expire_timer: expire_timer})
+            )
+          else
+            state
+          end
 
         state =
           state
-          |> update_in(
-            [Access.key(:sessions), session_id],
-            &Map.merge(&1, %{agent: nil, expire_timer: expire_timer})
-          )
           |> notify_agent(session_id)
           |> flush_notifications()
 
@@ -1178,7 +1161,12 @@ defmodule Coflux.Orchestration.Server do
     case Map.fetch(state.environment_names, environment_name) do
       {:ok, environment_id} ->
         environment = Map.fetch!(state.environments, environment_id)
-        {:ok, environment_id, environment}
+
+        if environment.status != 1 do
+          {:ok, environment_id, environment}
+        else
+          {:error, :environment_invalid}
+        end
 
       :error ->
         {:error, :environment_invalid}
@@ -1224,6 +1212,42 @@ defmodule Coflux.Orchestration.Server do
       concurrency: 0,
       environment_id: nil
     }
+  end
+
+  defp remove_session(state, session_id) do
+    {session, state} = pop_in(state.sessions[session_id])
+
+    session.executing
+    |> MapSet.union(session.starting)
+    |> Enum.reduce(state, fn execution_id, state ->
+      {:ok, state} = record_result(state, execution_id, :abandoned)
+      state
+    end)
+    |> Map.update!(:targets, fn all_targets ->
+      Enum.reduce(
+        session.targets,
+        all_targets,
+        fn {repository, repository_targets}, all_targets ->
+          Enum.reduce(repository_targets, all_targets, fn target, all_targets ->
+            MapUtils.delete_in(all_targets, [repository, target, session_id])
+          end)
+        end
+      )
+    end)
+    |> Map.update!(:session_ids, &Map.delete(&1, session.external_id))
+    |> Map.update!(:waiting, fn waiting ->
+      waiting
+      |> Enum.map(fn {execution_id, execution_waiting} ->
+        {execution_id,
+         Enum.reject(execution_waiting, fn {s_id, _} ->
+           s_id == session_id
+         end)}
+      end)
+      |> Enum.reject(fn {_execution_id, execution_waiting} ->
+        Enum.empty?(execution_waiting)
+      end)
+      |> Map.new()
+    end)
   end
 
   defp split_executions(executions, now) do
