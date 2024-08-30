@@ -1,6 +1,11 @@
 import { findKey, maxBy } from "lodash";
-import { Fragment } from "react";
-import { Navigate, useParams, useSearchParams } from "react-router-dom";
+import { Fragment, useEffect } from "react";
+import {
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 
 import { useSetActiveTarget } from "../layouts/ProjectLayout";
 import { buildUrl } from "../utils";
@@ -11,6 +16,7 @@ import { useTitlePart } from "../components/TitleContext";
 
 export default function TargetPage() {
   const { project: projectId, repository, target: targetName } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const activeEnvironmentName = searchParams.get("environment") || undefined;
   const environments = useEnvironments(projectId);
@@ -24,6 +30,11 @@ export default function TargetPage() {
     targetName,
     activeEnvironmentId,
   );
+  useEffect(() => {
+    if (target && !target.type) {
+      navigate(`/projects/${projectId}?environment=${activeEnvironmentName}`);
+    }
+  }, [target, navigate, projectId, activeEnvironmentName]);
   useTitlePart(`${targetName} (${repository})`);
   useSetActiveTarget(target);
   if (!target) {
