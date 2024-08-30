@@ -1,19 +1,36 @@
 import classNames from "classnames";
+import { ReactNode } from "react";
 
 type Props = {
+  header?: ReactNode;
+  prompt?: string;
   code: string[];
   className?: string;
 };
 
-export default function CodeBlock({ code, className }: Props) {
+export default function CodeBlock({ header, prompt, code, className }: Props) {
   return (
-    <code
+    <div
       className={classNames(
-        "block whitespace-pre shadow-inner rounded-md p-2 my-2 text-sm",
+        "shadow-inner rounded-md my-2 overflow-hidden",
         className,
       )}
     >
-      {code.join("\n")}
-    </code>
+      {header && (
+        <div className="bg-slate-200/40 border-b border-slate-200/60 px-2 py-1 text-sm text-slate-400">
+          {header}
+        </div>
+      )}
+      <div className="p-2">
+        {code.map((line) => (
+          <code className="block whitespace-pre text-sm">
+            {prompt && (
+              <span className="select-none mr-2 text-cyan-600">{prompt}</span>
+            )}
+            {line}
+          </code>
+        ))}
+      </div>
+    </div>
   );
 }

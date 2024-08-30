@@ -29,7 +29,7 @@ function Header({ projectId, activeEnvironmentName }: HeaderProps) {
           <IconChevronCompactRight size={16} className="text-white/40" />
           <div className="flex items-center gap-2">
             <ProjectSelector projects={projects} />
-            {environments && Object.keys(environments).length > 0 && (
+            {environments && (
               <EnvironmentSelector
                 projectId={projectId}
                 environments={environments}

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { ReactNode, useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import classNames from "classnames";
 import { findKey } from "lodash";
@@ -11,9 +11,48 @@ import {
   useProjects,
   useRepositories,
 } from "../topics";
+import { Disclosure } from "@headlessui/react";
+import { IconChevronDown, IconInfoCircle } from "@tabler/icons-react";
 
 function generatePackageName(projectName: string | undefined) {
   return projectName?.replace(/[^a-z0-9_]/gi, "").toLowerCase() || "my_package";
+}
+
+type HintProps = {
+  children: ReactNode;
+};
+
+function Hint({ children }: HintProps) {
+  return (
+    <div className="text-sm flex gap-1 text-slate-400 mb-2">
+      <IconInfoCircle size={16} className="mt-0.5" />
+      {children}
+    </div>
+  );
+}
+
+type StepProps = {
+  title: string;
+  children: ReactNode;
+};
+
+function Step({ title, children }: StepProps) {
+  return (
+    <Disclosure as="li" className="my-4" defaultOpen={true}>
+      {({ open }) => (
+        <div className="flex flex-col">
+          <Disclosure.Button className="text-left flex items-center gap-1">
+            {title}
+            <IconChevronDown
+              size={16}
+              className={classNames("text-slate-400", open && "rotate-180")}
+            />
+          </Disclosure.Button>
+          <Disclosure.Panel>{children}</Disclosure.Panel>
+        </div>
+      )}
+    </Disclosure>
+  );
 }
 
 type GettingStartedProps = {
@@ -31,105 +70,89 @@ function GettingStarted({ projectId, environmentId }: GettingStartedProps) {
   const exampleEnvironmentName = useMemo(() => randomName(), []);
   const exampleRepositoryName = `${packageName}.repo`;
   const agentConnected = agents && Object.keys(agents).length > 0;
-  return (
-    <div className="bg-slate-50 border border-slate-100 rounded-lg m-auto w-2/3 p-3 text-slate-600">
-      <h1 className="text-3xl my-2">Your project is ready</h1>
-      <p className="my-2">
-        Follow these steps to setup an environment and repository:
-      </p>
-      <ol className="list-decimal pl-8 my-4">
-        <li
-          className={classNames(
-            "my-4",
-            environmentName && "line-through text-slate-400",
-          )}
-        >
-          Install the CLI:
-          <CodeBlock className="bg-white" code={["pip install coflux"]} />
-        </li>
-        <li
-          className={classNames(
-            "my-4",
-            environmentName && "line-through text-slate-400",
-          )}
-        >
-          Use the CLI to populate the configuration file:
-          <CodeBlock
-            className="bg-white"
-            code={[
-              "coflux configure \\",
-              `  --host=${window.location.host} \\`,
-              `  --project=${projectId} \\`,
-              `  --environment=${environmentName || exampleEnvironmentName}`,
-            ]}
-          />
-          <span className="text-sm">
-            This will create a configuration file at{" "}
-            <code className="text-xs">coflux.yaml</code>.
-          </span>
-        </li>
-        <li
-          className={classNames(
-            "my-4",
-            environmentName && "line-through text-slate-400",
-          )}
-        >
-          Register an environment with the server, using the CLI:
-          <CodeBlock
-            className="bg-white"
-            code={["coflux environment.register"]}
-          />
-          <span className="text-sm">
-            This will create an empty environment file for the environment
-            configured in the previous step, at{" "}
-            <code className="text-xs">
-              environments/{environmentName || exampleEnvironmentName}.yaml
-            </code>
-            , which can be edited and re-registered as needed.
-          </span>
-        </li>
-        <li
-          className={classNames(
-            "my-4",
-            agentConnected && "line-through text-slate-400",
-          )}
-        >
-          Initalise an empty repository:
-          <CodeBlock
-            className="bg-white"
-            code={[`mkdir -p ${packageName}`, `touch ${packageName}/repo.py`]}
-          />
-        </li>
-        <li
-          className={classNames(
-            "my-4",
-            agentConnected && "line-through text-slate-400",
-          )}
-        >
-          Run the agent (watching for changes to the repository):
-          <CodeBlock
-            className="bg-white"
-            code={[`coflux agent.run ${exampleRepositoryName} --reload`]}
-          />
-        </li>
-        <li className="my-4">
-          Edit <code className="text-sm">{`${packageName}/repo.py`}</code> to
-          add a workflow to your repository:
-          <CodeBlock
-            className="bg-white"
-            code={[
-              "import coflux as cf",
-              "",
-              "@cf.workflow()",
-              "def hello(name: str):",
-              '    cf.log_info("Hello, {name}", name=name)',
-              "    return 42",
-            ]}
-          />
-        </li>
-      </ol>
-    </div>
-  );
+  if (environments && Object.keys(environments).length > 0) {
+    return (
+      <div className="overflow-auto">
+        <div className="bg-slate-50 border border-slate-100 rounded-lg mx-auto my-6 w-2/3 p-3 text-slate-600">
+          <h1 className="text-3xl my-2">Your project is ready</h1>
+          <p className="my-2">
+            Follow these steps to create your first workflow:
+          </p>
+          <ol className="list-decimal pl-8 my-5">
+            <Step title="Install the CLI">
+              <CodeBlock
+                className="bg-slate-100"
+                prompt="$"
+                code={["pip install coflux"]}
+              />
+            </Step>
+            <Step title="Populate the configuration file">
+              <CodeBlock
+                className="bg-slate-100"
+                prompt="$"
+                code={[
+                  `coflux configure \\\n  --host=${window.location.host} \\\n  --project=${projectId} \\\n  --environment=${environmentName || exampleEnvironmentName}`,
+                ]}
+              />
+              <Hint>
+                <p>
+                  This will create a configuration file at{" "}
+                  <code className="bg-slate-100">coflux.yaml</code>.
+                </p>
+              </Hint>
+            </Step>
+            <Step title="Initialise an empty repository">
+              <CodeBlock
+                className="bg-slate-100"
+                prompt="$"
+                code={[
+                  `mkdir -p ${packageName}`,
+                  `touch ${packageName}/__init__.py`,
+                  `touch ${packageName}/repo.py`,
+                ]}
+              />
+            </Step>
+            <Step title="Run the agent">
+              <CodeBlock
+                className="bg-slate-100"
+                prompt="$"
+                code={[`coflux agent.run ${exampleRepositoryName} --reload`]}
+              />
+              <Hint>
+                <p>
+                  The <code className="bg-slate-100">--reload</code> flag means
+                  that the agent will automatically restart when changes to the
+                  source code are detected.
+                </p>
+              </Hint>
+            </Step>
+            <Step title="Add a workflow to your repository">
+              <CodeBlock
+                header={`${packageName}/repo.py`}
+                className="bg-slate-100"
+                code={[
+                  "import coflux as cf",
+                  "",
+                  "@cf.workflow()",
+                  "def hello(name: str):",
+                  '    cf.log_info("Hello, {name}", name=name)',
+                  "    return 42",
+                ]}
+              />
+              <Hint>
+                <p>
+                  When you save the file, the workspace will automatically
+                  appear in the sidebar.
+                </p>
+              </Hint>
+            </Step>
+          </ol>
+        </div>
+      </div>
+    );
+  } else {
+    return null;
+  }
 }
 
 export default function ProjectPage() {

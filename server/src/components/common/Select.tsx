@@ -79,7 +79,7 @@ export default function Select<T extends string>({
                 {({ selected, active }) => (
                   <div
                     className={classNames(
-                      "px-2 py-1 cursor-default rounded",
+                      "px-2 py-1 cursor-default rounded text-sm",
                       selected && "font-bold",
                       active && "bg-slate-100",
                     )}

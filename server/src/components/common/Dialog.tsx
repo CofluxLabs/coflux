@@ -25,7 +25,7 @@ export default function Dialog({ title, open, children, onClose }: Props) {
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            <HeadlessDialog.Overlay className="fixed inset-0 bg-black opacity-30" />
+            <HeadlessDialog.Overlay className="fixed inset-0 bg-black opacity-50" />
           </Transition.Child>
           <span
             className="inline-block h-screen align-middle"
