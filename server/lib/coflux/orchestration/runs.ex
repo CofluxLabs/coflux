@@ -1,9 +1,17 @@
 defmodule Coflux.Orchestration.Runs do
-  alias Coflux.Orchestration.{Models, Results, Sessions}
+  alias Coflux.Orchestration.{Models, Results}
 
   import Coflux.Store
 
-  def schedule_run(db, repository, target, arguments, environment_id, opts \\ []) do
+  def schedule_run(
+        db,
+        repository,
+        target,
+        arguments,
+        environment_id,
+        cache_environment_ids,
+        opts \\ []
+      ) do
     idempotency_key = Keyword.get(opts, :idempotency_key)
     parent_id = Keyword.get(opts, :parent_id)
     recurrent = Keyword.get(opts, :recurrent)
@@ -22,6 +30,7 @@ defmodule Coflux.Orchestration.Runs do
           arguments,
           true,
           environment_id,
+          cache_environment_ids,
           now,
           opts
         )
@@ -102,6 +111,7 @@ defmodule Coflux.Orchestration.Runs do
         target,
         arguments,
         environment_id,
+        cache_environment_ids,
         opts \\ []
       ) do
     now = current_timestamp()
@@ -116,6 +126,7 @@ defmodule Coflux.Orchestration.Runs do
         arguments,
         false,
         environment_id,
+        cache_environment_ids,
         now,
         opts
       )
@@ -131,6 +142,7 @@ defmodule Coflux.Orchestration.Runs do
          arguments,
          is_initial,
          environment_id,
+         cache_environment_ids,
          now,
          opts
        ) do
@@ -145,17 +157,9 @@ defmodule Coflux.Orchestration.Runs do
     retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
     retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
 
-    environment_ids =
-      if memo_key || cache_key do
-        case Sessions.get_environment_ancestor_ids(db, environment_id, [environment_id]) do
-          {:ok, environment_ids} ->
-            environment_ids
-        end
-      end
-
     memoised_execution =
       if memo_key do
-        case find_memoised_execution(db, run_id, environment_ids, memo_key) do
+        case find_memoised_execution(db, run_id, cache_environment_ids, memo_key) do
           {:ok, memoised_execution} -> memoised_execution
         end
       end
@@ -170,7 +174,7 @@ defmodule Coflux.Orchestration.Runs do
             if cache_key do
               recorded_after = if cache_max_age, do: now - cache_max_age * 1000, else: 0
 
-              case find_cached_execution(db, environment_ids, cache_key, recorded_after) do
+              case find_cached_execution(db, cache_environment_ids, cache_key, recorded_after) do
                 {:ok, cached_execution_id} ->
                   cached_execution_id
               end

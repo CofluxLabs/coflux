@@ -1,4 +1,6 @@
 defmodule Coflux.Handlers.Agent do
+  import Coflux.Handlers.Utils
+
   alias Coflux.{Orchestration, Observation, Projects}
 
   def init(req, _opts) do
@@ -359,25 +361,6 @@ defmodule Coflux.Handlers.Agent do
 
   defp error_message(id, error) do
     {:text, Jason.encode!([3, id, error])}
-  end
-
-  defp get_query_param(qs, key, fun \\ nil) do
-    case List.keyfind(qs, key, 0) do
-      {^key, value} ->
-        if fun do
-          try do
-            fun.(value)
-          rescue
-            ArgumentError ->
-              nil
-          end
-        else
-          value
-        end
-
-      nil ->
-        nil
-    end
   end
 
   defp parse_targets(targets) do

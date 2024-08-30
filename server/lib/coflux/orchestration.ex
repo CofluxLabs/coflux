@@ -1,8 +1,16 @@
 defmodule Coflux.Orchestration do
   alias Coflux.Orchestration
 
-  def register_environment(project_id, environment_name, base) do
-    call_server(project_id, {:register_environment, environment_name, base})
+  def get_environments(project_id) do
+    call_server(project_id, :get_environments)
+  end
+
+  def create_environment(project_id, name, base_id) do
+    call_server(project_id, {:create_environment, name, base_id})
+  end
+
+  def update_environment(project_id, environment_id, updates) do
+    call_server(project_id, {:update_environment, environment_id, updates})
   end
 
   def archive_environment(project_id, environment_name) do

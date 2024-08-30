@@ -32,25 +32,100 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp handle(req, "POST", ["register_environment"]) do
+  defp handle(req, "GET", ["get_environments"]) do
+    qs = :cowboy_req.parse_qs(req)
+    project_id = get_query_param(qs, "project")
+
+    case Projects.get_project_by_id(Coflux.ProjectsServer, project_id) do
+      {:ok, _} ->
+        case Orchestration.get_environments(project_id) do
+          {:ok, environments} ->
+            json_response(
+              req,
+              Map.new(environments, fn {environment_id, environment} ->
+                base_id =
+                  if environment.base_id,
+                    do: Integer.to_string(environment.base_id)
+
+                {environment_id,
+                 %{
+                   "name" => environment.name,
+                   "baseId" => base_id
+                 }}
+              end)
+            )
+        end
+
+      :error ->
+        json_error_response(req, "not_found", status: 404)
+    end
+  end
+
+  defp handle(req, "POST", ["create_environment"]) do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        name: {"name", &validate_environment_name/1},
-        base: {"base", nil}
+        name: "name",
+        base_id: {"baseId", &parse_environment_id(&1, false)}
       })
 
     if Enum.empty?(errors) do
-      case Orchestration.register_environment(
+      case Orchestration.create_environment(
              arguments.project_id,
              arguments.name,
-             arguments.base
+             arguments.base_id
            ) do
         {:ok, version} ->
           json_response(req, %{version: version})
 
-        {:error, :base_invalid} ->
-          json_error_response(req, "bad_request", details: %{"base" => "invalid"})
+        {:error, errors} ->
+          errors =
+            MapUtils.translate_keys(errors, %{
+              name: "name",
+              base_id: "baseId"
+            })
+
+          json_error_response(req, "bad_request", details: errors)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["update_environment"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(
+        req,
+        %{
+          project_id: "projectId",
+          environment_id: {"environmentId", &parse_environment_id/1}
+        },
+        %{
+          name: "name",
+          base_id: {"baseId", &parse_environment_id(&1, false)}
+        }
+      )
+
+    if Enum.empty?(errors) do
+      case Orchestration.update_environment(
+             arguments.project_id,
+             arguments.environment_id,
+             Map.take(arguments, [:name, :base_id])
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
+
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", status: 404)
+
+        {:error, errors} ->
+          errors =
+            MapUtils.translate_keys(errors, %{
+              name: "name",
+              base_id: "baseId"
+            })
+
+          json_error_response(req, "bad_request", details: errors)
       end
     else
       json_error_response(req, "bad_request", details: errors)
@@ -61,22 +136,24 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        name: {"name", &validate_environment_name/1}
+        environment_id: {"environmentId", &parse_environment_id/1}
       })
 
     if Enum.empty?(errors) do
       case Orchestration.archive_environment(
              arguments.project_id,
-             arguments.name
+             arguments.environment_id
            ) do
         {:ok, version} ->
           json_response(req, %{version: version})
 
-        {:error, :has_dependencies} ->
-          json_error_response(req, "bad_request", details: %{"name" => "has_dependencies"})
+        {:error, :descendants} ->
+          json_error_response(req, "bad_request",
+            details: %{"environmentId" => "has_dependencies"}
+          )
 
-        {:error, :environment_invalid} ->
-          json_error_response(req, "bad_request", details: %{"name" => "not_found"})
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", code: 404)
       end
     else
       json_error_response(req, "bad_request", details: errors)
@@ -175,11 +252,14 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp validate_environment_name(name) do
-    if name && Regex.match?(~r/^[a-z0-9_-]+(\/[a-z0-9_-]+)*$/i, name) do
-      {:ok, name}
+  defp parse_environment_id(value, required \\ true) do
+    if not required and is_nil(value) do
+      {:ok, nil}
     else
-      {:error, :invalid}
+      case Integer.parse(value) do
+        {id, ""} -> {:ok, id}
+        _ -> {:error, :invalid}
+      end
     end
   end
 

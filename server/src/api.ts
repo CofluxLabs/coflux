@@ -29,6 +29,14 @@ export function createProject(projectName: string) {
   return request("create_project", { projectName });
 }
 
+export function createEnvironment(
+  projectId: string,
+  name: string,
+  baseId: string | null,
+) {
+  return request("create_environment", { projectId, name, baseId });
+}
+
 export function schedule(
   projectId: string,
   repository: string,
