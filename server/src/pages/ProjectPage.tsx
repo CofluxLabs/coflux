@@ -70,7 +70,10 @@ function GettingStarted({ projectId, environmentId }: GettingStartedProps) {
   const exampleEnvironmentName = useMemo(() => randomName(), []);
   const exampleRepositoryName = `${packageName}.repo`;
   const agentConnected = agents && Object.keys(agents).length > 0;
-  if (environments && Object.keys(environments).length > 0) {
+  const anyEnvironments =
+    environments &&
+    Object.values(environments).filter((e) => e.status != 1).length > 0;
+  if (anyEnvironments) {
     return (
       <div className="overflow-auto">
         <div className="bg-slate-50 border border-slate-100 rounded-lg mx-auto my-6 w-2/3 p-3 text-slate-600">

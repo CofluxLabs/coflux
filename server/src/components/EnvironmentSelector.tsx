@@ -49,7 +49,8 @@ export default function EnvironmentSelector({
   const handleAddEnvironmentDialogClose = useCallback(() => {
     setAddEnvironmentDialogOpen(false);
   }, []);
-  const noEnvironments = Object.keys(environments).length == 0;
+  const noEnvironments =
+    Object.values(environments).filter((e) => e.status != 1).length == 0;
   return (
     <Fragment>
       <Menu as="div" className="relative">
