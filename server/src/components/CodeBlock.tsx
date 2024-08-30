@@ -22,8 +22,8 @@ export default function CodeBlock({ header, prompt, code, className }: Props) {
         </div>
       )}
       <div className="p-2">
-        {code.map((line) => (
-          <code className="block whitespace-pre text-sm">
+        {code.map((line, index) => (
+          <code key={index} className="block whitespace-pre text-sm">
             {prompt && (
               <span className="select-none mr-2 text-cyan-600">{prompt}</span>
             )}
