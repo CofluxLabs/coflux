@@ -1,3 +1,10 @@
+## 0.3.0
+
+Enhancements:
+
+- Updates client/agent to use re-worked environments.
+- Updates CLI to: add commands for managing environments; replace 'init' command with simpler 'configure' command; renamed 'workflow.run' to 'workflow.schedule'.
+
 ## 0.2.6
 
 Fixes:

@@ -1,3 +1,9 @@
+## 0.3.0
+
+Enhancements:
+
+- Re-works environments so that results can be shared across environments, based on a hierarchy.
+
 ## 0.2.5
 
 Fixes:
