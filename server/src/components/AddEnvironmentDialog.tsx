@@ -1,6 +1,5 @@
 import { FormEvent, useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useTopic } from "@topical/react";
 
 import Dialog from "./common/Dialog";
 import Input from "./common/Input";
@@ -38,8 +37,6 @@ export default function AddEnvironmentDialog({
   onClose,
 }: Props) {
   const { project: activeProjectId } = useParams();
-  const [_projects, { execute }] =
-    useTopic<Record<string, models.Project>>("projects");
   const [name, setName] = useState(() => randomName());
   const [baseId, setBaseId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>();
@@ -70,7 +67,7 @@ export default function AddEnvironmentDialog({
           setAdding(false);
         });
     },
-    [execute, navigate, name, baseId],
+    [navigate, name, baseId],
   );
   const environmentNames = Object.entries(environments)
     .filter(([_, e]) => e.status != 1)

@@ -75,10 +75,8 @@ export default function RunDialog({
     (ev: FormEvent) => {
       ev.preventDefault();
       setStarting(true);
+      setErrors(undefined);
       onRun(parameters.map((p) => ["json", values[p.name] || p.default]))
-        .then(() => {
-          setErrors(undefined);
-        })
         .catch((error) => {
           if (error instanceof RequestError) {
             setErrors(error.details);
