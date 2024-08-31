@@ -8,17 +8,17 @@ import urllib.parse
 import websockets
 import traceback
 
-from . import server, execution, annotations, models
+from . import server, execution, decorators, models
 
 
 def _load_module(
     module: types.ModuleType,
-) -> dict[str, tuple[annotations.TargetType, t.Callable]]:
+) -> dict[str, tuple[decorators.TargetType, t.Callable]]:
     attrs = (getattr(module, k) for k in dir(module))
     return {
         a.name: (a.type, a.fn)
         for a in attrs
-        if isinstance(a, annotations.Target) and not a.is_stub
+        if isinstance(a, decorators.Target) and not a.is_stub
     }
 
 

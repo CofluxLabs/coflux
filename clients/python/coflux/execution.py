@@ -18,7 +18,7 @@ import itertools
 import signal
 from pathlib import Path
 
-from . import server, blobs, models, serialisation, annotations, loader
+from . import server, blobs, models, serialisation, decorators, loader
 
 
 _EXECUTION_THRESHOLD_S = 1.0
@@ -575,7 +575,7 @@ def _execute(
             resolved_arguments = _resolve_arguments(arguments, channel)
             channel.notify_executing()
             target = getattr(module, target_name)
-            if not isinstance(target, annotations.Target) or target.is_stub:
+            if not isinstance(target, decorators.Target) or target.is_stub:
                 raise Exception("not valid target")
             value = target.fn(*resolved_arguments)
         except KeyboardInterrupt:
