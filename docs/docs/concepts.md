@@ -4,17 +4,13 @@ This page outlines the main concepts in Coflux.
 
 ## Projects
 
-An instance of a Coflux _server_ may host multiple _projects_. Projects are further sub-divided into _environments_.
-
-The expectation is that the same (or similar) workflows exist in each environment of a project. You might have environments for, e.g., 'production', 'staging', 'development/joe', etc. A shared server can be useful for referring colleagues to runs in specific projects/environments.
-
-Projects (and environments) are relatively well isolated from each other - each have their own database and orchestrator process, though they are of course still sharing the same machine resources.
+An instance of a Coflux _server_ may host multiple _projects_, and a project is separated into _environments_. The data in each project are isolated from each other. With a project, environments can be defined in a hierarchy, such that cache data can be inherited from child environments. For example, a `development` environment can inherit from a `production` environment, allowing you to re-run workflows, or parts of workflows, in a development environment, experimenting with changes to the code without having to re-run the whole workflow. When working with a team on a single server, you can setup separate environments for each developer, or even create environments temporarily to work on specific features.
 
 ## Agents
 
 An _agent_ is a process that hosts _repositories_. An agent connects to the server and is associated with a specific project and environment.
 
-When the agent starts, it reports _manifests_ for the repositories that it's hosting, and then waits for commands from the server telling it to execute specific tasks.
+When the agent starts, it registers _manifests_ for the repositories that it's hosting, and then waits for commands from the server telling it to execute specific tasks.
 
 ## Workflows
 

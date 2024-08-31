@@ -3,9 +3,9 @@
 Log messages can be recorded from tasks using `log_debug`, `log_info`, `log_warning` and `log_error`. In each case the function accepts a 'template' and a set of labels. Labels will be substituted into the template, or shown alongside if they aren't present in the template. For example:
 
 ```python
-from coflux import log_info
+import coflux as cf
 
-log_info(
+cf.log_info(
   "{count} bottles of {drink} on the wall",
   count=99, drink='beer', sunny=True, temperature=12.3
 )

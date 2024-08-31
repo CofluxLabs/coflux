@@ -27,7 +27,7 @@ Typically a sensor needs to maintain some state. For example, to track a databas
 Here's a sensor that periodically starts a workflow:
 
 ```python
-@sensor()
+@cf.sensor()
 def ticker(interval: int = 300, last_tick: float | None = None):
     next_tick = last_tick + interval if last_tick else time.time()
     while True:
@@ -35,7 +35,7 @@ def ticker(interval: int = 300, last_tick: float | None = None):
         if remaining:
             time.sleep(remaining)
         my_workflow.submit()
-        checkpoint(interval, next_tick)
+        cf.checkpoint(interval, next_tick)
         next_tick += interval
 ```
 

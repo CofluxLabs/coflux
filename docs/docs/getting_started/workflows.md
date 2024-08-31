@@ -1,12 +1,12 @@
 # 1. Defining workflows
 
-Workflows are defined in code, using Python functions, which are annotated to indicate their operation type and configuration. A _workflow_ is the entry point for a workflow, and a _task_ is an operation to be executed within the run. Workflows can call tasks, tasks can call other tasks, and tasks can also call workflows (which initiates a separate run).
+Workflows are defined in code, using Python functions, which are decorated to indicate their operation type and configuration. A function decorated as a _workflow_ is the entry point for a run, and a function decorated as a  _task_ is an operation to be executed within the run. Workflows can call tasks, tasks can call other tasks, and tasks can also call workflows (initiating a separate run).
 
-The annotations are designed to be unimposing so that functions can be executed independently, without connecting to the Coflux server.
+The decorators are designed to be unimposing so that functions can be executed outside of Coflux.
 
 ## An example
 
-Let's start with a simple example:
+Here's a simple example:
 
 ```python
 import coflux as cf
@@ -22,7 +22,7 @@ def print_greeting(name: str):
 
 This defines a `print_greeting` workflow, which takes a `name` as an argument. When run, it calls the `build_greeting` task, passing through the name argument. Once it has the result from the task, the result gets printed.
 
-Workflows are defined in _repositories_, which are typically Python modules, but can also be loaded from a Python script, which we'll do momentarily.
+Workflows are defined in _repositories_. Typically these are Python modules, but they can alternatively be loaded from a Python script, which this guide will demonstrate.
 
 **Put the workflow above into `hello.py`.** (We'll install the `coflux` library in a moment.)
 

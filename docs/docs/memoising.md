@@ -2,10 +2,7 @@
 
 Memoising is similar to [caching](/caching), however it only applies to steps within a run, and serves a subtly different purpose. With caching, a cache hit still results in a new step entity, but the result will be shared. Memoising is more lightweight because the existing execution is referenced directly, rather than creating a new step which references the existing result.
 
-It serves two purposes:
-
-1. Making debugging easier
-2. Optimising runs
+Memoising can be used as a way of optimising runs (by sharing a result), and also to make debugging runs easier.
 
 Enable memoising of a task with the `memo` option:
 
@@ -19,17 +16,17 @@ Memoised steps are indicated in the web UI with a pin icon.
 
 As with caching, explicitly clicking the 're-run' button for a step will force the step to be re-run, even if it's memoised. Then subsequent memoising will use the new step execution.
 
+If a step is manually re-run in a child environment, the memoised results will be used (but memoised results from the child environment aren't availble to the parent). This follows the same rules as caching.
+
 ## For debugging
 
 Memoising provides several benefits for debugging:
 
-1. Memoising a task with side effects (e.g., sending a notification e-mail) means you can re-run the run (or part of it) without that side-effect happening.
-
-    :::warning
-    This technique requires some caution. Consider the implications of unintentionally re-running the task. It may be better to run in an environment that doesn't have access to credentials.
-    :::
+1. Memoising a task with side effects (e.g., sending a notification e-mail) means you can re-run the whole run (or part of it) without that side-effect happening.
 
 2. Memoising slow tasks allows you to fix bugs that are occuring elsewhere in the workflow.
+
+This is particularly useful when re-running a workflow from a production environment in a development environment (assuming the production environment is configured as an ancestor of the development environment). By liberally memo-ising tasks, specific steps can be re-run in the development environment without re-running downstream steps.
 
 ## For optimisation
 
@@ -51,7 +48,7 @@ def send_notification(user_id):
     ...
 ```
 
-In this case, the `fetch_user` task will only be executed once for the run, even if steps are re-run (provided the user doesn't change).
+In this case, the `fetch_user` task will only be executed once for the run, even if steps are re-run (provided the user ID doesn't change).
 
 ## Memo keys
 
