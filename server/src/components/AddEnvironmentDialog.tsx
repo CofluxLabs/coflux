@@ -1,6 +1,5 @@
 import { FormEvent, useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useTopic } from "@topical/react";
 
 import Dialog from "./common/Dialog";
 import Input from "./common/Input";
@@ -10,6 +9,8 @@ import * as models from "../models";
 import * as api from "../api";
 import { RequestError } from "../api";
 import Alert from "./common/Alert";
+import Select from "./common/Select";
+import { randomName } from "../utils";
 
 function translateError(error: string | undefined) {
   switch (error) {
@@ -23,15 +24,21 @@ function translateError(error: string | undefined) {
 }
 
 type Props = {
+  environments: Record<string, models.Environment>;
   open: boolean;
+  hideCancel?: boolean;
   onClose: () => void;
 };
 
-export default function AddEnvironmentDialog({ open, onClose }: Props) {
+export default function AddEnvironmentDialog({
+  environments,
+  open,
+  hideCancel,
+  onClose,
+}: Props) {
   const { project: activeProjectId } = useParams();
-  const [_projects, { execute }] =
-    useTopic<Record<string, models.Project>>("projects");
-  const [environmentName, setEnvironmentName] = useState("");
+  const [name, setName] = useState(() => randomName());
+  const [baseId, setBaseId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>();
   const [adding, setAdding] = useState(false);
   const navigate = useNavigate();
@@ -41,12 +48,11 @@ export default function AddEnvironmentDialog({ open, onClose }: Props) {
       setAdding(true);
       setErrors(undefined);
       api
-        .addEnvironment(activeProjectId!, environmentName)
+        .createEnvironment(activeProjectId!, name, baseId)
         .then(() => {
-          navigate(
-            `/projects/${activeProjectId}?environment=${environmentName}`,
-          );
-          setEnvironmentName("");
+          navigate(`/projects/${activeProjectId}?environment=${name}`);
+          setName(randomName());
+          setBaseId(null);
           onClose();
         })
         .catch((error) => {
@@ -61,8 +67,11 @@ export default function AddEnvironmentDialog({ open, onClose }: Props) {
           setAdding(false);
         });
     },
-    [execute, navigate, environmentName],
+    [navigate, name, baseId],
   );
+  const environmentNames = Object.entries(environments)
+    .filter(([_, e]) => e.status != 1)
+    .reduce((acc, [id, e]) => ({ ...acc, [id]: e.name }), {});
   return (
     <Dialog title="Add environment" open={open} onClose={onClose}>
       {errors && (
@@ -77,23 +86,34 @@ export default function AddEnvironmentDialog({ open, onClose }: Props) {
         >
           <Input
             type="text"
-            value={environmentName}
+            value={name}
             className="w-full"
-            onChange={setEnvironmentName}
+            onChange={setName}
+          />
+        </Field>
+        <Field label="Base environment" error={translateError(errors?.base)}>
+          <Select
+            options={environmentNames}
+            empty="(None)"
+            size="md"
+            value={baseId}
+            onChange={setBaseId}
           />
         </Field>
         <div className="mt-4 flex gap-2">
           <Button type="submit" disabled={adding}>
             Create
           </Button>
-          <Button
-            type="button"
-            outline={true}
-            variant="secondary"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
+          {!hideCancel && (
+            <Button
+              type="button"
+              outline={true}
+              variant="secondary"
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+          )}
         </div>
       </form>
     </Dialog>

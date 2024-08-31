@@ -1,11 +1,12 @@
 import { useParams, useSearchParams } from "react-router-dom";
-import { useTopic } from "@topical/react";
 import { DateTime } from "luxon";
+import { findKey } from "lodash";
 
 import * as models from "../models";
 import { useContext } from "../layouts/RunLayout";
 import RunLogs from "../components/RunLogs";
 import StepLink from "../components/StepLink";
+import { useEnvironments, useLogs } from "../topics";
 
 type StepIdentifierProps = {
   runId: string;
@@ -48,16 +49,13 @@ export default function LogsPage() {
   const { run } = useContext();
   const { project: projectId, run: runId } = useParams();
   const [searchParams] = useSearchParams();
-  const environmentName = searchParams.get("environment") || undefined;
-  const [logs, _] = useTopic<models.LogMessage[]>(
-    "projects",
-    projectId,
-    "environments",
-    environmentName,
-    "runs",
-    runId,
-    "logs",
+  const activeEnvironmentName = searchParams.get("environment") || undefined;
+  const environments = useEnvironments(projectId);
+  const activeEnvironmentId = findKey(
+    environments,
+    (e) => e.name == activeEnvironmentName && e.status != 1,
   );
+  const logs = useLogs(projectId, runId, activeEnvironmentId);
   if (runId && logs) {
     return (
       <div className="p-4">

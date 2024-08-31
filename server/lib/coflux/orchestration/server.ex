@@ -3,21 +3,26 @@ defmodule Coflux.Orchestration.Server do
 
   alias Coflux.Store
   alias Coflux.MapUtils
-  alias Coflux.Orchestration.{Sessions, Runs, Results}
+  alias Coflux.Orchestration.{Environments, Sessions, Runs, Results}
 
   @session_timeout_ms 5_000
   @recurrent_rate_limit_ms 5_000
 
   defmodule State do
     defstruct project_id: nil,
-              environment: nil,
               db: nil,
               execute_timer: nil,
+
+              # id -> %{name, base_id, status, version}
+              environments: %{},
+
+              # name -> id
+              environment_names: %{},
 
               # ref -> {pid, session_id}
               agents: %{},
 
-              # session_id -> %{external_id, agent, targets, queue, starting, executing, expire_timer}
+              # session_id -> %{external_id, agent, targets, queue, starting, executing, expire_timer, concurrency, environment_id}
               sessions: %{},
 
               # external_id -> session_id
@@ -41,26 +46,36 @@ defmodule Coflux.Orchestration.Server do
 
   def start_link(opts) do
     {project_id, opts} = Keyword.pop!(opts, :project_id)
-    {environment, opts} = Keyword.pop!(opts, :environment)
-    GenServer.start_link(__MODULE__, {project_id, environment}, opts)
+    GenServer.start_link(__MODULE__, project_id, opts)
   end
 
-  def init({project_id, environment}) do
-    case Store.open(project_id, environment, "orchestration") do
+  def init(project_id) do
+    case Store.open(project_id, "orchestration") do
       {:ok, db} ->
         state = %State{
           project_id: project_id,
-          environment: environment,
           db: db
         }
 
         send(self(), :execute)
 
-        {:ok, state, {:continue, :abandon_pending}}
+        {:ok, state, {:continue, :setup}}
     end
   end
 
-  def handle_continue(:abandon_pending, state) do
+  def handle_continue(:setup, state) do
+    {:ok, environments} = Environments.get_all_environments(state.db)
+
+    environment_names =
+      Map.new(environments, fn {environment_id, environment} ->
+        {environment.name, environment_id}
+      end)
+
+    state =
+      state
+      |> Map.put(:environments, environments)
+      |> Map.put(:environment_names, environment_names)
+
     {:ok, pending} = Runs.get_pending_assignments(state.db)
 
     state =
@@ -72,93 +87,207 @@ defmodule Coflux.Orchestration.Server do
     {:noreply, state}
   end
 
-  def handle_call({:connect, external_id, concurrency, pid}, _from, state) do
-    result =
-      if external_id do
-        case Map.fetch(state.session_ids, external_id) do
-          {:ok, session_id} ->
-            session = Map.fetch!(state.sessions, session_id)
+  def handle_call(:get_environments, _from, state) do
+    environments =
+      state.environments
+      |> Enum.filter(fn {_, e} -> e.status != 1 end)
+      |> Map.new(fn {environment_id, environment} ->
+        {environment_id, %{name: environment.name, base_id: environment.base_id}}
+      end)
 
-            if session.expire_timer do
-              Process.cancel_timer(session.expire_timer)
-            end
+    {:reply, {:ok, environments}, state}
+  end
 
+  def handle_call({:create_environment, name, base_id}, _from, state) do
+    case Environments.create_environment(state.db, name, base_id) do
+      {:ok, environment_id, environment} ->
+        state =
+          state
+          |> put_in([Access.key(:environments), environment_id], environment)
+          |> put_in([Access.key(:environment_names), environment.name], environment_id)
+          |> notify_listeners(:environments, {:environment, environment_id, environment})
+          |> flush_notifications()
+
+        {:reply, {:ok, environment_id}, state}
+
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+    end
+  end
+
+  def handle_call({:update_environment, environment_id, updates}, _from, state) do
+    case Environments.update_environment(state.db, environment_id, updates) do
+      {:ok, environment} ->
+        original_name = state.environments[environment_id].name
+
+        state =
+          state
+          |> put_in([Access.key(:environments), environment_id], environment)
+          |> Map.update!(:environment_names, fn environment_names ->
+            environment_names
+            |> Map.delete(original_name)
+            |> Map.put(environment.name, environment_id)
+          end)
+          |> notify_listeners(:environments, {:environment, environment_id, environment})
+          |> flush_notifications()
+
+        # TODO: return updated?
+        {:reply, :ok, state}
+
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+    end
+  end
+
+  def handle_call({:archive_environment, environment_id}, _from, state) do
+    case Environments.archive_environment(state.db, environment_id) do
+      {:ok, environment} ->
+        state =
+          state.sessions
+          |> Enum.filter(fn {_, s} -> s.environment_id == environment_id end)
+          |> Enum.reduce(state, fn {session_id, session}, state ->
             state =
               if session.agent do
-                {{pid, ^session_id}, state} = pop_in(state.agents[session.agent])
-                # TODO: better reason?
-                Process.exit(pid, :kill)
-                state
+                {pid, ^session_id} = Map.fetch!(state.agents, session.agent)
+                send(pid, :stop)
+                Map.update!(state, :agents, &Map.delete(&1, session.agent))
               else
                 state
               end
 
-            ref = Process.monitor(pid)
+            remove_session(state, session_id)
+          end)
 
-            state.sessions[session_id].queue
-            |> Enum.reverse()
-            |> Enum.each(&send(pid, &1))
-
-            state =
-              state
-              |> put_in([Access.key(:agents), ref], {pid, session_id})
-              |> update_in(
-                [Access.key(:sessions), session_id],
-                &Map.merge(&1, %{
-                  agent: ref,
-                  queue: [],
-                  concurrency: concurrency
-                })
-              )
-              |> notify_agent(session_id)
-
-            executions =
-              session.executing
-              |> MapSet.union(session.starting)
-              |> Map.new(fn execution_id ->
-                # TODO: more efficient way to load run IDs?
-                {:ok, external_run_id} =
-                  Runs.get_external_run_id_for_execution(state.db, execution_id)
-
-                {execution_id, external_run_id}
+        state =
+          case Runs.get_pending_executions_for_environment(state.db, environment_id) do
+            {:ok, executions} ->
+              Enum.reduce(executions, state, fn {execution_id, run_id, repository}, state ->
+                case record_and_notify_result(
+                       state,
+                       execution_id,
+                       :cancelled,
+                       run_id,
+                       repository
+                     ) do
+                  {:ok, state} -> state
+                  {:error, :already_recorded} -> state
+                end
               end)
+          end
 
-            send(self(), :execute)
+        state =
+          state
+          |> put_in([Access.key(:environments), environment_id], environment)
+          |> notify_listeners(:environments, {:environment, environment_id, environment})
+          |> flush_notifications()
 
-            {:ok, external_id, executions, state}
+        {:reply, {:ok, environment.version}, state}
 
-          :error ->
-            {:error, :no_session}
-        end
-      else
-        case Sessions.start_session(state.db) do
-          {:ok, session_id, external_id} ->
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+    end
+  end
+
+  def handle_call({:start_session, environment_name, concurrency, pid}, _from, state) do
+    case lookup_environment_by_name(state, environment_name) do
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+
+      {:ok, environment_id, _} ->
+        case Sessions.start_session(state.db, environment_id) do
+          {:ok, session_id, external_session_id, environment_id} ->
             ref = Process.monitor(pid)
 
             session =
-              external_id
+              external_session_id
               |> build_session()
               |> Map.put(:agent, ref)
               |> Map.put(:concurrency, concurrency)
+              |> Map.put(:environment_id, environment_id)
 
             state =
               state
               |> put_in([Access.key(:agents), ref], {pid, session_id})
               |> put_in([Access.key(:sessions), session_id], session)
-              |> put_in([Access.key(:session_ids), external_id], session_id)
+              |> put_in([Access.key(:session_ids), external_session_id], session_id)
               |> notify_agent(session_id)
 
-            {:ok, external_id, %{}, state}
+            state = flush_notifications(state)
+            {:reply, {:ok, external_session_id}, state}
         end
-      end
+    end
+  end
 
-    case result do
-      {:ok, external_id, executions, state} ->
-        state = flush_notifications(state)
-        {:reply, {:ok, external_id, executions}, state}
-
+  def handle_call(
+        {:resume_session, external_session_id, environment_name, concurrency, pid},
+        _from,
+        state
+      ) do
+    case lookup_environment_by_name(state, environment_name) do
       {:error, error} ->
         {:reply, {:error, error}, state}
+
+      {:ok, environment_id, _} ->
+        case Map.fetch(state.session_ids, external_session_id) do
+          {:ok, session_id} ->
+            session = Map.fetch!(state.sessions, session_id)
+
+            if session.environment_id == environment_id do
+              if session.expire_timer do
+                Process.cancel_timer(session.expire_timer)
+              end
+
+              state =
+                if session.agent do
+                  {{pid, ^session_id}, state} = pop_in(state.agents[session.agent])
+                  # TODO: better reason?
+                  Process.exit(pid, :kill)
+                  state
+                else
+                  state
+                end
+
+              ref = Process.monitor(pid)
+
+              state.sessions[session_id].queue
+              |> Enum.reverse()
+              |> Enum.each(&send(pid, &1))
+
+              state =
+                state
+                |> put_in([Access.key(:agents), ref], {pid, session_id})
+                |> update_in(
+                  [Access.key(:sessions), session_id],
+                  &Map.merge(&1, %{
+                    agent: ref,
+                    queue: [],
+                    concurrency: concurrency
+                  })
+                )
+                |> notify_agent(session_id)
+
+              executions =
+                session.executing
+                |> MapSet.union(session.starting)
+                |> Map.new(fn execution_id ->
+                  # TODO: more efficient way to load run IDs?
+                  {:ok, external_run_id} =
+                    Runs.get_external_run_id_for_execution(state.db, execution_id)
+
+                  {execution_id, external_run_id}
+                end)
+
+              send(self(), :execute)
+
+              state = flush_notifications(state)
+              {:reply, {:ok, external_session_id, executions}, state}
+            else
+              {:reply, {:error, :no_session}, state}
+            end
+
+          :error ->
+            {:reply, {:error, :no_session}, state}
+        end
     end
   end
 
@@ -168,11 +297,15 @@ defmodule Coflux.Orchestration.Server do
     case Sessions.get_or_create_manifest(state.db, repository, targets) do
       {:ok, manifest_id} ->
         :ok = Sessions.record_session_manifest(state.db, session_id, manifest_id)
+        environment_id = state.sessions[session_id].environment_id
 
         state =
           state
           |> register_targets(repository, targets, session_id)
-          |> notify_listeners(:repositories, {:targets, repository, targets})
+          |> notify_listeners(
+            {{:repositories, environment_id}, environment_id},
+            {:targets, repository, targets}
+          )
           |> notify_agent(session_id)
 
         state =
@@ -180,7 +313,7 @@ defmodule Coflux.Orchestration.Server do
           |> Enum.reduce(state, fn {target_name, target}, state ->
             notify_listeners(
               state,
-              {:target, repository, target_name},
+              {:target, repository, target_name, environment_id},
               {:target, target.type, target.parameters}
             )
           end)
@@ -192,60 +325,190 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
+  def handle_call({:schedule_run, repository, target_name, arguments, opts}, _from, state) do
+    {:ok, parent} =
+      case Keyword.get(opts, :parent_id) do
+        nil ->
+          {:ok, nil}
+
+        parent_id ->
+          {:ok, step} = Runs.get_step_for_execution(state.db, parent_id)
+          {:ok, {step.run_id, parent_id}}
+      end
+
+    {:ok, environment_id} =
+      case parent do
+        {_run_id, parent_id} ->
+          Runs.get_environment_id_for_execution(state.db, parent_id)
+
+        nil ->
+          environment_name = Keyword.get(opts, :environment)
+
+          case lookup_environment_by_name(state, environment_name) do
+            {:ok, environment_id, _} -> {:ok, environment_id}
+            {:error, :environment_invalid} -> {:ok, nil}
+          end
+      end
+
+    if environment_id do
+      cache_environment_ids = get_cache_environment_ids(state, environment_id)
+
+      case Runs.schedule_run(
+             state.db,
+             repository,
+             target_name,
+             arguments,
+             environment_id,
+             cache_environment_ids,
+             opts
+           ) do
+        {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, attempt, result,
+         created_at, child_added} ->
+          state =
+            if child_added do
+              {parent_run_id, parent_id} = parent
+
+              child =
+                {external_run_id, external_step_id, execution_id, repository, target_name,
+                 created_at}
+
+              notify_listeners(state, {:run, parent_run_id}, {:child, parent_id, child})
+            else
+              state
+            end
+
+          state =
+            notify_listeners(
+              state,
+              {:target, repository, target_name, environment_id},
+              {:run, external_run_id, created_at}
+            )
+
+          state =
+            if !result do
+              # TODO: neater way to get execute_after?
+              execute_after = Keyword.get(opts, :execute_after)
+              execute_at = execute_after || created_at
+
+              state =
+                state
+                |> notify_listeners(
+                  {:repositories, environment_id},
+                  {:scheduled, repository, execution_id, execute_at}
+                )
+                |> notify_listeners(
+                  {:repository, repository, environment_id},
+                  {:scheduled, execution_id, target_name, external_run_id, external_step_id,
+                   attempt, execute_after, created_at}
+                )
+
+              send(self(), :execute)
+
+              state
+            else
+              state
+            end
+
+          state = flush_notifications(state)
+
+          {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
+      end
+    else
+      {:reply, {:error, :environment_invalid}, state}
+    end
+  end
+
   def handle_call(
-        {:schedule, repository, target_name, arguments, opts},
+        {:schedule_task, parent_id, repository, target_name, arguments, opts},
         _from,
         state
       ) do
-    target = get_target(state.db, repository, target_name)
+    {:ok, parent_step} = Runs.get_step_for_execution(state.db, parent_id)
+    {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, parent_id)
+    {:ok, run} = Runs.get_run_by_id(state.db, parent_step.run_id)
 
-    if target do
-      opts = Keyword.put(opts, :recurrent, target.type == :sensor)
+    cache_environment_ids = get_cache_environment_ids(state, environment_id)
 
-      {result, state} =
-        case Keyword.get(opts, :parent_id) do
-          nil ->
-            if target.type in [:workflow, :sensor] do
-              start_run(state, repository, target_name, arguments, opts)
-            else
-              {{:error, :invalid_target}, state}
-            end
+    case Runs.schedule_task(
+           state.db,
+           run.id,
+           parent_id,
+           repository,
+           target_name,
+           arguments,
+           environment_id,
+           cache_environment_ids,
+           opts
+         ) do
+      {:ok, _step_id, external_step_id, execution_id, attempt, created_at, memoised, result,
+       child_added} ->
+        execute_after = Keyword.get(opts, :execute_after)
 
-          parent_id ->
-            {:ok, step} = Runs.get_step_for_execution(state.db, parent_id)
+        state =
+          if !memoised do
+            memo_key = Keyword.get(opts, :memo_key)
+            arguments = Enum.map(arguments, &build_value(&1, state))
 
-            case target.type do
-              :workflow ->
-                start_run(
-                  state,
-                  repository,
-                  target_name,
-                  arguments,
-                  opts,
-                  {step.run_id, parent_id}
-                )
+            notify_listeners(
+              state,
+              {:run, run.id},
+              {:step, external_step_id, repository, target_name, memo_key, parent_id, created_at,
+               arguments, attempt, execution_id, environment_id, execute_after}
+            )
+          else
+            state
+          end
 
-              :task ->
-                schedule_step(
-                  state,
-                  step.run_id,
-                  parent_id,
-                  repository,
-                  target_name,
-                  arguments,
-                  opts
-                )
+        state =
+          if child_added do
+            child =
+              {run.external_id, external_step_id, execution_id, repository, target_name,
+               created_at}
 
-              _ ->
-                {{:error, :invalid_target}, state}
-            end
-        end
+            notify_listeners(state, {:run, run.id}, {:child, parent_id, child})
+          else
+            state
+          end
 
-      state = flush_notifications(state)
+        state =
+          if result do
+            result = build_result(result, state)
 
-      {:reply, result, state}
-    else
-      {:reply, {:error, :invalid_target}, state}
+            notify_listeners(
+              state,
+              {:run, run.id},
+              {:result, execution_id, result, created_at}
+            )
+          else
+            state
+          end
+
+        state =
+          if !memoised && !result do
+            execute_at = execute_after || created_at
+
+            state =
+              state
+              |> notify_listeners(
+                {:repositories, environment_id},
+                {:scheduled, repository, execution_id, execute_at}
+              )
+              |> notify_listeners(
+                {:repository, repository, environment_id},
+                {:scheduled, execution_id, target_name, run.external_id, external_step_id,
+                 attempt, execute_after, created_at}
+              )
+
+            send(self(), :execute)
+
+            state
+          else
+            state
+          end
+
+        state = flush_notifications(state)
+
+        {:reply, {:ok, run.external_id, external_step_id, execution_id}, state}
     end
   end
 
@@ -290,61 +553,90 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:rerun_step, external_step_id}, _from, state) do
-    {:ok, step} = Runs.get_step_by_external_id(state.db, external_step_id)
-    # TODO: abort/cancel any running/scheduled retry? (and reference this retry?)
-    {:ok, execution_id, attempt, state} = rerun_step(state, step)
-    state = flush_notifications(state)
-    {:reply, {:ok, execution_id, attempt}, state}
+  def handle_call({:rerun_step, external_step_id, environment_name}, _from, state) do
+    # TODO: abort/cancel any running/scheduled retry? (for the same environment) (and reference this retry?)
+    case lookup_environment_by_name(state, environment_name) do
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+
+      {:ok, environment_id, _} ->
+        {:ok, step} = Runs.get_step_by_external_id(state.db, external_step_id)
+
+        base_execution_id =
+          if step.parent_id do
+            step.parent_id
+          else
+            case Runs.get_first_step_execution_id(state.db, step.id) do
+              {:ok, execution_id} -> execution_id
+            end
+          end
+
+        {:ok, base_environment_id} =
+          Runs.get_environment_id_for_execution(state.db, base_execution_id)
+
+        if base_environment_id == environment_id ||
+             is_environment_ancestor?(state, base_environment_id, environment_id) do
+          {:ok, execution_id, attempt, state} = rerun_step(state, step, environment_id, nil)
+          state = flush_notifications(state)
+          {:reply, {:ok, execution_id, attempt}, state}
+        else
+          {:reply, {:error, :environment_invalid}, state}
+        end
+    end
   end
 
   def handle_call({:record_heartbeats, executions, external_session_id}, _from, state) do
     # TODO: handle execution statuses?
-    session_id = Map.fetch!(state.session_ids, external_session_id)
-    session = Map.fetch!(state.sessions, session_id)
+    case Map.fetch(state.session_ids, external_session_id) do
+      {:ok, session_id} ->
+        session = Map.fetch!(state.sessions, session_id)
 
-    execution_ids = executions |> Map.keys() |> MapSet.new()
+        execution_ids = executions |> Map.keys() |> MapSet.new()
 
-    state =
-      session.starting
-      |> MapSet.intersection(execution_ids)
-      |> Enum.reduce(state, fn execution_id, state ->
-        update_in(state.sessions[session_id].starting, &MapSet.delete(&1, execution_id))
-      end)
+        state =
+          session.starting
+          |> MapSet.intersection(execution_ids)
+          |> Enum.reduce(state, fn execution_id, state ->
+            update_in(state.sessions[session_id].starting, &MapSet.delete(&1, execution_id))
+          end)
 
-    state =
-      session.executing
-      |> MapSet.difference(execution_ids)
-      |> Enum.reduce(state, fn execution_id, state ->
-        case Results.has_result?(state.db, execution_id) do
-          {:ok, false} ->
-            {:ok, state} = record_result(state, execution_id, :abandoned)
-            state
+        state =
+          session.executing
+          |> MapSet.difference(execution_ids)
+          |> Enum.reduce(state, fn execution_id, state ->
+            case Results.has_result?(state.db, execution_id) do
+              {:ok, false} ->
+                {:ok, state} = record_result(state, execution_id, :abandoned)
+                state
 
-          {:ok, true} ->
-            state
+              {:ok, true} ->
+                state
+            end
+          end)
+
+        # TODO: notify agent (so it can remove executions)?
+        state =
+          execution_ids
+          |> MapSet.difference(session.starting)
+          |> MapSet.difference(session.executing)
+          |> Enum.reduce(state, fn execution_id, state ->
+            case Results.has_result?(state.db, execution_id) do
+              {:ok, false} ->
+                state
+
+              {:ok, true} ->
+                send_session(state, session_id, {:abort, execution_id})
+            end
+          end)
+
+        case Runs.record_hearbeats(state.db, executions) do
+          {:ok, _created_at} ->
+            state = put_in(state.sessions[session_id].executing, execution_ids)
+            {:reply, :ok, state}
         end
-      end)
 
-    # TODO: notify agent (so it can remove executions)?
-    state =
-      execution_ids
-      |> MapSet.difference(session.starting)
-      |> MapSet.difference(session.executing)
-      |> Enum.reduce(state, fn execution_id, state ->
-        case Results.has_result?(state.db, execution_id) do
-          {:ok, false} ->
-            state
-
-          {:ok, true} ->
-            send_session(state, session_id, {:abort, execution_id})
-        end
-      end)
-
-    case Runs.record_hearbeats(state.db, executions) do
-      {:ok, _created_at} ->
-        state = put_in(state.sessions[session_id].executing, execution_ids)
-        {:reply, :ok, state}
+      :error ->
+        {:reply, {:error, :session_invalid}, state}
     end
   end
 
@@ -478,68 +770,106 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:subscribe_repositories, pid}, _from, state) do
-    {:ok, targets} = Sessions.get_latest_targets(state.db)
-
-    executing =
-      state.sessions
-      |> Map.values()
-      |> Enum.reduce(MapSet.new(), fn session, executing ->
-        executing |> MapSet.union(session.executing) |> MapSet.union(session.starting)
-      end)
-
-    {:ok, executions} = Runs.get_unassigned_executions(state.db)
-    # TODO: get/include assigned (pending) executions
-
-    executions =
-      Enum.reduce(executions, %{}, fn execution, executions ->
-        executions
-        |> Map.put_new(execution.repository, {MapSet.new(), %{}})
-        |> Map.update!(execution.repository, fn {repo_executing, repo_scheduled} ->
-          if Enum.member?(executing, execution.execution_id) do
-            {MapSet.put(repo_executing, execution.execution_id), repo_scheduled}
-          else
-            {repo_executing,
-             Map.put(
-               repo_scheduled,
-               execution.execution_id,
-               execution.execute_after || execution.created_at
-             )}
-          end
-        end)
-      end)
-
-    {:ok, ref, state} = add_listener(state, :repositories, pid)
-
-    {:reply, {:ok, targets, executions, ref}, state}
+  def handle_call({:subscribe_environments, pid}, _from, state) do
+    {:ok, ref, state} = add_listener(state, :environments, pid)
+    {:reply, {:ok, state.environments, ref}, state}
   end
 
-  def handle_call({:subscribe_repository, repository, pid}, _from, state) do
-    {:ok, executions} = Runs.get_repository_executions(state.db, repository)
-    {:ok, ref, state} = add_listener(state, {:repository, repository}, pid)
-    {:reply, {:ok, executions, ref}, state}
+  def handle_call({:subscribe_repositories, environment_id, pid}, _from, state) do
+    case lookup_environment_by_id(state, environment_id) do
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+
+      {:ok, _} ->
+        {:ok, targets} = Sessions.get_latest_targets(state.db, environment_id)
+
+        executing =
+          state.sessions
+          |> Map.values()
+          |> Enum.reduce(MapSet.new(), fn session, executing ->
+            executing |> MapSet.union(session.executing) |> MapSet.union(session.starting)
+          end)
+
+        {:ok, executions} = Runs.get_unassigned_executions(state.db)
+        # TODO: get/include assigned (pending) executions
+
+        executions =
+          Enum.reduce(executions, %{}, fn execution, executions ->
+            executions
+            |> Map.put_new(execution.repository, {MapSet.new(), %{}})
+            |> Map.update!(execution.repository, fn {repo_executing, repo_scheduled} ->
+              if Enum.member?(executing, execution.execution_id) do
+                {MapSet.put(repo_executing, execution.execution_id), repo_scheduled}
+              else
+                {repo_executing,
+                 Map.put(
+                   repo_scheduled,
+                   execution.execution_id,
+                   execution.execute_after || execution.created_at
+                 )}
+              end
+            end)
+          end)
+
+        {:ok, ref, state} =
+          add_listener(state, {{:repositories, environment_id}, environment_id}, pid)
+
+        {:reply, {:ok, targets, executions, ref}, state}
+    end
   end
 
-  def handle_call({:subscribe_agents, pid}, _from, state) do
-    agents =
-      Map.new(state.agents, fn {_, {_, session_id}} ->
-        session = Map.fetch!(state.sessions, session_id)
-        {session_id, session.targets}
-      end)
+  def handle_call({:subscribe_repository, repository, environment_id, pid}, _from, state) do
+    case lookup_environment_by_id(state, environment_id) do
+      {:error, error} ->
+        {:reply, {:error, error}, state}
 
-    {:ok, ref, state} = add_listener(state, :agents, pid)
-    {:reply, {:ok, agents, ref}, state}
+      {:ok, _} ->
+        {:ok, executions} = Runs.get_repository_executions(state.db, repository)
+        {:ok, ref, state} = add_listener(state, {:repository, repository, environment_id}, pid)
+        {:reply, {:ok, executions, ref}, state}
+    end
   end
 
-  def handle_call({:subscribe_target, repository, target_name, pid}, _from, state) do
-    target = get_target(state.db, repository, target_name)
+  def handle_call({:subscribe_agents, environment_id, pid}, _from, state) do
+    case lookup_environment_by_id(state, environment_id) do
+      {:error, error} ->
+        {:reply, {:error, error}, state}
 
-    if target && target.type in [:workflow, :sensor] do
-      {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name)
-      {:ok, ref, state} = add_listener(state, {:target, repository, target_name}, pid)
-      {:reply, {:ok, target, runs, ref}, state}
-    else
-      {:reply, {:error, :not_found}, state}
+      {:ok, _} ->
+        agents =
+          state.agents
+          |> Enum.map(fn {_, {_, session_id}} ->
+            {session_id, Map.fetch!(state.sessions, session_id)}
+          end)
+          |> Enum.filter(fn {_, session} ->
+            session.environment_id == environment_id
+          end)
+          |> Map.new(fn {session_id, session} ->
+            {session_id, session.targets}
+          end)
+
+        {:ok, ref, state} = add_listener(state, {:agents, environment_id}, pid)
+        {:reply, {:ok, agents, ref}, state}
+    end
+  end
+
+  def handle_call(
+        {:subscribe_target, repository, target_name, environment_id, pid},
+        _from,
+        state
+      ) do
+    case lookup_environment_by_id(state, environment_id) do
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+
+      {:ok, _} ->
+        {:ok, target} = Sessions.get_target(state.db, repository, target_name, environment_id)
+        {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id)
+
+        {:ok, ref, state} =
+          add_listener(state, {:target, repository, target_name, environment_id}, pid)
+
+        {:reply, {:ok, target, runs, ref}, state}
     end
   end
 
@@ -573,8 +903,8 @@ defmodule Coflux.Orchestration.Server do
                created_at: created_at,
                arguments: arguments,
                executions:
-                 Map.new(executions, fn {execution_id, attempt, execute_after, created_at,
-                                         _session_id, assigned_at} ->
+                 Map.new(executions, fn {execution_id, attempt, environment_id, execute_after,
+                                         created_at, _session_id, assigned_at} ->
                    {:ok, asset_ids} = Results.get_assets_for_execution(state.db, execution_id)
                    assets = Map.new(asset_ids, &{&1, resolve_asset(state.db, &1, false)})
 
@@ -611,6 +941,7 @@ defmodule Coflux.Orchestration.Server do
                    {attempt,
                     %{
                       execution_id: execution_id,
+                      environment_id: environment_id,
                       created_at: created_at,
                       execute_after: execute_after,
                       assigned_at: assigned_at,
@@ -641,42 +972,10 @@ defmodule Coflux.Orchestration.Server do
       IO.puts("Ignoring session expire (#{inspect(session_id)})")
       {:noreply, state}
     else
-      {session, state} = pop_in(state.sessions[session_id])
-
       state =
-        session.executing
-        |> MapSet.union(session.starting)
-        |> Enum.reduce(state, fn execution_id, state ->
-          {:ok, state} = record_result(state, execution_id, :abandoned)
-          state
-        end)
-        |> Map.update!(:targets, fn all_targets ->
-          Enum.reduce(
-            session.targets,
-            all_targets,
-            fn {repository, repository_targets}, all_targets ->
-              Enum.reduce(repository_targets, all_targets, fn target, all_targets ->
-                MapUtils.delete_in(all_targets, [repository, target, session_id])
-              end)
-            end
-          )
-        end)
-        |> Map.update!(:session_ids, &Map.delete(&1, session.external_id))
-        |> Map.update!(:waiting, fn waiting ->
-          waiting
-          |> Enum.map(fn {execution_id, execution_waiting} ->
-            {execution_id,
-             Enum.reject(execution_waiting, fn {s_id, _} ->
-               s_id == session_id
-             end)}
-          end)
-          |> Enum.reject(fn {_execution_id, execution_waiting} ->
-            Enum.empty?(execution_waiting)
-          end)
-          |> Map.new()
-        end)
-
-      state = flush_notifications(state)
+        state
+        |> remove_session(session_id)
+        |> flush_notifications()
 
       {:noreply, state}
     end
@@ -720,6 +1019,7 @@ defmodule Coflux.Orchestration.Server do
         {state, [], []},
         fn
           execution, {state, assigned, unassigned} ->
+            # TODO: choose session before resolving arguments?
             {:ok, arguments} =
               case Results.get_latest_checkpoint(state.db, execution.step_id) do
                 {:ok, nil} ->
@@ -770,32 +1070,46 @@ defmodule Coflux.Orchestration.Server do
         notify_listeners(state, {:run, run_id}, {:assigned, assigned})
       end)
 
-    assigned_by_repository =
+    assigned_groups =
       assigned
-      |> Enum.group_by(
-        fn {execution, _} -> execution.repository end,
-        fn {execution, _} -> execution.execution_id end
-      )
-      |> Map.new(fn {k, v} -> {k, MapSet.new(v)} end)
-
-    state = notify_listeners(state, :repositories, {:assigned, assigned_by_repository})
+      |> Enum.group_by(fn {execution, _} -> execution.environment_id end)
+      |> Map.new(fn {environment_id, executions} ->
+        {environment_id,
+         executions
+         |> Enum.group_by(
+           fn {execution, _} -> execution.repository end,
+           fn {execution, _} -> execution.execution_id end
+         )
+         |> Map.new(fn {k, v} -> {k, MapSet.new(v)} end)}
+      end)
 
     state =
-      Enum.reduce(assigned_by_repository, state, fn {repository, execution_ids}, state ->
-        repository_executions =
-          Enum.reduce(assigned, %{}, fn {execution, assigned_at}, repository_executions ->
-            if MapSet.member?(execution_ids, execution.execution_id) do
-              Map.put(repository_executions, execution.execution_id, assigned_at)
-            else
-              repository_executions
-            end
-          end)
-
+      Enum.reduce(assigned_groups, state, fn {environment_id, environment_executions}, state ->
         notify_listeners(
           state,
-          {:repository, repository},
-          {:assigned, repository_executions}
+          {:repositories, environment_id},
+          {:assigned, environment_executions}
         )
+      end)
+
+    state =
+      Enum.reduce(assigned_groups, state, fn {environment_id, environment_executions}, state ->
+        Enum.reduce(environment_executions, state, fn {repository, execution_ids}, state ->
+          repository_executions =
+            Enum.reduce(assigned, %{}, fn {execution, assigned_at}, repository_executions ->
+              if MapSet.member?(execution_ids, execution.execution_id) do
+                Map.put(repository_executions, execution.execution_id, assigned_at)
+              else
+                repository_executions
+              end
+            end)
+
+          notify_listeners(
+            state,
+            {:repository, repository, environment_id},
+            {:assigned, repository_executions}
+          )
+        end)
       end)
 
     next_execute_after =
@@ -828,16 +1142,23 @@ defmodule Coflux.Orchestration.Server do
       Map.has_key?(state.agents, ref) ->
         {{^pid, session_id}, state} = pop_in(state.agents[ref])
 
-        # TODO: (re-)schedule timer when receiving heartbeats?
-        expire_timer =
-          Process.send_after(self(), {:expire_session, session_id}, @session_timeout_ms)
+        state =
+          if Map.has_key?(state.sessions, session_id) do
+            # TODO: (re-)schedule timer when receiving heartbeats?
+            expire_timer =
+              Process.send_after(self(), {:expire_session, session_id}, @session_timeout_ms)
+
+            update_in(
+              state,
+              [Access.key(:sessions), session_id],
+              &Map.merge(&1, %{agent: nil, expire_timer: expire_timer})
+            )
+          else
+            state
+          end
 
         state =
           state
-          |> update_in(
-            [Access.key(:sessions), session_id],
-            &Map.merge(&1, %{agent: nil, expire_timer: expire_timer})
-          )
           |> notify_agent(session_id)
           |> flush_notifications()
 
@@ -856,6 +1177,59 @@ defmodule Coflux.Orchestration.Server do
     Store.close(state.db)
   end
 
+  defp lookup_environment_by_name(state, environment_name) do
+    case Map.fetch(state.environment_names, environment_name) do
+      {:ok, environment_id} ->
+        environment = Map.fetch!(state.environments, environment_id)
+
+        if environment.status != 1 do
+          {:ok, environment_id, environment}
+        else
+          {:error, :environment_invalid}
+        end
+
+      :error ->
+        {:error, :environment_invalid}
+    end
+  end
+
+  defp lookup_environment_by_id(state, environment_id) do
+    case Map.fetch(state.environments, environment_id) do
+      {:ok, environment} ->
+        # TODO: include environment? Map.fetch!(state.environments, environment_id)
+        {:ok, environment}
+
+      :error ->
+        {:error, :environment_invalid}
+    end
+  end
+
+  defp is_environment_ancestor?(state, maybe_ancestor_id, environment_id) do
+    # TODO: avoid cycle?
+    environment = Map.fetch!(state.environments, environment_id)
+
+    cond do
+      !environment.base_id ->
+        false
+
+      environment.base_id == maybe_ancestor_id ->
+        true
+
+      true ->
+        is_environment_ancestor?(state, maybe_ancestor_id, environment.base_id)
+    end
+  end
+
+  defp get_cache_environment_ids(state, environment_id, ids \\ []) do
+    environment = Map.fetch!(state.environments, environment_id)
+
+    if environment.base_id do
+      get_cache_environment_ids(state, environment.base_id, [environment_id | ids])
+    else
+      [environment_id | ids]
+    end
+  end
+
   defp build_session(external_id) do
     %{
       external_id: external_id,
@@ -865,8 +1239,45 @@ defmodule Coflux.Orchestration.Server do
       starting: MapSet.new(),
       executing: MapSet.new(),
       expire_timer: nil,
-      concurrency: 0
+      concurrency: 0,
+      environment_id: nil
     }
+  end
+
+  defp remove_session(state, session_id) do
+    {session, state} = pop_in(state.sessions[session_id])
+
+    session.executing
+    |> MapSet.union(session.starting)
+    |> Enum.reduce(state, fn execution_id, state ->
+      {:ok, state} = record_result(state, execution_id, :abandoned)
+      state
+    end)
+    |> Map.update!(:targets, fn all_targets ->
+      Enum.reduce(
+        session.targets,
+        all_targets,
+        fn {repository, repository_targets}, all_targets ->
+          Enum.reduce(repository_targets, all_targets, fn target, all_targets ->
+            MapUtils.delete_in(all_targets, [repository, target, session_id])
+          end)
+        end
+      )
+    end)
+    |> Map.update!(:session_ids, &Map.delete(&1, session.external_id))
+    |> Map.update!(:waiting, fn waiting ->
+      waiting
+      |> Enum.map(fn {execution_id, execution_waiting} ->
+        {execution_id,
+         Enum.reject(execution_waiting, fn {s_id, _} ->
+           s_id == session_id
+         end)}
+      end)
+      |> Enum.reject(fn {_execution_id, execution_waiting} ->
+        Enum.empty?(execution_waiting)
+      end)
+      |> Map.new()
+    end)
   end
 
   defp split_executions(executions, now) do
@@ -877,7 +1288,9 @@ defmodule Coflux.Orchestration.Server do
         {[], [], [], %{}},
         fn execution, {due, future, defer, defer_keys} ->
           defer_key =
-            execution.defer_key && {execution.repository, execution.target, execution.defer_key}
+            execution.defer_key &&
+              {execution.repository, execution.target, execution.environment_id,
+               execution.defer_key}
 
           defer_id = defer_key && Map.get(defer_keys, defer_key)
 
@@ -905,31 +1318,35 @@ defmodule Coflux.Orchestration.Server do
     {executions_due, executions_future, executions_defer}
   end
 
-  defp rerun_step(state, step, execute_after \\ nil) do
+  defp rerun_step(state, step, environment_id, execute_after) do
     # TODO: only get run if needed for notify?
     {:ok, run} = Runs.get_run_by_id(state.db, step.run_id)
 
-    case Runs.rerun_step(state.db, step.id, execute_after) do
+    case Runs.rerun_step(state.db, step.id, environment_id, execute_after) do
       {:ok, execution_id, attempt, created_at} ->
-        state =
-          notify_listeners(
-            state,
-            {:run, step.run_id},
-            {:execution, step.external_id, attempt, execution_id, created_at, execute_after}
-          )
+        {:ok, {run_repository, run_target}} = Runs.get_run_target(state.db, run.id)
 
         execute_at = execute_after || created_at
 
         state =
           state
           |> notify_listeners(
-            :repositories,
+            {:run, step.run_id},
+            {:execution, step.external_id, attempt, execution_id, environment_id, created_at,
+             execute_after}
+          )
+          |> notify_listeners(
+            {:repositories, environment_id},
             {:scheduled, step.repository, execution_id, execute_at}
           )
           |> notify_listeners(
-            {:repository, step.repository},
+            {:repository, step.repository, environment_id},
             {:scheduled, execution_id, step.target, run.external_id, step.external_id, attempt,
              execute_after, created_at}
+          )
+          |> notify_listeners(
+            {:target, run_repository, run_target, environment_id},
+            {:run, run.external_id, run.created_at}
           )
 
         send(self(), :execute)
@@ -1020,6 +1437,8 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp record_and_notify_result(state, execution_id, result, run_id, repository) do
+    {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, execution_id)
+
     case Results.record_result(state.db, execution_id, result) do
       {:ok, created_at} ->
         state = notify_waiting(state, execution_id)
@@ -1031,8 +1450,14 @@ defmodule Coflux.Orchestration.Server do
             {:run, run_id},
             {:result, execution_id, result, created_at}
           )
-          |> notify_listeners(:repositories, {:completed, repository, execution_id})
-          |> notify_listeners({:repository, repository}, {:completed, execution_id})
+          |> notify_listeners(
+            {:repositories, environment_id},
+            {:completed, repository, execution_id}
+          )
+          |> notify_listeners(
+            {:repository, repository, environment_id},
+            {:completed, execution_id}
+          )
 
         # TODO: only if there's an execution waiting for this result?
         send(self(), :execute)
@@ -1051,6 +1476,7 @@ defmodule Coflux.Orchestration.Server do
 
       {:ok, false} ->
         {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
+        {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, execution_id)
 
         {retry_id, state} =
           if result_retryable?(result) && step.retry_count > 0 do
@@ -1067,7 +1493,7 @@ defmodule Coflux.Orchestration.Server do
 
               execute_after = System.os_time(:millisecond) + delay_s * 1000
               # TODO: do cache lookup?
-              {:ok, retry_id, _, state} = rerun_step(state, step, execute_after)
+              {:ok, retry_id, _, state} = rerun_step(state, step, environment_id, execute_after)
               {retry_id, state}
             else
               {nil, state}
@@ -1089,7 +1515,7 @@ defmodule Coflux.Orchestration.Server do
                     last_assigned_at + @recurrent_rate_limit_ms
                   end
 
-                {:ok, _, _, state} = rerun_step(state, step, execute_after)
+                {:ok, _, _, state} = rerun_step(state, step, environment_id, execute_after)
 
                 {nil, state}
               else
@@ -1153,7 +1579,7 @@ defmodule Coflux.Orchestration.Server do
 
   defp register_targets(state, repository, targets, session_id) do
     targets
-    |> Map.keys()
+    |> Enum.map(fn {k, v} -> {v.type, k} end)
     |> Enum.reduce(state, fn target, state ->
       state
       |> update_in(
@@ -1214,7 +1640,7 @@ defmodule Coflux.Orchestration.Server do
   defp notify_agent(state, session_id) do
     session = Map.fetch!(state.sessions, session_id)
     targets = if session.agent, do: session.targets
-    notify_listeners(state, :agents, {:agent, session_id, targets})
+    notify_listeners(state, {:agents, session.environment_id}, {:agent, session_id, targets})
   end
 
   defp send_session(state, session_id, message) do
@@ -1229,161 +1655,7 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp start_run(state, repository, target_name, arguments, opts, parent \\ nil) do
-    case Runs.start_run(state.db, repository, target_name, arguments, opts) do
-      {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, attempt, result,
-       created_at, child_added} ->
-        state =
-          if child_added do
-            {parent_run_id, parent_id} = parent
-
-            child =
-              {external_run_id, external_step_id, execution_id, repository, target_name,
-               created_at}
-
-            notify_listeners(state, {:run, parent_run_id}, {:child, parent_id, child})
-          else
-            state
-          end
-
-        state =
-          notify_listeners(
-            state,
-            {:target, repository, target_name},
-            {:run, external_run_id, created_at}
-          )
-
-        state =
-          if !result do
-            # TODO: neater way to get execute_after?
-            execute_after = Keyword.get(opts, :execute_after)
-            execute_at = execute_after || created_at
-
-            state =
-              state
-              |> notify_listeners(
-                :repositories,
-                {:scheduled, repository, execution_id, execute_at}
-              )
-              |> notify_listeners(
-                {:repository, repository},
-                {:scheduled, execution_id, target_name, external_run_id, external_step_id,
-                 attempt, execute_after, created_at}
-              )
-
-            send(self(), :execute)
-
-            state
-          else
-            state
-          end
-
-        {{:ok, external_run_id, external_step_id, execution_id}, state}
-    end
-  end
-
-  defp schedule_step(state, run_id, parent_id, repository, target_name, arguments, opts) do
-    {:ok, run} = Runs.get_run_by_id(state.db, run_id)
-
-    case Runs.schedule_step(
-           state.db,
-           run_id,
-           parent_id,
-           repository,
-           target_name,
-           arguments,
-           opts
-         ) do
-      {:ok, _step_id, external_step_id, execution_id, attempt, created_at, memoised, result,
-       child_added} ->
-        state =
-          if !memoised do
-            memo_key = Keyword.get(opts, :memo_key)
-            arguments = Enum.map(arguments, &build_value(&1, state))
-
-            notify_listeners(
-              state,
-              {:run, run_id},
-              {:step, external_step_id, repository, target_name, memo_key, parent_id, created_at,
-               arguments}
-            )
-          else
-            state
-          end
-
-        state =
-          if child_added do
-            child =
-              {run.external_id, external_step_id, execution_id, repository, target_name,
-               created_at}
-
-            notify_listeners(state, {:run, run_id}, {:child, parent_id, child})
-          else
-            state
-          end
-
-        execute_after = Keyword.get(opts, :execute_after)
-
-        state =
-          if !memoised do
-            notify_listeners(
-              state,
-              {:run, run_id},
-              {:execution, external_step_id, attempt, execution_id, created_at, execute_after}
-            )
-          else
-            state
-          end
-
-        state =
-          if result do
-            result = build_result(result, state)
-
-            notify_listeners(
-              state,
-              {:run, run_id},
-              {:result, execution_id, result, created_at}
-            )
-          else
-            state
-          end
-
-        state =
-          if !memoised && !result do
-            execute_at = execute_after || created_at
-
-            state =
-              state
-              |> notify_listeners(
-                :repositories,
-                {:scheduled, repository, execution_id, execute_at}
-              )
-              |> notify_listeners(
-                {:repository, repository},
-                {:scheduled, execution_id, target_name, run.external_id, external_step_id,
-                 attempt, execute_after, created_at}
-              )
-
-            send(self(), :execute)
-
-            state
-          else
-            state
-          end
-
-        {{:ok, run.external_id, external_step_id, execution_id}, state}
-    end
-  end
-
-  defp get_target(db, repository, target_name) do
-    # TODO: just query specific target
-    {:ok, targets} = Sessions.get_latest_targets(db)
-    targets |> Map.get(repository, %{}) |> Map.get(target_name)
-  end
-
-  defp session_at_capacity(state, session_id) do
-    session = state.sessions[session_id]
-
+  defp session_at_capacity?(session) do
     if session.concurrency != 0 do
       load = MapSet.size(session.starting) + MapSet.size(session.executing)
       load >= session.concurrency
@@ -1414,12 +1686,23 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp choose_session(state, execution) do
+    target_type =
+      cond do
+        execution.parent_id -> :task
+        execution.run_recurrent -> :sensor
+        true -> :workflow
+      end
+
     session_ids =
       state.targets
       |> Map.get(execution.repository, %{})
-      |> Map.get(execution.target, MapSet.new())
-      |> Enum.reject(&session_at_capacity(state, &1))
-      |> Enum.reject(&is_nil(state.sessions[&1].agent))
+      |> Map.get({target_type, execution.target}, MapSet.new())
+      |> Enum.filter(fn session_id ->
+        session = state.sessions[session_id]
+
+        session.environment_id == execution.environment_id && session.agent &&
+          not session_at_capacity?(session)
+      end)
 
     if Enum.any?(session_ids) do
       {:ok, Enum.random(session_ids)}

@@ -1,7 +1,25 @@
+CREATE TABLE environments (
+  id INTEGER PRIMARY KEY
+);
+
+CREATE TABLE environment_versions (
+  environment_id INTEGER NOT NULL,
+  version INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  base_id INTEGER,
+  status INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (environment_id, version),
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
+  FOREIGN KEY (base_id) REFERENCES environments ON DELETE CASCADE
+);
+
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
+  environment_id INTEGER NOT NULL,
   external_id TEXT NOT NULL UNIQUE,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
 );
 
 CREATE TABLE manifests (
@@ -84,10 +102,12 @@ CREATE TABLE executions (
   id INTEGER PRIMARY KEY,
   step_id INTEGER NOT NULL,
   attempt INTEGER NOT NULL,
+  environment_id INTEGER NOT NULL,
   execute_after INTEGER,
   created_at INTEGER NOT NULL,
   UNIQUE (step_id, attempt),
-  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
+  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE,
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
 );
 
 CREATE TABLE assets (
@@ -180,11 +200,10 @@ CREATE TABLE blob_metadata (
 
 CREATE TABLE values_ (
   id INTEGER PRIMARY KEY,
-  hash BLOB NOT NULL,
+  hash BLOB NOT NULL UNIQUE,
   format TEXT NOT NULL,
   content BLOB,
   blob_id INTEGER,
-  UNIQUE (hash),
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
   CHECK ((content IS NULL) != (blob_id IS NULL))
 );
@@ -203,10 +222,9 @@ CREATE TABLE value_placeholders (
 
 CREATE TABLE errors (
   id INTEGER PRIMARY KEY,
-  hash BLOB NOT NULL,
+  hash BLOB NOT NULL UNIQUE,
   type TEXT NOT NULL,
-  message TEXT NOT NULL,
-  UNIQUE (hash)
+  message TEXT NOT NULL
 );
 
 CREATE TABLE error_frames(

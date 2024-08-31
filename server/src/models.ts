@@ -1,6 +1,11 @@
 export type Project = {
   name: string;
-  environments: string[];
+};
+
+export type Environment = {
+  name: string;
+  baseId: string | null;
+  status: 0 | 1;
 };
 
 export type Parameter = {
@@ -10,10 +15,10 @@ export type Parameter = {
 };
 
 export type Target = {
-  type: "workflow" | "task" | "sensor";
+  type: "workflow" | "task" | "sensor" | null;
   repository: string;
   target: string;
-  parameters: Parameter[];
+  parameters: Parameter[] | null;
   runs: Record<string, Pick<Run, "createdAt">>;
 };
 
@@ -113,6 +118,7 @@ export type Dependency = Reference & {
 
 export type Execution = {
   executionId: string;
+  environmentId: string;
   createdAt: number;
   executeAfter: number | null;
   assignedAt: number | null;

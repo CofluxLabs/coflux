@@ -6,12 +6,11 @@ defmodule Coflux.Observation.Server do
 
   def start_link(opts) do
     {project_id, opts} = Keyword.pop!(opts, :project_id)
-    {environment, opts} = Keyword.pop!(opts, :environment)
-    GenServer.start_link(__MODULE__, {project_id, environment}, opts)
+    GenServer.start_link(__MODULE__, project_id, opts)
   end
 
-  def init({project_id, environment}) do
-    case Store.open(project_id, environment, "observation") do
+  def init(project_id) do
+    case Store.open(project_id, "observation") do
       {:ok, db} ->
         {:ok, %{db: db, subscribers: %{}}}
     end

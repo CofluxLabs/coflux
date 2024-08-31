@@ -20,6 +20,7 @@ import * as models from "../models";
 import StepLink from "./StepLink";
 import { useHoverContext } from "./HoverContext";
 import buildGraph, { Graph, Edge } from "../graph";
+import EnvironmentLabel from "./EnvironmentLabel";
 
 function classNameForExecution(execution: models.Execution) {
   const result = execution.result;
@@ -39,14 +40,24 @@ function classNameForExecution(execution: models.Execution) {
 }
 
 type StepNodeProps = {
+  projectId: string;
   stepId: string;
   step: models.Step;
   attempt: number;
   runId: string;
   isActive: boolean;
+  runEnvironmentId: string;
 };
 
-function StepNode({ stepId, step, attempt, runId, isActive }: StepNodeProps) {
+function StepNode({
+  projectId,
+  stepId,
+  step,
+  attempt,
+  runId,
+  isActive,
+  runEnvironmentId,
+}: StepNodeProps) {
   const execution = step.executions[attempt];
   const { isHovered } = useHoverContext();
   const isDeferred =
@@ -79,23 +90,35 @@ function StepNode({ stepId, step, attempt, runId, isActive }: StepNodeProps) {
         hoveredClassName="ring ring-slate-400"
       >
         <span className="flex-1 flex items-center overflow-hidden">
-          <span className="flex-1 truncate text-sm">
-            <span
-              className={classNames(
-                "font-mono",
-                !step.parentId && "font-bold",
-                isDeferred && "text-slate-500",
+          <span className="flex-1 flex flex-col gap-0.5 overflow-hidden">
+            <span className="truncate text-sm">
+              <span
+                className={classNames(
+                  "font-mono",
+                  !step.parentId && "font-bold",
+                  isDeferred && "text-slate-500",
+                )}
+              >
+                {step.target}
+              </span>{" "}
+              <span
+                className={classNames(
+                  "text-xs",
+                  isDeferred ? "text-slate-400" : "text-slate-500",
+                )}
+              >
+                ({step.repository})
+              </span>
+            </span>
+            <span className="flex">
+              {execution && execution.environmentId != runEnvironmentId && (
+                <EnvironmentLabel
+                  projectId={projectId}
+                  environmentId={execution.environmentId}
+                  size="sm"
+                  warning="This execution ran in a different environment"
+                />
               )}
-            >
-              {step.target}
-            </span>{" "}
-            <span
-              className={classNames(
-                "text-xs",
-                isDeferred ? "text-slate-400" : "text-slate-500",
-              )}
-            >
-              ({step.repository})
             </span>
           </span>
           {step.isMemoised && (
@@ -194,8 +217,8 @@ function EdgePath({ edge, offset, highlight }: EdgePathProps) {
         highlight
           ? "stroke-slate-400"
           : edge.type == "transitive"
-          ? "stroke-slate-100"
-          : "stroke-slate-200"
+            ? "stroke-slate-100"
+            : "stroke-slate-200"
       }
       fill="none"
       strokeWidth={highlight || edge.type == "dependency" ? 3 : 2}
@@ -229,22 +252,25 @@ function calculateMargins(
 }
 
 type Props = {
+  projectId: string;
   runId: string;
   run: models.Run;
   width: number;
   height: number;
   activeStepId: string | undefined;
   activeAttempt: number | undefined;
-  minimumMargin?: number;
+  runEnvironmentId: string;
 };
 
 export default function RunGraph({
+  projectId,
   runId,
   run,
   width: containerWidth,
   height: containerHeight,
   activeStepId,
   activeAttempt,
+  runEnvironmentId,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [offsetOverride, setOffsetOverride] = useState<[number, number]>();
@@ -338,8 +364,8 @@ export default function RunGraph({
             dragging
               ? "cursor-grabbing"
               : zoom > minZoom
-              ? "cursor-grab"
-              : undefined,
+                ? "cursor-grab"
+                : undefined,
           )}
           onMouseDown={handleMouseDown}
         >
@@ -389,11 +415,13 @@ export default function RunGraph({
                     <ParentNode parent={node.parent} />
                   ) : node.type == "step" ? (
                     <StepNode
+                      projectId={projectId}
                       stepId={node.stepId}
                       step={node.step}
                       attempt={node.attempt}
                       runId={runId}
                       isActive={node.stepId == activeStepId}
+                      runEnvironmentId={runEnvironmentId}
                     />
                   ) : node.type == "child" ? (
                     <ChildNode runId={node.runId} child={node.child} />
@@ -403,7 +431,7 @@ export default function RunGraph({
             })}
         </div>
       </div>
-      <div className="absolute flex right-1 bottom-1 bg-white/90 rounded-xl px-2 py-1">
+      <div className="absolute flex right-1 bottom-1 bg-white/90 rounded-xl px-2 py-1 mb-1">
         <input
           type="range"
           value={zoom}

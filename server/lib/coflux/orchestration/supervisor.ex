@@ -24,20 +24,15 @@ defmodule Coflux.Orchestration.Supervisor do
     Supervisor.start_link(children, strategy: :one_for_all)
   end
 
-  def get_server(project_id, environment) do
-    key = {project_id, environment}
-
-    case Registry.lookup(@registry, key) do
+  def get_server(project_id) do
+    case Registry.lookup(@registry, project_id) do
       [{pid, _}] ->
         {:ok, pid}
 
       [] ->
         spec =
           {Server,
-           id: Server,
-           name: {:via, Registry, {@registry, key}},
-           project_id: project_id,
-           environment: environment}
+           id: Server, name: {:via, Registry, {@registry, project_id}}, project_id: project_id}
 
         case DynamicSupervisor.start_child(@supervisor, spec) do
           {:ok, pid} ->

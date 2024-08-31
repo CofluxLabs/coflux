@@ -1,24 +1,40 @@
-import { maxBy } from "lodash";
-import { Fragment } from "react";
-import { Navigate, useParams, useSearchParams } from "react-router-dom";
+import { findKey, maxBy } from "lodash";
+import { Fragment, useEffect } from "react";
+import {
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 
 import { useSetActiveTarget } from "../layouts/ProjectLayout";
 import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
-import { useTargetTopic } from "../topics";
+import { useEnvironments, useTarget } from "../topics";
 import TargetHeader from "../components/TargetHeader";
 import { useTitlePart } from "../components/TitleContext";
 
 export default function TargetPage() {
   const { project: projectId, repository, target: targetName } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const environmentName = searchParams.get("environment") || undefined;
-  const target = useTargetTopic(
+  const activeEnvironmentName = searchParams.get("environment") || undefined;
+  const environments = useEnvironments(projectId);
+  const activeEnvironmentId = findKey(
+    environments,
+    (e) => e.name == activeEnvironmentName && e.status != 1,
+  );
+  const target = useTarget(
     projectId,
-    environmentName,
     repository,
     targetName,
+    activeEnvironmentId,
   );
+  useEffect(() => {
+    if (target && !target.type) {
+      navigate(`/projects/${projectId}?environment=${activeEnvironmentName}`);
+    }
+  }, [target, navigate, projectId, activeEnvironmentName]);
   useTitlePart(`${targetName} (${repository})`);
   useSetActiveTarget(target);
   if (!target) {
@@ -33,7 +49,7 @@ export default function TargetPage() {
         <Navigate
           replace
           to={buildUrl(`/projects/${projectId}/runs/${latestRunId}`, {
-            environment: environmentName,
+            environment: activeEnvironmentName,
           })}
         />
       );
@@ -43,7 +59,8 @@ export default function TargetPage() {
           <TargetHeader
             target={target}
             projectId={projectId!}
-            environmentName={environmentName}
+            activeEnvironmentId={activeEnvironmentId}
+            activeEnvironmentName={activeEnvironmentName}
             isRunning={false}
           />
           <div className="p-4 flex-1">

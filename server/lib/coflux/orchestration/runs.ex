@@ -3,7 +3,15 @@ defmodule Coflux.Orchestration.Runs do
 
   import Coflux.Store
 
-  def start_run(db, repository, target, arguments, opts \\ []) do
+  def schedule_run(
+        db,
+        repository,
+        target,
+        arguments,
+        environment_id,
+        cache_environment_ids,
+        opts \\ []
+      ) do
     idempotency_key = Keyword.get(opts, :idempotency_key)
     parent_id = Keyword.get(opts, :parent_id)
     recurrent = Keyword.get(opts, :recurrent)
@@ -13,7 +21,19 @@ defmodule Coflux.Orchestration.Runs do
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
       {:ok, step_id, external_step_id, execution_id, attempt, now, false, result, child_added} =
-        do_schedule_step(db, run_id, parent_id, repository, target, arguments, true, now, opts)
+        schedule_step(
+          db,
+          run_id,
+          parent_id,
+          repository,
+          target,
+          arguments,
+          true,
+          environment_id,
+          cache_environment_ids,
+          now,
+          opts
+        )
 
       {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, attempt, result,
        now, child_added}
@@ -73,15 +93,47 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  def schedule_step(db, run_id, parent_id, repository, target, arguments, opts \\ []) do
+  def get_environment_id_for_execution(db, execution_id) do
+    case query_one!(
+           db,
+           "SELECT environment_id FROM executions WHERE id = ?1",
+           {execution_id}
+         ) do
+      {:ok, {environment_id}} -> {:ok, environment_id}
+    end
+  end
+
+  def schedule_task(
+        db,
+        run_id,
+        parent_id,
+        repository,
+        target,
+        arguments,
+        environment_id,
+        cache_environment_ids,
+        opts \\ []
+      ) do
     now = current_timestamp()
 
     with_transaction(db, fn ->
-      do_schedule_step(db, run_id, parent_id, repository, target, arguments, false, now, opts)
+      schedule_step(
+        db,
+        run_id,
+        parent_id,
+        repository,
+        target,
+        arguments,
+        false,
+        environment_id,
+        cache_environment_ids,
+        now,
+        opts
+      )
     end)
   end
 
-  defp do_schedule_step(
+  defp schedule_step(
          db,
          run_id,
          parent_id,
@@ -89,6 +141,8 @@ defmodule Coflux.Orchestration.Runs do
          target,
          arguments,
          is_initial,
+         environment_id,
+         cache_environment_ids,
          now,
          opts
        ) do
@@ -105,7 +159,7 @@ defmodule Coflux.Orchestration.Runs do
 
     memoised_execution =
       if memo_key do
-        case find_memoised_execution(db, run_id, memo_key) do
+        case find_memoised_execution(db, run_id, cache_environment_ids, memo_key) do
           {:ok, memoised_execution} -> memoised_execution
         end
       end
@@ -120,7 +174,7 @@ defmodule Coflux.Orchestration.Runs do
             if cache_key do
               recorded_after = if cache_max_age, do: now - cache_max_age * 1000, else: 0
 
-              case find_cached_execution(db, cache_key, recorded_after) do
+              case find_cached_execution(db, cache_environment_ids, cache_key, recorded_after) do
                 {:ok, cached_execution_id} ->
                   cached_execution_id
               end
@@ -155,7 +209,7 @@ defmodule Coflux.Orchestration.Runs do
           attempt = 1
 
           {:ok, execution_id} =
-            insert_execution(db, step_id, attempt, execute_after, now)
+            insert_execution(db, step_id, attempt, environment_id, execute_after, now)
 
           result =
             if cached_execution_id do
@@ -180,12 +234,15 @@ defmodule Coflux.Orchestration.Runs do
     {:ok, step_id, external_step_id, execution_id, attempt, now, memoised, result, child_added}
   end
 
-  def rerun_step(db, step_id, execute_after \\ nil) do
+  def rerun_step(db, step_id, environment_id, execute_after) do
     with_transaction(db, fn ->
       now = current_timestamp()
       # TODO: cancel pending executions for step?
       {:ok, attempt} = get_next_execution_attempt(db, step_id)
-      {:ok, execution_id} = insert_execution(db, step_id, attempt, execute_after, now)
+
+      {:ok, execution_id} =
+        insert_execution(db, step_id, attempt, environment_id, execute_after, now)
+
       {:ok, execution_id, attempt, now}
     end)
   end
@@ -262,10 +319,13 @@ defmodule Coflux.Orchestration.Runs do
         s.id AS step_id,
         s.run_id,
         run.external_id AS run_external_id,
+        run.recurrent AS run_recurrent,
         s.repository,
         s.target,
         s.wait_for,
         s.defer_key,
+        s.parent_id,
+        e.environment_id,
         e.execute_after,
         e.created_at
       FROM executions AS e
@@ -305,6 +365,20 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
+  def get_pending_executions_for_environment(db, environment_id) do
+    query(
+      db,
+      """
+      SELECT e.id, s.run_id, s.repository
+      FROM executions AS e
+      INNER JOIN steps AS s ON s.id = e.step_id
+      LEFT JOIN results AS r ON r.execution_id = e.id
+      WHERE e.environment_id = ?1 AND r.created_at IS NULL
+      """,
+      {environment_id}
+    )
+  end
+
   def get_pending_assignments(db) do
     query(
       db,
@@ -332,18 +406,19 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  def get_target_runs(db, repository, target, limit \\ 50) do
+  def get_target_runs(db, repository, target, environment_id, limit \\ 50) do
     query(
       db,
       """
       SELECT DISTINCT r.external_id, r.created_at
       FROM runs as r
       INNER JOIN steps AS s ON s.run_id = r.id
-      WHERE s.repository = ?1 AND s.target = ?2
+      INNER JOIN executions AS e ON e.step_id == s.id
+      WHERE s.repository = ?1 AND s.target = ?2 AND s.parent_id IS NULL AND e.environment_id = ?3
       ORDER BY r.created_at DESC
-      LIMIT ?3
+      LIMIT ?4
       """,
-      {repository, target, limit}
+      {repository, target, environment_id, limit}
     )
   end
 
@@ -401,6 +476,18 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
+  def get_run_target(db, run_id) do
+    query_one(
+      db,
+      """
+      SELECT repository, target
+      FROM steps
+      WHERE run_id = ?1 AND parent_id IS NULL
+      """,
+      {run_id}
+    )
+  end
+
   def get_run_steps(db, run_id) do
     query(
       db,
@@ -417,13 +504,29 @@ defmodule Coflux.Orchestration.Runs do
     query(
       db,
       """
-      SELECT e.id, e.attempt, e.execute_after, e.created_at, a.session_id, a.created_at
+      SELECT e.id, e.attempt, e.environment_id, e.execute_after, e.created_at, a.session_id, a.created_at
       FROM executions AS e
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       WHERE e.step_id = ?1
       """,
       {step_id}
     )
+  end
+
+  def get_first_step_execution_id(db, step_id) do
+    case query_one(
+           db,
+           """
+           SELECT id
+           FROM executions
+           WHERE step_id = ?1
+           ORDER BY attempt ASC
+           LIMIT 1
+           """,
+           {step_id}
+         ) do
+      {:ok, {id}} -> {:ok, id}
+    end
   end
 
   def get_step_arguments(db, step_id, load_metadata \\ false) do
@@ -487,7 +590,13 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  defp find_memoised_execution(db, run_id, memo_key) do
+  defp build_placeholders(count, offset \\ 0) do
+    1..count
+    |> Enum.map_intersperse(", ", &"?#{&1 + offset}")
+    |> Enum.join()
+  end
+
+  defp find_memoised_execution(db, run_id, environment_ids, memo_key) do
     case query(
            db,
            """
@@ -495,11 +604,15 @@ defmodule Coflux.Orchestration.Runs do
            FROM steps AS s
            INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id
-           WHERE s.run_id = ?1 AND s.memo_key = ?2 AND (r.type IS NULL OR r.type = 1)
+           WHERE
+             s.run_id = ?1
+             AND e.environment_id IN (#{build_placeholders(length(environment_ids), 1)})
+             AND s.memo_key = ?#{length(environment_ids) + 2}
+             AND (r.type IS NULL OR r.type = 1)
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           {run_id, memo_key}
+           List.to_tuple([run_id] ++ environment_ids ++ [memo_key])
          ) do
       {:ok, [row]} ->
         {:ok, row}
@@ -509,7 +622,7 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  defp find_cached_execution(db, cache_key, recorded_after) do
+  defp find_cached_execution(db, environment_ids, cache_key, recorded_after) do
     case query(
            db,
            """
@@ -517,11 +630,14 @@ defmodule Coflux.Orchestration.Runs do
            FROM steps AS s
            INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id
-           WHERE s.cache_key = ?1 AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?2))
+           WHERE
+             e.environment_id IN (#{build_placeholders(length(environment_ids))})
+             AND s.cache_key = ?#{length(environment_ids) + 1}
+             AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?#{length(environment_ids) + 2}))
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           {cache_key, recorded_after}
+           List.to_tuple(environment_ids ++ [cache_key, recorded_after])
          ) do
       {:ok, [{execution_id}]} ->
         {:ok, execution_id}
@@ -617,10 +733,11 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  defp insert_execution(db, step_id, attempt, execute_after, created_at) do
+  defp insert_execution(db, step_id, attempt, environment_id, execute_after, created_at) do
     insert_one(db, :executions, %{
       step_id: step_id,
       attempt: attempt,
+      environment_id: environment_id,
       execute_after: execute_after,
       created_at: created_at
     })

@@ -17,6 +17,7 @@ def _get_channel() -> execution.Channel:
 
 
 def schedule(
+    type: t.Literal["workflow", "task"],
     repository: str,
     target: str,
     arguments: tuple[t.Any, ...],
@@ -32,6 +33,7 @@ def schedule(
     memo: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
 ) -> models.Execution[t.Any]:
     return _get_channel().schedule_execution(
+        type,
         repository,
         target,
         arguments,

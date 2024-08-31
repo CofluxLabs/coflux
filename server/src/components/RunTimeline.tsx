@@ -121,7 +121,7 @@ export default function RunTimeline({ runId, run }: Props) {
   );
   return (
     <div className="px-4">
-      <div className="flex text-slate-400 text-sm  sticky top-0 z-10">
+      <div className="flex text-slate-400 text-sm sticky top-0 z-10">
         <div className="w-40"></div>
         <div className="flex-1 ml-2 flex border-x border-slate-200 px-1 py-2 bg-white/90">
           <div className="flex-1">

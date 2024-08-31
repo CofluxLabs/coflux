@@ -1,28 +1,20 @@
 defmodule Coflux.Topics.Target do
   use Topical.Topic,
-    route: [
-      "projects",
-      :project_id,
-      "environments",
-      :environment_name,
-      "targets",
-      :repository,
-      :target
-    ]
+    route: ["projects", :project_id, "targets", :repository, :target, :environment_id]
 
   alias Coflux.Orchestration
 
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
-    environment_name = Keyword.fetch!(params, :environment_name)
     repository = Keyword.fetch!(params, :repository)
     target_name = Keyword.fetch!(params, :target)
+    environment_id = String.to_integer(Keyword.fetch!(params, :environment_id))
 
     case Orchestration.subscribe_target(
            project_id,
-           environment_name,
            repository,
            target_name,
+           environment_id,
            self()
          ) do
       {:ok, target, runs, ref} ->
@@ -34,8 +26,8 @@ defmodule Coflux.Topics.Target do
         target = %{
           repository: repository,
           target: target_name,
-          type: target.type,
-          parameters: build_parameters(target.parameters),
+          type: if(target, do: target.type),
+          parameters: if(target, do: build_parameters(target.parameters)),
           runs: runs
         }
 

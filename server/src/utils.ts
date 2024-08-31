@@ -3,7 +3,7 @@ import { Duration, DurationObjectUnits } from "luxon";
 
 export function buildUrl(
   path: string,
-  params: Record<string, string | number | null | undefined>,
+  params?: Record<string, string | number | null | undefined>,
 ) {
   const queryString = new URLSearchParams(omitBy(params, isNil)).toString();
   return `${path}${queryString ? "?" + queryString : ""}`;
@@ -70,4 +70,77 @@ export function truncatePath(path: string) {
     ...parts.slice(1, -1).map((p) => p[0]),
     parts[parts.length - 1],
   ].join("/");
+}
+
+const adjectives = [
+  "bewitching",
+  "captivating",
+  "charming",
+  "clever",
+  "enchanting",
+  "funny",
+  "goofy",
+  "happy",
+  "jolly",
+  "lucky",
+  "majestic",
+  "mysterious",
+  "mystical",
+  "playful",
+  "quirky",
+  "silly",
+  "sleepy",
+  "soothing",
+  "whimsical",
+  "witty",
+  "zany",
+];
+
+const properNames = [
+  "banshee",
+  "centaur",
+  "chimera",
+  "chupacabra",
+  "cyclops",
+  "djinn",
+  "dragon",
+  "fairy",
+  "gargoyle",
+  "genie",
+  "gnome",
+  "goblin",
+  "griffin",
+  "grizzly",
+  "gryphon",
+  "hydra",
+  "kraken",
+  "leprechaun",
+  "mermaid",
+  "minotaur",
+  "mothman",
+  "nymph",
+  "ogre",
+  "oracle",
+  "pegasus",
+  "phantom",
+  "phoenix",
+  "pixie",
+  "sasquatch",
+  "satyr",
+  "shapeshifter",
+  "siren",
+  "sorcerer",
+  "spectre",
+  "sphinx",
+  "troll",
+  "unicorn",
+  "vampire",
+  "warlock",
+  "werewolf",
+  "wizard",
+  "yeti",
+];
+
+export function randomName(): string {
+  return `${choose(adjectives)}_${choose(properNames)}`;
 }

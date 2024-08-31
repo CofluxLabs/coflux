@@ -1,12 +1,11 @@
-import { useTopic } from "@topical/react";
 import { Link, Outlet } from "react-router-dom";
 import { IconPlus, IconPyramid } from "@tabler/icons-react";
 
-import * as models from "../models";
 import { useTitlePart } from "../components/TitleContext";
+import { useProjects } from "../topics";
 
 export default function ProjectsPage() {
-  const [projects] = useTopic<Record<string, models.Project>>("projects");
+  const projects = useProjects();
   useTitlePart("Projects");
   return (
     <div>

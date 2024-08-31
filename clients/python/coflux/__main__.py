@@ -5,7 +5,6 @@ import types
 import typing as t
 import watchfiles
 import httpx
-from pathlib import Path
 
 from . import Agent, config, loader
 
@@ -21,13 +20,21 @@ def _get_environ(name: str, parser: t.Callable[[str], T] = lambda x: x) -> T | N
     return parser(value) if value else None
 
 
+def _api_request(method: str, host: str, action: str, **kwargs) -> t.Any:
+    with httpx.Client() as client:
+        response = client.request(method, f"http://{host}/api/{action}", **kwargs)
+        # TODO: return errors
+        response.raise_for_status()
+        is_json = response.headers.get("Content-Type") == "application/json"
+        return response.json() if is_json else None
+
+
 @t.overload
 def _get_option(
     argument: T | None,
     env_name: tuple[str, t.Callable[[str], T]],
     config_name: str | None,
-) -> T | None:
-    ...
+) -> T | None: ...
 
 
 @t.overload
@@ -36,8 +43,7 @@ def _get_option(
     env_name: tuple[str, t.Callable[[str], T]],
     config_name: str | None = None,
     default: T = None,
-) -> T:
-    ...
+) -> T: ...
 
 
 def _get_option(
@@ -103,7 +109,14 @@ def cli():
     pass
 
 
-@cli.command()
+@cli.command("configure")
+@click.option(
+    "-h",
+    "--host",
+    prompt=True,
+    default=lambda: config.load().get("host") or "localhost:7777",
+    help="Host to connect to",
+)
 @click.option(
     "-p",
     "--project",
@@ -116,69 +129,192 @@ def cli():
     "-e",
     "--environment",
     prompt=True,
-    default=lambda: config.load().get("environment") or "development",
+    default=lambda: config.load().get("environment") or "",
+    help="Environment name",
+)
+def configure(
+    host: str | None,
+    project: str | None,
+    environment: str | None,
+):
+    """
+    Populate the configuration file with default values.
+    """
+    # TODO: connect to server to check details?
+    click.secho("Writing configuration...", fg="black")
+
+    config.write(
+        {
+            "project": project,
+            "host": host,
+            "environment": environment or None,
+        }
+    )
+    click.secho(f"Configuration written to '{config.path}'.", fg="green")
+
+
+@cli.command("environment.create")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+)
+@click.option(
+    "--base",
+    help="The base environment to inherit from",
+)
+@click.argument("name")
+def environment_create(
+    project: str | None, host: str | None, base: str | None, name: str
+):
+    """
+    Creates an environment within the project.
+    """
+    project_ = _get_project(project)
+    host_ = _get_host(host)
+
+    base_id = None
+    if base:
+        environments = _api_request(
+            "GET", host_, "get_environments", params={"project": project_}
+        )
+        environment_ids_by_name = {e["name"]: id for id, e in environments.items()}
+        base_id = environment_ids_by_name.get(base)
+        if not base_id:
+            click.BadOptionUsage("base", "Not recognised")
+
+    # TODO: handle response
+    _api_request(
+        "POST",
+        host_,
+        "create_environment",
+        json={
+            "projectId": project_,
+            "name": name,
+            "baseId": base_id,
+        },
+    )
+    click.secho(f"Registered environment '{name}'.", fg="green")
+
+
+@cli.command("environment.update")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+)
+@click.option(
+    "-e",
+    "--environment",
+    help="The (current) name of the environment",
+)
+@click.option(
+    "--name",
+    help="The new name of the environment",
+)
+@click.option(
+    "--base",
+    help="The new base environment to inherit from",
+)
+def environment_update(
+    project: str | None,
+    host: str | None,
+    environment: str | None,
+    name: str | None,
+    base: str | None,
+):
+    """
+    Creates an environment within the project.
+    """
+    project_ = _get_project(project)
+    host_ = _get_host(host)
+    environment_ = _get_environment(environment)
+
+    environments = _api_request(
+        "GET", host_, "get_environments", params={"project": project_}
+    )
+    environment_ids_by_name = {e["name"]: id for id, e in environments.items()}
+    environment_id = environment_ids_by_name.get(environment_)
+    if not environment_id:
+        raise click.BadOptionUsage("environment", "Not recognised")
+
+    base_id = None
+    if base:
+        base_id = environment_ids_by_name.get(base)
+        if not base_id:
+            raise click.BadOptionUsage("base", "Not recognised")
+
+    payload = {
+        "projectId": project_,
+        "environmentId": environment_id,
+    }
+    if name is not None:
+        payload["name"] = name
+    if base is not None:
+        payload["baseId"] = base_id
+
+    # TODO: handle response
+    _api_request("POST", host_, "update_environment", json=payload)
+
+    click.secho(f"Registered environment '{name}'.", fg="green")
+
+
+@cli.command("environment.archive")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+)
+@click.option(
+    "-e",
+    "--environment",
     help="Environment name",
 )
 @click.option(
     "-h",
     "--host",
-    default=lambda: config.load().get("host"),
     help="Host to connect to",
 )
-@click.option(
-    "--concurrency",
-    type=int,
-    default=lambda: config.load().get("concurrency"),
-    help="Limit on number of executions to process at once",
-)
-@click.option(
-    "--repo",
-    help="Name of the Python module to setup (if it doesn't already exist; e.g., 'my_package.repo')",
-)
-def init(
-    project: str,
-    environment: str,
+def environment_archive(
+    project: str | None,
+    environment: str | None,
     host: str | None,
-    concurrency: int | None,
-    repo: str | None,
 ):
     """
-    Initialise a project by populating the configuration file.
-
-    Will also setup files for a Python module for the repository, if needed.
+    Archive an environment on the server (but retain the configuration file locally).
     """
+    project_ = _get_project(project)
+    environment_ = _get_environment(environment)
+    host_ = _get_host(host)
 
-    # TODO: connect to server to check details?
-
-    click.secho("Writing configuration...", fg="black")
-    config.write(
-        {
-            "project": project,
-            "environment": environment,
-            "host": host,
-            "concurrency": concurrency,
-        }
+    environments = _api_request(
+        "GET", host_, "get_environments", params={"project": project_}
     )
-    click.secho(f"Configuration written to '{config.path}'.", fg="green")
+    environment_ids_by_name = {e["name"]: id for id, e in environments.items()}
+    environment_id = environment_ids_by_name.get(environment_)
+    if not environment_id:
+        raise click.BadOptionUsage("environment", "Not recognised")
 
-    if repo:
-        click.secho("Creating repo...", fg="black")
-        package, *namespaces, module = repo.split(".")
-        path = Path(package)
-        path.mkdir(exist_ok=True)
-        path.joinpath("__init__.py").touch(exist_ok=True)
-
-        for namespace in namespaces:
-            path = path.joinpath(namespace)
-            path.mkdir(exist_ok=True)
-            path.joinpath("__init__.py").touch(exist_ok=True)
-
-        path = path.joinpath(f"{module}.py")
-        if path.exists():
-            click.secho(f"Module ({path}) already exists.", fg="yellow")
-        else:
-            path.touch()
-            click.secho("Created package.", fg="green")
+    _api_request(
+        "POST",
+        host_,
+        "archive_environment",
+        json={
+            "projectId": project_,
+            "environmentId": environment_id,
+        },
+    )
+    click.secho(f"Archived environment '{environment_}'.", fg="green")
 
 
 @cli.command("agent.run")
@@ -186,6 +322,11 @@ def init(
     "-p",
     "--project",
     help="Project ID",
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
 )
 @click.option(
     "-e",
@@ -198,17 +339,12 @@ def init(
     help="Version identifier to report to the server",
 )
 @click.option(
-    "-h",
-    "--host",
-    help="Host to connect to",
-)
-@click.option(
     "--concurrency",
     type=int,
     help="Limit on number of executions to process at once",
 )
 @click.option(
-    "--reload",
+    "--reload",  # TODO: rename 'watch'?
     is_flag=True,
     default=False,
     help="Enable auto-reload when code changes",
@@ -262,7 +398,7 @@ def agent_run(
         _init(*args, **kwargs)
 
 
-@cli.command("workflow.run")
+@cli.command("workflow.schedule")
 @click.option(
     "-p",
     "--project",
@@ -281,7 +417,7 @@ def agent_run(
 @click.argument("repository")
 @click.argument("target")
 @click.argument("argument", nargs=-1)
-def workflow_run(
+def workflow_schedule(
     project: str,
     environment: str,
     host: str,
@@ -295,18 +431,19 @@ def workflow_run(
     project_ = _get_project(project)
     environment_ = _get_environment(environment)
     host_ = _get_host(host)
-    with httpx.Client() as client:
-        response = client.post(
-            f"http://{host_}/api/schedule",
-            json={
-                "projectId": project_,
-                "environment": environment_,
-                "repository": repository,
-                "target": target,
-                "arguments": [["json", a] for a in argument],
-            },
-        )
-        response.raise_for_status()
+    # TODO: handle response
+    _api_request(
+        "POST",
+        host_,
+        "schedule",
+        json={
+            "projectId": project_,
+            "environment": environment_,
+            "repository": repository,
+            "target": target,
+            "arguments": [["json", a] for a in argument],
+        },
+    )
     # TODO: follow logs?
     # TODO: wait for result?
 

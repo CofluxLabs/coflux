@@ -1,13 +1,13 @@
 defmodule Coflux.Topics.Agents do
-  use Topical.Topic, route: ["projects", :project_id, "environments", :environment_name, "agents"]
+  use Topical.Topic, route: ["projects", :project_id, "agents", :environment_id]
 
   alias Coflux.Orchestration
 
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
-    environment_name = Keyword.fetch!(params, :environment_name)
+    environment_id = String.to_integer(Keyword.fetch!(params, :environment_id))
 
-    {:ok, agents, ref} = Orchestration.subscribe_agents(project_id, environment_name, self())
+    {:ok, agents, ref} = Orchestration.subscribe_agents(project_id, environment_id, self())
 
     agents =
       Map.new(agents, fn {session_id, targets} ->
@@ -32,7 +32,9 @@ defmodule Coflux.Topics.Agents do
 
   defp build_targets(targets) do
     Map.new(targets, fn {repository, repository_targets} ->
-      {repository, MapSet.to_list(repository_targets)}
+      # TODO: include type?
+      target_names = Enum.map(repository_targets, fn {_, name} -> name end)
+      {repository, target_names}
     end)
   end
 end

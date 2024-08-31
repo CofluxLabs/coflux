@@ -1,11 +1,15 @@
 import { CSSProperties, Fragment, useCallback, useState } from "react";
 import classNames from "classnames";
-import { sortBy } from "lodash";
+import { minBy, sortBy } from "lodash";
 import { DateTime } from "luxon";
-import { Listbox, Transition } from "@headlessui/react";
+import { Listbox, Menu, Transition } from "@headlessui/react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useTopic } from "@topical/react";
-import { IconChevronDown, IconFunction, IconPinned } from "@tabler/icons-react";
+import {
+  IconChevronDown,
+  IconFunction,
+  IconPinned,
+  IconReload,
+} from "@tabler/icons-react";
 import reactStringReplace from "react-string-replace";
 
 import * as models from "../models";
@@ -18,6 +22,8 @@ import StepLink from "./StepLink";
 import AssetLink from "./AssetLink";
 import { getAssetMetadata } from "../assets";
 import AssetIcon from "./AssetIcon";
+import EnvironmentLabel from "./EnvironmentLabel";
+import { useEnvironments, useLogs } from "../topics";
 
 type AttemptSelectorOptionProps = {
   attempt: number;
@@ -35,18 +41,18 @@ function AttemptSelectorOption({
         <Badge intent="none" label="Cached" />
       ) : execution.result?.type == "deferred" ? (
         <Badge intent="none" label="Deferred" />
+      ) : execution.result?.type == "value" ? (
+        <Badge intent="success" label="Completed" />
+      ) : execution.result?.type == "error" ? (
+        <Badge intent="danger" label="Failed" />
+      ) : execution.result?.type == "abandoned" ? (
+        <Badge intent="warning" label="Abandoned" />
+      ) : execution.result?.type == "cancelled" ? (
+        <Badge intent="warning" label="Cancelled" />
       ) : !execution.assignedAt ? (
         <Badge intent="info" label="Assigning" />
       ) : !execution.result ? (
         <Badge intent="info" label="Running" />
-      ) : ["value"].includes(execution.result.type) ? (
-        <Badge intent="success" label="Completed" />
-      ) : execution.result.type == "error" ? (
-        <Badge intent="danger" label="Failed" />
-      ) : execution.result.type == "abandoned" ? (
-        <Badge intent="warning" label="Abandoned" />
-      ) : execution.result.type == "cancelled" ? (
-        <Badge intent="warning" label="Cancelled" />
       ) : null}
     </div>
   );
@@ -113,9 +119,41 @@ function AttemptSelector({
   );
 }
 
+function getEnvironmentDescendantIds(
+  environments: Record<string, models.Environment>,
+  parentId: string | null,
+): string[] {
+  return Object.entries(environments)
+    .filter(([_, e]) => e.baseId == parentId && e.status != 1)
+    .flatMap(([environmentId]) => [
+      environmentId,
+      ...getEnvironmentDescendantIds(environments, environmentId),
+    ]);
+}
+
+function getEnvironmentOptions(
+  environments: Record<string, models.Environment>,
+  parentId: string,
+) {
+  return [parentId, ...getEnvironmentDescendantIds(environments, parentId)];
+}
+
+function getBaseExecution(step: models.Step, run: models.Run) {
+  if (step.parentId) {
+    return Object.values(run.steps)
+      .flatMap((s) => Object.values(s.executions))
+      .find((e) => e.executionId == step.parentId)!;
+  } else {
+    const initialStep = Object.values(run.steps).find((s) => !s.parentId)!;
+    const initialAttempt = minBy(Object.keys(initialStep.executions), Number)!;
+    return initialStep.executions[initialAttempt];
+  }
+}
+
 type HeaderProps = {
   projectId: string;
-  environmentName: string;
+  activeEnvironmentId: string;
+  runEnvironmentId: string;
   run: models.Run;
   stepId: string;
   step: models.Step;
@@ -125,71 +163,138 @@ type HeaderProps = {
 
 function Header({
   projectId,
-  environmentName,
+  activeEnvironmentId,
+  runEnvironmentId,
   run,
   stepId,
   step,
   attempt,
   onRerunStep,
 }: HeaderProps) {
+  const environments = useEnvironments(projectId);
+  const activeEnvironmentName = environments?.[activeEnvironmentId].name;
   const [rerunning, setRerunning] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const changeAttempt = useCallback(
-    (attempt: number) => {
+    (attempt: number, environmentName?: string) => {
       navigate(
         buildUrl(location.pathname, {
-          environment: environmentName,
+          environment: environmentName || activeEnvironmentName,
           step: stepId,
           attempt,
         }),
       );
     },
-    [projectId, run, environmentName, step, navigate, location],
+    [stepId, activeEnvironmentName, navigate, location],
   );
-  const handleRerunClick = useCallback(() => {
-    setRerunning(true);
-    onRerunStep(stepId, environmentName).then(({ attempt }) => {
-      setRerunning(false);
-      changeAttempt(attempt);
-    });
-  }, [onRerunStep, stepId, environmentName, changeAttempt]);
+  const executionEnvironmentId = step.executions[attempt].environmentId;
+  const baseEnvironmentId = getBaseExecution(step, run).environmentId;
+  const childEnvironmentIds =
+    environments && getEnvironmentOptions(environments, baseEnvironmentId);
+  const handleRerunClick = useCallback(
+    (environmentId: string) => {
+      const environmentName = environments![environmentId].name;
+      setRerunning(true);
+      onRerunStep(stepId, environmentName)
+        .then(({ attempt }) => {
+          // TODO: wait for attempt to be synced to topic
+          changeAttempt(attempt, environmentName);
+        })
+        .finally(() => {
+          setRerunning(false);
+        });
+    },
+    [environments, onRerunStep, stepId, changeAttempt],
+  );
   return (
     <div className="p-4 pt-5 flex items-start border-b border-slate-200">
-      <div className="flex-1">
-        <h2>
-          <span
-            className={classNames(
-              "font-mono text-xl",
-              !step.parentId && "font-bold",
+      <div className="flex-1 flex flex-col gap-2">
+        <div className="flex justify-between items-center gap-2">
+          <div className="flex items-center flex-wrap gap-x-2">
+            <h2
+              className={classNames("font-mono", !step.parentId && "font-bold")}
+            >
+              {step.target}
+            </h2>
+            <span className="text-slate-500 text-sm">({step.repository})</span>
+            {step.isMemoised && (
+              <span
+                className="text-slate-500"
+                title="This execution has been memoised"
+              >
+                <IconPinned size={16} />
+              </span>
             )}
-          >
-            {step.target}
-          </span>{" "}
-          <span className="text-slate-500">({step.repository})</span>
-        </h2>
-        <div className="flex items-center gap-1 mt-1">
+          </div>
+
+          {executionEnvironmentId != runEnvironmentId && (
+            <EnvironmentLabel
+              projectId={projectId}
+              environmentId={executionEnvironmentId}
+              warning="This execution ran in a different environment"
+            />
+          )}
+        </div>
+        <div className="flex items-center gap-1">
           <AttemptSelector
             selected={attempt}
             executions={step.executions}
             onChange={changeAttempt}
           />
-
-          <Button
-            disabled={rerunning}
-            outline={true}
-            size="sm"
-            onClick={handleRerunClick}
-          >
-            Re-run
-          </Button>
+          <div className="flex shadow-sm relative">
+            <Button
+              disabled={rerunning}
+              outline={true}
+              size="sm"
+              className="[&:not(:last-child)]:rounded-r-none"
+              left={<IconReload size={14} />}
+              onClick={() => handleRerunClick(executionEnvironmentId)}
+            >
+              Re-run
+            </Button>
+            {childEnvironmentIds?.length ? (
+              <Menu>
+                <Menu.Button
+                  as={Button}
+                  disabled={rerunning}
+                  outline={true}
+                  size="sm"
+                  className="rounded-l-none -ml-px"
+                >
+                  <IconChevronDown size={16} />
+                </Menu.Button>
+                <Transition
+                  as={Fragment}
+                  leave="transition ease-in duration-100"
+                  leaveFrom="opacity-100"
+                  leaveTo="opacity-0"
+                >
+                  <Menu.Items className="absolute top-full left-0 z-10 overflow-y-scroll bg-white rounded shadow-lg max-h-60 flex flex-col p-1 mt-1 min-w-full">
+                    {childEnvironmentIds
+                      .filter((id) => id != executionEnvironmentId)
+                      .map((environmentId) => (
+                        <Menu.Item key={environmentId} as={Fragment}>
+                          {({ active }) => (
+                            <button
+                              className={classNames(
+                                "p-1 text-left text-sm rounded",
+                                active && "bg-slate-100",
+                              )}
+                              onClick={() => handleRerunClick(environmentId)}
+                            >
+                              {environments?.[environmentId].name}
+                            </button>
+                          )}
+                        </Menu.Item>
+                      ))}
+                  </Menu.Items>
+                </Transition>
+              </Menu>
+            ) : null}
+          </div>
         </div>
       </div>
-      {step.isMemoised && (
-        <span className="text-slate-500" title="Memoised">
-          <IconPinned size={20} />
-        </span>
-      )}
     </div>
   );
 }
@@ -391,7 +496,7 @@ function DependenciesSection({ execution }: DependenciesSectionProps) {
           )}
         </ul>
       ) : (
-        <p>None</p>
+        <p className="italic">None</p>
       )}
     </div>
   );
@@ -445,7 +550,7 @@ function ChildrenSection({ runId, run, execution }: ChildrenSectionProps) {
           })}
         </ul>
       ) : (
-        <p>None</p>
+        <p className="italic">None</p>
       )}
     </div>
   );
@@ -626,7 +731,7 @@ function AssetsSection({ execution }: AssetsSectionProps) {
           ))}
         </ul>
       ) : (
-        <p>None</p>
+        <p className="italic">None</p>
       )}
     </div>
   );
@@ -634,26 +739,18 @@ function AssetsSection({ execution }: AssetsSectionProps) {
 
 type LogsSectionProps = {
   projectId: string;
-  environmentName: string;
   runId: string;
   execution: models.Execution;
+  activeEnvironmentId: string;
 };
 
 function LogsSection({
   projectId,
-  environmentName,
   runId,
   execution,
+  activeEnvironmentId,
 }: LogsSectionProps) {
-  const [logs, _] = useTopic<models.LogMessage[]>(
-    "projects",
-    projectId,
-    "environments",
-    environmentName,
-    "runs",
-    runId,
-    "logs",
-  );
+  const logs = useLogs(projectId, runId, activeEnvironmentId);
   const executionLogs =
     logs && logs.filter((l) => l[0] == execution.executionId);
   const scheduledAt = DateTime.fromMillis(
@@ -683,7 +780,8 @@ type Props = {
   attempt: number;
   run: models.Run;
   projectId: string;
-  environmentName: string;
+  activeEnvironmentId: string;
+  runEnvironmentId: string;
   className?: string;
   style?: CSSProperties;
   onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
@@ -695,7 +793,8 @@ export default function StepDetail({
   attempt,
   run,
   projectId,
-  environmentName,
+  activeEnvironmentId,
+  runEnvironmentId,
   className,
   style,
   onRerunStep,
@@ -709,7 +808,8 @@ export default function StepDetail({
     >
       <Header
         projectId={projectId}
-        environmentName={environmentName}
+        activeEnvironmentId={activeEnvironmentId}
+        runEnvironmentId={runEnvironmentId}
         run={run}
         stepId={stepId}
         step={step}
@@ -741,9 +841,9 @@ export default function StepDetail({
             <AssetsSection execution={execution} />
             <LogsSection
               projectId={projectId}
-              environmentName={environmentName}
               runId={runId}
               execution={execution}
+              activeEnvironmentId={activeEnvironmentId}
             />
           </Fragment>
         )}

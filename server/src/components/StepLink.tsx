@@ -45,10 +45,9 @@ export default function StepLink({
     [setHovered, runId, stepId, attempt],
   );
   const handleMouseOut = useCallback(() => setHovered(undefined), []);
-  // TODO: better way to determine page
-  // TODO: switch back to graph page if changing run?
+  // TODO: better way to determine current page (and run)
   const parts = location.pathname.split("/");
-  const page = parts.length == 6 ? parts[5] : undefined;
+  const page = parts[4] == runId && parts.length == 6 ? parts[5] : undefined;
   return (
     <Link
       to={buildUrl(
@@ -64,8 +63,8 @@ export default function StepLink({
         isActive
           ? activeClassName
           : isHovered(runId, stepId, attempt)
-          ? hoveredClassName
-          : undefined,
+            ? hoveredClassName
+            : undefined,
       )}
       onMouseOver={handleMouseOver}
       onMouseOut={handleMouseOut}

@@ -12,29 +12,16 @@ defmodule Coflux.Handlers.Api do
 
   defp handle(req, "POST", ["create_project"]) do
     {:ok, arguments, errors, req} =
-      read_arguments(req, %{
-        project_name: "projectName",
-        environment: "environment"
-      })
+      read_arguments(req, %{project_name: "projectName"})
 
     if Enum.empty?(errors) do
-      case Projects.create_project(
-             @projects_server,
-             arguments.project_name,
-             arguments.environment
-           ) do
+      case Projects.create_project(@projects_server, arguments.project_name) do
         {:ok, project_id} ->
-          case Orchestration.Supervisor.get_server(project_id, arguments.environment) do
-            {:ok, _server} ->
-              json_response(req, %{
-                "projectId" => project_id
-              })
-          end
+          json_response(req, %{"projectId" => project_id})
 
         {:error, errors} ->
           errors =
             MapUtils.translate_keys(errors, %{
-              environment_name: "environment",
               project_name: "projectName"
             })
 
@@ -45,29 +32,128 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp handle(req, "POST", ["add_environment"]) do
+  defp handle(req, "GET", ["get_environments"]) do
+    qs = :cowboy_req.parse_qs(req)
+    project_id = get_query_param(qs, "project")
+
+    case Projects.get_project_by_id(Coflux.ProjectsServer, project_id) do
+      {:ok, _} ->
+        case Orchestration.get_environments(project_id) do
+          {:ok, environments} ->
+            json_response(
+              req,
+              Map.new(environments, fn {environment_id, environment} ->
+                base_id =
+                  if environment.base_id,
+                    do: Integer.to_string(environment.base_id)
+
+                {environment_id,
+                 %{
+                   "name" => environment.name,
+                   "baseId" => base_id
+                 }}
+              end)
+            )
+        end
+
+      :error ->
+        json_error_response(req, "not_found", status: 404)
+    end
+  end
+
+  defp handle(req, "POST", ["create_environment"]) do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment: "environment"
+        name: "name",
+        base_id: {"baseId", &parse_environment_id(&1, false)}
       })
 
     if Enum.empty?(errors) do
-      case Projects.add_environment(
-             @projects_server,
+      case Orchestration.create_environment(
              arguments.project_id,
-             arguments.environment
+             arguments.name,
+             arguments.base_id
            ) do
-        :ok ->
-          json_response(req, %{})
+        {:ok, version} ->
+          json_response(req, %{version: version})
 
         {:error, errors} ->
           errors =
             MapUtils.translate_keys(errors, %{
-              environment_name: "environment"
+              name: "name",
+              base_id: "baseId"
             })
 
           json_error_response(req, "bad_request", details: errors)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["update_environment"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(
+        req,
+        %{
+          project_id: "projectId",
+          environment_id: {"environmentId", &parse_environment_id/1}
+        },
+        %{
+          name: "name",
+          base_id: {"baseId", &parse_environment_id(&1, false)}
+        }
+      )
+
+    if Enum.empty?(errors) do
+      case Orchestration.update_environment(
+             arguments.project_id,
+             arguments.environment_id,
+             Map.take(arguments, [:name, :base_id])
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
+
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", status: 404)
+
+        {:error, errors} ->
+          errors =
+            MapUtils.translate_keys(errors, %{
+              name: "name",
+              base_id: "baseId"
+            })
+
+          json_error_response(req, "bad_request", details: errors)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["archive_environment"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(req, %{
+        project_id: "projectId",
+        environment_id: {"environmentId", &parse_environment_id/1}
+      })
+
+    if Enum.empty?(errors) do
+      case Orchestration.archive_environment(
+             arguments.project_id,
+             arguments.environment_id
+           ) do
+        {:ok, version} ->
+          json_response(req, %{version: version})
+
+        {:error, :descendants} ->
+          json_error_response(req, "bad_request",
+            details: %{"environmentId" => "has_dependencies"}
+          )
+
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", code: 404)
       end
     else
       json_error_response(req, "bad_request", details: errors)
@@ -78,19 +164,21 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment: "environment",
         repository: "repository",
         target: "target",
+        type: {"type", &parse_target_type/1},
+        environment_name: "environmentName",
         arguments: {"arguments", &parse_arguments/1}
       })
 
     if Enum.empty?(errors) do
-      case Orchestration.schedule(
+      case Orchestration.schedule_run(
              arguments.project_id,
-             arguments.environment,
              arguments.repository,
              arguments.target,
-             arguments.arguments
+             arguments.arguments,
+             environment: arguments.environment_name,
+             recurrent: arguments.type == :sensor
            ) do
         {:ok, run_id, step_id, execution_id} ->
           json_response(req, %{
@@ -108,14 +196,12 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment: "environment",
         run_id: "runId"
       })
 
     if Enum.empty?(errors) do
       case Orchestration.cancel_run(
              arguments.project_id,
-             arguments.environment,
              arguments.run_id
            ) do
         :ok ->
@@ -130,18 +216,21 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment: "environment",
+        environment_name: "environmentName",
         step_id: "stepId"
       })
 
     if Enum.empty?(errors) do
       case Orchestration.rerun_step(
              arguments.project_id,
-             arguments.environment,
-             arguments.step_id
+             arguments.step_id,
+             arguments.environment_name
            ) do
         {:ok, execution_id, attempt} ->
           json_response(req, %{"executionId" => execution_id, "attempt" => attempt})
+
+        {:error, :environment_invalid} ->
+          json_error_response(req, "bad_request", details: %{"environment" => "invalid"})
       end
     else
       json_error_response(req, "bad_request", details: errors)
@@ -153,9 +242,32 @@ defmodule Coflux.Handlers.Api do
   end
 
   defp is_valid_json(value) do
-    case Jason.decode(value) do
-      {:ok, _} -> true
-      {:error, _} -> false
+    if value do
+      case Jason.decode(value) do
+        {:ok, _} -> true
+        {:error, _} -> false
+      end
+    else
+      false
+    end
+  end
+
+  defp parse_environment_id(value, required \\ true) do
+    if not required and is_nil(value) do
+      {:ok, nil}
+    else
+      case Integer.parse(value) do
+        {id, ""} -> {:ok, id}
+        _ -> {:error, :invalid}
+      end
+    end
+  end
+
+  defp parse_target_type(type) do
+    case type do
+      "workflow" -> {:ok, :workflow}
+      "sensor" -> {:ok, :sensor}
+      _ -> {:error, :invalid}
     end
   end
 

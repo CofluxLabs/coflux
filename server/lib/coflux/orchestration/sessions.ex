@@ -1,16 +1,17 @@
 defmodule Coflux.Orchestration.Sessions do
   import Coflux.Store
 
-  def start_session(db) do
+  def start_session(db, environment_id) do
     with_transaction(db, fn ->
       case generate_external_id(db, :sessions, 30) do
         {:ok, external_id} ->
           case insert_one(db, :sessions, %{
+                 environment_id: environment_id,
                  external_id: external_id,
                  created_at: current_timestamp()
                }) do
             {:ok, session_id} ->
-              {:ok, session_id, external_id}
+              {:ok, session_id, external_id, environment_id}
           end
       end
     end)
@@ -97,7 +98,58 @@ defmodule Coflux.Orchestration.Sessions do
     end)
   end
 
-  def get_latest_targets(db) do
+  def get_target(db, repository, target_name, environment_id) do
+    case query_one(
+           db,
+           """
+           SELECT t.id, t.type
+           FROM targets AS t
+           INNER JOIN manifests AS m ON m.id = t.manifest_id
+           INNER JOIN session_manifests AS sm ON sm.manifest_id = m.id
+           INNER JOIN sessions AS s ON s.id = sm.session_id
+           WHERE
+             m.repository = ?1 AND
+             t.name = ?2 AND
+             s.environment_id = ?3
+           ORDER BY sm.created_at DESC
+           LIMIT 1
+           """,
+           {repository, target_name, environment_id}
+         ) do
+      {:ok, {target_id, type}} ->
+        {:ok, parameters} = get_target_parameters(db, target_id)
+        {:ok, build_target(type, parameters)}
+
+      {:ok, nil} ->
+        {:ok, nil}
+    end
+  end
+
+  defp get_target_parameters(db, target_id) do
+    query(
+      db,
+      """
+      SELECT name, default_, annotation
+      FROM parameters
+      WHERE target_id = ?1
+      ORDER BY position
+      """,
+      {target_id}
+    )
+  end
+
+  defp build_target(type, parameters) do
+    type =
+      case type do
+        0 -> :workflow
+        1 -> :task
+        2 -> :sensor
+      end
+
+    %{type: type, parameters: parameters}
+  end
+
+  def get_latest_targets(db, environment_id) do
     # TODO: reduce number of queries
 
     {:ok, manifests} =
@@ -109,10 +161,13 @@ defmodule Coflux.Orchestration.Sessions do
           SELECT m.id, m.repository
           FROM manifests AS m
           INNER JOIN session_manifests AS sm ON sm.manifest_id = m.id
+          INNER JOIN sessions AS s ON s.id = sm.session_id
+          WHERE s.environment_id = ?1
           ORDER BY m.repository, sm.created_at DESC
         )
         GROUP BY repository
-        """
+        """,
+        {environment_id}
       )
 
     targets =
@@ -130,26 +185,8 @@ defmodule Coflux.Orchestration.Sessions do
 
         {repository,
          Map.new(rows, fn {target_id, target, type} ->
-           {:ok, parameters} =
-             query(
-               db,
-               """
-               SELECT name, default_, annotation
-               FROM parameters
-               WHERE target_id = ?1
-               ORDER BY position
-               """,
-               {target_id}
-             )
-
-           type =
-             case type do
-               0 -> :workflow
-               1 -> :task
-               2 -> :sensor
-             end
-
-           {target, %{type: type, parameters: parameters}}
+           {:ok, parameters} = get_target_parameters(db, target_id)
+           {target, build_target(type, parameters)}
          end)}
       end)
 

@@ -17,35 +17,37 @@ function getRunUrl(
   projectId: string,
   runId: string,
   environmentName: string | undefined,
-  pathname: string
+  pathname: string,
 ) {
   // TODO: better way to determine page
   const parts = pathname.split("/");
   const page = parts.length == 6 ? parts[5] : undefined;
   return buildUrl(
     `/projects/${projectId}/runs/${runId}${page ? "/" + page : ""}`,
-    {
-      environment: environmentName,
-    }
+    { environment: environmentName },
   );
 }
 
 type OptionsProps = {
   runs: Record<string, Pick<models.Run, "createdAt">>;
   projectId: string | null;
-  environmentName: string | undefined;
+  activeEnvironmentName: string | undefined;
   selectedRunId: string;
 };
 
 function Options({
   runs,
   projectId,
-  environmentName,
+  activeEnvironmentName,
   selectedRunId,
 }: OptionsProps) {
   const location = useLocation();
   if (!Object.keys(runs).length) {
-    return <p>No runs for {environmentName}</p>;
+    return (
+      <p className="p-2 italic whitespace-nowrap text-sm">
+        No runs in this environment
+      </p>
+    );
   } else {
     return (
       <Fragment>
@@ -60,18 +62,18 @@ function Options({
                     to={getRunUrl(
                       projectId!,
                       runId,
-                      environmentName,
-                      location.pathname
+                      activeEnvironmentName,
+                      location.pathname,
                     )}
                     className={classNames(
                       "block p-2",
-                      active && "bg-slate-100"
+                      active && "bg-slate-100",
                     )}
                   >
                     <h3
                       className={classNames(
                         "font-mono",
-                        runId == selectedRunId && "font-bold"
+                        runId == selectedRunId && "font-bold",
                       )}
                     >
                       {runId}
@@ -79,7 +81,7 @@ function Options({
                     <p
                       className="text-xs text-slate-500 whitespace-nowrap"
                       title={createdAt.toLocaleString(
-                        DateTime.DATETIME_SHORT_WITH_SECONDS
+                        DateTime.DATETIME_SHORT_WITH_SECONDS,
                       )}
                     >
                       {createdAt.toRelative()} ago
@@ -97,7 +99,7 @@ function Options({
 function getNextPrevious(
   ids: string[],
   currentId: string,
-  direction: "next" | "previous"
+  direction: "next" | "previous",
 ) {
   const index = ids.indexOf(currentId);
   if (index >= 0) {
@@ -117,7 +119,7 @@ function getNextPrevious(
 
 type NextPreviousButtonProps = {
   projectId: string | null;
-  environmentName: string | undefined;
+  activeEnvironmentName: string | undefined;
   runs: Record<string, Pick<models.Run, "createdAt">>;
   currentRunId: string;
   direction: "next" | "previous";
@@ -125,7 +127,7 @@ type NextPreviousButtonProps = {
 
 function NextPreviousButton({
   projectId,
-  environmentName,
+  activeEnvironmentName,
   runs,
   currentRunId,
   direction,
@@ -138,12 +140,17 @@ function NextPreviousButton({
   const className = classNames(
     "p-1 bg-white border border-slate-300 flex items-center",
     runId ? "hover:bg-slate-100 text-slate-500" : "text-slate-200",
-    direction == "next" ? "rounded-r-md -ml-px" : "rounded-l-md -mr-px"
+    direction == "next" ? "rounded-r-md -ml-px" : "rounded-l-md -mr-px",
   );
   if (runId) {
     return (
       <Link
-        to={getRunUrl(projectId!, runId, environmentName, location.pathname)}
+        to={getRunUrl(
+          projectId!,
+          runId,
+          activeEnvironmentName,
+          location.pathname,
+        )}
         className={className}
       >
         <Icon size={16} />
@@ -162,7 +169,7 @@ type Props = {
   runs: Record<string, Pick<models.Run, "createdAt">>;
   projectId: string | null;
   runId: string;
-  environmentName: string | undefined;
+  activeEnvironmentName: string | undefined;
   className?: string;
 };
 
@@ -170,7 +177,7 @@ export default function RunSelector({
   runs,
   projectId,
   runId,
-  environmentName,
+  activeEnvironmentName,
   className,
 }: Props) {
   return (
@@ -178,7 +185,7 @@ export default function RunSelector({
       <NextPreviousButton
         direction="previous"
         projectId={projectId}
-        environmentName={environmentName}
+        activeEnvironmentName={activeEnvironmentName}
         runs={runs}
         currentRunId={runId}
       />
@@ -205,7 +212,7 @@ export default function RunSelector({
                   <Options
                     runs={runs}
                     projectId={projectId}
-                    environmentName={environmentName}
+                    activeEnvironmentName={activeEnvironmentName}
                     selectedRunId={runId}
                   />
                 )}
@@ -217,7 +224,7 @@ export default function RunSelector({
       <NextPreviousButton
         direction="next"
         projectId={projectId}
-        environmentName={environmentName}
+        activeEnvironmentName={activeEnvironmentName}
         runs={runs}
         currentRunId={runId}
       />

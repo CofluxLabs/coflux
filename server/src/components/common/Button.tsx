@@ -1,5 +1,5 @@
 import classNames from "classnames";
-import { ButtonHTMLAttributes, ReactNode } from "react";
+import { ButtonHTMLAttributes, ReactNode, forwardRef } from "react";
 import { Size, Variant } from "./types";
 
 const outlineStyles = {
@@ -94,18 +94,22 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
   right?: ReactNode;
 };
 
-export default function Button({
-  variant = "primary",
-  outline = false,
-  size = "md",
-  className,
-  children,
-  left,
-  right,
-  ...props
-}: Props) {
+const Button = forwardRef<HTMLButtonElement, Props>(function Button(
+  {
+    variant = "primary",
+    outline = false,
+    size = "md",
+    className,
+    children,
+    left,
+    right,
+    ...props
+  }: Props,
+  ref,
+) {
   return (
     <button
+      ref={ref}
       className={classNames(
         "focus:ring focus:outline-none focus:ring-opacity-50 font-medium text-center shadow-sm flex items-center gap-1",
         outlineStyles[outline ? "true" : "false"],
@@ -120,4 +124,6 @@ export default function Button({
       {right}
     </button>
   );
-}
+});
+
+export default Button;

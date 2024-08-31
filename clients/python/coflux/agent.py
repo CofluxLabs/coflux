@@ -18,7 +18,7 @@ def _load_module(
     return {
         a.name: (a.type, a.fn)
         for a in attrs
-        if isinstance(a, annotations.Target) and a.type
+        if isinstance(a, annotations.Target) and not a.is_stub
     }
 
 
@@ -124,7 +124,7 @@ class Agent:
     async def run(self) -> None:
         while True:
             print(
-                f"Connecting ({self._server_host}, {self._project_id}/{self._environment_name})..."
+                f"Connecting ({self._server_host}, {self._project_id}, {self._environment_name})..."
             )
             url = self._url(
                 "ws",

@@ -16,7 +16,12 @@ export default function ProjectSelector({ projects }: Props) {
     projects && activeProjectId ? projects[activeProjectId] : undefined;
   return (
     <Menu as="div" className="relative">
-      <Menu.Button className="flex items-center gap-1 py-1 px-2 text-white rounded bg-black/10 hover:bg-white/10">
+      <Menu.Button
+        className={classNames(
+          "flex items-center gap-1 py-1 px-2 rounded bg-black/10 hover:bg-white/10",
+          activeProject ? "text-white" : "text-white/70",
+        )}
+      >
         <span className="text-sm">
           {activeProject ? activeProject.name : "Select project..."}
         </span>
@@ -43,7 +48,7 @@ export default function ProjectSelector({ projects }: Props) {
                     to={`/projects/${projectId}`}
                     className={classNames(
                       "flex items-center gap-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm",
-                      active && "bg-slate-100"
+                      active && "bg-slate-100",
                     )}
                   >
                     {projectId == activeProjectId ? (
@@ -64,7 +69,7 @@ export default function ProjectSelector({ projects }: Props) {
                   to="/projects"
                   className={classNames(
                     "flex px-2 py-1 rounded whitespace-nowrap text-sm",
-                    active && "bg-slate-100"
+                    active && "bg-slate-100",
                   )}
                 >
                   Manage projects...

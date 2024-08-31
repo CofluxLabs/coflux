@@ -3,9 +3,9 @@ defmodule Coflux.Store do
   alias Coflux.Utils
   alias Exqlite.Sqlite3
 
-  def open(project_id, environment, name) do
+  def open(project_id, name) do
     path =
-      ["projects", project_id, environment, "#{name}.sqlite"]
+      ["projects", project_id, "#{name}.sqlite"]
       |> Path.join()
       |> Utils.data_path()
 
@@ -79,16 +79,21 @@ defmodule Coflux.Store do
         |> Enum.with_index(1)
         |> Enum.unzip()
 
-      fields = Enum.map_join(fields, ", ", &"`#{&1}`")
-      placeholders = Enum.map_join(indexes, ", ", &"?#{&1}")
+      sql =
+        if Enum.any?(fields) do
+          fields = Enum.map_join(fields, ", ", &"`#{&1}`")
+          placeholders = Enum.map_join(indexes, ", ", &"?#{&1}")
 
-      sql_parts = [
-        "INSERT INTO `#{table}` (#{fields})",
-        "VALUES (#{placeholders})",
-        if(opts[:on_conflict], do: "ON CONFLICT #{opts[:on_conflict]}")
-      ]
+          sql_parts = [
+            "INSERT INTO `#{table}` (#{fields})",
+            "VALUES (#{placeholders})",
+            if(opts[:on_conflict], do: "ON CONFLICT #{opts[:on_conflict]}")
+          ]
 
-      sql = sql_parts |> Enum.reject(&is_nil/1) |> Enum.join(" ")
+          sql_parts |> Enum.reject(&is_nil/1) |> Enum.join(" ")
+        else
+          "INSERT INTO `#{table}` DEFAULT VALUES"
+        end
 
       with_prepare(db, sql, fn statement ->
         with_snapshot(db, fn ->

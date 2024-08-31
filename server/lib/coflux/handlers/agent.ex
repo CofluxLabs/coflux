@@ -1,38 +1,38 @@
 defmodule Coflux.Handlers.Agent do
+  import Coflux.Handlers.Utils
+
   alias Coflux.{Orchestration, Observation, Projects}
 
   def init(req, _opts) do
     qs = :cowboy_req.parse_qs(req)
     # TODO: validate
     project_id = get_query_param(qs, "project")
-    environment = get_query_param(qs, "environment")
+    environment_name = get_query_param(qs, "environment")
     session_id = get_query_param(qs, "session")
     concurrency = get_query_param(qs, "concurrency", &String.to_integer/1) || 0
 
-    {:cowboy_websocket, req, {project_id, environment, session_id, concurrency}}
+    {:cowboy_websocket, req, {project_id, environment_name, session_id, concurrency}}
   end
 
-  def websocket_init({project_id, environment, session_id, concurrency}) do
+  def websocket_init({project_id, environment_name, session_id, concurrency}) do
     case Projects.get_project_by_id(Coflux.ProjectsServer, project_id) do
-      {:ok, project} ->
+      {:ok, _} ->
         # TODO: authenticate
-        if Enum.member?(project.environments, environment) do
-          # TODO: monitor server?
-          case Orchestration.connect(project_id, environment, session_id, concurrency, self()) do
-            {:ok, session_id, executions} ->
-              {[session_message(session_id)],
-               %{
-                 project_id: project_id,
-                 environment: environment,
-                 session_id: session_id,
-                 executions: executions
-               }}
+        # TODO: monitor server?
+        case connect(project_id, session_id, environment_name, concurrency) do
+          {:ok, session_id, executions} ->
+            {[session_message(session_id)],
+             %{
+               project_id: project_id,
+               session_id: session_id,
+               executions: executions
+             }}
 
-            {:error, :no_session} ->
-              {[{:close, 4000, "session_invalid"}], nil}
-          end
-        else
-          {[{:close, 4000, "environment_not_found"}], nil}
+          {:error, :environment_invalid} ->
+            {[{:close, 4000, "environment_not_found"}], nil}
+
+          {:error, :no_session} ->
+            {[{:close, 4000, "session_invalid"}], nil}
         end
 
       :error ->
@@ -50,7 +50,6 @@ defmodule Coflux.Handlers.Agent do
 
         case Orchestration.register_targets(
                state.project_id,
-               state.environment,
                state.session_id,
                repository,
                targets
@@ -61,6 +60,7 @@ defmodule Coflux.Handlers.Agent do
 
       "schedule" ->
         [
+          type,
           repository,
           target,
           arguments,
@@ -76,31 +76,55 @@ defmodule Coflux.Handlers.Agent do
           retry_delay_max
         ] = message["params"]
 
-        arguments = Enum.map(arguments, &parse_value/1)
+        if is_recognised_execution?(parent_id, state) do
+          case type do
+            "workflow" ->
+              case Orchestration.schedule_run(
+                     state.project_id,
+                     repository,
+                     target,
+                     Enum.map(arguments, &parse_value/1),
+                     parent_id: parent_id,
+                     execute_after: execute_after,
+                     wait_for: wait_for,
+                     cache_key: cache_key,
+                     cache_max_age: cache_max_age,
+                     retry_count: retry_count,
+                     retry_delay_min: retry_delay_min,
+                     retry_delay_max: retry_delay_max,
+                     defer_key: defer_key,
+                     memo_key: memo_key
+                   ) do
+                {:ok, _run_id, _step_id, execution_id} ->
+                  {[success_message(message["id"], execution_id)], state}
 
-        if is_nil(parent_id) || is_recognised_execution?(parent_id, state) do
-          case Orchestration.schedule(
-                 state.project_id,
-                 state.environment,
-                 repository,
-                 target,
-                 arguments,
-                 parent_id: parent_id,
-                 execute_after: execute_after,
-                 wait_for: wait_for,
-                 cache_key: cache_key,
-                 cache_max_age: cache_max_age,
-                 retry_count: retry_count,
-                 retry_delay_min: retry_delay_min,
-                 retry_delay_max: retry_delay_max,
-                 defer_key: defer_key,
-                 memo_key: memo_key
-               ) do
-            {:ok, _run_id, _step_id, execution_id} ->
-              {[success_message(message["id"], execution_id)], state}
+                {:error, error} ->
+                  {[error_message(message["id"], error)], state}
+              end
 
-            {:error, error} ->
-              {[error_message(message["id"], error)], state}
+            "task" ->
+              case Orchestration.schedule_task(
+                     state.project_id,
+                     parent_id,
+                     repository,
+                     target,
+                     Enum.map(arguments, &parse_value/1),
+                     execute_after: execute_after,
+                     wait_for: wait_for,
+                     cache_key: cache_key,
+                     cache_max_age: cache_max_age,
+                     retry_count: retry_count,
+                     retry_delay_min: retry_delay_min,
+                     retry_delay_max: retry_delay_max,
+                     defer_key: defer_key,
+                     memo_key: memo_key
+                   ) do
+                {:ok, _run_id, _step_id, execution_id} ->
+                  {[success_message(message["id"], execution_id)], state}
+
+                {:error, error} ->
+                  {[error_message(message["id"], error)], state}
+              end
           end
         else
           {[{:close, 4000, "execution_invalid"}], nil}
@@ -114,7 +138,6 @@ defmodule Coflux.Handlers.Agent do
           :ok =
             Orchestration.record_heartbeats(
               state.project_id,
-              state.environment,
               executions,
               state.session_id
             )
@@ -133,7 +156,6 @@ defmodule Coflux.Handlers.Agent do
           :ok =
             Orchestration.record_checkpoint(
               state.project_id,
-              state.environment,
               execution_id,
               arguments
             )
@@ -149,7 +171,7 @@ defmodule Coflux.Handlers.Agent do
         # TODO: just ignore?
         if Enum.all?(execution_ids, &is_recognised_execution?(&1, state)) do
           :ok =
-            Orchestration.notify_terminated(state.project_id, state.environment, execution_ids)
+            Orchestration.notify_terminated(state.project_id, execution_ids)
 
           state = Map.update!(state, :executions, &Map.drop(&1, execution_ids))
 
@@ -165,7 +187,6 @@ defmodule Coflux.Handlers.Agent do
           :ok =
             Orchestration.record_result(
               state.project_id,
-              state.environment,
               execution_id,
               {:value, parse_value(value)}
             )
@@ -184,7 +205,6 @@ defmodule Coflux.Handlers.Agent do
           :ok =
             Orchestration.record_result(
               state.project_id,
-              state.environment,
               execution_id,
               {:error, type, message, frames}
             )
@@ -200,7 +220,6 @@ defmodule Coflux.Handlers.Agent do
         if is_recognised_execution?(from_execution_id, state) do
           case Orchestration.get_result(
                  state.project_id,
-                 state.environment,
                  execution_id,
                  from_execution_id,
                  state.session_id,
@@ -223,7 +242,6 @@ defmodule Coflux.Handlers.Agent do
           {:ok, asset_id} =
             Orchestration.put_asset(
               state.project_id,
-              state.environment,
               execution_id,
               type,
               path,
@@ -242,7 +260,6 @@ defmodule Coflux.Handlers.Agent do
         if is_recognised_execution?(from_execution_id, state) do
           case Orchestration.get_asset(
                  state.project_id,
-                 state.environment,
                  asset_id,
                  from_execution_id
                ) do
@@ -268,7 +285,8 @@ defmodule Coflux.Handlers.Agent do
           messages
           |> Enum.group_by(&Map.fetch!(state.executions, elem(&1, 0)))
           |> Enum.each(fn {run_id, messages} ->
-            Observation.write(state.project_id, state.environment, run_id, messages)
+            # TODO: include environment?
+            Observation.write(state.project_id, run_id, messages)
           end)
 
           {[], state}
@@ -296,6 +314,35 @@ defmodule Coflux.Handlers.Agent do
     {[command_message("abort", [execution_id])], state}
   end
 
+  def websocket_info(:stop, state) do
+    {[{:close, 4000, "environment_not_found"}], state}
+  end
+
+  defp connect(project_id, session_id, environment_name, concurrency) do
+    if session_id do
+      with {:ok, executions} <-
+             Orchestration.resume_session(
+               project_id,
+               session_id,
+               environment_name,
+               concurrency,
+               self()
+             ) do
+        {:ok, session_id, executions}
+      end
+    else
+      with {:ok, session_id} <-
+             Orchestration.start_session(
+               project_id,
+               environment_name,
+               concurrency,
+               self()
+             ) do
+        {:ok, session_id, %{}}
+      end
+    end
+  end
+
   defp is_recognised_execution?(execution_id, state) do
     Map.has_key?(state.executions, execution_id)
   end
@@ -314,25 +361,6 @@ defmodule Coflux.Handlers.Agent do
 
   defp error_message(id, error) do
     {:text, Jason.encode!([3, id, error])}
-  end
-
-  defp get_query_param(qs, key, fun \\ nil) do
-    case List.keyfind(qs, key, 0) do
-      {^key, value} ->
-        if fun do
-          try do
-            fun.(value)
-          rescue
-            ArgumentError ->
-              nil
-          end
-        else
-          value
-        end
-
-      nil ->
-        nil
-    end
   end
 
   defp parse_targets(targets) do

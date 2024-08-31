@@ -22,11 +22,11 @@ From the graph you can see the relationship between steps. You can also switch t
 Alternatively you can trigger runs using the CLI:
 
 ```bash
-coflux workflow.run hello.py print_greeting '"Joe"'
+coflux workflow.schedule hello.py print_greeting '"Joe"'
 ```
 
 (Note the need to tripple-quote the argument.)
 
 ## Next steps
 
-Congratulations for defining and starting your first run. Continue with the documentation or try defining another workflow.
+Congratulations on defining and starting your first run. Continue with the documentation or try defining another workflow.

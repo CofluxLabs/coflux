@@ -1,17 +1,15 @@
 defmodule Coflux.Topics.Run do
-  use Topical.Topic,
-    route: ["projects", :project_id, "environments", :environment_name, "runs", :run_id]
+  use Topical.Topic, route: ["projects", :project_id, "runs", :run_id, :environment_id]
 
   alias Coflux.Orchestration
 
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
-    environment_name = Keyword.fetch!(params, :environment_name)
     external_run_id = Keyword.fetch!(params, :run_id)
+    environment_id = String.to_integer(Keyword.fetch!(params, :environment_id))
 
     case Orchestration.subscribe_run(
            project_id,
-           environment_name,
            external_run_id,
            self()
          ) do
@@ -19,11 +17,23 @@ defmodule Coflux.Topics.Run do
         {:error, :not_found}
 
       {:ok, run, parent, steps, _ref} ->
+        run_environment_id =
+          steps
+          |> Map.values()
+          |> Enum.reject(& &1.parent_id)
+          |> Enum.min_by(& &1.created_at)
+          |> Map.fetch!(:executions)
+          |> Map.values()
+          |> Enum.min_by(& &1.created_at)
+          |> Map.fetch!(:environment_id)
+
+        environment_ids = Enum.uniq([run_environment_id, environment_id])
+
         {:ok,
-         Topic.new(build_run(run, parent, steps), %{
+         Topic.new(build_run(run, parent, steps, environment_ids), %{
            project_id: project_id,
-           environment_name: environment_name,
-           external_run_id: external_run_id
+           external_run_id: external_run_id,
+           environment_ids: environment_ids
          })}
     end
   end
@@ -35,39 +45,63 @@ defmodule Coflux.Topics.Run do
 
   defp process_notification(
          topic,
-         {:step, step_id, repository, target, memo_key, parent_id, created_at, arguments}
+         {:step, step_id, repository, target, memo_key, parent_id, created_at, arguments, attempt,
+          execution_id, environment_id, execute_after}
        ) do
-    Topic.set(topic, [:steps, step_id], %{
-      repository: repository,
-      target: target,
-      parentId: if(parent_id, do: Integer.to_string(parent_id)),
-      isMemoised: !is_nil(memo_key),
-      createdAt: created_at,
-      arguments: Enum.map(arguments, &build_value/1),
-      executions: %{}
-    })
+    if environment_id in topic.state.environment_ids do
+      Topic.set(topic, [:steps, step_id], %{
+        repository: repository,
+        target: target,
+        parentId: if(parent_id, do: Integer.to_string(parent_id)),
+        isMemoised: !is_nil(memo_key),
+        createdAt: created_at,
+        arguments: Enum.map(arguments, &build_value/1),
+        executions: %{
+          Integer.to_string(attempt) => %{
+            executionId: Integer.to_string(execution_id),
+            environmentId: Integer.to_string(environment_id),
+            createdAt: created_at,
+            executeAfter: execute_after,
+            assignedAt: nil,
+            completedAt: nil,
+            assets: %{},
+            dependencies: %{},
+            children: [],
+            result: nil,
+            reference: nil
+          }
+        }
+      })
+    else
+      topic
+    end
   end
 
   defp process_notification(
          topic,
-         {:execution, step_id, attempt, execution_id, created_at, execute_after}
+         {:execution, step_id, attempt, execution_id, environment_id, created_at, execute_after}
        ) do
-    Topic.set(
-      topic,
-      [:steps, step_id, :executions, Integer.to_string(attempt)],
-      %{
-        executionId: Integer.to_string(execution_id),
-        createdAt: created_at,
-        executeAfter: execute_after,
-        assignedAt: nil,
-        completedAt: nil,
-        assets: %{},
-        dependencies: %{},
-        children: [],
-        result: nil,
-        reference: nil
-      }
-    )
+    if environment_id in topic.state.environment_ids do
+      Topic.set(
+        topic,
+        [:steps, step_id, :executions, Integer.to_string(attempt)],
+        %{
+          executionId: Integer.to_string(execution_id),
+          environmentId: Integer.to_string(environment_id),
+          createdAt: created_at,
+          executeAfter: execute_after,
+          assignedAt: nil,
+          completedAt: nil,
+          assets: %{},
+          dependencies: %{},
+          children: [],
+          result: nil,
+          reference: nil
+        }
+      )
+    else
+      topic
+    end
   end
 
   defp process_notification(topic, {:asset, execution_id, asset_id, asset}) do
@@ -152,13 +186,19 @@ defmodule Coflux.Topics.Run do
     end)
   end
 
-  defp build_run(run, parent, steps) do
+  defp build_run(run, parent, steps, environment_ids) do
     %{
       createdAt: run.created_at,
       recurrent: run.recurrent,
       parent: if(parent, do: build_execution(parent)),
       steps:
-        Map.new(steps, fn {step_id, step} ->
+        steps
+        |> Enum.filter(fn {_, step} ->
+          step.executions
+          |> Map.values()
+          |> Enum.any?(&(&1.environment_id in environment_ids))
+        end)
+        |> Map.new(fn {step_id, step} ->
           {step_id,
            %{
              repository: step.repository,
@@ -168,10 +208,15 @@ defmodule Coflux.Topics.Run do
              createdAt: step.created_at,
              arguments: Enum.map(step.arguments, &build_value/1),
              executions:
-               Map.new(step.executions, fn {attempt, execution} ->
+               step.executions
+               |> Enum.filter(fn {_, execution} ->
+                 execution.environment_id in environment_ids
+               end)
+               |> Map.new(fn {attempt, execution} ->
                  {Integer.to_string(attempt),
                   %{
                     executionId: Integer.to_string(execution.execution_id),
+                    environmentId: Integer.to_string(execution.environment_id),
                     createdAt: execution.created_at,
                     executeAfter: execution.execute_after,
                     assignedAt: execution.assigned_at,

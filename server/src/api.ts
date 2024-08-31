@@ -25,42 +25,44 @@ async function request(name: string, data: Record<string, any>) {
   }
 }
 
-export function createProject(projectName: string, environment: string) {
-  return request("create_project", { projectName, environment });
+export function createProject(projectName: string) {
+  return request("create_project", { projectName });
 }
 
-export function addEnvironment(projectId: string, environment: string) {
-  return request("add_environment", { projectId, environment });
+export function createEnvironment(
+  projectId: string,
+  name: string,
+  baseId: string | null,
+) {
+  return request("create_environment", { projectId, name, baseId });
 }
 
 export function schedule(
   projectId: string,
-  environment: string,
   repository: string,
   target: string,
+  type: "workflow" | "sensor",
+  environmentName: string,
   arguments_: ["json", string][],
 ) {
   return request("schedule", {
     projectId,
-    environment,
     repository,
     target,
+    type,
+    environmentName,
     arguments: arguments_,
   });
 }
 
 export function rerunStep(
   projectId: string,
-  environment: string,
   stepId: string,
+  environmentName: string,
 ) {
-  return request("rerun_step", { projectId, environment, stepId });
+  return request("rerun_step", { projectId, stepId, environmentName });
 }
 
-export function cancelRun(
-  projectId: string,
-  environment: string,
-  runId: string,
-) {
-  return request("cancel_run", { projectId, environment, runId });
+export function cancelRun(projectId: string, runId: string) {
+  return request("cancel_run", { projectId, runId });
 }

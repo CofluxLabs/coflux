@@ -1,13 +1,13 @@
-# Retrying tasks
+# Automatic retries
 
-A step can fail for a number of reasons. One case is where an exception is raised by the code. Other cases might involve network issues, or an agent restarting while executing.
+A step can fail for a number of reasons. One case is where an exception is raised in the code. Other cases might involve network issues, or an agent restarting while executing.
 
 By default, Coflux takes a cautious _at-most-once_ approach to execution, to avoid unintentionally executing a task that might have significant side-effects more than once.
 
 The simplest way to enable retries is to specify the maximum number of attempts the task should be retried:
 
 ```python
-@task(retries=2)
+@cf.task(retries=2)
 def submit_reports():
     ...
 ```
@@ -21,7 +21,7 @@ Any tasks waiting for the initial task will continue waiting for retries. If all
 Failures can be caused by external environmental issues, so it's useful to be able to delay the retry. This can be done by passing a delay parameter:
 
 ```python
-@task(retries=(2, 300))
+@cf.task(retries=(2, 300))
 def send_notification():
     ...
 ```
@@ -33,7 +33,7 @@ In this case, the task will be retried up to twice, with a five minute delay (30
 Alternatively, a range of delays can be specified:
 
 ```python
-@task(retries=(5, 300, 600))
+@cf.task(retries=(5, 300, 600))
 def send_notification():
     ...
 ```
@@ -49,11 +49,11 @@ Automatically retrying _workflows_ (as opposed to _tasks_) that have been manual
 As a workaround for manually triggered workflows, consider wrapping a task:
 
 ```python
-@task(retries=2)
+@cf.task(retries=2)
 def my_task():
     ...
 
-@workflow()
+@cf.workflow()
 def my_workflow():
     return my_task()
 ```

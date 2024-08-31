@@ -4,13 +4,9 @@ slug: '/'
 
 # Introduction
 
-Coflux is an open-source workflow engine. It can be used to orchestrate and observe computational workflows, which are defined in plain Python. It aims to:
+Coflux is an open-source workflow engine. It can be used to orchestrate and observe computational workflows, which are defined in plain Python. It aims to maximise developer productivity and be easy to try out and adopt.
 
-- Increase developer productivity
-- Be easy to try and adopt
-- Support data ownership
-
-It can be used to build data pipelines, coordinate background tasks, or implement chat bots.
+It can be used to build data pipelines, coordinate background tasks, or orchestrate real-time workflows.
 
 ## Getting started
 

@@ -29,6 +29,7 @@ defmodule Coflux.Application do
     [
       Topics.Agents,
       Topics.Projects,
+      Topics.Environments,
       Topics.Repositories,
       Topics.Run,
       Topics.Target,
