@@ -199,12 +199,18 @@ defmodule Coflux.Orchestration.Runs do
               now
             )
 
-          arguments
-          |> Enum.with_index()
-          |> Enum.each(fn {value, position} ->
-            {:ok, value_id} = Results.get_or_create_value(db, value)
-            {:ok, _} = insert_step_argument(db, step_id, position, value_id)
-          end)
+          {:ok, _} =
+            insert_many(
+              db,
+              :step_arguments,
+              {:step_id, :position, :value_id},
+              arguments
+              |> Enum.with_index()
+              |> Enum.map(fn {value, position} ->
+                {:ok, value_id} = Results.get_or_create_value(db, value)
+                {step_id, position, value_id}
+              end)
+            )
 
           attempt = 1
 
@@ -705,14 +711,6 @@ defmodule Coflux.Orchestration.Runs do
             {:ok, step_id, external_id}
         end
     end
-  end
-
-  defp insert_step_argument(db, step_id, position, value_id) do
-    insert_one(db, :step_arguments, %{
-      step_id: step_id,
-      position: position,
-      value_id: value_id
-    })
   end
 
   defp get_next_execution_attempt(db, step_id) do
