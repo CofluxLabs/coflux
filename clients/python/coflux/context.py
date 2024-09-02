@@ -31,6 +31,7 @@ def schedule(
     execute_after: dt.datetime | None = None,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
+    requires: models.Requires | None = None,
 ) -> models.Execution[t.Any]:
     return _get_channel().schedule_execution(
         type,
@@ -46,6 +47,7 @@ def schedule(
         execute_after=execute_after,
         delay=delay,
         memo=memo,
+        requires=requires,
     )
 
 

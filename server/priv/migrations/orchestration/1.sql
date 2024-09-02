@@ -99,6 +99,13 @@ CREATE TABLE step_arguments (
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
 );
 
+CREATE TABLE step_requires (
+  step_id INTEGER NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
+);
+
 CREATE TABLE executions (
   id INTEGER PRIMARY KEY,
   step_id INTEGER NOT NULL,

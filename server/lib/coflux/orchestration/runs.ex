@@ -156,6 +156,7 @@ defmodule Coflux.Orchestration.Runs do
     retry_count = Keyword.get(opts, :retry_count, 0)
     retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
     retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
+    requires = Keyword.get(opts, :requires) || %{}
 
     memoised_execution =
       if memo_key do
@@ -209,6 +210,16 @@ defmodule Coflux.Orchestration.Runs do
               |> Enum.map(fn {value, position} ->
                 {:ok, value_id} = Results.get_or_create_value(db, value)
                 {step_id, position, value_id}
+              end)
+            )
+
+          {:ok, _} =
+            insert_many(
+              db,
+              :step_requires,
+              {:step_id, :key, :value},
+              Enum.flat_map(requires, fn {key, values} ->
+                Enum.map(values, &{step_id, key, &1})
               end)
             )
 
@@ -555,6 +566,20 @@ defmodule Coflux.Orchestration.Runs do
           end)
 
         {:ok, values}
+    end
+  end
+
+  def get_step_requires(db, step_id) do
+    case query(
+           db,
+           "SELECT key, value FROM step_requires WHERE step_id = ?1",
+           {step_id}
+         ) do
+      {:ok, rows} ->
+        {:ok,
+         Enum.reduce(rows, %{}, fn {key, value}, result ->
+           Map.update(result, key, [value], &[value | &1])
+         end)}
     end
   end
 

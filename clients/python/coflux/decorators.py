@@ -33,6 +33,7 @@ class Target(t.Generic[P, T]):
         defer: bool | t.Callable[P, str] = False,
         delay: int | float | dt.timedelta = 0,
         memo: bool | t.Callable[P, str] = False,
+        requires: dict[str, str | bool | list[str]] | None = None,
         is_stub: bool = False,
     ):
         self._fn = fn
@@ -47,6 +48,7 @@ class Target(t.Generic[P, T]):
         self._defer = defer
         self._delay = delay
         self._memo = memo
+        self._requires = _parse_requires(requires)
         self._is_stub = is_stub
         functools.update_wrapper(self, fn)
 
@@ -80,8 +82,9 @@ class Target(t.Generic[P, T]):
                 cache_namespace=self._cache_namespace,
                 retries=self._retries,
                 defer=self._defer,
-                memo=self._memo,
                 delay=self._delay,
+                memo=self._memo,
+                requires=self._requires,
             )
         except context.NotInContextException:
             result = self._fn(*args, **kwargs)
@@ -115,6 +118,21 @@ def _parse_wait(fn: t.Callable, wait: bool | t.Iterable[str] | str) -> set[int] 
     return indexes
 
 
+def _parse_require(value: str | bool | list[str]):
+    if isinstance(value, bool):
+        return ["true"] if value else ["false"]
+    elif isinstance(value, str):
+        return [value]
+    else:
+        return value
+
+
+def _parse_requires(
+    requires: dict[str, str | bool | list[str]] | None
+) -> models.Requires | None:
+    return {k: _parse_require(v) for k, v in requires.items()} if requires else None
+
+
 def task(
     *,
     name: str | None = None,
@@ -126,6 +144,7 @@ def task(
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
     memo: bool | t.Callable[P, str] = False,
+    requires: dict[str, str | bool | list[str]] | None = None,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
     def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
         return Target(
@@ -140,6 +159,7 @@ def task(
             defer=defer,
             delay=delay,
             memo=memo,
+            requires=requires,
         )
 
     return decorator
@@ -155,6 +175,7 @@ def workflow(
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool | t.Callable[P, str] = False,
     delay: int | float | dt.timedelta = 0,
+    requires: dict[str, str | bool | list[str]] | None = None,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
     def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
         return Target(
@@ -168,6 +189,7 @@ def workflow(
             retries=retries,
             defer=defer,
             delay=delay,
+            requires=requires,
         )
 
     return decorator
@@ -207,8 +229,17 @@ def stub(
     return decorator
 
 
-def sensor(*, name=None) -> t.Callable[[t.Callable[P, None]], t.Callable[P, None]]:
-    def decorator(fn: t.Callable[P, None]) -> t.Callable[P, None]:
-        return Target(fn, "sensor", name=name)
+def sensor(
+    *,
+    name=None,
+    requires: dict[str, str | bool | list[str]] | None = None,
+) -> t.Callable[[t.Callable[P, None]], t.Callable[P, None]]:
+    def decorator(fn: t.Callable[P, None]) -> Target[P, None]:
+        return Target(
+            fn,
+            "sensor",
+            name=name,
+            requires=requires,
+        )
 
     return decorator

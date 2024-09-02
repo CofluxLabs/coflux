@@ -28,7 +28,7 @@ defmodule Coflux.Orchestration.Server do
               # external_id -> session_id
               session_ids: %{},
 
-              # {repository, target} -> [session_id]
+              # {repository, target} -> %{type, session_ids}
               targets: %{},
 
               # ref -> topic
@@ -1030,7 +1030,9 @@ defmodule Coflux.Orchestration.Server do
               end
 
             if is_execution_ready?(state, execution.wait_for, arguments) do
-              case choose_session(state, execution) do
+              {:ok, requires} = Runs.get_step_requires(state.db, execution.step_id)
+
+              case choose_session(state, execution, requires) do
                 {:ok, session_id} ->
                   {:ok, assigned_at} =
                     Runs.assign_execution(state.db, execution.execution_id, session_id)
@@ -1257,9 +1259,24 @@ defmodule Coflux.Orchestration.Server do
       Enum.reduce(
         session.targets,
         all_targets,
-        fn {repository, repository_targets}, all_targets ->
-          Enum.reduce(repository_targets, all_targets, fn target, all_targets ->
-            MapUtils.delete_in(all_targets, [repository, target, session_id])
+        fn {repository_name, repository_targets}, all_targets ->
+          Enum.reduce(repository_targets, all_targets, fn target_name, all_targets ->
+            repository = Map.fetch!(all_targets, repository_name)
+            target = Map.fetch!(repository, target_name)
+            target = Map.update!(target, :session_ids, &MapSet.delete(&1, session_id))
+
+            if Enum.empty?(target.session_ids) do
+              repository = Map.delete(repository, target_name)
+
+              if Enum.empty?(repository) do
+                Map.delete(all_targets, repository_name)
+              else
+                Map.put(all_targets, repository_name, repository)
+              end
+            else
+              repository = Map.put(repository, target_name, target)
+              Map.put(all_targets, repository_name, repository)
+            end
           end)
         end
       )
@@ -1578,17 +1595,23 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp register_targets(state, repository, targets, session_id) do
-    targets
-    |> Enum.map(fn {k, v} -> {v.type, k} end)
-    |> Enum.reduce(state, fn target, state ->
+    Enum.reduce(targets, state, fn {name, spec}, state ->
       state
       |> update_in(
-        [Access.key(:targets), Access.key(repository, %{}), Access.key(target, MapSet.new())],
-        &MapSet.put(&1, session_id)
+        [
+          Access.key(:targets),
+          Access.key(repository, %{}),
+          Access.key(name, %{type: nil, session_ids: MapSet.new()})
+        ],
+        fn target ->
+          target
+          |> Map.put(:type, spec.type)
+          |> Map.update!(:session_ids, &MapSet.put(&1, session_id))
+        end
       )
       |> update_in(
         [Access.key(:sessions), session_id, :targets, Access.key(repository, MapSet.new())],
-        &MapSet.put(&1, target)
+        &MapSet.put(&1, name)
       )
     end)
   end
@@ -1685,7 +1708,7 @@ defmodule Coflux.Orchestration.Server do
     end)
   end
 
-  defp choose_session(state, execution) do
+  defp choose_session(state, execution, requires) do
     target_type =
       cond do
         execution.parent_id -> :task
@@ -1693,20 +1716,29 @@ defmodule Coflux.Orchestration.Server do
         true -> :workflow
       end
 
-    session_ids =
+    target =
       state.targets
       |> Map.get(execution.repository, %{})
-      |> Map.get({target_type, execution.target}, MapSet.new())
-      |> Enum.filter(fn session_id ->
-        session = state.sessions[session_id]
+      |> Map.get(execution.target)
 
-        session.environment_id == execution.environment_id && session.agent &&
-          not session_at_capacity?(session)
-      end)
+    if target && target.type == target_type do
+      session_ids =
+        Enum.filter(target.session_ids, fn session_id ->
+          session = Map.fetch!(state.sessions, session_id)
 
-    if Enum.any?(session_ids) do
-      {:ok, Enum.random(session_ids)}
+          # TODO: match 'requires' to 'provides'
+
+          session.environment_id == execution.environment_id && session.agent &&
+            not session_at_capacity?(session)
+        end)
+
+      if Enum.any?(session_ids) do
+        {:ok, Enum.random(session_ids)}
+      else
+        {:error, :no_session}
+      end
     else
+      # TODO: different error?
       {:error, :no_session}
     end
   end

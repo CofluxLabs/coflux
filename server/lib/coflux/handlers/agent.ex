@@ -73,7 +73,8 @@ defmodule Coflux.Handlers.Agent do
           memo_key,
           retry_count,
           retry_delay_min,
-          retry_delay_max
+          retry_delay_max,
+          requires
         ] = message["params"]
 
         if is_recognised_execution?(parent_id, state) do
@@ -93,7 +94,8 @@ defmodule Coflux.Handlers.Agent do
                      retry_delay_min: retry_delay_min,
                      retry_delay_max: retry_delay_max,
                      defer_key: defer_key,
-                     memo_key: memo_key
+                     memo_key: memo_key,
+                     requires: requires
                    ) do
                 {:ok, _run_id, _step_id, execution_id} ->
                   {[success_message(message["id"], execution_id)], state}
@@ -117,7 +119,8 @@ defmodule Coflux.Handlers.Agent do
                      retry_delay_min: retry_delay_min,
                      retry_delay_max: retry_delay_max,
                      defer_key: defer_key,
-                     memo_key: memo_key
+                     memo_key: memo_key,
+                     requires: requires
                    ) do
                 {:ok, _run_id, _step_id, execution_id} ->
                   {[success_message(message["id"], execution_id)], state}
