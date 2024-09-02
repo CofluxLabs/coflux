@@ -44,15 +44,15 @@ defmodule Coflux.Orchestration.Sessions do
     {:ok, _} =
       insert_many(
         db,
-        :parameters,
-        {:target_id, :name, :position, :default_, :annotation},
+        :target_parameters,
+        {:target_id, :position, :name, :default_, :annotation},
         targets
         |> Enum.zip(target_ids)
         |> Enum.flat_map(fn {{_, data}, target_id} ->
           data.parameters
           |> Enum.with_index()
           |> Enum.map(fn {{name, default, annotation}, index} ->
-            {target_id, name, index, default, annotation}
+            {target_id, index, name, default, annotation}
           end)
         end)
       )
@@ -130,7 +130,7 @@ defmodule Coflux.Orchestration.Sessions do
       db,
       """
       SELECT name, default_, annotation
-      FROM parameters
+      FROM target_parameters
       WHERE target_id = ?1
       ORDER BY position
       """,

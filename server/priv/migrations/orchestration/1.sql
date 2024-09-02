@@ -47,12 +47,13 @@ CREATE TABLE targets (
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
-CREATE TABLE parameters (
+CREATE TABLE target_parameters (
   target_id INTEGER NOT NULL,
-  name TEXT NOT NULL,
   position INTEGER NOT NULL,
+  name TEXT NOT NULL,
   default_ TEXT,
   annotation TEXT,
+  PRIMARY KEY (target_id, position)
   FOREIGN KEY (target_id) REFERENCES targets ON DELETE CASCADE
 );
 
