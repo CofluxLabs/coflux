@@ -226,12 +226,18 @@ def environment_create(
     "--base",
     help="The new base environment to inherit from",
 )
+@click.option(
+    "--no-base",
+    is_flag=True,
+    help="Unset the base environment",
+)
 def environment_update(
     project: str | None,
     host: str | None,
     environment: str | None,
     name: str | None,
     base: str | None,
+    no_base: bool | None,
 ):
     """
     Creates an environment within the project.
@@ -262,6 +268,8 @@ def environment_update(
         payload["name"] = name
     if base is not None:
         payload["baseId"] = base_id
+    elif no_base is True:
+        payload["baseId"] = None
 
     # TODO: handle response
     _api_request("POST", host_, "update_environment", json=payload)

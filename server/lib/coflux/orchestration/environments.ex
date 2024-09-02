@@ -164,6 +164,8 @@ defmodule Coflux.Orchestration.Environments do
                 {:ok, _} ->
                   {:ok, environment}
               end
+            else
+              {:ok, environment}
             end
           end
       end
