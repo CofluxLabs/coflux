@@ -3,6 +3,7 @@ import typing as t
 import datetime as dt
 import inspect
 import re
+import json
 
 from . import context, models
 
@@ -13,6 +14,45 @@ P = t.ParamSpec("P")
 
 
 TargetType = t.Literal["workflow", "task", "sensor"]
+
+
+class Parameter(t.NamedTuple):
+    name: str
+    annotation: str | None
+    default_: str | None
+
+
+class TargetDefinition(t.NamedTuple):
+    type: TargetType
+    parameters: list[Parameter]
+
+
+def _json_dumps(obj: t.Any) -> str:
+    return json.dumps(obj, separators=(",", ":"))
+
+
+def _build_parameter(parameter: inspect.Parameter) -> Parameter:
+    return Parameter(
+        parameter.name,
+        # TODO: better serialisation?
+        (
+            str(parameter.annotation)
+            if parameter.annotation != inspect.Parameter.empty
+            else None
+        ),
+        (
+            _json_dumps(parameter.default)
+            if parameter.default != inspect.Parameter.empty
+            else None
+        ),
+    )
+
+
+def _build_target_definition(type: TargetType, fn: t.Callable):
+    parameters = [
+        _build_parameter(p) for p in inspect.signature(fn).parameters.values()
+    ]
+    return TargetDefinition(type, parameters)
 
 
 class Target(t.Generic[P, T]):
@@ -49,7 +89,9 @@ class Target(t.Generic[P, T]):
         self._delay = delay
         self._memo = memo
         self._requires = _parse_requires(requires)
-        self._is_stub = is_stub
+        self._definition = (
+            None if is_stub else _build_target_definition(self._type, self._fn)
+        )
         functools.update_wrapper(self, fn)
 
     @property
@@ -57,12 +99,8 @@ class Target(t.Generic[P, T]):
         return self._name
 
     @property
-    def type(self) -> TargetType:
-        return self._type
-
-    @property
-    def is_stub(self) -> bool:
-        return self._is_stub
+    def definition(self) -> TargetDefinition | None:
+        return self._definition
 
     @property
     def fn(self) -> t.Callable[P, T]:

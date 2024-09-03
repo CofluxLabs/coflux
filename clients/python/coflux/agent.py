@@ -1,6 +1,4 @@
 import asyncio
-import inspect
-import json
 import random
 import types
 import typing as t
@@ -13,40 +11,12 @@ from . import server, execution, decorators, models
 
 def _load_module(
     module: types.ModuleType,
-) -> dict[str, tuple[decorators.TargetType, t.Callable]]:
+) -> dict[str, tuple[decorators.TargetDefinition, t.Callable]]:
     attrs = (getattr(module, k) for k in dir(module))
     return {
-        a.name: (a.type, a.fn)
+        a.name: (a.definition, a.fn)
         for a in attrs
-        if isinstance(a, decorators.Target) and not a.is_stub
-    }
-
-
-def _json_dumps(obj: t.Any) -> str:
-    return json.dumps(obj, separators=(",", ":"))
-
-
-def _manifest_parameter(parameter: inspect.Parameter) -> dict:
-    result = {"name": parameter.name}
-    if parameter.annotation != inspect.Parameter.empty:
-        result["annotation"] = str(
-            parameter.annotation
-        )  # TODO: better way to serialise?
-    if parameter.default != inspect.Parameter.empty:
-        result["default"] = _json_dumps(parameter.default)
-    return result
-
-
-def _build_manifest(targets: dict) -> dict:
-    return {
-        name: {
-            "type": type,
-            "parameters": [
-                _manifest_parameter(p)
-                for p in inspect.signature(fn).parameters.values()
-            ],
-        }
-        for name, (type, fn) in targets.items()
+        if isinstance(a, decorators.Target) and a.definition
     }
 
 
@@ -180,7 +150,16 @@ class Agent:
         self._modules[module_name] = targets
         await self._register_module(module_name, targets)
 
-    async def _register_module(self, module_name: str, targets: dict):
-        await self._connection.notify(
-            "register", (module_name, self._version, _build_manifest(targets))
-        )
+    async def _register_module(
+        self,
+        module_name: str,
+        targets: dict[str, tuple[decorators.TargetDefinition, t.Callable]],
+    ):
+        manifest = {
+            name: {
+                "type": definition.type,
+                "parameters": [p._asdict() for p in definition.parameters],
+            }
+            for name, (definition, _) in targets.items()
+        }
+        await self._connection.notify("register", (module_name, manifest))
