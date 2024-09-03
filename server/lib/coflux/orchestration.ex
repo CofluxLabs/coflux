@@ -5,8 +5,8 @@ defmodule Coflux.Orchestration do
     call_server(project_id, :get_environments)
   end
 
-  def create_environment(project_id, name, base_id) do
-    call_server(project_id, {:create_environment, name, base_id})
+  def create_environment(project_id, name, base_id, pools) do
+    call_server(project_id, {:create_environment, name, base_id, pools})
   end
 
   def update_environment(project_id, environment_id, updates) do

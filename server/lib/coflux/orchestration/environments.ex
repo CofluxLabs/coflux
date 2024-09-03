@@ -18,9 +18,12 @@ defmodule Coflux.Orchestration.Environments do
       {:ok, rows} ->
         environments =
           Enum.reduce(rows, %{}, fn {environment_id, name, base_id, status, version}, result ->
+            {:ok, pools} = get_environment_pools(db, environment_id, version)
+
             Map.put(result, environment_id, %{
               name: name,
               base_id: base_id,
+              pools: pools,
               status: status,
               version: version
             })
@@ -102,20 +105,22 @@ defmodule Coflux.Orchestration.Environments do
     end
   end
 
-  def create_environment(db, name, base_id) do
+  def create_environment(db, name, base_id, pools) do
     with_transaction(db, fn ->
       environment = %{
         name: name,
         base_id: base_id,
+        pools: pools || %{},
         status: 0,
         version: 1
       }
 
-      errors =
+      {environment, errors} =
         validate(
           environment,
           name: &validate_name(&1, db),
-          base_id: &validate_base_id(&1, db)
+          base_id: &validate_base_id(&1, db),
+          pools: &validate_pools/1
         )
 
       if Enum.any?(errors) do
@@ -124,7 +129,7 @@ defmodule Coflux.Orchestration.Environments do
         case insert_one(db, :environments, %{}) do
           {:ok, environment_id} ->
             case insert_environment_version(db, environment_id, environment) do
-              {:ok, _} ->
+              :ok ->
                 {:ok, environment_id, environment}
             end
         end
@@ -142,13 +147,17 @@ defmodule Coflux.Orchestration.Environments do
           {:error, :not_found}
 
         {:ok, environment} ->
-          changes = extract_changes(environment, updates, [:name, :base_id])
+          {:ok, existing_pools} = get_environment_pools(db, environment_id, environment.version)
+          environment = Map.put(environment, :pools, existing_pools)
 
-          errors =
+          changes = extract_changes(environment, updates, [:name, :base_id, :pools])
+
+          {changes, errors} =
             validate(
               changes,
               name: &validate_name(&1, db),
-              base_id: &validate_base_id(&1, db, environment_id)
+              base_id: &validate_base_id(&1, db, environment_id),
+              pools: &validate_pools/1
             )
 
           if Enum.any?(errors) do
@@ -161,7 +170,7 @@ defmodule Coflux.Orchestration.Environments do
                 |> Map.update!(:version, &(&1 + 1))
 
               case insert_environment_version(db, environment_id, environment) do
-                {:ok, _} ->
+                :ok ->
                   {:ok, environment}
               end
             else
@@ -187,13 +196,16 @@ defmodule Coflux.Orchestration.Environments do
               {:error, :descendants}
 
             {:ok, false} ->
+              {:ok, pools} = get_environment_pools(db, environment_id, environment.version)
+
               environment =
                 environment
                 |> Map.update!(:version, &(&1 + 1))
+                |> Map.put(:pools, pools)
                 |> Map.put(:status, 1)
 
               case insert_environment_version(db, environment_id, environment) do
-                {:ok, _} ->
+                :ok ->
                   {:ok, environment}
               end
           end
@@ -218,7 +230,7 @@ defmodule Coflux.Orchestration.Environments do
   end
 
   defp is_valid_name?(name) do
-    name && Regex.match?(~r/^[a-z0-9_-]+(\/[a-z0-9_-]+)*$/i, name)
+    is_binary(name) && Regex.match?(~r/^[a-z0-9_-]+(\/[a-z0-9_-]+)*$/i, name)
   end
 
   defp validate_name(name, db) do
@@ -268,31 +280,160 @@ defmodule Coflux.Orchestration.Environments do
     end
   end
 
+  defp validate_pools(pools) do
+    cond do
+      is_nil(pools) ->
+        :ok
+
+      is_map(pools) ->
+        # TODO: validate each
+        :ok
+
+      true ->
+        {:error, :invalid}
+    end
+  end
+
   defp validate(changes, validators) do
-    Enum.reduce(validators, %{}, fn {field, validator}, errors ->
+    Enum.reduce(validators, {changes, %{}}, fn {field, validator}, {changes, errors} ->
       if Map.has_key?(changes, field) do
         case validator.(Map.fetch!(changes, field)) do
           :ok ->
-            errors
+            {changes, errors}
+
+          {:ok, value} ->
+            changes = Map.put(changes, field, value)
+            {changes, errors}
 
           {:error, error} ->
-            Map.put(errors, field, error)
+            {changes, Map.put(errors, field, error)}
         end
       else
-        errors
+        {changes, errors}
       end
     end)
   end
 
+  defp hash_pool_definition(repositories, provides) do
+    # TODO: better hashing
+    data = [
+      Enum.join(repositories, ","),
+      Enum.map_join(provides, ";", fn {key, values} ->
+        "#{key}=#{Enum.join(values, ",")}"
+      end)
+    ]
+
+    :crypto.hash(:sha256, data)
+  end
+
+  defp get_or_create_pool_definition(db, pool) do
+    repositories = Map.get(pool, :repositories, [])
+    provides = Map.get(pool, :provides, %{})
+
+    hash = hash_pool_definition(repositories, provides)
+
+    case query_one(db, "SELECT id FROM pool_definitions WHERE hash = ?1", {hash}) do
+      {:ok, {id}} ->
+        {:ok, id}
+
+      {:ok, nil} ->
+        {:ok, pool_definition_id} =
+          insert_one(db, :pool_definitions, %{hash: hash})
+
+        {:ok, _} =
+          insert_many(
+            db,
+            :pool_definition_repositories,
+            {:pool_definition_id, :pattern},
+            Enum.map(repositories, fn pattern ->
+              {pool_definition_id, pattern}
+            end)
+          )
+
+        {:ok, _} =
+          insert_many(
+            db,
+            :pool_definition_provides,
+            {:pool_definition_id, :key, :value},
+            Enum.flat_map(provides, fn {key, values} ->
+              Enum.map(values, &{pool_definition_id, key, &1})
+            end)
+          )
+
+        {:ok, pool_definition_id}
+    end
+  end
+
+  defp get_environment_pools(db, environment_id, version) do
+    case query(
+           db,
+           "SELECT name, pool_definition_id FROM pools WHERE environment_id = ?1 AND version = ?2",
+           {environment_id, version}
+         ) do
+      {:ok, rows} ->
+        {:ok,
+         Map.new(rows, fn {pool_name, pool_definition_id} ->
+           repositories =
+             case query(
+                    db,
+                    """
+                    SELECT pattern
+                    FROM pool_definition_repositories
+                    WHERE pool_definition_id = ?1
+                    """,
+                    {pool_definition_id}
+                  ) do
+               {:ok, rows} -> Enum.map(rows, fn {pattern} -> pattern end)
+             end
+
+           provides =
+             case query(
+                    db,
+                    """
+                    SELECT key, value
+                    FROM pool_definition_provides
+                    WHERE pool_definition_id = ?1
+                    """,
+                    {pool_definition_id}
+                  ) do
+               {:ok, rows} ->
+                 Enum.reduce(rows, %{}, fn {key, value}, result ->
+                   Map.update(result, key, [value], &[value | &1])
+                 end)
+             end
+
+           {pool_name, %{repositories: repositories, provides: provides}}
+         end)}
+    end
+  end
+
   defp insert_environment_version(db, environment_id, environment) do
-    insert_one(db, :environment_versions, %{
-      environment_id: environment_id,
-      version: environment.version,
-      name: environment.name,
-      base_id: environment.base_id,
-      status: environment.status,
-      created_at: current_timestamp()
-    })
+    now = current_timestamp()
+
+    {:ok, _} =
+      insert_one(db, :environment_versions, %{
+        environment_id: environment_id,
+        version: environment.version,
+        name: environment.name,
+        base_id: environment.base_id,
+        status: environment.status,
+        created_at: now
+      })
+
+    # TODO: return updated pools
+    Enum.each(environment.pools, fn {pool_name, pool} ->
+      {:ok, pool_definition_id} = get_or_create_pool_definition(db, pool)
+
+      {:ok, _} =
+        insert_one(db, :pools, %{
+          environment_id: environment_id,
+          version: environment.version,
+          name: pool_name,
+          pool_definition_id: pool_definition_id
+        })
+    end)
+
+    :ok
   end
 
   defp current_timestamp() do

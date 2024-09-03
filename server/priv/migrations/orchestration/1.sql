@@ -14,6 +14,35 @@ CREATE TABLE environment_versions (
   FOREIGN KEY (base_id) REFERENCES environments ON DELETE CASCADE
 );
 
+CREATE TABLE pool_definitions (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL UNIQUE
+);
+
+CREATE TABLE pool_definition_repositories (
+  pool_definition_id INTEGER NOT NULL,
+  pattern TEXT NOT NULL,
+  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
+);
+
+CREATE TABLE pool_definition_provides (
+  pool_definition_id INTEGER NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
+);
+
+CREATE TABLE pools (
+  id INTEGER PRIMARY KEY,
+  environment_id INTEGER NOT NULL,
+  version INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  pool_definition_id INTEGER NOT NULL,
+  UNIQUE (environment_id, version, name),
+  FOREIGN KEY (environment_id, version) REFERENCES environment_versions ON DELETE CASCADE,
+  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
+);
+
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
   environment_id INTEGER NOT NULL,

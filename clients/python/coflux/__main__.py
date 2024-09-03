@@ -5,6 +5,7 @@ import types
 import typing as t
 import watchfiles
 import httpx
+import yaml
 
 from . import Agent, config, loader
 
@@ -27,6 +28,11 @@ def _api_request(method: str, host: str, action: str, **kwargs) -> t.Any:
         response.raise_for_status()
         is_json = response.headers.get("Content-Type") == "application/json"
         return response.json() if is_json else None
+
+
+def _load_pools_config(file: t.TextIO):
+    # TODO: validate
+    return yaml.safe_load(file)
 
 
 @t.overload
@@ -168,9 +174,18 @@ def configure(
     "--base",
     help="The base environment to inherit from",
 )
+@click.option(
+    "--pools-config",
+    help="Path to pools configuration file",
+    type=click.File(),
+)
 @click.argument("name")
 def environment_create(
-    project: str | None, host: str | None, base: str | None, name: str
+    project: str | None,
+    host: str | None,
+    base: str | None,
+    pools_config: t.TextIO,
+    name: str,
 ):
     """
     Creates an environment within the project.
@@ -188,6 +203,10 @@ def environment_create(
         if not base_id:
             click.BadOptionUsage("base", "Not recognised")
 
+    pools = None
+    if pools_config:
+        pools = _load_pools_config(pools_config)
+
     # TODO: handle response
     _api_request(
         "POST",
@@ -197,9 +216,10 @@ def environment_create(
             "projectId": project_,
             "name": name,
             "baseId": base_id,
+            "pools": pools,
         },
     )
-    click.secho(f"Registered environment '{name}'.", fg="green")
+    click.secho(f"Created environment '{name}'.", fg="green")
 
 
 @cli.command("environment.update")
@@ -231,13 +251,25 @@ def environment_create(
     is_flag=True,
     help="Unset the base environment",
 )
+@click.option(
+    "--pools-config",
+    help="Path to pools configuration file",
+    type=click.File(),
+)
+@click.option(
+    "--no-pools",
+    is_flag=True,
+    help="Clear all pools from the environment",
+)
 def environment_update(
     project: str | None,
     host: str | None,
     environment: str | None,
     name: str | None,
     base: str | None,
-    no_base: bool | None,
+    no_base: bool,
+    pools_config: t.TextIO,
+    no_pools: bool,
 ):
     """
     Creates an environment within the project.
@@ -260,21 +292,31 @@ def environment_update(
         if not base_id:
             raise click.BadOptionUsage("base", "Not recognised")
 
+    pools = None
+    if pools_config:
+        pools = _load_pools_config(pools_config)
+
     payload = {
         "projectId": project_,
         "environmentId": environment_id,
     }
     if name is not None:
         payload["name"] = name
+
     if base is not None:
         payload["baseId"] = base_id
     elif no_base is True:
         payload["baseId"] = None
 
+    if pools is not None:
+        payload["pools"] = pools
+    elif no_pools is True:
+        payload["pools"] = None
+
     # TODO: handle response
     _api_request("POST", host_, "update_environment", json=payload)
 
-    click.secho(f"Registered environment '{name}'.", fg="green")
+    click.secho(f"Updated environment '{name or environment_}'.", fg="green")
 
 
 @cli.command("environment.archive")
@@ -342,9 +384,8 @@ def environment_archive(
     help="Environment name",
 )
 @click.option(
-    "-v",
-    "--version",
-    help="Version identifier to report to the server",
+    "--pool",
+    help="Pool name",
 )
 @click.option(
     "--concurrency",

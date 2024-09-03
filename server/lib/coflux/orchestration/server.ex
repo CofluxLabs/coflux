@@ -98,8 +98,8 @@ defmodule Coflux.Orchestration.Server do
     {:reply, {:ok, environments}, state}
   end
 
-  def handle_call({:create_environment, name, base_id}, _from, state) do
-    case Environments.create_environment(state.db, name, base_id) do
+  def handle_call({:create_environment, name, base_id, pools}, _from, state) do
+    case Environments.create_environment(state.db, name, base_id, pools) do
       {:ok, environment_id, environment} ->
         state =
           state
