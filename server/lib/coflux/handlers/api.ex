@@ -308,9 +308,18 @@ defmodule Coflux.Handlers.Api do
   end
 
   defp parse_provides_item(key, value) do
-    value = List.wrap(value)
+    value =
+      value
+      |> List.wrap()
+      |> Enum.map(fn
+        true -> "true"
+        false -> "false"
+        other -> other
+      end)
 
-    if is_valid_tag_key?(key) && Enum.all?(value, &is_valid_tag_value?/1) do
+    if is_valid_tag_key?(key) &&
+         Enum.all?(value, &is_valid_tag_value?/1) &&
+         length(value) <= 10 do
       {:ok, key, value}
     else
       {:error, :invalid}
@@ -318,7 +327,7 @@ defmodule Coflux.Handlers.Api do
   end
 
   defp parse_provides(value) do
-    if is_map(value) do
+    if is_map(value) && map_size(value) <= 10 do
       Enum.reduce_while(value, {:ok, %{}}, fn {key, value}, {:ok, result} ->
         case parse_provides_item(key, value) do
           {:ok, key, value} ->

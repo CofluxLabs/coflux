@@ -45,8 +45,8 @@ defmodule Coflux.Topics.Run do
 
   defp process_notification(
          topic,
-         {:step, step_id, repository, target, memo_key, parent_id, created_at, arguments, attempt,
-          execution_id, environment_id, execute_after}
+         {:step, step_id, repository, target, memo_key, parent_id, created_at, arguments,
+          requires, attempt, execution_id, environment_id, execute_after}
        ) do
     if environment_id in topic.state.environment_ids do
       Topic.set(topic, [:steps, step_id], %{
@@ -56,6 +56,7 @@ defmodule Coflux.Topics.Run do
         isMemoised: !is_nil(memo_key),
         createdAt: created_at,
         arguments: Enum.map(arguments, &build_value/1),
+        requires: requires,
         executions: %{
           Integer.to_string(attempt) => %{
             executionId: Integer.to_string(execution_id),
@@ -207,6 +208,7 @@ defmodule Coflux.Topics.Run do
              isMemoised: !is_nil(step.memo_key),
              createdAt: step.created_at,
              arguments: Enum.map(step.arguments, &build_value/1),
+             requires: step.requires,
              executions:
                step.executions
                |> Enum.filter(fn {_, execution} ->

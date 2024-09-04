@@ -1,12 +1,13 @@
 defmodule Coflux.Orchestration.Sessions do
   import Coflux.Store
 
-  def start_session(db, environment_id) do
+  def start_session(db, environment_id, pool_id) do
     with_transaction(db, fn ->
       case generate_external_id(db, :sessions, 30) do
         {:ok, external_id} ->
           case insert_one(db, :sessions, %{
                  environment_id: environment_id,
+                 pool_id: pool_id,
                  external_id: external_id,
                  created_at: current_timestamp()
                }) do

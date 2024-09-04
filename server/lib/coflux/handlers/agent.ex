@@ -8,18 +8,19 @@ defmodule Coflux.Handlers.Agent do
     # TODO: validate
     project_id = get_query_param(qs, "project")
     environment_name = get_query_param(qs, "environment")
+    pool_name = get_query_param(qs, "pool")
     session_id = get_query_param(qs, "session")
     concurrency = get_query_param(qs, "concurrency", &String.to_integer/1) || 0
 
-    {:cowboy_websocket, req, {project_id, environment_name, session_id, concurrency}}
+    {:cowboy_websocket, req, {project_id, environment_name, pool_name, session_id, concurrency}}
   end
 
-  def websocket_init({project_id, environment_name, session_id, concurrency}) do
+  def websocket_init({project_id, environment_name, pool_name, session_id, concurrency}) do
     case Projects.get_project_by_id(Coflux.ProjectsServer, project_id) do
       {:ok, _} ->
         # TODO: authenticate
         # TODO: monitor server?
-        case connect(project_id, session_id, environment_name, concurrency) do
+        case connect(project_id, session_id, environment_name, pool_name, concurrency) do
           {:ok, session_id, executions} ->
             {[session_message(session_id)],
              %{
@@ -45,7 +46,7 @@ defmodule Coflux.Handlers.Agent do
 
     case message["request"] do
       "register" ->
-        [repository, _version, targets] = message["params"]
+        [repository, targets] = message["params"]
         targets = parse_targets(targets)
 
         case Orchestration.register_targets(
@@ -321,13 +322,14 @@ defmodule Coflux.Handlers.Agent do
     {[{:close, 4000, "environment_not_found"}], state}
   end
 
-  defp connect(project_id, session_id, environment_name, concurrency) do
+  defp connect(project_id, session_id, environment_name, pool_name, concurrency) do
     if session_id do
       with {:ok, executions} <-
              Orchestration.resume_session(
                project_id,
                session_id,
                environment_name,
+               pool_name,
                concurrency,
                self()
              ) do
@@ -338,6 +340,7 @@ defmodule Coflux.Handlers.Agent do
              Orchestration.start_session(
                project_id,
                environment_name,
+               pool_name,
                concurrency,
                self()
              ) do

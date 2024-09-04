@@ -46,6 +46,7 @@ CREATE TABLE pools (
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
   environment_id INTEGER NOT NULL,
+  pool_id INTEGER,
   external_id TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE

@@ -627,6 +627,7 @@ defmodule Coflux.Orchestration.Runs do
     |> Enum.join()
   end
 
+  # TODO: consider changed 'requires'?
   defp find_memoised_execution(db, run_id, environment_ids, memo_key) do
     case query(
            db,

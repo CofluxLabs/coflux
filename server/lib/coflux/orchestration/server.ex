@@ -188,38 +188,50 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:start_session, environment_name, concurrency, pid}, _from, state) do
+  def handle_call({:start_session, environment_name, pool_name, concurrency, pid}, _from, state) do
     case lookup_environment_by_name(state, environment_name) do
       {:error, error} ->
         {:reply, {:error, error}, state}
 
-      {:ok, environment_id, _} ->
-        case Sessions.start_session(state.db, environment_id) do
-          {:ok, session_id, external_session_id, environment_id} ->
-            ref = Process.monitor(pid)
+      {:ok, environment_id, environment} ->
+        if pool_name && !Map.has_key?(environment.pools, pool_name) do
+          {:reply, {:error, :no_pool}, state}
+        else
+          pool = pool_name && Map.fetch!(environment.pools, pool_name)
 
-            session =
-              external_session_id
-              |> build_session()
-              |> Map.put(:agent, ref)
-              |> Map.put(:concurrency, concurrency)
-              |> Map.put(:environment_id, environment_id)
+          case Sessions.start_session(state.db, environment_id, if(pool, do: pool.id)) do
+            {:ok, session_id, external_session_id, environment_id} ->
+              ref = Process.monitor(pid)
 
-            state =
-              state
-              |> put_in([Access.key(:agents), ref], {pid, session_id})
-              |> put_in([Access.key(:sessions), session_id], session)
-              |> put_in([Access.key(:session_ids), external_session_id], session_id)
-              |> notify_agent(session_id)
+              session = %{
+                external_id: external_session_id,
+                agent: ref,
+                targets: %{},
+                queue: [],
+                starting: MapSet.new(),
+                executing: MapSet.new(),
+                expire_timer: nil,
+                concurrency: concurrency,
+                environment_id: environment_id,
+                provides: if(pool, do: pool.provides)
+              }
 
-            state = flush_notifications(state)
-            {:reply, {:ok, external_session_id}, state}
+              state =
+                state
+                |> put_in([Access.key(:agents), ref], {pid, session_id})
+                |> put_in([Access.key(:sessions), session_id], session)
+                |> put_in([Access.key(:session_ids), external_session_id], session_id)
+                |> notify_agent(session_id)
+
+              state = flush_notifications(state)
+              {:reply, {:ok, external_session_id}, state}
+          end
         end
     end
   end
 
   def handle_call(
-        {:resume_session, external_session_id, environment_name, concurrency, pid},
+        {:resume_session, external_session_id, environment_name, pool_name, concurrency, pid},
         _from,
         state
       ) do
@@ -232,6 +244,7 @@ defmodule Coflux.Orchestration.Server do
           {:ok, session_id} ->
             session = Map.fetch!(state.sessions, session_id)
 
+            # TODO: check pool_name is expected
             if session.environment_id == environment_id do
               if session.expire_timer do
                 Process.cancel_timer(session.expire_timer)
@@ -443,6 +456,7 @@ defmodule Coflux.Orchestration.Server do
       {:ok, _step_id, external_step_id, execution_id, attempt, created_at, memoised, result,
        child_added} ->
         execute_after = Keyword.get(opts, :execute_after)
+        requires = Keyword.get(opts, :requires) || %{}
 
         state =
           if !memoised do
@@ -453,7 +467,7 @@ defmodule Coflux.Orchestration.Server do
               state,
               {:run, run.id},
               {:step, external_step_id, repository, target_name, memo_key, parent_id, created_at,
-               arguments, attempt, execution_id, environment_id, execute_after}
+               arguments, requires, attempt, execution_id, environment_id, execute_after}
             )
           else
             state
@@ -891,6 +905,7 @@ defmodule Coflux.Orchestration.Server do
                              created_at} ->
             {:ok, executions} = Runs.get_step_executions(state.db, step_id)
             {:ok, arguments} = Runs.get_step_arguments(state.db, step_id, true)
+            {:ok, requires} = Runs.get_step_requires(state.db, step_id)
 
             arguments = Enum.map(arguments, &build_value(&1, state))
 
@@ -902,6 +917,7 @@ defmodule Coflux.Orchestration.Server do
                memo_key: memo_key,
                created_at: created_at,
                arguments: arguments,
+               requires: requires,
                executions:
                  Map.new(executions, fn {execution_id, attempt, environment_id, execute_after,
                                          created_at, _session_id, assigned_at} ->
@@ -1230,20 +1246,6 @@ defmodule Coflux.Orchestration.Server do
     else
       [environment_id | ids]
     end
-  end
-
-  defp build_session(external_id) do
-    %{
-      external_id: external_id,
-      agent: nil,
-      targets: %{},
-      queue: [],
-      starting: MapSet.new(),
-      executing: MapSet.new(),
-      expire_timer: nil,
-      concurrency: 0,
-      environment_id: nil
-    }
   end
 
   defp remove_session(state, session_id) do
@@ -1687,6 +1689,14 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
+  defp session_has_requirements?(provides, requires) do
+    Enum.all?(requires, fn {key, requires_values} ->
+      provides
+      |> Map.get(key, [])
+      |> Enum.any?(&(&1 in requires_values))
+    end)
+  end
+
   defp is_execution_ready?(state, wait_for, arguments) do
     Enum.all?(wait_for || [], fn index ->
       case Enum.at(arguments, index) do
@@ -1729,7 +1739,8 @@ defmodule Coflux.Orchestration.Server do
           # TODO: match 'requires' to 'provides'
 
           session.environment_id == execution.environment_id && session.agent &&
-            not session_at_capacity?(session)
+            not session_at_capacity?(session) &&
+            session_has_requirements?(session.provides, requires)
         end)
 
       if Enum.any?(session_ids) do

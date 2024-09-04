@@ -48,13 +48,13 @@ class Agent:
         self,
         project_id: str,
         environment_name: str,
-        version: str | None,
+        pool_name: str | None,
         server_host: str,
         concurrency: int,
     ):
         self._project_id = project_id
         self._environment_name = environment_name
-        self._version = version
+        self._pool_name = pool_name
         self._server_host = server_host
         self._concurrency = concurrency
         self._modules = {}
@@ -93,14 +93,13 @@ class Agent:
 
     async def run(self) -> None:
         while True:
-            print(
-                f"Connecting ({self._server_host}, {self._project_id}, {self._environment_name})..."
-            )
+            print(f"Connecting ({self._server_host}, {self._project_id})...")
             url = self._url(
                 "ws",
                 "agent",
                 project=self._project_id,
                 environment=self._environment_name,
+                pool=self._pool_name,
                 session=self._connection.session_id,
                 concurrency=self._concurrency,
             )

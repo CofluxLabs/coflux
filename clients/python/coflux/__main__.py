@@ -99,12 +99,12 @@ def _init(
     *modules: types.ModuleType | str,
     project: str,
     environment: str,
-    version: str | None,
+    pool: str | None,
     host: str,
     concurrency: int,
 ) -> None:
     try:
-        with Agent(project, environment, version, host, concurrency) as agent:
+        with Agent(project, environment, pool, host, concurrency) as agent:
             asyncio.run(_run(agent, list(modules)))
     except KeyboardInterrupt:
         pass
@@ -402,7 +402,7 @@ def environment_archive(
 def agent_run(
     project: str | None,
     environment: str | None,
-    version: str | None,
+    pool: str | None,
     host: str | None,
     concurrency: int | None,
     reload: bool,
@@ -419,7 +419,6 @@ def agent_run(
         raise click.ClickException("No module(s) specified.")
     project_ = _get_project(project)
     environment_ = _get_environment(environment)
-    version_ = _get_option(version, ("COFLUX_VERSION", str))
     host_ = _get_host(host)
     concurrency_ = _get_option(
         concurrency,
@@ -431,7 +430,7 @@ def agent_run(
     kwargs = {
         "project": project_,
         "environment": environment_,
-        "version": version_,
+        "pool": pool,
         "host": host_,
         "concurrency": concurrency_,
     }

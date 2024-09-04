@@ -170,7 +170,7 @@ defmodule Coflux.Orchestration.Environments do
                 |> Map.update!(:version, &(&1 + 1))
 
               case insert_environment_version(db, environment_id, environment) do
-                :ok ->
+                {:ok, environment} ->
                   {:ok, environment}
               end
             else
@@ -205,7 +205,7 @@ defmodule Coflux.Orchestration.Environments do
                 |> Map.put(:status, 1)
 
               case insert_environment_version(db, environment_id, environment) do
-                :ok ->
+                {:ok, environment} ->
                   {:ok, environment}
               end
           end
@@ -315,11 +315,14 @@ defmodule Coflux.Orchestration.Environments do
   end
 
   defp hash_pool_definition(repositories, provides) do
-    # TODO: better hashing
+    # TODO: better hashing?
     data = [
-      Enum.join(repositories, ","),
-      Enum.map_join(provides, ";", fn {key, values} ->
-        "#{key}=#{Enum.join(values, ",")}"
+      repositories |> Enum.sort() |> Enum.join(","),
+      0,
+      provides
+      |> Enum.sort()
+      |> Enum.map_join(";", fn {key, values} ->
+        "#{key}=#{values |> Enum.sort() |> Enum.join(",")}"
       end)
     ]
 
@@ -367,12 +370,16 @@ defmodule Coflux.Orchestration.Environments do
   defp get_environment_pools(db, environment_id, version) do
     case query(
            db,
-           "SELECT name, pool_definition_id FROM pools WHERE environment_id = ?1 AND version = ?2",
+           """
+           SELECT id, name, pool_definition_id
+           FROM pools
+           WHERE environment_id = ?1 AND version = ?2
+           """,
            {environment_id, version}
          ) do
       {:ok, rows} ->
         {:ok,
-         Map.new(rows, fn {pool_name, pool_definition_id} ->
+         Map.new(rows, fn {id, pool_name, pool_definition_id} ->
            repositories =
              case query(
                     db,
@@ -402,7 +409,12 @@ defmodule Coflux.Orchestration.Environments do
                  end)
              end
 
-           {pool_name, %{repositories: repositories, provides: provides}}
+           {pool_name,
+            %{
+              id: id,
+              repositories: repositories,
+              provides: provides
+            }}
          end)}
     end
   end
@@ -420,20 +432,22 @@ defmodule Coflux.Orchestration.Environments do
         created_at: now
       })
 
-    # TODO: return updated pools
-    Enum.each(environment.pools, fn {pool_name, pool} ->
-      {:ok, pool_definition_id} = get_or_create_pool_definition(db, pool)
+    pools =
+      Map.new(environment.pools, fn {pool_name, pool} ->
+        {:ok, pool_definition_id} = get_or_create_pool_definition(db, pool)
 
-      {:ok, _} =
-        insert_one(db, :pools, %{
-          environment_id: environment_id,
-          version: environment.version,
-          name: pool_name,
-          pool_definition_id: pool_definition_id
-        })
-    end)
+        {:ok, pool_id} =
+          insert_one(db, :pools, %{
+            environment_id: environment_id,
+            version: environment.version,
+            name: pool_name,
+            pool_definition_id: pool_definition_id
+          })
 
-    :ok
+        {pool_name, Map.put(pool, :id, pool_id)}
+      end)
+
+    {:ok, Map.put(environment, :pools, pools)}
   end
 
   defp current_timestamp() do
