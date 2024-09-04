@@ -43,29 +43,11 @@ CREATE TABLE pools (
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
 );
 
-CREATE TABLE sessions (
-  id INTEGER PRIMARY KEY,
-  environment_id INTEGER NOT NULL,
-  pool_id INTEGER,
-  external_id TEXT NOT NULL UNIQUE,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
-);
-
 CREATE TABLE manifests (
   id INTEGER PRIMARY KEY,
   repository TEXT NOT NULL,
   targets_hash INTEGER NOT NULL,
   UNIQUE (repository, targets_hash)
-);
-
-CREATE TABLE session_manifests (
-  session_id INTEGER NOT NULL,
-  manifest_id INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (session_id, manifest_id),
-  FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE,
-  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
 CREATE TABLE targets (
@@ -85,6 +67,24 @@ CREATE TABLE target_parameters (
   annotation TEXT,
   PRIMARY KEY (target_id, position)
   FOREIGN KEY (target_id) REFERENCES targets ON DELETE CASCADE
+);
+
+CREATE TABLE sessions (
+  id INTEGER PRIMARY KEY,
+  environment_id INTEGER NOT NULL,
+  pool_id INTEGER,
+  external_id TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
+);
+
+CREATE TABLE session_manifests (
+  session_id INTEGER NOT NULL,
+  manifest_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, manifest_id),
+  FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE,
+  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
 CREATE TABLE runs (
