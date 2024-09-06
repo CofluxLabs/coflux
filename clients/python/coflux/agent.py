@@ -43,18 +43,22 @@ def _parse_value(value: list) -> models.Value:
     raise Exception(f"unexpected value: {value}")
 
 
+def _encode_tags(provides: dict[str, list[str]]) -> str:
+    return ";".join(f"{k}:{v}" for k, vs in provides.items() for v in vs)
+
+
 class Agent:
     def __init__(
         self,
         project_id: str,
         environment_name: str,
-        pool_name: str | None,
+        provides: dict[str, list[str]],
         server_host: str,
         concurrency: int,
     ):
         self._project_id = project_id
         self._environment_name = environment_name
-        self._pool_name = pool_name
+        self._provides = provides
         self._server_host = server_host
         self._concurrency = concurrency
         self._modules = {}
@@ -99,7 +103,7 @@ class Agent:
                 "agent",
                 project=self._project_id,
                 environment=self._environment_name,
-                pool=self._pool_name,
+                provides=_encode_tags(self._provides),
                 session=self._connection.session_id,
                 concurrency=self._concurrency,
             )

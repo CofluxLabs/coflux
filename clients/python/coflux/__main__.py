@@ -87,6 +87,23 @@ def _get_host(argument: str | None) -> str:
     return _get_option(argument, ("COFLUX_HOST", str), "host", "localhost:7777")
 
 
+def _get_provides(argument: tuple[str] | None) -> dict[str, list[str]]:
+    value = _get_option(argument, ("COFLUX_PROVIDES", lambda x: [x]))
+    result: dict[str, list[str]] = {}
+    if value:
+        for part in (p for a in value for p in a.split(" ") if p):
+            key, value = part.split(":", 1)
+            result.setdefault(key, []).append(value)
+        return result
+    return {
+        key: [
+            (str(v).lower() if isinstance(v, bool) else v)
+            for v in (value if isinstance(value, list) else [value])
+        ]
+        for key, value in config.load().get("provides", {}).items()
+    }
+
+
 async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
     for module in modules:
         if isinstance(module, str):
@@ -99,12 +116,12 @@ def _init(
     *modules: types.ModuleType | str,
     project: str,
     environment: str,
-    pool: str | None,
+    provides: dict[str, list[str]],
     host: str,
     concurrency: int,
 ) -> None:
     try:
-        with Agent(project, environment, pool, host, concurrency) as agent:
+        with Agent(project, environment, provides, host, concurrency) as agent:
             asyncio.run(_run(agent, list(modules)))
     except KeyboardInterrupt:
         pass
@@ -384,8 +401,9 @@ def environment_archive(
     help="Environment name",
 )
 @click.option(
-    "--pool",
-    help="Pool name",
+    "--provides",
+    help="Features that this agent provides (to be matched with features that tasks require)",
+    multiple=True,
 )
 @click.option(
     "--concurrency",
@@ -402,7 +420,7 @@ def environment_archive(
 def agent_run(
     project: str | None,
     environment: str | None,
-    pool: str | None,
+    provides: tuple[str],
     host: str | None,
     concurrency: int | None,
     reload: bool,
@@ -420,6 +438,7 @@ def agent_run(
     project_ = _get_project(project)
     environment_ = _get_environment(environment)
     host_ = _get_host(host)
+    provides_ = _get_provides(provides or None)
     concurrency_ = _get_option(
         concurrency,
         ("COFLUX_CONCURRENCY", int),
@@ -430,7 +449,7 @@ def agent_run(
     kwargs = {
         "project": project_,
         "environment": environment_,
-        "pool": pool,
+        "provides": provides_,
         "host": host_,
         "concurrency": concurrency_,
     }

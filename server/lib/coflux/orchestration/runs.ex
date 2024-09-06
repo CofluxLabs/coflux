@@ -1,5 +1,5 @@
 defmodule Coflux.Orchestration.Runs do
-  alias Coflux.Orchestration.{Models, Results}
+  alias Coflux.Orchestration.{Models, Results, TagSets}
 
   import Coflux.Store
 
@@ -181,6 +181,14 @@ defmodule Coflux.Orchestration.Runs do
               end
             end
 
+          requires_tag_set_id =
+            if requires do
+              case TagSets.get_or_create_tag_set_id(db, requires) do
+                {:ok, tag_set_id} ->
+                  tag_set_id
+              end
+            end
+
           # TODO: validate parent belongs to run?
           {:ok, step_id, external_step_id} =
             insert_step(
@@ -197,6 +205,7 @@ defmodule Coflux.Orchestration.Runs do
               retry_count,
               retry_delay_min,
               retry_delay_max,
+              requires_tag_set_id,
               now
             )
 
@@ -210,16 +219,6 @@ defmodule Coflux.Orchestration.Runs do
               |> Enum.map(fn {value, position} ->
                 {:ok, value_id} = Results.get_or_create_value(db, value)
                 {step_id, position, value_id}
-              end)
-            )
-
-          {:ok, _} =
-            insert_many(
-              db,
-              :step_requires,
-              {:step_id, :key, :value},
-              Enum.flat_map(requires, fn {key, values} ->
-                Enum.map(values, &{step_id, key, &1})
               end)
             )
 
@@ -342,6 +341,7 @@ defmodule Coflux.Orchestration.Runs do
         s.wait_for,
         s.defer_key,
         s.parent_id,
+        s.requires_tag_set_id,
         e.environment_id,
         e.execute_after,
         e.created_at
@@ -509,7 +509,7 @@ defmodule Coflux.Orchestration.Runs do
     query(
       db,
       """
-      SELECT id, external_id, parent_id, repository, target, memo_key, created_at
+      SELECT id, external_id, parent_id, repository, target, memo_key, requires_tag_set_id, created_at
       FROM steps
       WHERE run_id = ?1
       """,
@@ -566,20 +566,6 @@ defmodule Coflux.Orchestration.Runs do
           end)
 
         {:ok, values}
-    end
-  end
-
-  def get_step_requires(db, step_id) do
-    case query(
-           db,
-           "SELECT key, value FROM step_requires WHERE step_id = ?1",
-           {step_id}
-         ) do
-      {:ok, rows} ->
-        {:ok,
-         Enum.reduce(rows, %{}, fn {key, value}, result ->
-           Map.update(result, key, [value], &[value | &1])
-         end)}
     end
   end
 
@@ -713,6 +699,7 @@ defmodule Coflux.Orchestration.Runs do
          retry_count,
          retry_delay_min,
          retry_delay_max,
+         requires_tag_set_id,
          now
        ) do
     case generate_external_id(db, :steps, 3, "S") do
@@ -731,6 +718,7 @@ defmodule Coflux.Orchestration.Runs do
                retry_count: retry_count,
                retry_delay_min: retry_delay_min,
                retry_delay_max: retry_delay_max,
+               requires_tag_set_id: requires_tag_set_id,
                created_at: now
              }) do
           {:ok, step_id} ->

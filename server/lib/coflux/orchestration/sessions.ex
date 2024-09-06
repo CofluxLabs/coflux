@@ -1,13 +1,23 @@
 defmodule Coflux.Orchestration.Sessions do
+  alias Coflux.Orchestration.TagSets
+
   import Coflux.Store
 
-  def start_session(db, environment_id, pool_id) do
+  def start_session(db, environment_id, provides) do
     with_transaction(db, fn ->
       case generate_external_id(db, :sessions, 30) do
         {:ok, external_id} ->
+          provides_tag_set_id =
+            if provides && Enum.any?(provides) do
+              case TagSets.get_or_create_tag_set_id(db, provides) do
+                {:ok, tag_set_id} ->
+                  tag_set_id
+              end
+            end
+
           case insert_one(db, :sessions, %{
                  environment_id: environment_id,
-                 pool_id: pool_id,
+                 provides_tag_set_id: provides_tag_set_id,
                  external_id: external_id,
                  created_at: current_timestamp()
                }) do

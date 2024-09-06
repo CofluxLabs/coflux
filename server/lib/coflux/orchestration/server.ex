@@ -3,7 +3,7 @@ defmodule Coflux.Orchestration.Server do
 
   alias Coflux.Store
   alias Coflux.MapUtils
-  alias Coflux.Orchestration.{Environments, Sessions, Runs, Results}
+  alias Coflux.Orchestration.{Environments, Sessions, Runs, Results, TagSets}
 
   @session_timeout_ms 5_000
   @recurrent_rate_limit_ms 5_000
@@ -188,50 +188,44 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:start_session, environment_name, pool_name, concurrency, pid}, _from, state) do
+  def handle_call({:start_session, environment_name, provides, concurrency, pid}, _from, state) do
     case lookup_environment_by_name(state, environment_name) do
       {:error, error} ->
         {:reply, {:error, error}, state}
 
-      {:ok, environment_id, environment} ->
-        if pool_name && !Map.has_key?(environment.pools, pool_name) do
-          {:reply, {:error, :no_pool}, state}
-        else
-          pool = pool_name && Map.fetch!(environment.pools, pool_name)
+      {:ok, environment_id, _} ->
+        case Sessions.start_session(state.db, environment_id, provides) do
+          {:ok, session_id, external_session_id, environment_id} ->
+            ref = Process.monitor(pid)
 
-          case Sessions.start_session(state.db, environment_id, if(pool, do: pool.id)) do
-            {:ok, session_id, external_session_id, environment_id} ->
-              ref = Process.monitor(pid)
+            session = %{
+              external_id: external_session_id,
+              agent: ref,
+              targets: %{},
+              queue: [],
+              starting: MapSet.new(),
+              executing: MapSet.new(),
+              expire_timer: nil,
+              concurrency: concurrency,
+              environment_id: environment_id,
+              provides: provides
+            }
 
-              session = %{
-                external_id: external_session_id,
-                agent: ref,
-                targets: %{},
-                queue: [],
-                starting: MapSet.new(),
-                executing: MapSet.new(),
-                expire_timer: nil,
-                concurrency: concurrency,
-                environment_id: environment_id,
-                provides: if(pool, do: pool.provides)
-              }
+            state =
+              state
+              |> put_in([Access.key(:agents), ref], {pid, session_id})
+              |> put_in([Access.key(:sessions), session_id], session)
+              |> put_in([Access.key(:session_ids), external_session_id], session_id)
+              |> notify_agent(session_id)
 
-              state =
-                state
-                |> put_in([Access.key(:agents), ref], {pid, session_id})
-                |> put_in([Access.key(:sessions), session_id], session)
-                |> put_in([Access.key(:session_ids), external_session_id], session_id)
-                |> notify_agent(session_id)
-
-              state = flush_notifications(state)
-              {:reply, {:ok, external_session_id}, state}
-          end
+            state = flush_notifications(state)
+            {:reply, {:ok, external_session_id}, state}
         end
     end
   end
 
   def handle_call(
-        {:resume_session, external_session_id, environment_name, pool_name, concurrency, pid},
+        {:resume_session, external_session_id, environment_name, provides, concurrency, pid},
         _from,
         state
       ) do
@@ -244,7 +238,7 @@ defmodule Coflux.Orchestration.Server do
           {:ok, session_id} ->
             session = Map.fetch!(state.sessions, session_id)
 
-            # TODO: check pool_name is expected
+            # TODO: check provides is expected?
             if session.environment_id == environment_id do
               if session.expire_timer do
                 Process.cancel_timer(session.expire_timer)
@@ -902,10 +896,18 @@ defmodule Coflux.Orchestration.Server do
 
         steps =
           Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, memo_key,
-                             created_at} ->
+                             requires_tag_set_id, created_at} ->
             {:ok, executions} = Runs.get_step_executions(state.db, step_id)
             {:ok, arguments} = Runs.get_step_arguments(state.db, step_id, true)
-            {:ok, requires} = Runs.get_step_requires(state.db, step_id)
+
+            requires =
+              if requires_tag_set_id do
+                case TagSets.get_tag_set(state.db, requires_tag_set_id) do
+                  {:ok, requires} -> requires
+                end
+              else
+                %{}
+              end
 
             arguments = Enum.map(arguments, &build_value(&1, state))
 
@@ -1046,7 +1048,14 @@ defmodule Coflux.Orchestration.Server do
               end
 
             if is_execution_ready?(state, execution.wait_for, arguments) do
-              {:ok, requires} = Runs.get_step_requires(state.db, execution.step_id)
+              requires =
+                if execution.requires_tag_set_id do
+                  case TagSets.get_tag_set(state.db, execution.requires_tag_set_id) do
+                    {:ok, requires} -> requires
+                  end
+                else
+                  %{}
+                end
 
               case choose_session(state, execution, requires) do
                 {:ok, session_id} ->
@@ -1735,8 +1744,6 @@ defmodule Coflux.Orchestration.Server do
       session_ids =
         Enum.filter(target.session_ids, fn session_id ->
           session = Map.fetch!(state.sessions, session_id)
-
-          # TODO: match 'requires' to 'provides'
 
           session.environment_id == execution.environment_id && session.agent &&
             not session_at_capacity?(session) &&

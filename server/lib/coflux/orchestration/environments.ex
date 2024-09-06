@@ -1,4 +1,6 @@
 defmodule Coflux.Orchestration.Environments do
+  alias Coflux.Orchestration.TagSets
+
   import Coflux.Store
 
   def get_all_environments(db) do
@@ -129,7 +131,7 @@ defmodule Coflux.Orchestration.Environments do
         case insert_one(db, :environments, %{}) do
           {:ok, environment_id} ->
             case insert_environment_version(db, environment_id, environment) do
-              :ok ->
+              {:ok, environment} ->
                 {:ok, environment_id, environment}
             end
         end
@@ -314,18 +316,9 @@ defmodule Coflux.Orchestration.Environments do
     end)
   end
 
-  defp hash_pool_definition(repositories, provides) do
+  defp hash_pool_definition(provides_tag_set_id, repositories) do
     # TODO: better hashing?
-    data = [
-      repositories |> Enum.sort() |> Enum.join(","),
-      0,
-      provides
-      |> Enum.sort()
-      |> Enum.map_join(";", fn {key, values} ->
-        "#{key}=#{values |> Enum.sort() |> Enum.join(",")}"
-      end)
-    ]
-
+    data = [provides_tag_set_id || 0 | Enum.sort(repositories)]
     :crypto.hash(:sha256, data)
   end
 
@@ -333,7 +326,14 @@ defmodule Coflux.Orchestration.Environments do
     repositories = Map.get(pool, :repositories, [])
     provides = Map.get(pool, :provides, %{})
 
-    hash = hash_pool_definition(repositories, provides)
+    provides_tag_set_id =
+      if provides && Enum.any?(provides) do
+        case TagSets.get_or_create_tag_set_id(db, provides) do
+          {:ok, tag_set_id} -> tag_set_id
+        end
+      end
+
+    hash = hash_pool_definition(provides_tag_set_id, repositories)
 
     case query_one(db, "SELECT id FROM pool_definitions WHERE hash = ?1", {hash}) do
       {:ok, {id}} ->
@@ -341,7 +341,10 @@ defmodule Coflux.Orchestration.Environments do
 
       {:ok, nil} ->
         {:ok, pool_definition_id} =
-          insert_one(db, :pool_definitions, %{hash: hash})
+          insert_one(db, :pool_definitions, %{
+            hash: hash,
+            provides_tag_set_id: provides_tag_set_id
+          })
 
         {:ok, _} =
           insert_many(
@@ -350,16 +353,6 @@ defmodule Coflux.Orchestration.Environments do
             {:pool_definition_id, :pattern},
             Enum.map(repositories, fn pattern ->
               {pool_definition_id, pattern}
-            end)
-          )
-
-        {:ok, _} =
-          insert_many(
-            db,
-            :pool_definition_provides,
-            {:pool_definition_id, :key, :value},
-            Enum.flat_map(provides, fn {key, values} ->
-              Enum.map(values, &{pool_definition_id, key, &1})
             end)
           )
 

@@ -1,3 +1,15 @@
+CREATE TABLE tag_sets (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL UNIQUE
+);
+
+CREATE TABLE tag_set_items (
+  tag_set_id INTEGER NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  FOREIGN KEY (tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
+);
+
 CREATE TABLE environments (
   id INTEGER PRIMARY KEY
 );
@@ -16,19 +28,14 @@ CREATE TABLE environment_versions (
 
 CREATE TABLE pool_definitions (
   id INTEGER PRIMARY KEY,
-  hash BLOB NOT NULL UNIQUE
+  hash BLOB NOT NULL UNIQUE,
+  provides_tag_set_id INTEGER,
+  FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
 );
 
 CREATE TABLE pool_definition_repositories (
   pool_definition_id INTEGER NOT NULL,
   pattern TEXT NOT NULL,
-  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
-);
-
-CREATE TABLE pool_definition_provides (
-  pool_definition_id INTEGER NOT NULL,
-  key TEXT NOT NULL,
-  value TEXT NOT NULL,
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
 );
 
@@ -72,10 +79,11 @@ CREATE TABLE target_parameters (
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
   environment_id INTEGER NOT NULL,
-  pool_id INTEGER,
+  provides_tag_set_id INTEGER,
   external_id TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
+  FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
 );
 
 CREATE TABLE session_manifests (
@@ -112,9 +120,11 @@ CREATE TABLE steps (
   retry_count INTEGER NOT NULL,
   retry_delay_min INTEGER NOT NULL,
   retry_delay_max INTEGER NOT NULL,
+  requires_tag_set_id INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE,
-  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
 );
 
 CREATE UNIQUE INDEX steps_initial_step ON steps (run_id) WHERE parent_id IS NULL;
@@ -127,13 +137,6 @@ CREATE TABLE step_arguments (
   PRIMARY KEY (step_id, position),
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE RESTRICT,
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
-);
-
-CREATE TABLE step_requires (
-  step_id INTEGER NOT NULL,
-  key TEXT NOT NULL,
-  value TEXT NOT NULL,
-  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE
 );
 
 CREATE TABLE executions (

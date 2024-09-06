@@ -17,14 +17,14 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:archive_environment, environment_name})
   end
 
-  def start_session(project_id, environment_name, pool_name, concurrency, pid) do
-    call_server(project_id, {:start_session, environment_name, pool_name, concurrency, pid})
+  def start_session(project_id, environment_name, provides, concurrency, pid) do
+    call_server(project_id, {:start_session, environment_name, provides, concurrency, pid})
   end
 
-  def resume_session(project_id, session_id, environment_name, pool_name, concurrency, pid) do
+  def resume_session(project_id, session_id, environment_name, provides, concurrency, pid) do
     call_server(
       project_id,
-      {:resume_session, session_id, environment_name, pool_name, concurrency, pid}
+      {:resume_session, session_id, environment_name, provides, concurrency, pid}
     )
   end
 
