@@ -32,9 +32,7 @@ defmodule Coflux.Topics.Agents do
 
   defp build_targets(targets) do
     Map.new(targets, fn {repository, repository_targets} ->
-      # TODO: include type?
-      target_names = Enum.map(repository_targets, fn {_, name} -> name end)
-      {repository, target_names}
+      {repository, MapSet.to_list(repository_targets)}
     end)
   end
 end

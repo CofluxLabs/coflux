@@ -5,6 +5,7 @@ import types
 import typing as t
 import watchfiles
 import httpx
+import yaml
 
 from . import Agent, config, loader
 
@@ -27,6 +28,11 @@ def _api_request(method: str, host: str, action: str, **kwargs) -> t.Any:
         response.raise_for_status()
         is_json = response.headers.get("Content-Type") == "application/json"
         return response.json() if is_json else None
+
+
+def _load_pools_config(file: t.TextIO):
+    # TODO: validate
+    return yaml.safe_load(file)
 
 
 @t.overload
@@ -81,6 +87,23 @@ def _get_host(argument: str | None) -> str:
     return _get_option(argument, ("COFLUX_HOST", str), "host", "localhost:7777")
 
 
+def _get_provides(argument: tuple[str] | None) -> dict[str, list[str]]:
+    value = _get_option(argument, ("COFLUX_PROVIDES", lambda x: [x]))
+    result: dict[str, list[str]] = {}
+    if value:
+        for part in (p for a in value for p in a.split(" ") if p):
+            key, value = part.split(":", 1)
+            result.setdefault(key, []).append(value)
+        return result
+    return {
+        key: [
+            (str(v).lower() if isinstance(v, bool) else v)
+            for v in (value if isinstance(value, list) else [value])
+        ]
+        for key, value in config.load().get("provides", {}).items()
+    }
+
+
 async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
     for module in modules:
         if isinstance(module, str):
@@ -93,12 +116,15 @@ def _init(
     *modules: types.ModuleType | str,
     project: str,
     environment: str,
-    version: str | None,
+    provides: dict[str, list[str]],
     host: str,
     concurrency: int,
+    launch_id: str | None,
 ) -> None:
     try:
-        with Agent(project, environment, version, host, concurrency) as agent:
+        with Agent(
+            project, environment, provides, host, concurrency, launch_id
+        ) as agent:
             asyncio.run(_run(agent, list(modules)))
     except KeyboardInterrupt:
         pass
@@ -168,9 +194,18 @@ def configure(
     "--base",
     help="The base environment to inherit from",
 )
+@click.option(
+    "--pools-config",
+    help="Path to pools configuration file",
+    type=click.File(),
+)
 @click.argument("name")
 def environment_create(
-    project: str | None, host: str | None, base: str | None, name: str
+    project: str | None,
+    host: str | None,
+    base: str | None,
+    pools_config: t.TextIO,
+    name: str,
 ):
     """
     Creates an environment within the project.
@@ -188,6 +223,10 @@ def environment_create(
         if not base_id:
             click.BadOptionUsage("base", "Not recognised")
 
+    pools = None
+    if pools_config:
+        pools = _load_pools_config(pools_config)
+
     # TODO: handle response
     _api_request(
         "POST",
@@ -197,9 +236,10 @@ def environment_create(
             "projectId": project_,
             "name": name,
             "baseId": base_id,
+            "pools": pools,
         },
     )
-    click.secho(f"Registered environment '{name}'.", fg="green")
+    click.secho(f"Created environment '{name}'.", fg="green")
 
 
 @cli.command("environment.update")
@@ -226,12 +266,30 @@ def environment_create(
     "--base",
     help="The new base environment to inherit from",
 )
+@click.option(
+    "--no-base",
+    is_flag=True,
+    help="Unset the base environment",
+)
+@click.option(
+    "--pools-config",
+    help="Path to pools configuration file",
+    type=click.File(),
+)
+@click.option(
+    "--no-pools",
+    is_flag=True,
+    help="Clear all pools from the environment",
+)
 def environment_update(
     project: str | None,
     host: str | None,
     environment: str | None,
     name: str | None,
     base: str | None,
+    no_base: bool,
+    pools_config: t.TextIO,
+    no_pools: bool,
 ):
     """
     Creates an environment within the project.
@@ -254,19 +312,31 @@ def environment_update(
         if not base_id:
             raise click.BadOptionUsage("base", "Not recognised")
 
+    pools = None
+    if pools_config:
+        pools = _load_pools_config(pools_config)
+
     payload = {
         "projectId": project_,
         "environmentId": environment_id,
     }
     if name is not None:
         payload["name"] = name
+
     if base is not None:
         payload["baseId"] = base_id
+    elif no_base is True:
+        payload["baseId"] = None
+
+    if pools is not None:
+        payload["pools"] = pools
+    elif no_pools is True:
+        payload["pools"] = None
 
     # TODO: handle response
     _api_request("POST", host_, "update_environment", json=payload)
 
-    click.secho(f"Registered environment '{name}'.", fg="green")
+    click.secho(f"Updated environment '{name or environment_}'.", fg="green")
 
 
 @cli.command("environment.archive")
@@ -334,9 +404,13 @@ def environment_archive(
     help="Environment name",
 )
 @click.option(
-    "-v",
-    "--version",
-    help="Version identifier to report to the server",
+    "--provides",
+    help="Features that this agent provides (to be matched with features that tasks require)",
+    multiple=True,
+)
+@click.option(
+    "--launch",
+    help="The launch ID",
 )
 @click.option(
     "--concurrency",
@@ -353,8 +427,9 @@ def environment_archive(
 def agent_run(
     project: str | None,
     environment: str | None,
-    version: str | None,
+    provides: tuple[str],
     host: str | None,
+    launch: str | None,
     concurrency: int | None,
     reload: bool,
     module_name: tuple[str],
@@ -370,8 +445,9 @@ def agent_run(
         raise click.ClickException("No module(s) specified.")
     project_ = _get_project(project)
     environment_ = _get_environment(environment)
-    version_ = _get_option(version, ("COFLUX_VERSION", str))
     host_ = _get_host(host)
+    provides_ = _get_provides(provides or None)
+    launch_ = _get_option(launch, ("COFLUX_LAUNCH", str))
     concurrency_ = _get_option(
         concurrency,
         ("COFLUX_CONCURRENCY", int),
@@ -382,9 +458,10 @@ def agent_run(
     kwargs = {
         "project": project_,
         "environment": environment_,
-        "version": version_,
+        "provides": provides_,
         "host": host_,
         "concurrency": concurrency_,
+        "launch_id": launch_,
     }
     if reload:
         watchfiles.run_process(

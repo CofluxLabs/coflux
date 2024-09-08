@@ -1,3 +1,15 @@
+CREATE TABLE tag_sets (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL UNIQUE
+);
+
+CREATE TABLE tag_set_items (
+  tag_set_id INTEGER NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  FOREIGN KEY (tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
+);
+
 CREATE TABLE environments (
   id INTEGER PRIMARY KEY
 );
@@ -14,12 +26,51 @@ CREATE TABLE environment_versions (
   FOREIGN KEY (base_id) REFERENCES environments ON DELETE CASCADE
 );
 
-CREATE TABLE sessions (
+CREATE TABLE pool_definitions (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL UNIQUE,
+  provides_tag_set_id INTEGER,
+  FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
+);
+
+CREATE TABLE pool_definition_repositories (
+  pool_definition_id INTEGER NOT NULL,
+  pattern TEXT NOT NULL,
+  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
+);
+
+CREATE TABLE pool_definition_launchers (
+  pool_definition_id INTEGER PRIMARY KEY,
+  type INTEGER NOT NULL,
+  config TEXT NOT NULL,
+  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
+);
+
+CREATE TABLE pools (
   id INTEGER PRIMARY KEY,
   environment_id INTEGER NOT NULL,
-  external_id TEXT NOT NULL UNIQUE,
+  version INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  pool_definition_id INTEGER NOT NULL,
+  UNIQUE (environment_id, version, name),
+  FOREIGN KEY (environment_id, version) REFERENCES environment_versions ON DELETE CASCADE,
+  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
+);
+
+CREATE TABLE launches (
+  id INTEGER PRIMARY KEY,
+  pool_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
+  FOREIGN KEY (pool_id) REFERENCES pools ON DELETE CASCADE
+);
+
+-- TODO: separate table for success/failure?
+CREATE TABLE launch_results (
+  launch_id INTEGER PRIMARY KEY,
+  status INTEGER NOT NULL,
+  -- TODO: metadata?
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (launch_id) REFERENCES launches
 );
 
 CREATE TABLE manifests (
@@ -27,15 +78,6 @@ CREATE TABLE manifests (
   repository TEXT NOT NULL,
   targets_hash INTEGER NOT NULL,
   UNIQUE (repository, targets_hash)
-);
-
-CREATE TABLE session_manifests (
-  session_id INTEGER NOT NULL,
-  manifest_id INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (session_id, manifest_id),
-  FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE,
-  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
 CREATE TABLE targets (
@@ -47,13 +89,35 @@ CREATE TABLE targets (
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
-CREATE TABLE parameters (
+CREATE TABLE target_parameters (
   target_id INTEGER NOT NULL,
-  name TEXT NOT NULL,
   position INTEGER NOT NULL,
+  name TEXT NOT NULL,
   default_ TEXT,
   annotation TEXT,
+  PRIMARY KEY (target_id, position)
   FOREIGN KEY (target_id) REFERENCES targets ON DELETE CASCADE
+);
+
+CREATE TABLE sessions (
+  id INTEGER PRIMARY KEY,
+  external_id TEXT NOT NULL UNIQUE,
+  environment_id INTEGER NOT NULL,
+  launch_id INTEGER,
+  provides_tag_set_id INTEGER,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
+  FOREIGN KEY (launch_id) REFERENCES launches ON DELETE CASCADE,
+  FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
+);
+
+CREATE TABLE session_manifests (
+  session_id INTEGER NOT NULL,
+  manifest_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, manifest_id),
+  FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE,
+  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
 CREATE TABLE runs (
@@ -81,9 +145,11 @@ CREATE TABLE steps (
   retry_count INTEGER NOT NULL,
   retry_delay_min INTEGER NOT NULL,
   retry_delay_max INTEGER NOT NULL,
+  requires_tag_set_id INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE,
-  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
 );
 
 CREATE UNIQUE INDEX steps_initial_step ON steps (run_id) WHERE parent_id IS NULL;

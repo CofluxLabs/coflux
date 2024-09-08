@@ -1,5 +1,5 @@
 defmodule Coflux.Orchestration.Runs do
-  alias Coflux.Orchestration.{Models, Results}
+  alias Coflux.Orchestration.{Models, Results, TagSets}
 
   import Coflux.Store
 
@@ -156,6 +156,7 @@ defmodule Coflux.Orchestration.Runs do
     retry_count = Keyword.get(opts, :retry_count, 0)
     retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
     retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
+    requires = Keyword.get(opts, :requires) || %{}
 
     memoised_execution =
       if memo_key do
@@ -180,6 +181,14 @@ defmodule Coflux.Orchestration.Runs do
               end
             end
 
+          requires_tag_set_id =
+            if requires do
+              case TagSets.get_or_create_tag_set_id(db, requires) do
+                {:ok, tag_set_id} ->
+                  tag_set_id
+              end
+            end
+
           # TODO: validate parent belongs to run?
           {:ok, step_id, external_step_id} =
             insert_step(
@@ -196,15 +205,22 @@ defmodule Coflux.Orchestration.Runs do
               retry_count,
               retry_delay_min,
               retry_delay_max,
+              requires_tag_set_id,
               now
             )
 
-          arguments
-          |> Enum.with_index()
-          |> Enum.each(fn {value, position} ->
-            {:ok, value_id} = Results.get_or_create_value(db, value)
-            {:ok, _} = insert_step_argument(db, step_id, position, value_id)
-          end)
+          {:ok, _} =
+            insert_many(
+              db,
+              :step_arguments,
+              {:step_id, :position, :value_id},
+              arguments
+              |> Enum.with_index()
+              |> Enum.map(fn {value, position} ->
+                {:ok, value_id} = Results.get_or_create_value(db, value)
+                {step_id, position, value_id}
+              end)
+            )
 
           attempt = 1
 
@@ -325,6 +341,7 @@ defmodule Coflux.Orchestration.Runs do
         s.wait_for,
         s.defer_key,
         s.parent_id,
+        s.requires_tag_set_id,
         e.environment_id,
         e.execute_after,
         e.created_at
@@ -492,7 +509,7 @@ defmodule Coflux.Orchestration.Runs do
     query(
       db,
       """
-      SELECT id, external_id, parent_id, repository, target, memo_key, created_at
+      SELECT id, external_id, parent_id, repository, target, memo_key, requires_tag_set_id, created_at
       FROM steps
       WHERE run_id = ?1
       """,
@@ -596,6 +613,7 @@ defmodule Coflux.Orchestration.Runs do
     |> Enum.join()
   end
 
+  # TODO: consider changed 'requires'?
   defp find_memoised_execution(db, run_id, environment_ids, memo_key) do
     case query(
            db,
@@ -681,6 +699,7 @@ defmodule Coflux.Orchestration.Runs do
          retry_count,
          retry_delay_min,
          retry_delay_max,
+         requires_tag_set_id,
          now
        ) do
     case generate_external_id(db, :steps, 3, "S") do
@@ -699,20 +718,13 @@ defmodule Coflux.Orchestration.Runs do
                retry_count: retry_count,
                retry_delay_min: retry_delay_min,
                retry_delay_max: retry_delay_max,
+               requires_tag_set_id: requires_tag_set_id,
                created_at: now
              }) do
           {:ok, step_id} ->
             {:ok, step_id, external_id}
         end
     end
-  end
-
-  defp insert_step_argument(db, step_id, position, value_id) do
-    insert_one(db, :step_arguments, %{
-      step_id: step_id,
-      position: position,
-      value_id: value_id
-    })
   end
 
   defp get_next_execution_attempt(db, step_id) do

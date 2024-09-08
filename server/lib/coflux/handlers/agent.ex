@@ -7,19 +7,22 @@ defmodule Coflux.Handlers.Agent do
     qs = :cowboy_req.parse_qs(req)
     # TODO: validate
     project_id = get_query_param(qs, "project")
-    environment_name = get_query_param(qs, "environment")
     session_id = get_query_param(qs, "session")
+    environment_name = get_query_param(qs, "environment")
+    launch_id = get_query_param(qs, "launch", &String.to_integer/1)
+    provides = get_query_param(qs, "provides", &parse_provides/1)
     concurrency = get_query_param(qs, "concurrency", &String.to_integer/1) || 0
 
-    {:cowboy_websocket, req, {project_id, environment_name, session_id, concurrency}}
+    {:cowboy_websocket, req,
+     {project_id, session_id, environment_name, launch_id, provides, concurrency}}
   end
 
-  def websocket_init({project_id, environment_name, session_id, concurrency}) do
+  def websocket_init({project_id, session_id, environment_name, launch_id, provides, concurrency}) do
     case Projects.get_project_by_id(Coflux.ProjectsServer, project_id) do
       {:ok, _} ->
         # TODO: authenticate
         # TODO: monitor server?
-        case connect(project_id, session_id, environment_name, concurrency) do
+        case connect(project_id, session_id, environment_name, launch_id, provides, concurrency) do
           {:ok, session_id, executions} ->
             {[session_message(session_id)],
              %{
@@ -45,7 +48,7 @@ defmodule Coflux.Handlers.Agent do
 
     case message["request"] do
       "register" ->
-        [repository, _version, targets] = message["params"]
+        [repository, targets] = message["params"]
         targets = parse_targets(targets)
 
         case Orchestration.register_targets(
@@ -73,7 +76,8 @@ defmodule Coflux.Handlers.Agent do
           memo_key,
           retry_count,
           retry_delay_min,
-          retry_delay_max
+          retry_delay_max,
+          requires
         ] = message["params"]
 
         if is_recognised_execution?(parent_id, state) do
@@ -93,7 +97,8 @@ defmodule Coflux.Handlers.Agent do
                      retry_delay_min: retry_delay_min,
                      retry_delay_max: retry_delay_max,
                      defer_key: defer_key,
-                     memo_key: memo_key
+                     memo_key: memo_key,
+                     requires: requires
                    ) do
                 {:ok, _run_id, _step_id, execution_id} ->
                   {[success_message(message["id"], execution_id)], state}
@@ -117,7 +122,8 @@ defmodule Coflux.Handlers.Agent do
                      retry_delay_min: retry_delay_min,
                      retry_delay_max: retry_delay_max,
                      defer_key: defer_key,
-                     memo_key: memo_key
+                     memo_key: memo_key,
+                     requires: requires
                    ) do
                 {:ok, _run_id, _step_id, execution_id} ->
                   {[success_message(message["id"], execution_id)], state}
@@ -318,16 +324,9 @@ defmodule Coflux.Handlers.Agent do
     {[{:close, 4000, "environment_not_found"}], state}
   end
 
-  defp connect(project_id, session_id, environment_name, concurrency) do
+  defp connect(project_id, session_id, environment_name, launch_id, provides, concurrency) do
     if session_id do
-      with {:ok, executions} <-
-             Orchestration.resume_session(
-               project_id,
-               session_id,
-               environment_name,
-               concurrency,
-               self()
-             ) do
+      with {:ok, executions} <- Orchestration.resume_session(project_id, session_id, self()) do
         {:ok, session_id, executions}
       end
     else
@@ -335,6 +334,8 @@ defmodule Coflux.Handlers.Agent do
              Orchestration.start_session(
                project_id,
                environment_name,
+               launch_id,
+               provides,
                concurrency,
                self()
              ) do
@@ -455,5 +456,14 @@ defmodule Coflux.Handlers.Agent do
       4 -> :warning
       5 -> :error
     end
+  end
+
+  defp parse_provides(value) do
+    value
+    |> String.split(";", trim: true)
+    |> Enum.reduce(%{}, fn part, result ->
+      [key, value] = String.split(part, ":", parts: 2)
+      Map.update(result, key, [value], &[value | &1])
+    end)
   end
 end

@@ -1,4 +1,10 @@
-import { CSSProperties, Fragment, useCallback, useState } from "react";
+import {
+  CSSProperties,
+  Fragment,
+  ReactNode,
+  useCallback,
+  useState,
+} from "react";
 import classNames from "classnames";
 import { minBy, sortBy } from "lodash";
 import { DateTime } from "luxon";
@@ -402,6 +408,43 @@ function ArgumentsSection({ arguments_ }: ArgumentsSectionProps) {
           </li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+function interpolate(
+  items: ReactNode[],
+  separator: (i: number) => ReactNode,
+): ReactNode[] {
+  return items.flatMap((item, i) => (i > 0 ? [separator(i), item] : [item]));
+}
+
+type RequiresSectionProps = {
+  requires: Record<string, string[]>;
+};
+
+function RequiresSection({ requires }: RequiresSectionProps) {
+  return (
+    <div>
+      <h3 className="uppercase text-sm font-bold text-slate-400">Requires</h3>
+      <ul className="list-disc ml-5 marker:text-slate-600">
+        {Object.entries(requires).map(([key, values]) => (
+          <li key={key}>
+            {interpolate(
+              values.map((v) => (
+                <span key={v} className="rounded bg-slate-300/50 px-1 text-sm">
+                  <span className="text-slate-500">{key}</span>: {v}
+                </span>
+              )),
+              (i) => (
+                <span key={i} className="text-slate-500 text-sm">
+                  {" / "}
+                </span>
+              ),
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -819,6 +862,9 @@ export default function StepDetail({
       <div className="flex flex-col overflow-auto p-4 gap-5">
         {step.arguments?.length > 0 && (
           <ArgumentsSection arguments_={step.arguments} />
+        )}
+        {Object.keys(step.requires).length > 0 && (
+          <RequiresSection requires={step.requires} />
         )}
         {execution && <ExecutionSection execution={execution} />}
         {execution?.assignedAt && (

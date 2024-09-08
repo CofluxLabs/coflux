@@ -28,7 +28,17 @@ defmodule Coflux.Topics.Environments do
     %{
       name: environment.name,
       baseId: environment.base_id,
+      pools: Map.new(environment.pools, &build_pool/1),
       status: environment.status
     }
+  end
+
+  defp build_pool({name, pool}) do
+    {name,
+     %{
+       repositories: pool.repositories,
+       provides: pool.provides,
+       launcher: if(pool.launcher, do: Atom.to_string(pool.launcher.type), else: nil)
+     }}
   end
 end

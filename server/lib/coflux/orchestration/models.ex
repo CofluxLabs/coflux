@@ -66,6 +66,7 @@ defmodule Coflux.Orchestration.Models do
       :wait_for,
       :defer_key,
       :parent_id,
+      :requires_tag_set_id,
       :environment_id,
       :execute_after,
       :created_at

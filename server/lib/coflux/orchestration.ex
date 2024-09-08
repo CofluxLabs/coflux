@@ -5,8 +5,8 @@ defmodule Coflux.Orchestration do
     call_server(project_id, :get_environments)
   end
 
-  def create_environment(project_id, name, base_id) do
-    call_server(project_id, {:create_environment, name, base_id})
+  def create_environment(project_id, name, base_id, pools) do
+    call_server(project_id, {:create_environment, name, base_id, pools})
   end
 
   def update_environment(project_id, environment_id, updates) do
@@ -17,12 +17,15 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:archive_environment, environment_name})
   end
 
-  def start_session(project_id, environment_name, concurrency, pid) do
-    call_server(project_id, {:start_session, environment_name, concurrency, pid})
+  def start_session(project_id, environment_name, launch_id, provides, concurrency, pid) do
+    call_server(
+      project_id,
+      {:start_session, environment_name, launch_id, provides, concurrency, pid}
+    )
   end
 
-  def resume_session(project_id, session_id, environment_name, concurrency, pid) do
-    call_server(project_id, {:resume_session, session_id, environment_name, concurrency, pid})
+  def resume_session(project_id, session_id, pid) do
+    call_server(project_id, {:resume_session, session_id, pid})
   end
 
   def register_targets(project_id, session_id, repository, targets) do

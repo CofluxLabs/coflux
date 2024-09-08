@@ -1,17 +1,29 @@
 defmodule Coflux.Orchestration.Sessions do
+  alias Coflux.Orchestration.TagSets
+
   import Coflux.Store
 
-  def start_session(db, environment_id) do
+  def start_session(db, environment_id, provides, launch_id) do
     with_transaction(db, fn ->
       case generate_external_id(db, :sessions, 30) do
         {:ok, external_id} ->
+          provides_tag_set_id =
+            if provides && Enum.any?(provides) do
+              case TagSets.get_or_create_tag_set_id(db, provides) do
+                {:ok, tag_set_id} ->
+                  tag_set_id
+              end
+            end
+
           case insert_one(db, :sessions, %{
-                 environment_id: environment_id,
                  external_id: external_id,
+                 environment_id: environment_id,
+                 launch_id: launch_id,
+                 provides_tag_set_id: provides_tag_set_id,
                  created_at: current_timestamp()
                }) do
             {:ok, session_id} ->
-              {:ok, session_id, external_id, environment_id}
+              {:ok, session_id, external_id}
           end
       end
     end)
@@ -44,15 +56,15 @@ defmodule Coflux.Orchestration.Sessions do
     {:ok, _} =
       insert_many(
         db,
-        :parameters,
-        {:target_id, :name, :position, :default_, :annotation},
+        :target_parameters,
+        {:target_id, :position, :name, :default_, :annotation},
         targets
         |> Enum.zip(target_ids)
         |> Enum.flat_map(fn {{_, data}, target_id} ->
           data.parameters
           |> Enum.with_index()
           |> Enum.map(fn {{name, default, annotation}, index} ->
-            {target_id, name, index, default, annotation}
+            {target_id, index, name, default, annotation}
           end)
         end)
       )
@@ -130,7 +142,7 @@ defmodule Coflux.Orchestration.Sessions do
       db,
       """
       SELECT name, default_, annotation
-      FROM parameters
+      FROM target_parameters
       WHERE target_id = ?1
       ORDER BY position
       """,

@@ -18,7 +18,7 @@ import itertools
 import signal
 from pathlib import Path
 
-from . import server, blobs, models, serialisation, annotations, loader
+from . import server, blobs, models, serialisation, decorators, loader
 
 
 _EXECUTION_THRESHOLD_S = 1.0
@@ -94,6 +94,7 @@ class ScheduleExecutionRequest(t.NamedTuple):
     retry_count: int
     retry_delay_min: int
     retry_delay_max: int
+    requires: models.Requires | None
 
 
 class ResolveReferenceRequest(t.NamedTuple):
@@ -357,6 +358,7 @@ class Channel:
         execute_after: dt.datetime | None = None,
         delay: int | float | dt.timedelta = 0,
         memo: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
+        requires: models.Requires | None = None,
     ) -> models.Execution[t.Any]:
         if delay:
             delay = (
@@ -397,6 +399,7 @@ class Channel:
                 retry_count,
                 retry_delay_min,
                 retry_delay_max,
+                requires,
             )
         )
         return models.Execution(
@@ -575,7 +578,7 @@ def _execute(
             resolved_arguments = _resolve_arguments(arguments, channel)
             channel.notify_executing()
             target = getattr(module, target_name)
-            if not isinstance(target, annotations.Target) or target.is_stub:
+            if not isinstance(target, decorators.Target) or not target.definition:
                 raise Exception("not valid target")
             value = target.fn(*resolved_arguments)
         except KeyboardInterrupt:
@@ -758,6 +761,7 @@ class Execution:
                 retry_count,
                 retry_delay_min,
                 retry_delay_max,
+                requires,
             ):
                 execute_after_ms = execute_after and (execute_after.timestamp() * 1000)
                 self._server_request(
@@ -777,6 +781,7 @@ class Execution:
                         retry_count,
                         retry_delay_min,
                         retry_delay_max,
+                        requires,
                     ),
                     request_id,
                 )

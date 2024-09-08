@@ -138,6 +138,7 @@ export type Step = {
   // TODO: index by execution id?
   executions: Record<string, Execution>;
   arguments: Value[];
+  requires: Record<string, string[]>;
 };
 
 export type Run = {

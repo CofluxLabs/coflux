@@ -10,6 +10,8 @@ defmodule Coflux.Application do
     children =
       [
         {Projects, name: Coflux.ProjectsServer},
+        # TODO: separate launch supervisor per project? (and specify max_children?)
+        {Task.Supervisor, name: Coflux.LaunchSupervisor},
         Orchestration.Supervisor,
         Observation.Supervisor,
         {Topical, name: Coflux.TopicalRegistry, topics: topics()},

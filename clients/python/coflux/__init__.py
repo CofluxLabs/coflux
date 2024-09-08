@@ -1,4 +1,4 @@
-from .annotations import workflow, task, stub, sensor
+from .decorators import workflow, task, stub, sensor
 from .context import (
     checkpoint,
     persist_asset,

@@ -1,6 +1,4 @@
 import asyncio
-import inspect
-import json
 import random
 import types
 import typing as t
@@ -8,45 +6,17 @@ import urllib.parse
 import websockets
 import traceback
 
-from . import server, execution, annotations, models
+from . import server, execution, decorators, models
 
 
 def _load_module(
     module: types.ModuleType,
-) -> dict[str, tuple[annotations.TargetType, t.Callable]]:
+) -> dict[str, tuple[decorators.TargetDefinition, t.Callable]]:
     attrs = (getattr(module, k) for k in dir(module))
     return {
-        a.name: (a.type, a.fn)
+        a.name: (a.definition, a.fn)
         for a in attrs
-        if isinstance(a, annotations.Target) and not a.is_stub
-    }
-
-
-def _json_dumps(obj: t.Any) -> str:
-    return json.dumps(obj, separators=(",", ":"))
-
-
-def _manifest_parameter(parameter: inspect.Parameter) -> dict:
-    result = {"name": parameter.name}
-    if parameter.annotation != inspect.Parameter.empty:
-        result["annotation"] = str(
-            parameter.annotation
-        )  # TODO: better way to serialise?
-    if parameter.default != inspect.Parameter.empty:
-        result["default"] = _json_dumps(parameter.default)
-    return result
-
-
-def _build_manifest(targets: dict) -> dict:
-    return {
-        name: {
-            "type": type,
-            "parameters": [
-                _manifest_parameter(p)
-                for p in inspect.signature(fn).parameters.values()
-            ],
-        }
-        for name, (type, fn) in targets.items()
+        if isinstance(a, decorators.Target) and a.definition
     }
 
 
@@ -73,18 +43,24 @@ def _parse_value(value: list) -> models.Value:
     raise Exception(f"unexpected value: {value}")
 
 
+def _encode_tags(provides: dict[str, list[str]]) -> str:
+    return ";".join(f"{k}:{v}" for k, vs in provides.items() for v in vs)
+
+
 class Agent:
     def __init__(
         self,
         project_id: str,
         environment_name: str,
-        version: str | None,
+        provides: dict[str, list[str]],
         server_host: str,
         concurrency: int,
+        launch_id: str | None,
     ):
         self._project_id = project_id
         self._environment_name = environment_name
-        self._version = version
+        self._launch_id = launch_id
+        self._provides = provides
         self._server_host = server_host
         self._concurrency = concurrency
         self._modules = {}
@@ -116,24 +92,33 @@ class Agent:
         if not self._execution_manager.abort(execution_id):
             print(f"Ignored abort for unrecognised execution ({execution_id}).")
 
-    def _url(self, scheme: str, path: str, **kwargs) -> str:
-        params = {k: v for k, v in kwargs.items() if v is not None} if kwargs else None
-        query_string = f"?{urllib.parse.urlencode(params)}" if params else ""
+    def _url(self, scheme: str, path: str, params: dict[str, str]) -> str:
+        params_ = {k: v for k, v in params.items() if v is not None} if params else None
+        query_string = f"?{urllib.parse.urlencode(params_)}" if params_ else ""
         return f"{scheme}://{self._server_host}/{path}{query_string}"
+
+    def _params(self):
+        params = {
+            "project": self._project_id,
+            "environment": self._environment_name,
+        }
+        if self._connection.session_id:
+            params["session"] = self._connection.session_id
+        elif self._launch_id:
+            params["launch"] = self._launch_id
+        else:
+            if self._provides:
+                params["provides"] = _encode_tags(self._provides)
+            if self._concurrency:
+                params["concurrency"] = str(self._concurrency)
+        return params
 
     async def run(self) -> None:
         while True:
             print(
                 f"Connecting ({self._server_host}, {self._project_id}, {self._environment_name})..."
             )
-            url = self._url(
-                "ws",
-                "agent",
-                project=self._project_id,
-                environment=self._environment_name,
-                session=self._connection.session_id,
-                concurrency=self._concurrency,
-            )
+            url = self._url("ws", "agent", self._params())
             try:
                 async with websockets.connect(url) as websocket:
                     print("Connected.")
@@ -180,7 +165,16 @@ class Agent:
         self._modules[module_name] = targets
         await self._register_module(module_name, targets)
 
-    async def _register_module(self, module_name: str, targets: dict):
-        await self._connection.notify(
-            "register", (module_name, self._version, _build_manifest(targets))
-        )
+    async def _register_module(
+        self,
+        module_name: str,
+        targets: dict[str, tuple[decorators.TargetDefinition, t.Callable]],
+    ):
+        manifest = {
+            name: {
+                "type": definition.type,
+                "parameters": [p._asdict() for p in definition.parameters],
+            }
+            for name, (definition, _) in targets.items()
+        }
+        await self._connection.notify("register", (module_name, manifest))

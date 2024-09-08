@@ -4,6 +4,8 @@ T = t.TypeVar("T")
 
 # TODO: use named tuples
 
+Requires = dict[str, list[str]]
+
 Metadata = dict[str, t.Any]
 
 Placeholders = dict[int, tuple[int, None] | tuple[None, int]]

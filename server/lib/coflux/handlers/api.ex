@@ -63,17 +63,24 @@ defmodule Coflux.Handlers.Api do
 
   defp handle(req, "POST", ["create_environment"]) do
     {:ok, arguments, errors, req} =
-      read_arguments(req, %{
-        project_id: "projectId",
-        name: "name",
-        base_id: {"baseId", &parse_environment_id(&1, false)}
-      })
+      read_arguments(
+        req,
+        %{
+          project_id: "projectId",
+          name: "name"
+        },
+        %{
+          base_id: {"baseId", &parse_environment_id(&1, false)},
+          pools: {"pools", &parse_pools/1}
+        }
+      )
 
     if Enum.empty?(errors) do
       case Orchestration.create_environment(
              arguments.project_id,
              arguments.name,
-             arguments.base_id
+             arguments[:base_id],
+             arguments[:pools]
            ) do
         {:ok, version} ->
           json_response(req, %{version: version})
@@ -102,7 +109,8 @@ defmodule Coflux.Handlers.Api do
         },
         %{
           name: "name",
-          base_id: {"baseId", &parse_environment_id(&1, false)}
+          base_id: {"baseId", &parse_environment_id(&1, false)},
+          pools: {"pools", &parse_pools/1}
         }
       )
 
@@ -110,7 +118,7 @@ defmodule Coflux.Handlers.Api do
       case Orchestration.update_environment(
              arguments.project_id,
              arguments.environment_id,
-             Map.take(arguments, [:name, :base_id])
+             Map.take(arguments, [:name, :base_id, :pools])
            ) do
         :ok ->
           :cowboy_req.reply(204, req)
@@ -260,6 +268,155 @@ defmodule Coflux.Handlers.Api do
         {id, ""} -> {:ok, id}
         _ -> {:error, :invalid}
       end
+    end
+  end
+
+  defp is_valid_repository_pattern?(pattern) do
+    cond do
+      not is_binary(pattern) ->
+        false
+
+      String.length(pattern) > 100 ->
+        false
+
+      true ->
+        parts = String.split(pattern, ".")
+        Enum.all?(parts, &(&1 == "*" || Regex.match?(~r/^[a-z_][a-z0-9_]*$/i, &1)))
+    end
+  end
+
+  defp is_valid_tag_key?(key) do
+    is_binary(key) && Regex.match?(~r/^[a-z0-9_-]{1,20}$/i, key)
+  end
+
+  defp is_valid_tag_value?(value) do
+    is_binary(value) && Regex.match?(~r/^[a-z0-9_-]{1,30}$/i, value)
+  end
+
+  defp is_valid_pool_name?(name) do
+    is_binary(name) && Regex.match?(~r/^[a-z][a-z0-9_-]{0,19}$/i, name)
+  end
+
+  defp parse_repositories(value) do
+    value = List.wrap(value)
+
+    if Enum.all?(value, &is_valid_repository_pattern?/1) do
+      {:ok, value}
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp parse_provides_item(key, value) do
+    value =
+      value
+      |> List.wrap()
+      |> Enum.map(fn
+        true -> "true"
+        false -> "false"
+        other -> other
+      end)
+
+    if is_valid_tag_key?(key) &&
+         Enum.all?(value, &is_valid_tag_value?/1) &&
+         length(value) <= 10 do
+      {:ok, key, value}
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp parse_provides(value) do
+    if is_map(value) && map_size(value) <= 10 do
+      Enum.reduce_while(value, {:ok, %{}}, fn {key, value}, {:ok, result} ->
+        case parse_provides_item(key, value) do
+          {:ok, key, value} ->
+            {:cont, {:ok, Map.put(result, key, value)}}
+
+          {:error, error} ->
+            {:halt, {:error, error}}
+        end
+      end)
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp parse_docker_launcher(value) do
+    image = Map.get(value, "image")
+
+    if is_binary(image) && String.length(image) <= 200 do
+      {:ok, %{type: :docker, image: image}}
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp parse_launcher(value) do
+    if is_map(value) do
+      case Map.fetch(value, "type") do
+        {:ok, "docker"} -> parse_docker_launcher(value)
+        {:ok, _other} -> {:error, :invalid}
+        :error -> {:error, :invalid}
+      end
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp parse_pool(value) do
+    if is_map(value) do
+      Enum.reduce_while(
+        [
+          {"repositories", &parse_repositories/1, :repositories, []},
+          {"provides", &parse_provides/1, :provides, %{}},
+          {"launcher", &parse_launcher/1, :launcher, nil}
+        ],
+        {:ok, %{}},
+        fn {source, parser, target, default}, {:ok, result} ->
+          case Map.fetch(value, source) do
+            {:ok, value} ->
+              case parser.(value) do
+                {:ok, parsed} ->
+                  {:cont, {:ok, Map.put(result, target, parsed)}}
+
+                {:error, error} ->
+                  {:halt, {:error, error}}
+              end
+
+            :error ->
+              {:cont, {:ok, Map.put(result, target, default)}}
+          end
+        end
+      )
+    else
+      {:error, :invalid}
+    end
+  end
+
+  # TODO: return specific errors (use validation library?)
+  defp parse_pools(value) do
+    cond do
+      is_nil(value) ->
+        {:ok, %{}}
+
+      is_map(value) ->
+        Enum.reduce_while(value, {:ok, %{}}, fn {name, pool}, {:ok, result} ->
+          if is_valid_pool_name?(name) do
+            case parse_pool(pool) do
+              {:ok, parsed} ->
+                {:cont, {:ok, Map.put(result, name, parsed)}}
+
+              {:error, error} ->
+                {:halt, {:error, error}}
+            end
+          else
+            {:error, :invalid}
+          end
+        end)
+
+      true ->
+        {:error, :invalid}
     end
   end
 
