@@ -342,12 +342,35 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
+  defp parse_docker_launcher(value) do
+    image = Map.get(value, "image")
+
+    if is_binary(image) && String.length(image) <= 200 do
+      {:ok, %{type: :docker, image: image}}
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp parse_launcher(value) do
+    if is_map(value) do
+      case Map.fetch(value, "type") do
+        {:ok, "docker"} -> parse_docker_launcher(value)
+        {:ok, _other} -> {:error, :invalid}
+        :error -> {:error, :invalid}
+      end
+    else
+      {:error, :invalid}
+    end
+  end
+
   defp parse_pool(value) do
     if is_map(value) do
       Enum.reduce_while(
         [
           {"repositories", &parse_repositories/1, :repositories, []},
-          {"provides", &parse_provides/1, :provides, %{}}
+          {"provides", &parse_provides/1, :provides, %{}},
+          {"launcher", &parse_launcher/1, :launcher, nil}
         ],
         {:ok, %{}},
         fn {source, parser, target, default}, {:ok, result} ->

@@ -7,20 +7,22 @@ defmodule Coflux.Handlers.Agent do
     qs = :cowboy_req.parse_qs(req)
     # TODO: validate
     project_id = get_query_param(qs, "project")
-    environment_name = get_query_param(qs, "environment")
-    provides = get_query_param(qs, "provides", &parse_provides/1)
     session_id = get_query_param(qs, "session")
+    environment_name = get_query_param(qs, "environment")
+    launch_id = get_query_param(qs, "launch", &String.to_integer/1)
+    provides = get_query_param(qs, "provides", &parse_provides/1)
     concurrency = get_query_param(qs, "concurrency", &String.to_integer/1) || 0
 
-    {:cowboy_websocket, req, {project_id, environment_name, provides, session_id, concurrency}}
+    {:cowboy_websocket, req,
+     {project_id, session_id, environment_name, launch_id, provides, concurrency}}
   end
 
-  def websocket_init({project_id, environment_name, provides, session_id, concurrency}) do
+  def websocket_init({project_id, session_id, environment_name, launch_id, provides, concurrency}) do
     case Projects.get_project_by_id(Coflux.ProjectsServer, project_id) do
       {:ok, _} ->
         # TODO: authenticate
         # TODO: monitor server?
-        case connect(project_id, session_id, environment_name, provides, concurrency) do
+        case connect(project_id, session_id, environment_name, launch_id, provides, concurrency) do
           {:ok, session_id, executions} ->
             {[session_message(session_id)],
              %{
@@ -322,17 +324,9 @@ defmodule Coflux.Handlers.Agent do
     {[{:close, 4000, "environment_not_found"}], state}
   end
 
-  defp connect(project_id, session_id, environment_name, provides, concurrency) do
+  defp connect(project_id, session_id, environment_name, launch_id, provides, concurrency) do
     if session_id do
-      with {:ok, executions} <-
-             Orchestration.resume_session(
-               project_id,
-               session_id,
-               environment_name,
-               provides,
-               concurrency,
-               self()
-             ) do
+      with {:ok, executions} <- Orchestration.resume_session(project_id, session_id, self()) do
         {:ok, session_id, executions}
       end
     else
@@ -340,6 +334,7 @@ defmodule Coflux.Handlers.Agent do
              Orchestration.start_session(
                project_id,
                environment_name,
+               launch_id,
                provides,
                concurrency,
                self()

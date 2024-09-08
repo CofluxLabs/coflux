@@ -119,9 +119,12 @@ def _init(
     provides: dict[str, list[str]],
     host: str,
     concurrency: int,
+    launch_id: str | None,
 ) -> None:
     try:
-        with Agent(project, environment, provides, host, concurrency) as agent:
+        with Agent(
+            project, environment, provides, host, concurrency, launch_id
+        ) as agent:
             asyncio.run(_run(agent, list(modules)))
     except KeyboardInterrupt:
         pass
@@ -406,6 +409,10 @@ def environment_archive(
     multiple=True,
 )
 @click.option(
+    "--launch",
+    help="The launch ID",
+)
+@click.option(
     "--concurrency",
     type=int,
     help="Limit on number of executions to process at once",
@@ -422,6 +429,7 @@ def agent_run(
     environment: str | None,
     provides: tuple[str],
     host: str | None,
+    launch: str | None,
     concurrency: int | None,
     reload: bool,
     module_name: tuple[str],
@@ -439,6 +447,7 @@ def agent_run(
     environment_ = _get_environment(environment)
     host_ = _get_host(host)
     provides_ = _get_provides(provides or None)
+    launch_ = _get_option(launch, ("COFLUX_LAUNCH", str))
     concurrency_ = _get_option(
         concurrency,
         ("COFLUX_CONCURRENCY", int),
@@ -452,6 +461,7 @@ def agent_run(
         "provides": provides_,
         "host": host_,
         "concurrency": concurrency_,
+        "launch_id": launch_,
     }
     if reload:
         watchfiles.run_process(

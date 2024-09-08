@@ -37,7 +37,8 @@ defmodule Coflux.Topics.Environments do
     {name,
      %{
        repositories: pool.repositories,
-       provides: pool.provides
+       provides: pool.provides,
+       launcher: if(pool.launcher, do: Atom.to_string(pool.launcher.type), else: nil)
      }}
   end
 end

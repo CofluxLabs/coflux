@@ -39,6 +39,13 @@ CREATE TABLE pool_definition_repositories (
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
 );
 
+CREATE TABLE pool_definition_launchers (
+  pool_definition_id INTEGER PRIMARY KEY,
+  type INTEGER NOT NULL,
+  config TEXT NOT NULL,
+  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
+);
+
 CREATE TABLE pools (
   id INTEGER PRIMARY KEY,
   environment_id INTEGER NOT NULL,
@@ -48,6 +55,22 @@ CREATE TABLE pools (
   UNIQUE (environment_id, version, name),
   FOREIGN KEY (environment_id, version) REFERENCES environment_versions ON DELETE CASCADE,
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
+);
+
+CREATE TABLE launches (
+  id INTEGER PRIMARY KEY,
+  pool_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (pool_id) REFERENCES pools ON DELETE CASCADE
+);
+
+-- TODO: separate table for success/failure?
+CREATE TABLE launch_results (
+  launch_id INTEGER PRIMARY KEY,
+  status INTEGER NOT NULL,
+  -- TODO: metadata?
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (launch_id) REFERENCES launches
 );
 
 CREATE TABLE manifests (
@@ -78,11 +101,13 @@ CREATE TABLE target_parameters (
 
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
-  environment_id INTEGER NOT NULL,
-  provides_tag_set_id INTEGER,
   external_id TEXT NOT NULL UNIQUE,
+  environment_id INTEGER NOT NULL,
+  launch_id INTEGER,
+  provides_tag_set_id INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
+  FOREIGN KEY (launch_id) REFERENCES launches ON DELETE CASCADE,
   FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
 );
 

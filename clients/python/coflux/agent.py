@@ -55,9 +55,11 @@ class Agent:
         provides: dict[str, list[str]],
         server_host: str,
         concurrency: int,
+        launch_id: str | None,
     ):
         self._project_id = project_id
         self._environment_name = environment_name
+        self._launch_id = launch_id
         self._provides = provides
         self._server_host = server_host
         self._concurrency = concurrency
@@ -90,23 +92,33 @@ class Agent:
         if not self._execution_manager.abort(execution_id):
             print(f"Ignored abort for unrecognised execution ({execution_id}).")
 
-    def _url(self, scheme: str, path: str, **kwargs) -> str:
-        params = {k: v for k, v in kwargs.items() if v is not None} if kwargs else None
-        query_string = f"?{urllib.parse.urlencode(params)}" if params else ""
+    def _url(self, scheme: str, path: str, params: dict[str, str]) -> str:
+        params_ = {k: v for k, v in params.items() if v is not None} if params else None
+        query_string = f"?{urllib.parse.urlencode(params_)}" if params_ else ""
         return f"{scheme}://{self._server_host}/{path}{query_string}"
+
+    def _params(self):
+        params = {
+            "project": self._project_id,
+            "environment": self._environment_name,
+        }
+        if self._connection.session_id:
+            params["session"] = self._connection.session_id
+        elif self._launch_id:
+            params["launch"] = self._launch_id
+        else:
+            if self._provides:
+                params["provides"] = _encode_tags(self._provides)
+            if self._concurrency:
+                params["concurrency"] = str(self._concurrency)
+        return params
 
     async def run(self) -> None:
         while True:
-            print(f"Connecting ({self._server_host}, {self._project_id})...")
-            url = self._url(
-                "ws",
-                "agent",
-                project=self._project_id,
-                environment=self._environment_name,
-                provides=_encode_tags(self._provides),
-                session=self._connection.session_id,
-                concurrency=self._concurrency,
+            print(
+                f"Connecting ({self._server_host}, {self._project_id}, {self._environment_name})..."
             )
+            url = self._url("ws", "agent", self._params())
             try:
                 async with websockets.connect(url) as websocket:
                     print("Connected.")

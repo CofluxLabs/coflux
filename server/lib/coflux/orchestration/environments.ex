@@ -316,15 +316,26 @@ defmodule Coflux.Orchestration.Environments do
     end)
   end
 
-  defp hash_pool_definition(provides_tag_set_id, repositories) do
-    # TODO: better hashing?
-    data = [provides_tag_set_id || 0 | Enum.sort(repositories)]
+  defp hash_pool_definition(provides_tag_set_id, repositories, launcher) do
+    # TODO: better hashing? (recursively sort launcher?)
+    data =
+      Enum.intersperse(
+        [
+          Integer.to_string(provides_tag_set_id),
+          Enum.join(Enum.sort(repositories), "\n"),
+          if(launcher, do: Atom.to_string(launcher.type), else: ""),
+          if(launcher, do: Jason.encode!(Map.delete(launcher, :type)), else: "")
+        ],
+        0
+      )
+
     :crypto.hash(:sha256, data)
   end
 
   defp get_or_create_pool_definition(db, pool) do
     repositories = Map.get(pool, :repositories, [])
     provides = Map.get(pool, :provides, %{})
+    launcher = Map.get(pool, :launcher)
 
     provides_tag_set_id =
       if provides && Enum.any?(provides) do
@@ -333,7 +344,7 @@ defmodule Coflux.Orchestration.Environments do
         end
       end
 
-    hash = hash_pool_definition(provides_tag_set_id, repositories)
+    hash = hash_pool_definition(provides_tag_set_id, repositories, launcher)
 
     case query_one(db, "SELECT id FROM pool_definitions WHERE hash = ?1", {hash}) do
       {:ok, {id}} ->
@@ -356,6 +367,20 @@ defmodule Coflux.Orchestration.Environments do
             end)
           )
 
+        if launcher do
+          launcher_type =
+            case launcher.type do
+              :docker -> 0
+            end
+
+          {:ok, _} =
+            insert_one(db, :pool_definition_launchers, %{
+              pool_definition_id: pool_definition_id,
+              type: launcher_type,
+              config: Jason.encode!(Map.delete(launcher, :type))
+            })
+        end
+
         {:ok, pool_definition_id}
     end
   end
@@ -373,6 +398,22 @@ defmodule Coflux.Orchestration.Environments do
       {:ok, rows} ->
         {:ok,
          Map.new(rows, fn {id, pool_name, pool_definition_id} ->
+           provides =
+             case query_one(
+                    db,
+                    "SELECT provides_tag_set_id FROM pool_definitions WHERE id = ?1",
+                    {pool_definition_id}
+                  ) do
+               {:ok, {nil}} ->
+                 %{}
+
+               {:ok, {provides_tag_set_id}} ->
+                 case TagSets.get_tag_set(db, provides_tag_set_id) do
+                   {:ok, tag_set} ->
+                     tag_set
+                 end
+             end
+
            repositories =
              case query(
                     db,
@@ -386,27 +427,33 @@ defmodule Coflux.Orchestration.Environments do
                {:ok, rows} -> Enum.map(rows, fn {pattern} -> pattern end)
              end
 
-           provides =
-             case query(
+           launcher =
+             case query_one(
                     db,
                     """
-                    SELECT key, value
-                    FROM pool_definition_provides
+                    SELECT type, config
+                    FROM pool_definition_launchers
                     WHERE pool_definition_id = ?1
                     """,
                     {pool_definition_id}
                   ) do
-               {:ok, rows} ->
-                 Enum.reduce(rows, %{}, fn {key, value}, result ->
-                   Map.update(result, key, [value], &[value | &1])
-                 end)
+               {:ok, {type, config}} ->
+                 config = Jason.decode!(config, keys: :atoms)
+
+                 case type do
+                   0 -> Map.put(config, :type, :docker)
+                 end
+
+               {:ok, nil} ->
+                 nil
              end
 
-           {pool_name,
+           {id,
             %{
-              id: id,
+              name: pool_name,
+              provides: provides,
               repositories: repositories,
-              provides: provides
+              launcher: launcher
             }}
          end)}
     end
