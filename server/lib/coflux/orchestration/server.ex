@@ -1152,6 +1152,7 @@ defmodule Coflux.Orchestration.Server do
 
     state =
       if Enum.any?(unassigned) do
+        {:ok, latest_launches} = Launches.get_latest_launches(state.db)
         {:ok, pending_launches} = Launches.get_pending_launches(state.db)
 
         pending_launch_pool_ids =
@@ -1159,7 +1160,7 @@ defmodule Coflux.Orchestration.Server do
             pool_id
           end)
 
-        # TODO: limit rate of (successful) launches (per pool)
+        now = System.os_time(:millisecond)
 
         unassigned
         |> Enum.group_by(& &1.environment_id)
@@ -1176,6 +1177,7 @@ defmodule Coflux.Orchestration.Server do
           |> Enum.reject(&is_nil/1)
           |> Enum.uniq()
           |> Enum.reject(&(&1 in pending_launch_pool_ids))
+          |> Enum.filter(&(now - Map.get(latest_launches, &1, 0) > 10_000))
           |> Enum.reduce(state, fn pool_id, state ->
             case Launches.create_launch(state.db, pool_id) do
               {:ok, launch_id} ->

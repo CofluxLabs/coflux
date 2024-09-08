@@ -16,6 +16,24 @@ defmodule Coflux.Orchestration.Launches do
     })
   end
 
+  def get_latest_launches(db, timeout_ms \\ 60_000) do
+    launched_since = current_timestamp() - timeout_ms
+
+    case query(
+           db,
+           """
+           SELECT pool_id, MAX(created_at)
+           FROM launches
+           WHERE created_at >= ?1
+           GROUP BY pool_id
+           """,
+           {launched_since}
+         ) do
+      {:ok, rows} ->
+        {:ok, Map.new(rows)}
+    end
+  end
+
   def get_pending_launches(db, timeout_ms \\ 60_000) do
     launched_since = current_timestamp() - timeout_ms
 
