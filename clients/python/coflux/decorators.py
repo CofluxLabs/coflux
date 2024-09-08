@@ -19,7 +19,7 @@ TargetType = t.Literal["workflow", "task", "sensor"]
 class Parameter(t.NamedTuple):
     name: str
     annotation: str | None
-    default_: str | None
+    default: str | None
 
 
 class TargetDefinition(t.NamedTuple):
