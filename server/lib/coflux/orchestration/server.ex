@@ -448,21 +448,22 @@ defmodule Coflux.Orchestration.Server do
            cache_environment_ids,
            opts
          ) do
-      {:ok, _step_id, external_step_id, execution_id, attempt, created_at, memoised, result,
+      {:ok, _step_id, external_step_id, execution_id, attempt, created_at, memo_hit, result,
        child_added} ->
         execute_after = Keyword.get(opts, :execute_after)
         requires = Keyword.get(opts, :requires) || %{}
 
         state =
-          if !memoised do
-            memo_key = Keyword.get(opts, :memo_key)
+          if !memo_hit do
+            is_memoised = !is_nil(Keyword.get(opts, :memo_params))
             arguments = Enum.map(arguments, &build_value(&1, state))
 
             notify_listeners(
               state,
               {:run, run.id},
-              {:step, external_step_id, repository, target_name, memo_key, parent_id, created_at,
-               arguments, requires, attempt, execution_id, environment_id, execute_after}
+              {:step, external_step_id, repository, target_name, is_memoised, parent_id,
+               created_at, arguments, requires, attempt, execution_id, environment_id,
+               execute_after}
             )
           else
             state
@@ -493,7 +494,7 @@ defmodule Coflux.Orchestration.Server do
           end
 
         state =
-          if !memoised && !result do
+          if !memo_hit && !result do
             execute_at = execute_after || created_at
 
             state =

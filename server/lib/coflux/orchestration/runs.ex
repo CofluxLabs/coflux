@@ -133,6 +133,32 @@ defmodule Coflux.Orchestration.Runs do
     end)
   end
 
+  defp encode_placeholders(placeholders) do
+    placeholders
+    |> Enum.sort()
+    |> Enum.map_join(";", fn {key, {execution_id, asset_id}} ->
+      "#{key}=#{execution_id}|#{asset_id}"
+    end)
+  end
+
+  defp build_key(params, arguments, namespace) do
+    if params do
+      parameter_parts =
+        Enum.map(params, fn index ->
+          case Enum.at(arguments, index) do
+            {{:raw, content}, format, placeholders} ->
+              [1, content, 0, format, encode_placeholders(placeholders)]
+
+            {{:blob, blob_key, _metadata}, format, placeholders} ->
+              [2, blob_key, 0, format, encode_placeholders(placeholders)]
+          end
+        end)
+
+      data = Enum.intersperse([namespace | parameter_parts], 0)
+      :crypto.hash(:sha256, data)
+    end
+  end
+
   defp schedule_step(
          db,
          run_id,
@@ -147,16 +173,20 @@ defmodule Coflux.Orchestration.Runs do
          opts
        ) do
     priority = Keyword.get(opts, :priority, 0)
-    execute_after = Keyword.get(opts, :execute_after)
     wait_for = Keyword.get(opts, :wait_for)
-    cache_key = Keyword.get(opts, :cache_key)
+    cache_params = Keyword.get(opts, :cache_params)
     cache_max_age = Keyword.get(opts, :cache_max_age)
-    defer_key = Keyword.get(opts, :defer_key)
-    memo_key = Keyword.get(opts, :memo_key)
+    cache_namespace = Keyword.get(opts, :cache_namespace, "#{repository}:#{target}")
+    cache_version = Keyword.get(opts, :cache_version)
+    defer_params = Keyword.get(opts, :defer_params)
+    memo_params = Keyword.get(opts, :memo_params)
+    execute_after = Keyword.get(opts, :execute_after)
     retry_count = Keyword.get(opts, :retry_count, 0)
     retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
     retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
     requires = Keyword.get(opts, :requires) || %{}
+
+    memo_key = build_key(memo_params, arguments, "#{repository}:#{target}")
 
     memoised_execution =
       if memo_key do
@@ -165,12 +195,20 @@ defmodule Coflux.Orchestration.Runs do
         end
       end
 
-    {step_id, external_step_id, execution_id, attempt, now, memoised, result} =
+    {step_id, external_step_id, execution_id, attempt, now, memo_hit, result} =
       case memoised_execution do
         {step_id, external_step_id, execution_id, attempt, now} ->
           {step_id, external_step_id, execution_id, attempt, now, true, false}
 
         nil ->
+          cache_namespace =
+            Enum.join([
+              cache_namespace,
+              if(cache_version, do: "@#{cache_version}", else: "")
+            ])
+
+          cache_key = build_key(cache_params, arguments, cache_namespace)
+
           cached_execution_id =
             if cache_key do
               recorded_after = if cache_max_age, do: now - cache_max_age * 1000, else: 0
@@ -188,6 +226,8 @@ defmodule Coflux.Orchestration.Runs do
                   tag_set_id
               end
             end
+
+          defer_key = build_key(defer_params, arguments, "#{repository}:#{target}")
 
           # TODO: validate parent belongs to run?
           {:ok, step_id, external_step_id} =
@@ -247,7 +287,7 @@ defmodule Coflux.Orchestration.Runs do
         false
       end
 
-    {:ok, step_id, external_step_id, execution_id, attempt, now, memoised, result, child_added}
+    {:ok, step_id, external_step_id, execution_id, attempt, now, memo_hit, result, child_added}
   end
 
   def rerun_step(db, step_id, environment_id, execute_after) do

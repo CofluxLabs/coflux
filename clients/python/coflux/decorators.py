@@ -49,10 +49,11 @@ def _build_parameter(parameter: inspect.Parameter) -> Parameter:
 
 
 def _build_target_definition(type: TargetType, fn: t.Callable):
-    parameters = [
-        _build_parameter(p) for p in inspect.signature(fn).parameters.values()
-    ]
-    return TargetDefinition(type, parameters)
+    parameters = inspect.signature(fn).parameters.values()
+    for p in parameters:
+        if p.kind != inspect.Parameter.POSITIONAL_OR_KEYWORD:
+            raise Exception(f"Unsupported parameter type ({p.kind})")
+    return TargetDefinition(type, [_build_parameter(p) for p in parameters])
 
 
 class Target(t.Generic[P, T]):
@@ -67,31 +68,44 @@ class Target(t.Generic[P, T]):
         name: str | None = None,
         wait: bool | t.Iterable[str] | str = False,
         cache: bool | int | float | dt.timedelta = False,
-        cache_key: t.Callable[P, str] | None = None,
-        cache_namespace: str | None = None,
+        cache_params: t.Iterable[str] | str | None = None,
         retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-        defer: bool | t.Callable[P, str] = False,
+        defer: bool = False,
+        defer_params: t.Iterable[str] | str | None = None,
         delay: int | float | dt.timedelta = 0,
-        memo: bool | t.Callable[P, str] = False,
+        memo: bool | t.Iterable[str] | str = False,
         requires: dict[str, str | bool | list[str]] | None = None,
         is_stub: bool = False,
     ):
+        definition = _build_target_definition(type, fn)
         self._fn = fn
         self._type = type
         self._name = name or fn.__name__
         self._repository = repository or fn.__module__
-        self._wait = _parse_wait(fn, wait)
+        self._wait = (
+            wait
+            if isinstance(wait, bool)
+            else set(_get_param_indexes(definition, wait))
+        )
         self._cache = cache
-        self._cache_key = cache_key
-        self._cache_namespace = cache_namespace
+        self._cache_params = (
+            None
+            if cache_params is None
+            else _get_param_indexes(definition, cache_params)
+        )
         self._retries = retries
         self._defer = defer
-        self._delay = delay
-        self._memo = memo
-        self._requires = _parse_requires(requires)
-        self._definition = (
-            None if is_stub else _build_target_definition(self._type, self._fn)
+        self._defer_params = (
+            None
+            if defer_params is None
+            else _get_param_indexes(definition, defer_params)
         )
+        self._delay = delay
+        self._memo = (
+            memo if isinstance(memo, bool) else _get_param_indexes(definition, memo)
+        )
+        self._requires = _parse_requires(requires)
+        self._definition = None if is_stub else definition
         functools.update_wrapper(self, fn)
 
     @property
@@ -116,10 +130,10 @@ class Target(t.Generic[P, T]):
                 args,
                 wait=self._wait,
                 cache=self._cache,
-                cache_key=self._cache_key,
-                cache_namespace=self._cache_namespace,
+                cache_params=self._cache_params,
                 retries=self._retries,
                 defer=self._defer,
+                defer_params=self._defer_params,
                 delay=self._delay,
                 memo=self._memo,
                 requires=self._requires,
@@ -136,23 +150,18 @@ class Target(t.Generic[P, T]):
         return self.submit(*args, **kwargs).result()
 
 
-def _parse_wait(fn: t.Callable, wait: bool | t.Iterable[str] | str) -> set[int] | None:
-    if not wait:
-        return None
-    parameters = [
-        p.name
-        for p in inspect.signature(fn).parameters.values()
-        if p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
-    ]
-    if wait is True:
-        return set(range(len(parameters)))
-    if isinstance(wait, str):
-        wait = re.split(r",\s*", wait)
-    indexes = set()
-    for parameter in wait:
-        if parameter not in parameters:
-            raise Exception(f"no parameter '{parameter}' for function {fn.__name__}")
-        indexes.add(parameters.index(parameter))
+def _get_param_indexes(
+    definition: TargetDefinition,
+    names: t.Iterable[str] | str,
+) -> list[int]:
+    if isinstance(names, str):
+        names = re.split(r",\s*", names)
+    indexes = []
+    parameter_names = [p.name for p in definition.parameters]
+    for name in names:
+        if name not in parameter_names:
+            raise Exception(f"Unrecognised parameter in wait ({name})")
+        indexes.append(parameter_names.index(name))
     return indexes
 
 
@@ -176,12 +185,12 @@ def task(
     name: str | None = None,
     wait: bool | t.Iterable[str] | str = False,
     cache: bool | int | float | dt.timedelta = False,
-    cache_key: t.Callable[P, str] | None = None,
-    cache_namespace: str | None = None,
+    cache_params: t.Iterable[str] | str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    defer: bool | t.Callable[P, str] = False,
+    defer: bool = False,
+    defer_params: t.Iterable[str] | str | None = None,
     delay: int | float | dt.timedelta = 0,
-    memo: bool | t.Callable[P, str] = False,
+    memo: bool | t.Iterable[str] = False,
     requires: dict[str, str | bool | list[str]] | None = None,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
     def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
@@ -191,10 +200,10 @@ def task(
             name=name,
             wait=wait,
             cache=cache,
-            cache_key=cache_key,
-            cache_namespace=cache_namespace,
+            cache_params=cache_params,
             retries=retries,
             defer=defer,
+            defer_params=defer_params,
             delay=delay,
             memo=memo,
             requires=requires,
@@ -208,10 +217,10 @@ def workflow(
     name: str | None = None,
     wait: bool | t.Iterable[str] | str = False,
     cache: bool | int | float | dt.timedelta = False,
-    cache_key: t.Callable[P, str] | None = None,
-    cache_namespace: str | None = None,
+    cache_params: t.Iterable[str] | str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    defer: bool | t.Callable[P, str] = False,
+    defer: bool = False,
+    defer_params: t.Iterable[str] | str | None = None,
     delay: int | float | dt.timedelta = 0,
     requires: dict[str, str | bool | list[str]] | None = None,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
@@ -222,10 +231,10 @@ def workflow(
             name=name,
             wait=wait,
             cache=cache,
-            cache_key=cache_key,
-            cache_namespace=cache_namespace,
+            cache_params=cache_params,
             retries=retries,
             defer=defer,
+            defer_params=defer_params,
             delay=delay,
             requires=requires,
         )
@@ -240,12 +249,12 @@ def stub(
     type: t.Literal["workflow", "task"] = "task",
     wait: bool | t.Iterable[str] | str = False,
     cache: bool | int | float | dt.timedelta = False,
-    cache_key: t.Callable[P, str] | None = None,
-    cache_namespace: str | None = None,
+    cache_params: t.Iterable[str] | str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    defer: bool | t.Callable[P, str] = False,
+    defer: bool = False,
+    defer_params: t.Iterable[str] | str | None = None,
     delay: int | float | dt.timedelta = 0,
-    memo: bool | t.Callable[P, str] = False,
+    memo: bool | t.Iterable[str] = False,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
     def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
         return Target(
@@ -255,10 +264,10 @@ def stub(
             name=name,
             wait=wait,
             cache=cache,
-            cache_key=cache_key,
-            cache_namespace=cache_namespace,
+            cache_params=cache_params,
             retries=retries,
             defer=defer,
+            defer_params=defer_params,
             delay=delay,
             memo=memo,
             is_stub=True,

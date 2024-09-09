@@ -6,7 +6,6 @@ import time
 import enum
 import asyncio
 import datetime as dt
-import hashlib
 import traceback
 import sys
 import tempfile
@@ -85,12 +84,14 @@ class ScheduleExecutionRequest(t.NamedTuple):
     repository: str
     target: str
     arguments: list[models.Value]
-    execute_after: dt.datetime | None
     wait: set[int] | None
-    cache_key: str | None
+    cache_params: list[int] | None
     cache_max_age: int | float | None
-    defer_key: str | None
-    memo_key: str | None
+    cache_namespace: str | None
+    cache_version: str | None
+    defer_params: list[int] | None
+    memo_params: list[int] | None
+    execute_after: dt.datetime | None
     retry_count: int
     retry_delay_min: int
     retry_delay_max: int
@@ -142,62 +143,6 @@ def _parse_retries(
             return (count, delay_min, delay_max)
         case other:
             raise ValueError(other)
-
-
-def _parse_cache(
-    cache: bool | int | float | dt.timedelta,
-    cache_key: t.Callable[[t.Tuple[t.Any, ...]], str] | None,
-    namespace: str,
-    arguments: tuple[t.Any, ...],
-    serialised_arguments: list[models.Value],
-) -> tuple[str | None, int | float | None]:
-    if cache is False:
-        return None, None
-    cache_key_ = _build_key(
-        cache_key or True,
-        arguments,
-        serialised_arguments,
-        namespace,
-    )
-    if cache is True:
-        return cache_key_, None
-    cache_max_age = cache.total_seconds() if isinstance(cache, dt.timedelta) else cache
-    return cache_key_, cache_max_age
-
-
-def _value_key(value: models.Value) -> str:
-    # TODO: tidy
-    match value:
-        case ["raw", content, format, placeholders]:
-            # TODO: better/safer encoding
-            placeholders_ = ";".join(
-                f"{k}={v1}|{v2}" for k, (v1, v2) in sorted(placeholders.items())
-            )
-            return f"raw:{format}:{placeholders_}:{content}"
-        case ["blob", key, _metadata, format, placeholders]:
-            # TODO: better/safer encoding
-            placeholders_ = ";".join(
-                f"{k}={v1}|{v2}" for k, (v1, v2) in sorted(placeholders.items())
-            )
-            return f"blob:{format}:{placeholders_}:{key}"
-
-
-def _build_key(
-    key: bool | t.Callable[[tuple[t.Any]], str],
-    arguments: tuple[t.Any, ...],
-    serialised_arguments: list[models.Value],
-    prefix: str | None = None,
-) -> str | None:
-    if not key:
-        return None
-    cache_key = (
-        key(*arguments)
-        if callable(key)
-        else "\0".join(_value_key(v) for v in serialised_arguments)
-    )
-    if prefix is not None:
-        cache_key = prefix + "\0" + cache_key
-    return hashlib.sha256(cache_key.encode()).hexdigest()
 
 
 def _exception_type(exception: Exception):
@@ -350,14 +295,15 @@ class Channel:
         arguments: tuple[t.Any, ...],
         *,
         wait: set[int] | None = None,
-        cache: bool | int | float | dt.timedelta = False,
-        cache_key: t.Callable[[t.Tuple[t.Any, ...]], str] | None = None,
+        cache_params: list[int] | None = None,
+        cache_max_age: int | float | dt.timedelta | None = None,
         cache_namespace: str | None = None,
+        cache_version: str | None = None,
         retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-        defer: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
+        defer_params: list[int] | None = None,
         execute_after: dt.datetime | None = None,
         delay: int | float | dt.timedelta = 0,
-        memo: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
+        memo_params: list[int] | None = None,
         requires: models.Requires | None = None,
     ) -> models.Execution[t.Any]:
         if delay:
@@ -371,18 +317,11 @@ class Channel:
         serialised_arguments = [
             serialisation.serialise(a, self._blob_store) for a in arguments
         ]
-        default_namespace = f"{repository}:{target}"
-        cache_key_, cache_max_age = _parse_cache(
-            cache,
-            cache_key,
-            cache_namespace or default_namespace,
-            arguments,
-            serialised_arguments,
+        cache_max_age = (
+            cache_max_age.total_seconds()
+            if isinstance(cache_max_age, dt.timedelta)
+            else cache_max_age
         )
-        defer_key = _build_key(
-            defer, arguments, serialised_arguments, default_namespace
-        )
-        memo_key = _build_key(memo, arguments, serialised_arguments, default_namespace)
         retry_count, retry_delay_min, retry_delay_max = _parse_retries(retries)
         execution_id = self._request(
             ScheduleExecutionRequest(
@@ -390,12 +329,14 @@ class Channel:
                 repository,
                 target,
                 serialised_arguments,
-                execute_after,
                 wait,
-                cache_key_,
+                cache_params,
                 cache_max_age,
-                defer_key,
-                memo_key,
+                cache_namespace,
+                cache_version,
+                defer_params,
+                memo_params,
+                execute_after,
                 retry_count,
                 retry_delay_min,
                 retry_delay_max,
@@ -752,12 +693,14 @@ class Execution:
                 repository,
                 target,
                 arguments,
-                execute_after,
                 wait,
-                cache_key,
+                cache_params,
                 cache_max_age,
-                defer_key,
-                memo_key,
+                cache_namespace,
+                cache_version,
+                defer_params,
+                memo_params,
+                execute_after,
                 retry_count,
                 retry_delay_min,
                 retry_delay_max,
@@ -772,12 +715,14 @@ class Execution:
                         target,
                         _json_safe_arguments(arguments),
                         self._id,
-                        execute_after_ms,
                         list(wait) if wait else None,
-                        cache_key,
+                        cache_params,
                         cache_max_age,
-                        defer_key,
-                        memo_key,
+                        cache_namespace,
+                        cache_version,
+                        defer_params,
+                        memo_params,
+                        execute_after_ms,
                         retry_count,
                         retry_delay_min,
                         retry_delay_max,
