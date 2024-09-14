@@ -1,22 +1,16 @@
 import { findKey, maxBy } from "lodash";
-import { Fragment, useEffect } from "react";
-import {
-  Navigate,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
+import { Fragment } from "react";
+import { Navigate, useParams, useSearchParams } from "react-router-dom";
 
 import { useSetActiveTarget } from "../layouts/ProjectLayout";
 import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
-import { useEnvironments, useTarget } from "../topics";
-import TargetHeader from "../components/TargetHeader";
+import { useEnvironments, useWorkflow } from "../topics";
 import { useTitlePart } from "../components/TitleContext";
+import WorkflowHeader from "../components/WorkflowHeader";
 
-export default function TargetPage() {
+export default function WorkflowPage() {
   const { project: projectId, repository, target: targetName } = useParams();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const activeEnvironmentName = searchParams.get("environment") || undefined;
   const environments = useEnvironments(projectId);
@@ -24,25 +18,20 @@ export default function TargetPage() {
     environments,
     (e) => e.name == activeEnvironmentName && e.status != 1,
   );
-  const target = useTarget(
+  const workflow = useWorkflow(
     projectId,
     repository,
     targetName,
     activeEnvironmentId,
   );
-  useEffect(() => {
-    if (target && !target.type) {
-      navigate(`/projects/${projectId}?environment=${activeEnvironmentName}`);
-    }
-  }, [target, navigate, projectId, activeEnvironmentName]);
   useTitlePart(`${targetName} (${repository})`);
-  useSetActiveTarget(target);
-  if (!target) {
+  useSetActiveTarget(repository, targetName);
+  if (!workflow) {
     return <Loading />;
   } else {
     const latestRunId = maxBy(
-      Object.keys(target.runs),
-      (runId) => target.runs[runId].createdAt,
+      Object.keys(workflow.runs),
+      (runId) => workflow.runs[runId].createdAt,
     );
     if (latestRunId) {
       return (
@@ -56,16 +45,16 @@ export default function TargetPage() {
     } else {
       return (
         <Fragment>
-          <TargetHeader
-            target={target}
+          <WorkflowHeader
+            repository={repository}
+            target={targetName}
             projectId={projectId!}
             activeEnvironmentId={activeEnvironmentId}
             activeEnvironmentName={activeEnvironmentName}
-            isRunning={false}
           />
           <div className="p-4 flex-1">
             <h1 className="text-slate-400 text-xl text-center">
-              This target hasn't been run yet
+              This workflow hasn't been run yet
             </h1>
           </div>
         </Fragment>

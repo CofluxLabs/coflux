@@ -148,6 +148,66 @@ defmodule Coflux.Orchestration.Manifests do
     end
   end
 
+  def get_latest_workflow(db, environment_id, repository, target_name) do
+    case query_one(
+           db,
+           """
+           SELECT w.parameter_set_id, w.wait, w.cache_params, w.cache_max_age, w.cache_namespace, w.cache_version, w.defer_params, w.delay, w.memo, w.retry_limit, w.retry_delay_min, w.retry_delay_max, w.requires_tag_set_id
+           FROM workflows AS w
+           INNER JOIN environment_manifests AS em ON em.manifest_id = w.manifest_id
+           WHERE em.environment_id = ?1 AND em.repository = ?2 AND w.name = ?3
+           ORDER BY em.created_at DESC
+           LIMIT 1
+           """,
+           {environment_id, repository, target_name}
+         ) do
+      {:ok, nil} ->
+        {:error, :not_found}
+
+      {:ok,
+       {parameter_set_id, wait, cache_params, cache_max_age, cache_namespace, cache_version,
+        defer_params, delay, memo, retry_limit, retry_delay_min, retry_delay_max,
+        requires_tag_set_id}} ->
+        build_workflow(
+          db,
+          parameter_set_id,
+          wait,
+          cache_params,
+          cache_max_age,
+          cache_namespace,
+          cache_version,
+          defer_params,
+          delay,
+          memo,
+          retry_limit,
+          retry_delay_min,
+          retry_delay_max,
+          requires_tag_set_id
+        )
+    end
+  end
+
+  def get_latest_sensor(db, environment_id, repository, target_name) do
+    case query_one(
+           db,
+           """
+           SELECT s.parameter_set_id, s.requires_tag_set_id
+           FROM sensors AS s
+           INNER JOIN environment_manifests AS em ON em.manifest_id = s.manifest_id
+           WHERE em.environment_id = ?1 AND em.repository = ?2 AND s.name = ?3
+           ORDER BY em.created_at DESC
+           LIMIT 1
+           """,
+           {environment_id, repository, target_name}
+         ) do
+      {:ok, nil} ->
+        {:error, :not_found}
+
+      {:ok, {parameter_set_id, requires_tag_set_id}} ->
+        build_sensor(db, parameter_set_id, requires_tag_set_id)
+    end
+  end
+
   defp get_manifest_workflows(db, manifest_id) do
     case query(
            db,
@@ -163,53 +223,25 @@ defmodule Coflux.Orchestration.Manifests do
           Map.new(rows, fn {name, parameter_set_id, wait, cache_params, cache_max_age,
                             cache_namespace, cache_version, defer_params, delay, memo,
                             retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id} ->
-            case get_parameter_set(db, parameter_set_id) do
-              {:ok, parameters} ->
-                {:ok, requires} =
-                  if requires_tag_set_id do
-                    TagSets.get_tag_set(db, requires_tag_set_id)
-                  else
-                    {:ok, nil}
-                  end
+            {:ok, workflow} =
+              build_workflow(
+                db,
+                parameter_set_id,
+                wait,
+                cache_params,
+                cache_max_age,
+                cache_namespace,
+                cache_version,
+                defer_params,
+                delay,
+                memo,
+                retry_limit,
+                retry_delay_min,
+                retry_delay_max,
+                requires_tag_set_id
+              )
 
-                cache =
-                  if cache_params do
-                    %{
-                      params: decode_params(cache_params),
-                      max_age: cache_max_age,
-                      namespace: cache_namespace,
-                      version: cache_version
-                    }
-                  end
-
-                defer =
-                  if defer_params do
-                    %{
-                      params: decode_params(defer_params)
-                    }
-                  end
-
-                retries =
-                  if retry_limit do
-                    %{
-                      limit: retry_limit,
-                      delay_min: retry_delay_min,
-                      delay_max: retry_delay_max
-                    }
-                  end
-
-                {name,
-                 %{
-                   parameters: parameters,
-                   wait: decode_params(wait) || false,
-                   cache: cache,
-                   defer: defer,
-                   delay: delay,
-                   memo: decode_boolean(memo),
-                   retries: retries,
-                   requires: requires
-                 }}
-            end
+            {name, workflow}
           end)
 
         {:ok, workflows}
@@ -220,7 +252,7 @@ defmodule Coflux.Orchestration.Manifests do
     case query(
            db,
            """
-           SELECT name, parameter_set_id
+           SELECT name, parameter_set_id, requires_tag_set_id
            FROM sensors
            WHERE manifest_id = ?1
            """,
@@ -228,11 +260,9 @@ defmodule Coflux.Orchestration.Manifests do
          ) do
       {:ok, rows} ->
         sensors =
-          Map.new(rows, fn {name, parameter_set_id} ->
-            case get_parameter_set(db, parameter_set_id) do
-              {:ok, parameters} ->
-                {name, %{parameters: parameters}}
-            end
+          Map.new(rows, fn {name, parameter_set_id, requires_tag_set_id} ->
+            {:ok, sensor} = build_sensor(db, parameter_set_id, requires_tag_set_id)
+            {name, sensor}
           end)
 
         {:ok, sensors}
@@ -280,6 +310,87 @@ defmodule Coflux.Orchestration.Manifests do
       end)
 
     :crypto.hash(:sha256, Enum.intersperse(data, 0))
+  end
+
+  defp build_workflow(
+         db,
+         parameter_set_id,
+         wait,
+         cache_params,
+         cache_max_age,
+         cache_namespace,
+         cache_version,
+         defer_params,
+         delay,
+         memo,
+         retry_limit,
+         retry_delay_min,
+         retry_delay_max,
+         requires_tag_set_id
+       ) do
+    {:ok, parameters} = get_parameter_set(db, parameter_set_id)
+
+    {:ok, requires} =
+      if requires_tag_set_id do
+        TagSets.get_tag_set(db, requires_tag_set_id)
+      else
+        {:ok, nil}
+      end
+
+    cache =
+      if cache_params do
+        %{
+          params: decode_params(cache_params),
+          max_age: cache_max_age,
+          namespace: cache_namespace,
+          version: cache_version
+        }
+      end
+
+    defer =
+      if defer_params do
+        %{
+          params: decode_params(defer_params)
+        }
+      end
+
+    retries =
+      if retry_limit do
+        %{
+          limit: retry_limit,
+          delay_min: retry_delay_min,
+          delay_max: retry_delay_max
+        }
+      end
+
+    {:ok,
+     %{
+       parameters: parameters,
+       wait: decode_params(wait) || false,
+       cache: cache,
+       defer: defer,
+       delay: delay,
+       memo: decode_boolean(memo),
+       retries: retries,
+       requires: requires
+     }}
+  end
+
+  defp build_sensor(db, parameter_set_id, requires_tag_set_id) do
+    {:ok, parameters} = get_parameter_set(db, parameter_set_id)
+
+    {:ok, requires} =
+      if requires_tag_set_id do
+        TagSets.get_tag_set(db, requires_tag_set_id)
+      else
+        {:ok, nil}
+      end
+
+    {:ok,
+     %{
+       parameters: parameters,
+       requires: requires
+     }}
   end
 
   defp get_or_create_parameter_set_id(db, parameters) do

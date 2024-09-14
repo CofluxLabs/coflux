@@ -12,9 +12,9 @@ defmodule Coflux.Topics.Repositories do
 
     value =
       Map.new(manifests, fn {repository, manifest} ->
-        # TODO: return separate maps for workflows and sensors?
         result = %{
-          targets: build_targets(manifest),
+          workflows: Map.keys(manifest.workflows),
+          sensors: Map.keys(manifest.sensors),
           executing: 0,
           scheduled: 0,
           nextDueAt: nil
@@ -47,7 +47,9 @@ defmodule Coflux.Topics.Repositories do
 
   defp process_notification(topic, {:manifests, manifests}) do
     Enum.reduce(manifests, topic, fn {repository, manifest}, topic ->
-      Topic.set(topic, [repository, :targets], build_targets(manifest))
+      topic
+      |> Topic.set([repository, :workflows], Map.keys(manifest.workflows))
+      |> Topic.set([repository, :sensors], Map.keys(manifest.sensors))
     end)
   end
 
@@ -74,23 +76,6 @@ defmodule Coflux.Topics.Repositories do
       scheduled = Map.delete(scheduled, execution_id)
       {executing, scheduled}
     end)
-  end
-
-  defp build_target({name, target}, type) do
-    {name,
-     %{
-       type: type,
-       parameters:
-         Enum.map(target.parameters, fn {name, default, annotation} ->
-           %{name: name, default: default, annotation: annotation}
-         end)
-     }}
-  end
-
-  defp build_targets(manifest) do
-    workflows = Map.new(manifest.workflows, &build_target(&1, :workflow))
-    sensors = Map.new(manifest.sensors, &build_target(&1, :sensor))
-    Map.merge(workflows, sensors)
   end
 
   defp update_executing(topic, repository, fun) do

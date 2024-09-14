@@ -1,6 +1,6 @@
-defmodule Coflux.Topics.Target do
+defmodule Coflux.Topics.Workflow do
   use Topical.Topic,
-    route: ["projects", :project_id, "targets", :repository, :target, :environment_id]
+    route: ["projects", :project_id, "workflows", :repository, :target, :environment_id]
 
   alias Coflux.Orchestration
 
@@ -10,28 +10,25 @@ defmodule Coflux.Topics.Target do
     target_name = Keyword.fetch!(params, :target)
     environment_id = String.to_integer(Keyword.fetch!(params, :environment_id))
 
-    case Orchestration.subscribe_target(
+    case Orchestration.subscribe_workflow(
            project_id,
            repository,
            target_name,
            environment_id,
            self()
          ) do
-      {:ok, target, runs, ref} ->
+      {:ok, workflow, runs, ref} ->
         runs =
           Map.new(runs, fn {external_run_id, created_at} ->
             {external_run_id, %{id: external_run_id, createdAt: created_at}}
           end)
 
-        target = %{
-          repository: repository,
-          target: target_name,
-          type: if(target, do: target.type),
-          parameters: if(target, do: build_parameters(target.parameters)),
+        value = %{
+          parameters: if(workflow, do: build_parameters(workflow.parameters)),
           runs: runs
         }
 
-        {:ok, Topic.new(target, %{ref: ref})}
+        {:ok, Topic.new(value, %{ref: ref})}
 
       {:error, :not_found} ->
         {:error, :not_found}
@@ -43,10 +40,9 @@ defmodule Coflux.Topics.Target do
     {:ok, topic}
   end
 
-  defp process_notification({:target, type, parameters}, topic) do
-    topic
-    |> Topic.set([:type], type)
-    |> Topic.set([:parameters], build_parameters(parameters))
+  defp process_notification({:target, target}, topic) do
+    # TODO: update other fields
+    Topic.set(topic, [:parameters], build_parameters(target.parameters))
   end
 
   defp process_notification({:run, external_run_id, created_at}, topic) do

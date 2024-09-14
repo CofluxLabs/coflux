@@ -20,7 +20,7 @@ defmodule Coflux.Orchestration.Runs do
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
-      {:ok, step_id, external_step_id, execution_id, attempt, now, false, result, child_added} =
+      {:ok, external_step_id, execution_id, attempt, now, false, result, child_added} =
         schedule_step(
           db,
           run_id,
@@ -35,8 +35,8 @@ defmodule Coflux.Orchestration.Runs do
           opts
         )
 
-      {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, attempt, result,
-       now, child_added}
+      {:ok, external_run_id, external_step_id, execution_id, attempt, result, now, child_added,
+       recurrent}
     end)
   end
 
@@ -289,7 +289,7 @@ defmodule Coflux.Orchestration.Runs do
         false
       end
 
-    {:ok, step_id, external_step_id, execution_id, attempt, now, memo_hit, result, child_added}
+    {:ok, external_step_id, execution_id, attempt, now, memo_hit, result, child_added}
   end
 
   def rerun_step(db, step_id, environment_id, execute_after) do

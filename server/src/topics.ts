@@ -42,16 +42,33 @@ export function useAgents(
   return agents;
 }
 
-export function useTarget(
+export function useWorkflow(
   projectId: string | undefined,
   repository: string | undefined,
   targetName: string | undefined,
   environmentId: string | undefined,
 ) {
-  const [target] = useTopic<models.Target>(
+  const [target] = useTopic<models.Workflow>(
     "projects",
     projectId,
-    "targets",
+    "workflows",
+    repository,
+    targetName,
+    environmentId,
+  );
+  return target;
+}
+
+export function useSensor(
+  projectId: string | undefined,
+  repository: string | undefined,
+  targetName: string | undefined,
+  environmentId: string | undefined,
+) {
+  const [target] = useTopic<models.Sensor>(
+    "projects",
+    projectId,
+    "sensors",
     repository,
     targetName,
     environmentId,

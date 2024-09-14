@@ -177,7 +177,7 @@ export default function ProjectPage() {
     (!environmentName ||
       (repositories &&
         !Object.values(repositories).some(
-          (r) => Object.keys(r.targets).length,
+          (r) => r.workflows.length || r.sensors.length,
         )))
   ) {
     return (

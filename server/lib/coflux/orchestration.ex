@@ -102,8 +102,12 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:subscribe_agents, environment_id, pid})
   end
 
-  def subscribe_target(project_id, repository, target, environment_id, pid) do
-    call_server(project_id, {:subscribe_target, repository, target, environment_id, pid})
+  def subscribe_workflow(project_id, repository, target, environment_id, pid) do
+    call_server(project_id, {:subscribe_workflow, repository, target, environment_id, pid})
+  end
+
+  def subscribe_sensor(project_id, repository, target, environment_id, pid) do
+    call_server(project_id, {:subscribe_sensor, repository, target, environment_id, pid})
   end
 
   def subscribe_run(project_id, run_id, pid) do

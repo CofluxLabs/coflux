@@ -31,6 +31,14 @@ import AssetIcon from "./AssetIcon";
 import EnvironmentLabel from "./EnvironmentLabel";
 import { useEnvironments, useLogs } from "../topics";
 
+function getRunEnvironmentId(run: models.Run) {
+  const initialStepId = minBy(
+    Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
+    (stepId) => run.steps[stepId].createdAt,
+  )!;
+  return run.steps[initialStepId].executions[1].environmentId;
+}
+
 type AttemptSelectorOptionProps = {
   attempt: number;
   execution: models.Execution;
@@ -824,7 +832,6 @@ type Props = {
   run: models.Run;
   projectId: string;
   activeEnvironmentId: string;
-  runEnvironmentId: string;
   className?: string;
   style?: CSSProperties;
   onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
@@ -837,13 +844,13 @@ export default function StepDetail({
   run,
   projectId,
   activeEnvironmentId,
-  runEnvironmentId,
   className,
   style,
   onRerunStep,
 }: Props) {
   const step = run.steps[stepId];
   const execution = step.executions[attempt];
+  const runEnvironmentId = getRunEnvironmentId(run);
   return (
     <div
       className={classNames("overflow-hidden flex flex-col", className)}

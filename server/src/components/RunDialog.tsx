@@ -46,7 +46,8 @@ function Argument({ parameter, value, error, onChange }: ArgumentProps) {
 
 type Props = {
   projectId: string;
-  target: models.Target;
+  repository: string | undefined;
+  target: string | undefined;
   parameters: models.Parameter[];
   activeEnvironmentId: string;
   open: boolean;
@@ -56,6 +57,7 @@ type Props = {
 
 export default function RunDialog({
   projectId,
+  repository,
   target,
   parameters,
   activeEnvironmentId,
@@ -97,11 +99,9 @@ export default function RunDialog({
         <div className="flex justify-between items-start font-normal text-base">
           <div className="flex flex-col">
             <span className="font-mono font-bold text-xl leading-tight">
-              {target.target}
+              {target}
             </span>
-            <span className="text-slate-500 text-sm">
-              ({target.repository})
-            </span>
+            <span className="text-slate-500 text-sm">({repository})</span>
           </div>
           <EnvironmentLabel
             projectId={projectId}

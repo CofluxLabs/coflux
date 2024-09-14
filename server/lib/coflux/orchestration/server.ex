@@ -208,23 +208,25 @@ defmodule Coflux.Orchestration.Server do
             state =
               manifests
               |> Enum.reduce(state, fn {repository, manifest}, state ->
-                Enum.reduce([:workflows, :sensors], state, fn type, state ->
-                  type_ =
-                    case type do
-                      :workflows -> :workflow
-                      :sensors -> :sensor
-                    end
-
-                  manifest
-                  |> Map.fetch!(type)
-                  |> Enum.reduce(state, fn {target_name, target}, state ->
+                state =
+                  Enum.reduce(manifest.workflows, state, fn {target_name, target}, state ->
                     notify_listeners(
                       state,
-                      {:target, repository, target_name, environment_id},
-                      {:target, type_, target.parameters}
+                      {:workflow, repository, target_name, environment_id},
+                      {:target, target}
                     )
                   end)
-                end)
+
+                state =
+                  Enum.reduce(manifest.sensors, state, fn {target_name, target}, state ->
+                    notify_listeners(
+                      state,
+                      {:sensor, repository, target_name, environment_id},
+                      {:target, target}
+                    )
+                  end)
+
+                state
               end)
               |> notify_listeners(
                 {{:repositories, environment_id}, environment_id},
@@ -393,8 +395,8 @@ defmodule Coflux.Orchestration.Server do
              cache_environment_ids,
              opts
            ) do
-        {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, attempt, result,
-         created_at, child_added} ->
+        {:ok, external_run_id, external_step_id, execution_id, attempt, result, created_at,
+         child_added, recurrent} ->
           state =
             if child_added do
               {parent_run_id, parent_id} = parent
@@ -411,7 +413,10 @@ defmodule Coflux.Orchestration.Server do
           state =
             notify_listeners(
               state,
-              {:target, repository, target_name, environment_id},
+              if(recurrent,
+                do: {:sensor, repository, target_name, environment_id},
+                else: {:workflow, repository, target_name, environment_id}
+              ),
               {:run, external_run_id, created_at}
             )
 
@@ -471,8 +476,7 @@ defmodule Coflux.Orchestration.Server do
            cache_environment_ids,
            opts
          ) do
-      {:ok, _step_id, external_step_id, execution_id, attempt, created_at, memo_hit, result,
-       child_added} ->
+      {:ok, external_step_id, execution_id, attempt, created_at, memo_hit, result, child_added} ->
         execute_after = Keyword.get(opts, :execute_after)
         requires = Keyword.get(opts, :requires) || %{}
 
@@ -887,37 +891,40 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call(
-        {:subscribe_target, repository, target_name, environment_id, pid},
+        {:subscribe_workflow, repository, target_name, environment_id, pid},
         _from,
         state
       ) do
-    case lookup_environment_by_id(state, environment_id) do
+    with {:ok, _} <- lookup_environment_by_id(state, environment_id),
+         {:ok, workflow} <-
+           Manifests.get_latest_workflow(state.db, environment_id, repository, target_name),
+         {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id) do
+      {:ok, ref, state} =
+        add_listener(state, {:workflow, repository, target_name, environment_id}, pid)
+
+      {:reply, {:ok, workflow, runs, ref}, state}
+    else
       {:error, error} ->
         {:reply, {:error, error}, state}
+    end
+  end
 
-      {:ok, _} ->
-        {:ok, manifests} = Manifests.get_latest_manifests(state.db, environment_id)
-        repository_targets = Map.fetch!(manifests, repository)
+  def handle_call(
+        {:subscribe_sensor, repository, target_name, environment_id, pid},
+        _from,
+        state
+      ) do
+    with {:ok, _} <- lookup_environment_by_id(state, environment_id),
+         {:ok, sensor} <-
+           Manifests.get_latest_sensor(state.db, environment_id, repository, target_name),
+         {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id) do
+      {:ok, ref, state} =
+        add_listener(state, {:sensor, repository, target_name, environment_id}, pid)
 
-        is_sensor = Map.has_key?(repository_targets.sensors, target_name)
-
-        target =
-          if is_sensor do
-            repository_targets.sensors
-            |> Map.fetch!(target_name)
-            |> Map.put(:type, :sensor)
-          else
-            repository_targets.workflows
-            |> Map.fetch!(target_name)
-            |> Map.put(:type, :workflow)
-          end
-
-        {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id)
-
-        {:ok, ref, state} =
-          add_listener(state, {:target, repository, target_name, environment_id}, pid)
-
-        {:reply, {:ok, target, runs, ref}, state}
+      {:reply, {:ok, sensor, runs, ref}, state}
+    else
+      {:error, error} ->
+        {:reply, {:error, error}, state}
     end
   end
 
@@ -1508,7 +1515,10 @@ defmodule Coflux.Orchestration.Server do
              execute_after, created_at}
           )
           |> notify_listeners(
-            {:target, run_repository, run_target, environment_id},
+            if(run.recurrent,
+              do: {:sensor, run_repository, run_target, environment_id},
+              else: {:workflow, run_repository, run_target, environment_id}
+            ),
             {:run, run.external_id, run.created_at}
           )
 

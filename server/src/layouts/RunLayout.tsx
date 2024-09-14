@@ -9,7 +9,7 @@ import {
 } from "react-router-dom";
 import { Transition } from "@headlessui/react";
 import useResizeObserver from "use-resize-observer";
-import { findKey, minBy } from "lodash";
+import { findKey } from "lodash";
 
 import * as models from "../models";
 import * as api from "../api";
@@ -18,18 +18,11 @@ import StepDetail from "../components/StepDetail";
 import usePrevious from "../hooks/usePrevious";
 import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
-import { useEnvironments, useRun, useTarget } from "../topics";
-import TargetHeader from "../components/TargetHeader";
+import { useEnvironments, useRun } from "../topics";
 import HoverContext from "../components/HoverContext";
 import { useTitlePart } from "../components/TitleContext";
-
-function getRunEnvironmentId(run: models.Run) {
-  const initialStepId = minBy(
-    Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
-    (stepId) => run.steps[stepId].createdAt,
-  )!;
-  return run.steps[initialStepId].executions[1].environmentId;
-}
+import WorkflowHeader from "../components/WorkflowHeader";
+import SensorHeader from "../components/SensorHeader";
 
 type TabProps = {
   page: string | null;
@@ -65,7 +58,6 @@ type DetailPanelProps = {
   run: models.Run;
   projectId: string;
   activeEnvironmentId: string;
-  runEnvironmentId: string;
   className?: string;
 };
 
@@ -76,7 +68,6 @@ function DetailPanel({
   run,
   projectId,
   activeEnvironmentId,
-  runEnvironmentId,
   className,
 }: DetailPanelProps) {
   const previousStepId = usePrevious(stepId);
@@ -110,7 +101,6 @@ function DetailPanel({
               run={run}
               projectId={projectId}
               activeEnvironmentId={activeEnvironmentId}
-              runEnvironmentId={runEnvironmentId}
               className="flex-1"
               onRerunStep={handleRerunStep}
             />
@@ -142,24 +132,14 @@ export default function RunLayout() {
   );
   const run = useRun(projectId, runId, activeEnvironmentId);
   const initialStep = run && Object.values(run.steps).find((s) => !s.parentId);
-  const target = useTarget(
-    projectId,
-    initialStep?.repository,
-    initialStep?.target,
-    activeEnvironmentId,
-  );
   useTitlePart(
     initialStep && `${initialStep.target} (${initialStep.repository})`,
   );
-  useSetActiveTarget(target);
+  useSetActiveTarget(initialStep?.repository, initialStep?.target);
   const { ref, width, height } = useResizeObserver<HTMLDivElement>();
-  if (!run || !target) {
+  if (!run || !initialStep) {
     return <Loading />;
   } else {
-    const isRunning = Object.values(run.steps).some((s) =>
-      Object.values(s.executions).some((e) => !e.result),
-    );
-    const runEnvironmentId = getRunEnvironmentId(run);
     return (
       <HoverContext>
         <div
@@ -168,15 +148,25 @@ export default function RunLayout() {
             activeStepId && "pr-[400px]",
           )}
         >
-          <TargetHeader
-            target={target}
-            projectId={projectId!}
-            runId={runId}
-            activeEnvironmentId={activeEnvironmentId}
-            activeEnvironmentName={activeEnvironmentName}
-            runEnvironmentId={runEnvironmentId}
-            isRunning={isRunning}
-          />
+          {run.recurrent ? (
+            <SensorHeader
+              repository={initialStep.repository}
+              target={initialStep.target}
+              projectId={projectId!}
+              runId={runId}
+              activeEnvironmentId={activeEnvironmentId}
+              activeEnvironmentName={activeEnvironmentName}
+            />
+          ) : (
+            <WorkflowHeader
+              repository={initialStep.repository}
+              target={initialStep.target}
+              projectId={projectId!}
+              runId={runId}
+              activeEnvironmentId={activeEnvironmentId}
+              activeEnvironmentName={activeEnvironmentName}
+            />
+          )}
           <div className="flex flex-1 overflow-hidden">
             <div className="grow flex flex-col">
               <div className="border-b px-4">
@@ -204,7 +194,6 @@ export default function RunLayout() {
               run={run}
               projectId={projectId!}
               activeEnvironmentId={activeEnvironmentId!}
-              runEnvironmentId={runEnvironmentId}
               className="absolute right-0 top-0 bottom-0 w-[400px]"
             />
           </div>
