@@ -3,7 +3,7 @@ defmodule Coflux.Orchestration.Server do
 
   alias Coflux.Store
   alias Coflux.MapUtils
-  alias Coflux.Orchestration.{Environments, Sessions, Runs, Results, TagSets, Launches}
+  alias Coflux.Orchestration.{Environments, Sessions, Runs, Results, TagSets, Launches, Manifests}
 
   @session_timeout_ms 5_000
   @recurrent_rate_limit_ms 5_000
@@ -194,6 +194,50 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call(
+        {:register_manifests, environment_name, manifests},
+        _from,
+        state
+      ) do
+    case lookup_environment_by_name(state, environment_name) do
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+
+      {:ok, environment_id, _} ->
+        case Manifests.register_manifests(state.db, environment_id, manifests) do
+          :ok ->
+            state =
+              manifests
+              |> Enum.reduce(state, fn {repository, manifest}, state ->
+                Enum.reduce([:workflows, :sensors], state, fn type, state ->
+                  type_ =
+                    case type do
+                      :workflows -> :workflow
+                      :sensors -> :sensor
+                    end
+
+                  manifest
+                  |> Map.fetch!(type)
+                  |> Enum.reduce(state, fn {target_name, target}, state ->
+                    notify_listeners(
+                      state,
+                      {:target, repository, target_name, environment_id},
+                      {:target, type_, target.parameters}
+                    )
+                  end)
+                end)
+              end)
+              |> notify_listeners(
+                {{:repositories, environment_id}, environment_id},
+                {:manifests, manifests}
+              )
+              |> flush_notifications()
+
+            {:reply, :ok, state}
+        end
+    end
+  end
+
+  def handle_call(
         {:start_session, environment_name, launch_id, provides, concurrency, pid},
         _from,
         state
@@ -299,38 +343,17 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:register_targets, external_session_id, repository, targets}, _from, state) do
+  def handle_call({:declare_targets, external_session_id, targets}, _from, state) do
     session_id = Map.fetch!(state.session_ids, external_session_id)
 
-    case Sessions.get_or_create_manifest(state.db, repository, targets) do
-      {:ok, manifest_id} ->
-        :ok = Sessions.record_session_manifest(state.db, session_id, manifest_id)
-        environment_id = state.sessions[session_id].environment_id
+    state =
+      state
+      |> assign_targets(targets, session_id)
+      |> notify_agent(session_id)
+      |> flush_notifications()
 
-        state =
-          state
-          |> register_targets(repository, targets, session_id)
-          |> notify_listeners(
-            {{:repositories, environment_id}, environment_id},
-            {:targets, repository, targets}
-          )
-          |> notify_agent(session_id)
-
-        state =
-          targets
-          |> Enum.reduce(state, fn {target_name, target}, state ->
-            notify_listeners(
-              state,
-              {:target, repository, target_name, environment_id},
-              {:target, target.type, target.parameters}
-            )
-          end)
-          |> flush_notifications()
-
-        send(self(), :execute)
-
-        {:reply, :ok, state}
-    end
+    send(self(), :execute)
+    {:reply, :ok, state}
   end
 
   def handle_call({:schedule_run, repository, target_name, arguments, opts}, _from, state) do
@@ -455,7 +478,7 @@ defmodule Coflux.Orchestration.Server do
 
         state =
           if !memo_hit do
-            is_memoised = !is_nil(Keyword.get(opts, :memo_params))
+            is_memoised = !!Keyword.get(opts, :memo)
             arguments = Enum.map(arguments, &build_value(&1, state))
 
             notify_listeners(
@@ -791,7 +814,7 @@ defmodule Coflux.Orchestration.Server do
         {:reply, {:error, error}, state}
 
       {:ok, _} ->
-        {:ok, targets} = Sessions.get_latest_targets(state.db, environment_id)
+        {:ok, manifests} = Manifests.get_latest_manifests(state.db, environment_id)
 
         executing =
           state.sessions
@@ -824,7 +847,7 @@ defmodule Coflux.Orchestration.Server do
         {:ok, ref, state} =
           add_listener(state, {{:repositories, environment_id}, environment_id}, pid)
 
-        {:reply, {:ok, targets, executions, ref}, state}
+        {:reply, {:ok, manifests, executions, ref}, state}
     end
   end
 
@@ -873,7 +896,22 @@ defmodule Coflux.Orchestration.Server do
         {:reply, {:error, error}, state}
 
       {:ok, _} ->
-        {:ok, target} = Sessions.get_target(state.db, repository, target_name, environment_id)
+        {:ok, manifests} = Manifests.get_latest_manifests(state.db, environment_id)
+        repository_targets = Map.fetch!(manifests, repository)
+
+        is_sensor = Map.has_key?(repository_targets.sensors, target_name)
+
+        target =
+          if is_sensor do
+            repository_targets.sensors
+            |> Map.fetch!(target_name)
+            |> Map.put(:type, :sensor)
+          else
+            repository_targets.workflows
+            |> Map.fetch!(target_name)
+            |> Map.put(:type, :workflow)
+          end
+
         {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id)
 
         {:ok, ref, state} =
@@ -1604,16 +1642,16 @@ defmodule Coflux.Orchestration.Server do
         {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, execution_id)
 
         {retry_id, state} =
-          if result_retryable?(result) && step.retry_count > 0 do
+          if result_retryable?(result) && step.retry_limit > 0 do
             {:ok, executions} = Runs.get_step_executions(state.db, step.id)
 
             attempts = Enum.count(executions)
 
-            if attempts <= step.retry_count do
+            if attempts <= step.retry_limit do
               # TODO: add jitter (within min/max delay)
               delay_s =
                 step.retry_delay_min +
-                  (attempts - 1) / (step.retry_count - 1) *
+                  (attempts - 1) / (step.retry_limit - 1) *
                     (step.retry_delay_max - step.retry_delay_min)
 
               execute_after = System.os_time(:millisecond) + delay_s * 1000
@@ -1702,25 +1740,29 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp register_targets(state, repository, targets, session_id) do
-    Enum.reduce(targets, state, fn {name, spec}, state ->
-      state
-      |> update_in(
-        [
-          Access.key(:targets),
-          Access.key(repository, %{}),
-          Access.key(name, %{type: nil, session_ids: MapSet.new()})
-        ],
-        fn target ->
-          target
-          |> Map.put(:type, spec.type)
-          |> Map.update!(:session_ids, &MapSet.put(&1, session_id))
-        end
-      )
-      |> update_in(
-        [Access.key(:sessions), session_id, :targets, Access.key(repository, MapSet.new())],
-        &MapSet.put(&1, name)
-      )
+  defp assign_targets(state, targets, session_id) do
+    Enum.reduce(targets, state, fn {repository, repository_targets}, state ->
+      Enum.reduce(repository_targets, state, fn {type, target_names}, state ->
+        Enum.reduce(target_names, state, fn target_name, state ->
+          state
+          |> update_in(
+            [
+              Access.key(:targets),
+              Access.key(repository, %{}),
+              Access.key(target_name, %{type: nil, session_ids: MapSet.new()})
+            ],
+            fn target ->
+              target
+              |> Map.put(:type, type)
+              |> Map.update!(:session_ids, &MapSet.put(&1, session_id))
+            end
+          )
+          |> update_in(
+            [Access.key(:sessions), session_id, :targets, Access.key(repository, MapSet.new())],
+            &MapSet.put(&1, target_name)
+          )
+        end)
+      end)
     end)
   end
 

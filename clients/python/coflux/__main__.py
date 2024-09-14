@@ -7,7 +7,7 @@ import watchfiles
 import httpx
 import yaml
 
-from . import Agent, config, loader
+from . import Agent, config, loader, decorators, models
 
 T = t.TypeVar("T")
 
@@ -104,12 +104,65 @@ def _get_provides(argument: tuple[str] | None) -> dict[str, list[str]]:
     }
 
 
-async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
-    for module in modules:
-        if isinstance(module, str):
-            module = loader.load_module(module)
-        await agent.register_module(module)
-    await agent.run()
+def _load_module(
+    module: types.ModuleType,
+) -> dict[str, tuple[models.Target, t.Callable]]:
+    attrs = (getattr(module, k) for k in dir(module))
+    return {
+        a.name: (a.definition, a.fn)
+        for a in attrs
+        if isinstance(a, decorators.Target) and a.definition
+    }
+
+
+def _register_manifests(
+    project_id: str,
+    environment_name: str,
+    host: str,
+    modules: dict[str, dict[str, tuple[models.Target, t.Callable]]],
+) -> None:
+    manifests = {
+        repository: {
+            "workflows": {
+                workflow_name: {
+                    "parameters": [p._asdict() for p in definition.parameters],
+                    "wait": (
+                        list(definition.wait)
+                        if isinstance(definition.wait, set)
+                        else definition.wait
+                    ),
+                    "cache": definition.cache._asdict() if definition.cache else None,
+                    "defer": definition.defer._asdict() if definition.defer else None,
+                    "delay": definition.delay,
+                    "retries": (
+                        definition.retries._asdict() if definition.retries else None
+                    ),
+                    "requires": definition.requires,
+                }
+                for workflow_name, (definition, _) in target.items()
+                if definition.type == "workflow"
+            },
+            "sensors": {
+                sensor_name: {
+                    "parameters": [p._asdict() for p in definition.parameters]
+                }
+                for sensor_name, (definition, _) in target.items()
+                if definition.type == "sensor"
+            },
+        }
+        for repository, target in modules.items()
+    }
+    # TODO: handle response?
+    _api_request(
+        "POST",
+        host,
+        "register_manifests",
+        json={
+            "projectId": project_id,
+            "environmentName": environment_name,
+            "manifests": manifests,
+        },
+    )
 
 
 def _init(
@@ -122,10 +175,17 @@ def _init(
     launch_id: str | None,
 ) -> None:
     try:
+        modules_ = {}
+        for module in list(modules):
+            if isinstance(module, str):
+                module = loader.load_module(module)
+            modules_[module.__name__] = _load_module(module)
+        _register_manifests(project, environment, host, modules_)
+
         with Agent(
-            project, environment, provides, host, concurrency, launch_id
+            project, environment, provides, host, modules_, concurrency, launch_id
         ) as agent:
-            asyncio.run(_run(agent, list(modules)))
+            asyncio.run(agent.run())
     except KeyboardInterrupt:
         pass
 

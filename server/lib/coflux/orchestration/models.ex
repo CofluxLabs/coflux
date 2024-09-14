@@ -43,7 +43,7 @@ defmodule Coflux.Orchestration.Models do
       :priority,
       :wait_for,
       :cache_key,
-      :retry_count,
+      :retry_limit,
       :retry_delay_min,
       :retry_delay_max,
       :created_at

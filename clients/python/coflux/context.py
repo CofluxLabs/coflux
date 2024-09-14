@@ -23,13 +23,9 @@ def schedule(
     arguments: tuple[t.Any, ...],
     *,
     wait: set[int] | bool = False,
-    cache: bool | int | float | dt.timedelta = False,
-    cache_params: list[int] | None = None,
-    cache_namespace: str | None = None,
-    cache_version: str | None = None,
-    retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    defer: bool = False,
-    defer_params: list[int] | None = None,
+    cache: models.Cache | None = None,
+    retries: models.Retries | None = None,
+    defer: models.Defer | None = None,
     execute_after: dt.datetime | None = None,
     delay: int | float | dt.timedelta = 0,
     memo: list[int] | bool = False,
@@ -40,32 +36,13 @@ def schedule(
         repository,
         target,
         arguments,
-        wait=(
-            set(range(len(arguments)))
-            if wait is True
-            else (None if wait is False else wait)
-        ),
-        cache_params=(
-            None
-            if cache is False
-            else (list(range(len(arguments))) if cache_params is None else cache_params)
-        ),
-        cache_max_age=(None if isinstance(cache, bool) else cache),
-        cache_namespace=cache_namespace,
-        cache_version=cache_version,
+        wait=wait,
+        cache=cache,
         retries=retries,
-        defer_params=(
-            None
-            if defer is False
-            else (list(range(len(arguments))) if defer_params is None else defer_params)
-        ),
+        defer=defer,
         execute_after=execute_after,
         delay=delay,
-        memo_params=(
-            None
-            if memo is False
-            else (list(range(len(arguments))) if memo is True else memo)
-        ),
+        memo=memo,
         requires=requires,
     )
 
