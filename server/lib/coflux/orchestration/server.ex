@@ -1529,7 +1529,7 @@ defmodule Coflux.Orchestration.Server do
 
   defp result_retryable?(result) do
     case result do
-      {:error, _, _, _, _} -> true
+      {:error, _, _, _} -> true
       :abandoned -> true
       _ -> false
     end
@@ -1661,7 +1661,7 @@ defmodule Coflux.Orchestration.Server do
               # TODO: add jitter (within min/max delay)
               delay_s =
                 step.retry_delay_min +
-                  (attempts - 1) / (step.retry_limit - 1) *
+                  (attempts - 1) / step.retry_limit *
                     (step.retry_delay_max - step.retry_delay_min)
 
               execute_after = System.os_time(:millisecond) + delay_s * 1000
