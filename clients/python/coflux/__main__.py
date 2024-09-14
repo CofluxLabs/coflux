@@ -661,14 +661,15 @@ def workflow_schedule(
     project_ = _get_project(project)
     environment_ = _get_environment(environment)
     host_ = _get_host(host)
+    # TODO: support specifying options (or get config from manifest?)
     # TODO: handle response
     _api_request(
         "POST",
         host_,
-        "schedule",
+        "schedule_workflow",
         json={
             "projectId": project_,
-            "environment": environment_,
+            "environmentName": environment_,
             "repository": repository,
             "target": target,
             "arguments": [["json", a] for a in argument],
