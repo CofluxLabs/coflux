@@ -184,10 +184,12 @@ def _init(
     host: str,
     concurrency: int,
     launch_id: str | None,
+    register: bool,
 ) -> None:
     try:
         targets = _load_repositories(list(modules))
-        _register_manifests(project, environment, host, targets)
+        if register:
+            _register_manifests(project, environment, host, targets)
 
         with Agent(
             project, environment, provides, host, targets, concurrency, launch_id
@@ -525,10 +527,22 @@ def repositories_register(
     help="Limit on number of executions to process at once",
 )
 @click.option(
-    "--reload",  # TODO: rename 'watch'?
+    "--watch",
     is_flag=True,
     default=False,
     help="Enable auto-reload when code changes",
+)
+@click.option(
+    "--register",
+    is_flag=True,
+    default=False,
+    help="Automatically register repositories",
+)
+@click.option(
+    "--dev",
+    is_flag=True,
+    default=False,
+    help="Enable development mode (implies `--watch` and `--register`)",
 )
 @click.argument("module_name", nargs=-1)
 def agent_run(
@@ -538,7 +552,9 @@ def agent_run(
     host: str | None,
     launch: str | None,
     concurrency: int | None,
-    reload: bool,
+    watch: bool,
+    register: bool,
+    dev: bool,
     module_name: tuple[str],
 ) -> None:
     """
@@ -569,8 +585,9 @@ def agent_run(
         "host": host_,
         "concurrency": concurrency_,
         "launch_id": launch_,
+        "register": register or dev,
     }
-    if reload:
+    if watch or dev:
         watchfiles.run_process(
             ".",
             target=_init,
