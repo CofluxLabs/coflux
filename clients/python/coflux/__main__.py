@@ -145,6 +145,7 @@ def _register_manifests(
                     "cache": definition.cache._asdict() if definition.cache else None,
                     "defer": definition.defer._asdict() if definition.defer else None,
                     "delay": definition.delay,
+                    "memo": definition.memo,
                     "retries": (
                         definition.retries._asdict() if definition.retries else None
                     ),
@@ -155,7 +156,8 @@ def _register_manifests(
             },
             "sensors": {
                 sensor_name: {
-                    "parameters": [p._asdict() for p in definition.parameters]
+                    "parameters": [p._asdict() for p in definition.parameters],
+                    "requires": definition.requires,
                 }
                 for sensor_name, (definition, _) in target.items()
                 if definition.type == "sensor"

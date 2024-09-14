@@ -19,9 +19,10 @@ defmodule Coflux.Orchestration.Manifests do
                     insert_many(
                       db,
                       :workflows,
-                      {:manifest_id, :name, :parameter_set_id, :cache_params, :cache_max_age,
-                       :cache_namespace, :cache_version, :defer_params, :retry_limit,
-                       :retry_delay_min, :retry_delay_max, :requires_tag_set_id},
+                      {:manifest_id, :name, :parameter_set_id, :wait, :cache_params,
+                       :cache_max_age, :cache_namespace, :cache_version, :defer_params, :delay,
+                       :memo, :retry_limit, :retry_delay_min, :retry_delay_max,
+                       :requires_tag_set_id},
                       Enum.map(manifest.workflows, fn {name, workflow} ->
                         {:ok, requires_tag_set_id} =
                           if workflow.requires do
@@ -36,11 +37,14 @@ defmodule Coflux.Orchestration.Manifests do
                               manifest_id,
                               name,
                               parameter_set_id,
+                              encode_params(workflow.wait),
                               if(workflow.cache, do: encode_params(workflow.cache.params)),
                               if(workflow.cache, do: workflow.cache.max_age),
                               if(workflow.cache, do: workflow.cache.namespace),
                               if(workflow.cache, do: workflow.cache.version),
                               if(workflow.defer, do: encode_params(workflow.defer.params)),
+                              workflow.delay,
+                              encode_boolean(workflow.memo),
                               if(workflow.retries, do: workflow.retries.limit, else: 0),
                               if(workflow.retries, do: workflow.retries.delay_min, else: 0),
                               if(workflow.retries, do: workflow.retries.delay_max, else: 0),
@@ -54,11 +58,18 @@ defmodule Coflux.Orchestration.Manifests do
                     insert_many(
                       db,
                       :sensors,
-                      {:manifest_id, :name, :parameter_set_id},
+                      {:manifest_id, :name, :parameter_set_id, :requires_tag_set_id},
                       Enum.map(manifest.sensors, fn {name, sensor} ->
+                        {:ok, requires_tag_set_id} =
+                          if sensor.requires do
+                            TagSets.get_or_create_tag_set_id(db, sensor.requires)
+                          else
+                            {:ok, nil}
+                          end
+
                         case get_or_create_parameter_set_id(db, sensor.parameters) do
                           {:ok, parameter_set_id} ->
-                            {manifest_id, name, parameter_set_id}
+                            {manifest_id, name, parameter_set_id, requires_tag_set_id}
                         end
                       end)
                     )
@@ -141,7 +152,7 @@ defmodule Coflux.Orchestration.Manifests do
     case query(
            db,
            """
-           SELECT name, parameter_set_id, cache_params, cache_max_age, cache_namespace, cache_version, defer_params, retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id
+           SELECT name, parameter_set_id, wait, cache_params, cache_max_age, cache_namespace, cache_version, defer_params, delay, memo, retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id
            FROM workflows
            WHERE manifest_id = ?1
            """,
@@ -149,9 +160,9 @@ defmodule Coflux.Orchestration.Manifests do
          ) do
       {:ok, rows} ->
         workflows =
-          Map.new(rows, fn {name, parameter_set_id, cache_params, cache_max_age, cache_namespace,
-                            cache_version, defer_params, retry_limit, retry_delay_min,
-                            retry_delay_max, requires_tag_set_id} ->
+          Map.new(rows, fn {name, parameter_set_id, wait, cache_params, cache_max_age,
+                            cache_namespace, cache_version, defer_params, delay, memo,
+                            retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id} ->
             case get_parameter_set(db, parameter_set_id) do
               {:ok, parameters} ->
                 {:ok, requires} =
@@ -190,8 +201,11 @@ defmodule Coflux.Orchestration.Manifests do
                 {name,
                  %{
                    parameters: parameters,
+                   wait: decode_params(wait) || false,
                    cache: cache,
                    defer: defer,
+                   delay: delay,
+                   memo: decode_boolean(memo),
                    retries: retries,
                    requires: requires
                  }}
@@ -237,11 +251,14 @@ defmodule Coflux.Orchestration.Manifests do
         [
           name,
           hash_parameter_set(workflow.parameters),
+          encode_params(workflow.wait) || "-",
           if(workflow.cache, do: encode_params(workflow.cache.params), else: ""),
           if(workflow.cache[:max_age], do: Integer.to_string(workflow.cache.max_age), else: ""),
           if(workflow.cache[:namespace], do: workflow.cache.namespace, else: ""),
           if(workflow.cache[:version], do: workflow.cache.version, else: ""),
           if(workflow.defer, do: encode_params(workflow.defer.params), else: ""),
+          Integer.to_string(workflow.delay),
+          encode_boolean(workflow.memo),
           if(workflow.retries, do: Integer.to_string(workflow.retries.limit), else: ""),
           if(workflow.retries, do: Integer.to_string(workflow.retries.delay_min), else: ""),
           if(workflow.retries, do: Integer.to_string(workflow.retries.delay_max), else: ""),
@@ -321,17 +338,32 @@ defmodule Coflux.Orchestration.Manifests do
 
   defp encode_params(params) do
     case params do
-      nil -> nil
       true -> ""
+      false -> nil
+      nil -> nil
       params -> Enum.map_join(params, ",", &Integer.to_string/1)
     end
   end
 
   defp decode_params(value) do
     case value do
-      nil -> nil
+      nil -> false
       "" -> true
       value -> value |> Enum.split(",") |> Enum.map(&String.to_integer/1)
+    end
+  end
+
+  defp encode_boolean(value) do
+    case value do
+      false -> 0
+      true -> 1
+    end
+  end
+
+  defp decode_boolean(value) do
+    case value do
+      0 -> false
+      1 -> true
     end
   end
 

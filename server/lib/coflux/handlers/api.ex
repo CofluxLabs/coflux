@@ -536,7 +536,7 @@ defmodule Coflux.Handlers.Api do
   defp parse_indexes(value) do
     cond do
       !value ->
-        {:ok, nil}
+        {:ok, false}
 
       value == true ->
         {:ok, true}
@@ -570,6 +570,14 @@ defmodule Coflux.Handlers.Api do
       opts[:optional] && is_nil(value) -> {:ok, nil}
       is_valid_string?(value, opts) -> {:ok, value}
       true -> {:error, :invalid}
+    end
+  end
+
+  defp parse_boolean(value) do
+    case value do
+      true -> {:ok, true}
+      false -> {:ok, false}
+      _other -> {:error, :invalid}
     end
   end
 
@@ -638,6 +646,7 @@ defmodule Coflux.Handlers.Api do
            {:ok, cache} <- parse_cache(Map.get(value, "cache")),
            {:ok, defer} <- parse_defer(Map.get(value, "defer")),
            {:ok, delay} <- parse_integer(Map.get(value, "delay")),
+           {:ok, memo} <- parse_boolean(Map.get(value, "memo")),
            {:ok, retries} <- parse_retries(Map.get(value, "retries")),
            {:ok, requires} <- parse_tag_set(Map.get(value, "requires")) do
         {:ok,
@@ -647,6 +656,7 @@ defmodule Coflux.Handlers.Api do
            cache: cache,
            defer: defer,
            delay: delay,
+           memo: memo,
            retries: retries,
            requires: requires
          }}
@@ -661,12 +671,13 @@ defmodule Coflux.Handlers.Api do
 
   defp parse_sensor(value) do
     if is_map(value) do
-      case parse_parameters(Map.get(value, "parameters")) do
-        {:ok, parameters} ->
-          {:ok,
-           %{
-             parameters: parameters
-           }}
+      with {:ok, parameters} <- parse_parameters(Map.get(value, "parameters")),
+           {:ok, requires} <- parse_tag_set(Map.get(value, "requires")) do
+        {:ok,
+         %{
+           parameters: parameters,
+           requires: requires
+         }}
       end
     else
       {:error, :invalid}
