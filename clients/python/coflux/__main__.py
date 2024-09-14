@@ -104,7 +104,7 @@ def _get_provides(argument: tuple[str] | None) -> dict[str, list[str]]:
     }
 
 
-def _load_module(
+def _load_repository(
     module: types.ModuleType,
 ) -> dict[str, tuple[models.Target, t.Callable]]:
     attrs = (getattr(module, k) for k in dir(module))
@@ -115,11 +115,22 @@ def _load_module(
     }
 
 
+def _load_repositories(
+    modules: list[types.ModuleType | str],
+) -> dict[str, dict[str, tuple[models.Target, t.Callable]]]:
+    targets = {}
+    for module in list(modules):
+        if isinstance(module, str):
+            module = loader.load_module(module)
+        targets[module.__name__] = _load_repository(module)
+    return targets
+
+
 def _register_manifests(
     project_id: str,
     environment_name: str,
     host: str,
-    modules: dict[str, dict[str, tuple[models.Target, t.Callable]]],
+    targets: dict[str, dict[str, tuple[models.Target, t.Callable]]],
 ) -> None:
     manifests = {
         repository: {
@@ -150,7 +161,7 @@ def _register_manifests(
                 if definition.type == "sensor"
             },
         }
-        for repository, target in modules.items()
+        for repository, target in targets.items()
     }
     # TODO: handle response?
     _api_request(
@@ -175,15 +186,11 @@ def _init(
     launch_id: str | None,
 ) -> None:
     try:
-        modules_ = {}
-        for module in list(modules):
-            if isinstance(module, str):
-                module = loader.load_module(module)
-            modules_[module.__name__] = _load_module(module)
-        _register_manifests(project, environment, host, modules_)
+        targets = _load_repositories(list(modules))
+        _register_manifests(project, environment, host, targets)
 
         with Agent(
-            project, environment, provides, host, modules_, concurrency, launch_id
+            project, environment, provides, host, targets, concurrency, launch_id
         ) as agent:
             asyncio.run(agent.run())
     except KeyboardInterrupt:
@@ -447,6 +454,46 @@ def environment_archive(
     click.secho(f"Archived environment '{environment_}'.", fg="green")
 
 
+@cli.command("repositories.register")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+)
+@click.option(
+    "-e",
+    "--environment",
+    help="Environment name",
+)
+@click.argument("module_name", nargs=-1)
+def repositories_register(
+    project: str | None,
+    environment: str | None,
+    host: str | None,
+    module_name: tuple[str],
+) -> None:
+    """
+    Register repositories with the server for the specified environment.
+
+    Paths to scripts can be passed instead of module names.
+
+    Options will be loaded from the configuration file, unless overridden as arguments (or environment variables).
+    """
+    if not module_name:
+        raise click.ClickException("No module(s) specified.")
+    project_ = _get_project(project)
+    environment_ = _get_environment(environment)
+    host_ = _get_host(host)
+    targets = _load_repositories(list(module_name))
+    _register_manifests(project_, environment_, host_, targets)
+    click.secho("Repository manifests registered.", fg="green")
+
+
 @cli.command("agent.run")
 @click.option(
     "-p",
@@ -581,6 +628,7 @@ def workflow_schedule(
             "arguments": [["json", a] for a in argument],
         },
     )
+    click.secho("Workflow scheduled.", fg="green")
     # TODO: follow logs?
     # TODO: wait for result?
 
