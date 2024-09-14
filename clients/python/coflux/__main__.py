@@ -136,18 +136,38 @@ def _register_manifests(
         repository: {
             "workflows": {
                 workflow_name: {
-                    "parameters": [p._asdict() for p in definition.parameters],
-                    "wait": (
-                        list(definition.wait)
-                        if isinstance(definition.wait, set)
-                        else definition.wait
+                    "parameters": [
+                        {
+                            "name": p.name,
+                            "annotation": p.annotation,
+                            "default": p.default,
+                        }
+                        for p in definition.parameters
+                    ],
+                    "waitFor": list(definition.wait_for),
+                    "cache": (
+                        definition.cache
+                        and {
+                            "params": definition.cache.params,
+                            "maxAge": definition.cache.max_age,
+                            "namespace": definition.cache.namespace,
+                            "version": definition.cache.version,
+                        }
                     ),
-                    "cache": definition.cache._asdict() if definition.cache else None,
-                    "defer": definition.defer._asdict() if definition.defer else None,
+                    "defer": (
+                        definition.defer
+                        and {
+                            "params": definition.defer.params,
+                        }
+                    ),
                     "delay": definition.delay,
-                    "memo": definition.memo,
                     "retries": (
-                        definition.retries._asdict() if definition.retries else None
+                        definition.retries
+                        and {
+                            "limit": definition.retries.limit,
+                            "delayMin": definition.retries.delay_min,
+                            "delayMax": definition.retries.delay_max,
+                        }
                     ),
                     "requires": definition.requires,
                 }
@@ -156,7 +176,14 @@ def _register_manifests(
             },
             "sensors": {
                 sensor_name: {
-                    "parameters": [p._asdict() for p in definition.parameters],
+                    "parameters": [
+                        {
+                            "name": p.name,
+                            "annotation": p.annotation,
+                            "default": p.default,
+                        }
+                        for p in definition.parameters
+                    ],
                     "requires": definition.requires,
                 }
                 for sensor_name, (definition, _) in target.items()

@@ -70,14 +70,25 @@ export default function WorkflowHeader({
   const run = useRun(projectId, runId, activeEnvironmentId);
   const handleRunSubmit = useCallback(
     (arguments_: ["json", string][]) => {
+      const configuration = workflow!.configuration;
+      const executeAfter = configuration.delay
+        ? new Date().getTime() + configuration.delay * 1000
+        : null;
       return api
-        .schedule(
+        .scheduleWorkflow(
           projectId,
           repository!,
           target!,
-          "workflow",
           activeEnvironmentName!,
           arguments_,
+          {
+            waitFor: configuration.waitFor,
+            cache: configuration.cache,
+            defer: configuration.defer,
+            executeAfter: executeAfter,
+            retries: configuration.retries,
+            requires: configuration.requires,
+          },
         )
         .then(({ runId }) => {
           setRunDialogOpen(false);
@@ -88,7 +99,7 @@ export default function WorkflowHeader({
           );
         });
     },
-    [navigate, projectId, runId, repository, target, activeEnvironmentName],
+    [navigate, projectId, repository, target, activeEnvironmentName, workflow],
   );
   const handleCancel = useCallback(() => {
     return api.cancelRun(projectId, runId!);

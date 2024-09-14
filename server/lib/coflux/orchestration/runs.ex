@@ -724,7 +724,7 @@ defmodule Coflux.Orchestration.Runs do
   end
 
   defp encode_wait_for(indexes) do
-    indexes && Enum.reduce(indexes, 0, &Bitwise.bor(&2, Bitwise.bsl(1, &1)))
+    Enum.reduce(indexes, 0, &Bitwise.bor(&2, Bitwise.bsl(1, &1)))
   end
 
   defp insert_step(
@@ -753,7 +753,7 @@ defmodule Coflux.Orchestration.Runs do
                repository: repository,
                target: target,
                priority: priority,
-               wait_for: encode_wait_for(wait_for),
+               wait_for: encode_wait_for(wait_for || []),
                cache_key: cache_key,
                defer_key: defer_key,
                memo_key: memo_key,

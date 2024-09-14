@@ -16,11 +16,33 @@ export type Parameter = {
 
 export type Workflow = {
   parameters: Parameter[] | null;
+  configuration: {
+    waitFor: number[];
+    cache: {
+      params: number[] | true;
+      maxAge?: number;
+      namespace?: string;
+      version?: string;
+    };
+    defer: {
+      params: number[] | true;
+    };
+    delay: number;
+    retries: {
+      limit: number;
+      delayMin?: number;
+      delayMax?: number;
+    };
+    requires: Record<string, string[]>;
+  };
   runs: Record<string, Pick<Run, "createdAt">>;
 };
 
 export type Sensor = {
   parameters: Parameter[] | null;
+  configuration: {
+    requires: Record<string, string[]>;
+  };
   runs: Record<string, Pick<Run, "createdAt">>;
 };
 

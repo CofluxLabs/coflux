@@ -18,14 +18,10 @@ defmodule Coflux.Topics.Sensor do
            self()
          ) do
       {:ok, sensor, runs, ref} ->
-        runs =
-          Map.new(runs, fn {external_run_id, created_at} ->
-            {external_run_id, %{id: external_run_id, createdAt: created_at}}
-          end)
-
         value = %{
-          parameters: if(sensor, do: build_parameters(sensor.parameters)),
-          runs: runs
+          parameters: build_parameters(sensor.parameters),
+          configuration: build_configuration(sensor),
+          runs: build_runs(runs)
         }
 
         {:ok, Topic.new(value, %{ref: ref})}
@@ -41,8 +37,9 @@ defmodule Coflux.Topics.Sensor do
   end
 
   defp process_notification({:target, target}, topic) do
-    # TODO: update other fields
-    Topic.set(topic, [:parameters], build_parameters(target.parameters))
+    topic
+    |> Topic.set([:parameters], build_parameters(target.parameters))
+    |> Topic.set([:configuration], build_configuration(target))
   end
 
   defp process_notification({:run, external_run_id, created_at}, topic) do
@@ -56,6 +53,18 @@ defmodule Coflux.Topics.Sensor do
   defp build_parameters(parameters) do
     Enum.map(parameters, fn {name, default, annotation} ->
       %{name: name, default: default, annotation: annotation}
+    end)
+  end
+
+  defp build_configuration(sensor) do
+    %{
+      requires: sensor.requires
+    }
+  end
+
+  defp build_runs(runs) do
+    Map.new(runs, fn {external_run_id, created_at} ->
+      {external_run_id, %{id: external_run_id, createdAt: created_at}}
     end)
   end
 end

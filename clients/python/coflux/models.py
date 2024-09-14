@@ -35,7 +35,7 @@ Requires = dict[str, list[str]]
 class Target(t.NamedTuple):
     type: TargetType
     parameters: list[Parameter]
-    wait: set[int] | bool
+    wait_for: set[int]
     cache: Cache | None
     defer: Defer | None
     delay: int | float

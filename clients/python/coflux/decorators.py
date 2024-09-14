@@ -36,9 +36,11 @@ def _build_parameter(parameter: inspect.Parameter) -> models.Parameter:
 
 def _parse_wait(
     wait: bool | t.Iterable[str] | str, parameters: list[models.Parameter]
-) -> set[int] | bool:
-    if isinstance(wait, bool):
-        return wait
+) -> set[int]:
+    if wait is True:
+        return set(range(len(parameters)))
+    if wait is False:
+        return set()
     return set(_get_param_indexes(parameters, wait))
 
 
@@ -209,7 +211,7 @@ class Target(t.Generic[P, T]):
                 self._repository,
                 self._name,
                 args,
-                wait=definition.wait,
+                wait_for=definition.wait_for,
                 cache=definition.cache,
                 retries=definition.retries,
                 defer=definition.defer,

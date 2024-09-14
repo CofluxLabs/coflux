@@ -64,14 +64,17 @@ export default function SensorHeader({
   const run = useRun(projectId, runId, activeEnvironmentId);
   const handleRunSubmit = useCallback(
     (arguments_: ["json", string][]) => {
+      const configuration = sensor!.configuration;
       return api
-        .schedule(
+        .scheduleSensor(
           projectId,
           repository!,
           target!,
-          "sensor",
           activeEnvironmentName!,
           arguments_,
+          {
+            requires: configuration.requires,
+          },
         )
         .then(({ runId }) => {
           setRunDialogOpen(false);
@@ -82,7 +85,7 @@ export default function SensorHeader({
           );
         });
     },
-    [navigate, projectId, repository, target, activeEnvironmentName],
+    [navigate, projectId, repository, target, activeEnvironmentName, sensor],
   );
   const handleStop = useCallback(() => {
     return api.cancelRun(projectId, runId!);

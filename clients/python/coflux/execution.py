@@ -84,7 +84,7 @@ class ScheduleExecutionRequest(t.NamedTuple):
     repository: str
     target: str
     arguments: list[models.Value]
-    wait: set[int] | bool
+    wait_for: set[int]
     cache: models.Cache | None
     defer: models.Defer | None
     memo: list[int] | bool
@@ -274,7 +274,7 @@ class Channel:
         target: str,
         arguments: tuple[t.Any, ...],
         *,
-        wait: set[int] | bool = False,
+        wait_for: set[int] | None = None,
         cache: models.Cache | None = None,
         retries: models.Retries | None = None,
         defer: models.Defer | None = None,
@@ -300,7 +300,7 @@ class Channel:
                 repository,
                 target,
                 serialised_arguments,
-                wait,
+                wait_for or set(),
                 cache,
                 defer,
                 memo,
@@ -659,7 +659,7 @@ class Execution:
                 repository,
                 target,
                 arguments,
-                wait,
+                wait_for,
                 cache,
                 defer,
                 memo,
@@ -676,7 +676,7 @@ class Execution:
                         target,
                         _json_safe_arguments(arguments),
                         self._id,
-                        list(wait) if isinstance(wait, set) else None,
+                        list(wait_for),
                         cache and cache._asdict(),
                         defer and defer._asdict(),
                         memo,

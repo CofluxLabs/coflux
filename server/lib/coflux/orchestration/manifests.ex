@@ -19,10 +19,9 @@ defmodule Coflux.Orchestration.Manifests do
                     insert_many(
                       db,
                       :workflows,
-                      {:manifest_id, :name, :parameter_set_id, :wait, :cache_params,
+                      {:manifest_id, :name, :parameter_set_id, :wait_for, :cache_params,
                        :cache_max_age, :cache_namespace, :cache_version, :defer_params, :delay,
-                       :memo, :retry_limit, :retry_delay_min, :retry_delay_max,
-                       :requires_tag_set_id},
+                       :retry_limit, :retry_delay_min, :retry_delay_max, :requires_tag_set_id},
                       Enum.map(manifest.workflows, fn {name, workflow} ->
                         {:ok, requires_tag_set_id} =
                           if workflow.requires do
@@ -37,14 +36,13 @@ defmodule Coflux.Orchestration.Manifests do
                               manifest_id,
                               name,
                               parameter_set_id,
-                              encode_params(workflow.wait),
-                              if(workflow.cache, do: encode_params(workflow.cache.params)),
+                              encode_params_set(workflow.wait_for),
+                              if(workflow.cache, do: encode_params_list(workflow.cache.params)),
                               if(workflow.cache, do: workflow.cache.max_age),
                               if(workflow.cache, do: workflow.cache.namespace),
                               if(workflow.cache, do: workflow.cache.version),
-                              if(workflow.defer, do: encode_params(workflow.defer.params)),
+                              if(workflow.defer, do: encode_params_list(workflow.defer.params)),
                               workflow.delay,
-                              encode_boolean(workflow.memo),
                               if(workflow.retries, do: workflow.retries.limit, else: 0),
                               if(workflow.retries, do: workflow.retries.delay_min, else: 0),
                               if(workflow.retries, do: workflow.retries.delay_max, else: 0),
@@ -152,7 +150,7 @@ defmodule Coflux.Orchestration.Manifests do
     case query_one(
            db,
            """
-           SELECT w.parameter_set_id, w.wait, w.cache_params, w.cache_max_age, w.cache_namespace, w.cache_version, w.defer_params, w.delay, w.memo, w.retry_limit, w.retry_delay_min, w.retry_delay_max, w.requires_tag_set_id
+           SELECT w.parameter_set_id, w.wait_for, w.cache_params, w.cache_max_age, w.cache_namespace, w.cache_version, w.defer_params, w.delay, w.retry_limit, w.retry_delay_min, w.retry_delay_max, w.requires_tag_set_id
            FROM workflows AS w
            INNER JOIN environment_manifests AS em ON em.manifest_id = w.manifest_id
            WHERE em.environment_id = ?1 AND em.repository = ?2 AND w.name = ?3
@@ -165,20 +163,19 @@ defmodule Coflux.Orchestration.Manifests do
         {:error, :not_found}
 
       {:ok,
-       {parameter_set_id, wait, cache_params, cache_max_age, cache_namespace, cache_version,
-        defer_params, delay, memo, retry_limit, retry_delay_min, retry_delay_max,
+       {parameter_set_id, wait_for, cache_params, cache_max_age, cache_namespace, cache_version,
+        defer_params, delay, retry_limit, retry_delay_min, retry_delay_max,
         requires_tag_set_id}} ->
         build_workflow(
           db,
           parameter_set_id,
-          wait,
+          wait_for,
           cache_params,
           cache_max_age,
           cache_namespace,
           cache_version,
           defer_params,
           delay,
-          memo,
           retry_limit,
           retry_delay_min,
           retry_delay_max,
@@ -212,7 +209,7 @@ defmodule Coflux.Orchestration.Manifests do
     case query(
            db,
            """
-           SELECT name, parameter_set_id, wait, cache_params, cache_max_age, cache_namespace, cache_version, defer_params, delay, memo, retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id
+           SELECT name, parameter_set_id, wait_for, cache_params, cache_max_age, cache_namespace, cache_version, defer_params, delay, retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id
            FROM workflows
            WHERE manifest_id = ?1
            """,
@@ -220,21 +217,20 @@ defmodule Coflux.Orchestration.Manifests do
          ) do
       {:ok, rows} ->
         workflows =
-          Map.new(rows, fn {name, parameter_set_id, wait, cache_params, cache_max_age,
-                            cache_namespace, cache_version, defer_params, delay, memo,
-                            retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id} ->
+          Map.new(rows, fn {name, parameter_set_id, wait_for, cache_params, cache_max_age,
+                            cache_namespace, cache_version, defer_params, delay, retry_limit,
+                            retry_delay_min, retry_delay_max, requires_tag_set_id} ->
             {:ok, workflow} =
               build_workflow(
                 db,
                 parameter_set_id,
-                wait,
+                wait_for,
                 cache_params,
                 cache_max_age,
                 cache_namespace,
                 cache_version,
                 defer_params,
                 delay,
-                memo,
                 retry_limit,
                 retry_delay_min,
                 retry_delay_max,
@@ -281,14 +277,13 @@ defmodule Coflux.Orchestration.Manifests do
         [
           name,
           hash_parameter_set(workflow.parameters),
-          encode_params(workflow.wait) || "-",
-          if(workflow.cache, do: encode_params(workflow.cache.params), else: ""),
+          Integer.to_string(encode_params_set(workflow.wait_for)),
+          if(workflow.cache, do: encode_params_list(workflow.cache.params), else: ""),
           if(workflow.cache[:max_age], do: Integer.to_string(workflow.cache.max_age), else: ""),
           if(workflow.cache[:namespace], do: workflow.cache.namespace, else: ""),
           if(workflow.cache[:version], do: workflow.cache.version, else: ""),
-          if(workflow.defer, do: encode_params(workflow.defer.params), else: ""),
+          if(workflow.defer, do: encode_params_list(workflow.defer.params), else: ""),
           Integer.to_string(workflow.delay),
-          encode_boolean(workflow.memo),
           if(workflow.retries, do: Integer.to_string(workflow.retries.limit), else: ""),
           if(workflow.retries, do: Integer.to_string(workflow.retries.delay_min), else: ""),
           if(workflow.retries, do: Integer.to_string(workflow.retries.delay_max), else: ""),
@@ -315,14 +310,13 @@ defmodule Coflux.Orchestration.Manifests do
   defp build_workflow(
          db,
          parameter_set_id,
-         wait,
+         wait_for,
          cache_params,
          cache_max_age,
          cache_namespace,
          cache_version,
          defer_params,
          delay,
-         memo,
          retry_limit,
          retry_delay_min,
          retry_delay_max,
@@ -340,7 +334,7 @@ defmodule Coflux.Orchestration.Manifests do
     cache =
       if cache_params do
         %{
-          params: decode_params(cache_params),
+          params: decode_params_list(cache_params),
           max_age: cache_max_age,
           namespace: cache_namespace,
           version: cache_version
@@ -350,7 +344,7 @@ defmodule Coflux.Orchestration.Manifests do
     defer =
       if defer_params do
         %{
-          params: decode_params(defer_params)
+          params: decode_params_list(defer_params)
         }
       end
 
@@ -366,11 +360,10 @@ defmodule Coflux.Orchestration.Manifests do
     {:ok,
      %{
        parameters: parameters,
-       wait: decode_params(wait) || false,
+       wait_for: decode_params_set(wait_for),
        cache: cache,
        defer: defer,
        delay: delay,
-       memo: decode_boolean(memo),
        retries: retries,
        requires: requires
      }}
@@ -447,7 +440,7 @@ defmodule Coflux.Orchestration.Manifests do
     :crypto.hash(:sha256, data)
   end
 
-  defp encode_params(params) do
+  defp encode_params_list(params) do
     case params do
       true -> ""
       false -> nil
@@ -456,26 +449,25 @@ defmodule Coflux.Orchestration.Manifests do
     end
   end
 
-  defp decode_params(value) do
+  defp decode_params_list(value) do
     case value do
       nil -> false
       "" -> true
-      value -> value |> Enum.split(",") |> Enum.map(&String.to_integer/1)
+      value -> value |> String.split(",") |> Enum.map(&String.to_integer/1)
     end
   end
 
-  defp encode_boolean(value) do
-    case value do
-      false -> 0
-      true -> 1
-    end
+  defp encode_params_set(indexes) do
+    Enum.reduce(indexes, 0, &Bitwise.bor(&2, Bitwise.bsl(1, &1)))
   end
 
-  defp decode_boolean(value) do
-    case value do
-      0 -> false
-      1 -> true
-    end
+  defp decode_params_set(value) do
+    value
+    |> Integer.digits(2)
+    |> Enum.reverse()
+    |> Enum.with_index()
+    |> Enum.filter(fn {v, _} -> v == 1 end)
+    |> Enum.map(fn {_, i} -> i end)
   end
 
   defp current_timestamp() do

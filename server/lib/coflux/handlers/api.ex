@@ -191,16 +191,26 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp handle(req, "POST", ["schedule"]) do
+  defp handle(req, "POST", ["schedule_workflow"]) do
     {:ok, arguments, errors, req} =
-      read_arguments(req, %{
-        project_id: "projectId",
-        repository: "repository",
-        target: "target",
-        type: {"type", &parse_target_type/1},
-        environment_name: "environmentName",
-        arguments: {"arguments", &parse_arguments/1}
-      })
+      read_arguments(
+        req,
+        %{
+          project_id: "projectId",
+          repository: "repository",
+          target: "target",
+          environment_name: "environmentName",
+          arguments: {"arguments", &parse_arguments/1}
+        },
+        %{
+          wait_for: {"waitFor", &parse_indexes/1},
+          cache: {"cache", &parse_cache/1},
+          defer: {"defer", &parse_defer/1},
+          execute_after: {"executeAfter", &parse_integer(&1, optional: true)},
+          retries: {"retries", &parse_retries/1},
+          requries: {"requires", &parse_tag_set/1}
+        }
+      )
 
     if Enum.empty?(errors) do
       case Orchestration.schedule_run(
@@ -209,7 +219,51 @@ defmodule Coflux.Handlers.Api do
              arguments.target,
              arguments.arguments,
              environment: arguments.environment_name,
-             recurrent: arguments.type == :sensor
+             execute_after: arguments[:execute_after],
+             wait_for: arguments[:wait_for],
+             cache: arguments[:cache],
+             defer: arguments[:defer],
+             delay: arguments[:delay],
+             retries: arguments[:retries],
+             requires: arguments[:requires]
+           ) do
+        {:ok, run_id, step_id, execution_id} ->
+          json_response(req, %{
+            "runId" => run_id,
+            "stepId" => step_id,
+            "executionId" => execution_id
+          })
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["schedule_sensor"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(
+        req,
+        %{
+          project_id: "projectId",
+          repository: "repository",
+          target: "target",
+          environment_name: "environmentName",
+          arguments: {"arguments", &parse_arguments/1}
+        },
+        %{
+          requires: {"requires", &parse_tag_set/1}
+        }
+      )
+
+    if Enum.empty?(errors) do
+      case Orchestration.schedule_run(
+             arguments.project_id,
+             arguments.repository,
+             arguments.target,
+             arguments.arguments,
+             environment: arguments.environment_name,
+             recurrent: true,
+             requires: arguments[:requires]
            ) do
         {:ok, run_id, step_id, execution_id} ->
           json_response(req, %{
@@ -364,18 +418,15 @@ defmodule Coflux.Handlers.Api do
         {:ok, %{}}
 
       is_map(value) && map_size(value) <= 10 ->
-        tag_set =
-          Enum.reduce_while(value, {:ok, %{}}, fn {key, value}, {:ok, result} ->
-            case parse_tag_set_item(key, value) do
-              {:ok, key, value} ->
-                {:cont, {:ok, Map.put(result, key, value)}}
+        Enum.reduce_while(value, {:ok, %{}}, fn {key, value}, {:ok, result} ->
+          case parse_tag_set_item(key, value) do
+            {:ok, key, value} ->
+              {:cont, {:ok, Map.put(result, key, value)}}
 
-              {:error, error} ->
-                {:halt, {:error, error}}
-            end
-          end)
-
-        {:ok, tag_set}
+            {:error, error} ->
+              {:halt, {:error, error}}
+          end
+        end)
 
       true ->
         {:error, :invalid}
@@ -460,14 +511,6 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp parse_target_type(type) do
-    case type do
-      "workflow" -> {:ok, :workflow}
-      "sensor" -> {:ok, :sensor}
-      _ -> {:error, :invalid}
-    end
-  end
-
   defp parse_arguments(arguments) do
     if arguments do
       errors =
@@ -533,20 +576,20 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp parse_indexes(value) do
+  defp parse_indexes(value, opts \\ []) do
     cond do
-      !value ->
+      opts[:allow_boolean] && !value ->
         {:ok, false}
 
-      value == true ->
+      opts[:allow_boolean] && value == true ->
         {:ok, true}
 
       is_list(value) && length(value) <= @max_parameters ->
         with {:ok, backwards} <-
                Enum.reduce_while(value, {:ok, []}, fn item, {:ok, result} ->
-                 case Integer.parse(item) do
-                   {index, ""} -> {:cont, {:ok, [index | result]}}
-                   _other -> {:halt, {:error, :invalid}}
+                 case parse_integer(item) do
+                   {:ok, value} -> {:cont, {:ok, [value | result]}}
+                   {:error, error} -> {:halt, {:error, error}}
                  end
                end) do
           {:ok, Enum.reverse(backwards)}
@@ -573,22 +616,14 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp parse_boolean(value) do
-    case value do
-      true -> {:ok, true}
-      false -> {:ok, false}
-      _other -> {:error, :invalid}
-    end
-  end
-
   defp parse_cache(value) do
     cond do
       is_nil(value) ->
         {:ok, nil}
 
       is_map(value) ->
-        with {:ok, params} <- parse_indexes(Map.get(value, "params")),
-             {:ok, max_age} <- parse_integer(Map.get(value, "max_age"), optional: true),
+        with {:ok, params} <- parse_indexes(Map.get(value, "params"), allow_boolean: true),
+             {:ok, max_age} <- parse_integer(Map.get(value, "maxAge"), optional: true),
              # TODO: regex
              {:ok, namespace} <- parse_string(Map.get(value, "namespace"), optional: true),
              # TODO: regex
@@ -613,8 +648,8 @@ defmodule Coflux.Handlers.Api do
         {:ok, nil}
 
       is_map(value) ->
-        with {:ok, params} <- parse_indexes(Map.get(value, "params")) do
-          %{params: params}
+        with {:ok, params} <- parse_indexes(Map.get(value, "params"), allow_boolean: true) do
+          {:ok, %{params: params}}
         end
 
       true ->
@@ -629,8 +664,8 @@ defmodule Coflux.Handlers.Api do
 
       is_map(value) ->
         with {:ok, limit} <- parse_integer(Map.get(value, "limit")),
-             {:ok, delay_min} <- parse_integer(Map.get(value, "delay_min"), optional: true),
-             {:ok, delay_max} <- parse_integer(Map.get(value, "delay_max"), optional: true) do
+             {:ok, delay_min} <- parse_integer(Map.get(value, "delayMin"), optional: true),
+             {:ok, delay_max} <- parse_integer(Map.get(value, "delayMax"), optional: true) do
           {:ok, %{limit: limit, delay_min: delay_min, delay_max: delay_max}}
         end
 
@@ -642,21 +677,19 @@ defmodule Coflux.Handlers.Api do
   defp parse_workflow(value) do
     if is_map(value) do
       with {:ok, parameters} <- parse_parameters(Map.get(value, "parameters")),
-           {:ok, wait} <- parse_indexes(Map.get(value, "wait")),
+           {:ok, wait_for} <- parse_indexes(Map.get(value, "waitFor")),
            {:ok, cache} <- parse_cache(Map.get(value, "cache")),
            {:ok, defer} <- parse_defer(Map.get(value, "defer")),
            {:ok, delay} <- parse_integer(Map.get(value, "delay")),
-           {:ok, memo} <- parse_boolean(Map.get(value, "memo")),
            {:ok, retries} <- parse_retries(Map.get(value, "retries")),
            {:ok, requires} <- parse_tag_set(Map.get(value, "requires")) do
         {:ok,
          %{
            parameters: parameters,
-           wait: wait,
+           wait_for: wait_for,
            cache: cache,
            defer: defer,
            delay: delay,
-           memo: memo,
            retries: retries,
            requires: requires
          }}
