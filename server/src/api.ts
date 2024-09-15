@@ -37,19 +37,57 @@ export function createEnvironment(
   return request("create_environment", { projectId, name, baseId });
 }
 
-export function schedule(
+export function scheduleWorkflow(
   projectId: string,
   repository: string,
   target: string,
-  type: "workflow" | "sensor",
   environmentName: string,
   arguments_: ["json", string][],
+  options?: Partial<{
+    waitFor: number[];
+    cache: {
+      params: number[] | true;
+      maxAge?: number;
+      namespace?: string;
+      version?: string;
+    };
+    defer: {
+      params: number[] | true;
+    };
+    executeAfter: number | null;
+    retries: {
+      limit: number;
+      delayMin?: number;
+      delayMax?: number;
+    };
+    requires: Record<string, string[]>;
+  }>,
 ) {
-  return request("schedule", {
+  return request("schedule_workflow", {
+    ...options,
     projectId,
     repository,
     target,
-    type,
+    environmentName,
+    arguments: arguments_,
+  });
+}
+
+export function scheduleSensor(
+  projectId: string,
+  repository: string,
+  target: string,
+  environmentName: string,
+  arguments_: ["json", string][],
+  options?: Partial<{
+    requires: Record<string, string[]>;
+  }>,
+) {
+  return request("schedule_sensor", {
+    ...options,
+    projectId,
+    repository,
+    target,
     environmentName,
     arguments: arguments_,
   });

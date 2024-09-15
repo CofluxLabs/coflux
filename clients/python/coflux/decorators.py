@@ -13,26 +13,12 @@ T = t.TypeVar("T")
 P = t.ParamSpec("P")
 
 
-TargetType = t.Literal["workflow", "task", "sensor"]
-
-
-class Parameter(t.NamedTuple):
-    name: str
-    annotation: str | None
-    default: str | None
-
-
-class TargetDefinition(t.NamedTuple):
-    type: TargetType
-    parameters: list[Parameter]
-
-
 def _json_dumps(obj: t.Any) -> str:
     return json.dumps(obj, separators=(",", ":"))
 
 
-def _build_parameter(parameter: inspect.Parameter) -> Parameter:
-    return Parameter(
+def _build_parameter(parameter: inspect.Parameter) -> models.Parameter:
+    return models.Parameter(
         parameter.name,
         # TODO: better serialisation?
         (
@@ -48,49 +34,159 @@ def _build_parameter(parameter: inspect.Parameter) -> Parameter:
     )
 
 
-def _build_target_definition(type: TargetType, fn: t.Callable):
-    parameters = [
-        _build_parameter(p) for p in inspect.signature(fn).parameters.values()
-    ]
-    return TargetDefinition(type, parameters)
+def _parse_wait(
+    wait: bool | t.Iterable[str] | str, parameters: list[models.Parameter]
+) -> set[int]:
+    if wait is True:
+        return set(range(len(parameters)))
+    if wait is False:
+        return set()
+    return set(_get_param_indexes(parameters, wait))
+
+
+def _parse_cache(
+    cache: bool | int | float | dt.timedelta,
+    cache_params: t.Iterable[str] | str | None,
+    cache_namespace: str | None,
+    cache_version: str | None,
+    parameters: list[models.Parameter],
+) -> models.Cache | None:
+    if not cache:
+        return None
+    return models.Cache(
+        (
+            True
+            if cache_params is None
+            else _get_param_indexes(parameters, cache_params)
+        ),
+        (
+            cache
+            if isinstance(cache, (int, float)) and not isinstance(cache, bool)
+            else (cache.total_seconds() if isinstance(cache, dt.timedelta) else None)
+        ),
+        cache_namespace,
+        cache_version,
+    )
+
+
+def _parse_retries(
+    retries: int | tuple[int, int] | tuple[int, int, int]
+) -> models.Retries | None:
+    # TODO: parse string (e.g., '1h')
+    match retries:
+        case 0:
+            return None
+        case int(limit):
+            return models.Retries(limit, 0, 0)
+        case (limit, delay):
+            return models.Retries(limit, delay, delay)
+        case (limit, delay_min, delay_max):
+            return models.Retries(limit, delay_min, delay_max)
+        case other:
+            raise ValueError(other)
+
+
+def _parse_defer(
+    defer: bool,
+    defer_params: t.Iterable[str] | str | None,
+    parameters: list[models.Parameter],
+) -> models.Defer | None:
+    if not defer:
+        return None
+    return models.Defer(
+        (True if defer_params is None else _get_param_indexes(parameters, defer_params))
+    )
+
+
+def _parse_delay(delay: int | float | dt.timedelta) -> int | float:
+    if isinstance(delay, dt.timedelta):
+        return delay.total_seconds()
+    return delay
+
+
+def _parse_memo(
+    memo: bool | t.Iterable[str] | str, parameters: list[models.Parameter]
+) -> list[int] | bool:
+    if isinstance(memo, bool):
+        return memo
+    return _get_param_indexes(parameters, memo)
+
+
+def _build_definition(
+    type: models.TargetType,
+    fn: t.Callable,
+    wait: bool | t.Iterable[str] | str,
+    cache: bool | int | float | dt.timedelta,
+    cache_params: t.Iterable[str] | str | None,
+    cache_namespace: str | None,
+    cache_version: str | None,
+    retries: int | tuple[int, int] | tuple[int, int, int],
+    defer: bool,
+    defer_params: t.Iterable[str] | str | None,
+    delay: int | float | dt.timedelta,
+    memo: bool | t.Iterable[str] | str,
+    requires: dict[str, str | bool | list[str]] | None,
+):
+    parameters = inspect.signature(fn).parameters.values()
+    for p in parameters:
+        if p.kind != inspect.Parameter.POSITIONAL_OR_KEYWORD:
+            raise Exception(f"Unsupported parameter type ({p.kind})")
+    parameters_ = [_build_parameter(p) for p in parameters]
+    return models.Target(
+        type,
+        parameters_,
+        _parse_wait(wait, parameters_),
+        _parse_cache(cache, cache_params, cache_namespace, cache_version, parameters_),
+        _parse_defer(defer, defer_params, parameters_),
+        _parse_delay(delay),
+        _parse_retries(retries),
+        _parse_memo(memo, parameters_),
+        _parse_requires(requires),
+    )
 
 
 class Target(t.Generic[P, T]):
-    _type: TargetType
-
     def __init__(
         self,
         fn: t.Callable[P, T],
-        type: TargetType,
+        type: models.TargetType,
         *,
         repository: str | None = None,
         name: str | None = None,
         wait: bool | t.Iterable[str] | str = False,
         cache: bool | int | float | dt.timedelta = False,
-        cache_key: t.Callable[P, str] | None = None,
+        cache_params: t.Iterable[str] | str | None = None,
         cache_namespace: str | None = None,
+        cache_version: str | None = None,
         retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-        defer: bool | t.Callable[P, str] = False,
+        defer: bool = False,
+        defer_params: t.Iterable[str] | str | None = None,
         delay: int | float | dt.timedelta = 0,
-        memo: bool | t.Callable[P, str] = False,
+        memo: bool | t.Iterable[str] | str = False,
         requires: dict[str, str | bool | list[str]] | None = None,
         is_stub: bool = False,
     ):
         self._fn = fn
-        self._type = type
         self._name = name or fn.__name__
         self._repository = repository or fn.__module__
-        self._wait = _parse_wait(fn, wait)
-        self._cache = cache
-        self._cache_key = cache_key
-        self._cache_namespace = cache_namespace
-        self._retries = retries
-        self._defer = defer
-        self._delay = delay
-        self._memo = memo
-        self._requires = _parse_requires(requires)
         self._definition = (
-            None if is_stub else _build_target_definition(self._type, self._fn)
+            None
+            if is_stub
+            else _build_definition(
+                type,
+                fn,
+                wait,
+                cache,
+                cache_params,
+                cache_namespace,
+                cache_version,
+                retries,
+                defer,
+                defer_params,
+                delay,
+                memo,
+                requires,
+            )
         )
         functools.update_wrapper(self, fn)
 
@@ -99,7 +195,7 @@ class Target(t.Generic[P, T]):
         return self._name
 
     @property
-    def definition(self) -> TargetDefinition | None:
+    def definition(self) -> models.Target | None:
         return self._definition
 
     @property
@@ -107,22 +203,21 @@ class Target(t.Generic[P, T]):
         return self._fn
 
     def submit(self, *args: P.args, **kwargs: P.kwargs) -> models.Execution[T]:
-        assert self._type in ("workflow", "task")
+        definition = self._definition
+        assert definition and definition.type in ("workflow", "task")
         try:
             return context.schedule(
-                self._type,
+                definition.type,
                 self._repository,
                 self._name,
                 args,
-                wait=self._wait,
-                cache=self._cache,
-                cache_key=self._cache_key,
-                cache_namespace=self._cache_namespace,
-                retries=self._retries,
-                defer=self._defer,
-                delay=self._delay,
-                memo=self._memo,
-                requires=self._requires,
+                wait_for=definition.wait_for,
+                cache=definition.cache,
+                retries=definition.retries,
+                defer=definition.defer,
+                delay=definition.delay,
+                memo=definition.memo,
+                requires=definition.requires,
             )
         except context.NotInContextException:
             result = self._fn(*args, **kwargs)
@@ -136,23 +231,18 @@ class Target(t.Generic[P, T]):
         return self.submit(*args, **kwargs).result()
 
 
-def _parse_wait(fn: t.Callable, wait: bool | t.Iterable[str] | str) -> set[int] | None:
-    if not wait:
-        return None
-    parameters = [
-        p.name
-        for p in inspect.signature(fn).parameters.values()
-        if p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
-    ]
-    if wait is True:
-        return set(range(len(parameters)))
-    if isinstance(wait, str):
-        wait = re.split(r",\s*", wait)
-    indexes = set()
-    for parameter in wait:
-        if parameter not in parameters:
-            raise Exception(f"no parameter '{parameter}' for function {fn.__name__}")
-        indexes.add(parameters.index(parameter))
+def _get_param_indexes(
+    parameters: list[models.Parameter],
+    names: t.Iterable[str] | str,
+) -> list[int]:
+    if isinstance(names, str):
+        names = re.split(r",\s*", names)
+    indexes = []
+    parameter_names = [p.name for p in parameters]
+    for name in names:
+        if name not in parameter_names:
+            raise Exception(f"Unrecognised parameter in wait ({name})")
+        indexes.append(parameter_names.index(name))
     return indexes
 
 
@@ -176,12 +266,14 @@ def task(
     name: str | None = None,
     wait: bool | t.Iterable[str] | str = False,
     cache: bool | int | float | dt.timedelta = False,
-    cache_key: t.Callable[P, str] | None = None,
+    cache_params: t.Iterable[str] | str | None = None,
     cache_namespace: str | None = None,
+    cache_version: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    defer: bool | t.Callable[P, str] = False,
+    defer: bool = False,
+    defer_params: t.Iterable[str] | str | None = None,
     delay: int | float | dt.timedelta = 0,
-    memo: bool | t.Callable[P, str] = False,
+    memo: bool | t.Iterable[str] = False,
     requires: dict[str, str | bool | list[str]] | None = None,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
     def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
@@ -191,10 +283,12 @@ def task(
             name=name,
             wait=wait,
             cache=cache,
-            cache_key=cache_key,
+            cache_params=cache_params,
             cache_namespace=cache_namespace,
+            cache_version=cache_version,
             retries=retries,
             defer=defer,
+            defer_params=defer_params,
             delay=delay,
             memo=memo,
             requires=requires,
@@ -208,10 +302,12 @@ def workflow(
     name: str | None = None,
     wait: bool | t.Iterable[str] | str = False,
     cache: bool | int | float | dt.timedelta = False,
-    cache_key: t.Callable[P, str] | None = None,
+    cache_params: t.Iterable[str] | str | None = None,
     cache_namespace: str | None = None,
+    cache_version: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    defer: bool | t.Callable[P, str] = False,
+    defer: bool = False,
+    defer_params: t.Iterable[str] | str | None = None,
     delay: int | float | dt.timedelta = 0,
     requires: dict[str, str | bool | list[str]] | None = None,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
@@ -222,10 +318,12 @@ def workflow(
             name=name,
             wait=wait,
             cache=cache,
-            cache_key=cache_key,
+            cache_params=cache_params,
             cache_namespace=cache_namespace,
+            cache_version=cache_version,
             retries=retries,
             defer=defer,
+            defer_params=defer_params,
             delay=delay,
             requires=requires,
         )
@@ -240,12 +338,14 @@ def stub(
     type: t.Literal["workflow", "task"] = "task",
     wait: bool | t.Iterable[str] | str = False,
     cache: bool | int | float | dt.timedelta = False,
-    cache_key: t.Callable[P, str] | None = None,
+    cache_params: t.Iterable[str] | str | None = None,
     cache_namespace: str | None = None,
+    cache_version: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-    defer: bool | t.Callable[P, str] = False,
+    defer: bool = False,
+    defer_params: t.Iterable[str] | str | None = None,
     delay: int | float | dt.timedelta = 0,
-    memo: bool | t.Callable[P, str] = False,
+    memo: bool | t.Iterable[str] = False,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
     def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
         return Target(
@@ -255,10 +355,12 @@ def stub(
             name=name,
             wait=wait,
             cache=cache,
-            cache_key=cache_key,
+            cache_params=cache_params,
             cache_namespace=cache_namespace,
+            cache_version=cache_version,
             retries=retries,
             defer=defer,
+            defer_params=defer_params,
             delay=delay,
             memo=memo,
             is_stub=True,

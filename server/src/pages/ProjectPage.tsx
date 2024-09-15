@@ -25,7 +25,7 @@ type HintProps = {
 function Hint({ children }: HintProps) {
   return (
     <div className="text-sm flex gap-1 text-slate-400 mb-2">
-      <IconInfoCircle size={16} className="mt-0.5" />
+      <IconInfoCircle size={16} className="mt-0.5 shrink-0" />
       {children}
     </div>
   );
@@ -100,7 +100,9 @@ function GettingStarted({ projectId, environmentId }: GettingStartedProps) {
               <Hint>
                 <p>
                   This will create a configuration file at{" "}
-                  <code className="bg-slate-100">coflux.yaml</code>.
+                  <code className="bg-slate-100">coflux.yaml</code>. It's not
+                  necessary, but avoids having to specify these settings with
+                  every CLI command.
                 </p>
               </Hint>
             </Step>
@@ -119,13 +121,15 @@ function GettingStarted({ projectId, environmentId }: GettingStartedProps) {
               <CodeBlock
                 className="bg-slate-100"
                 prompt="$"
-                code={[`coflux agent.run ${exampleRepositoryName} --reload`]}
+                code={[`coflux agent.run ${exampleRepositoryName} --dev`]}
               />
               <Hint>
                 <p>
-                  The <code className="bg-slate-100">--reload</code> flag means
-                  that the agent will automatically restart when changes to the
-                  source code are detected.
+                  The <code className="bg-slate-100">--dev</code> flag enables
+                  file watching and automatic repository registration - the
+                  agent will automatically restart when changes to the source
+                  code are detected, and automtically register workflow
+                  definitions.
                 </p>
               </Hint>
             </Step>
@@ -173,7 +177,7 @@ export default function ProjectPage() {
     (!environmentName ||
       (repositories &&
         !Object.values(repositories).some(
-          (r) => Object.keys(r.targets).length,
+          (r) => r.workflows.length || r.sensors.length,
         )))
   ) {
     return (

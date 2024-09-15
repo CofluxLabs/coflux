@@ -7,18 +7,14 @@ defmodule Coflux.Topics.Repositories do
     project_id = Keyword.fetch!(params, :project_id)
     environment_id = String.to_integer(Keyword.fetch!(params, :environment_id))
 
-    {:ok, targets, executions, ref} =
+    {:ok, manifests, executions, ref} =
       Orchestration.subscribe_repositories(project_id, environment_id, self())
 
     value =
-      targets
-      |> Map.keys()
-      |> Map.new(fn repository ->
-        repository_targets =
-          targets |> Map.fetch!(repository) |> filter_targets() |> Map.new(&build_target/1)
-
+      Map.new(manifests, fn {repository, manifest} ->
         result = %{
-          targets: repository_targets,
+          workflows: Map.keys(manifest.workflows),
+          sensors: Map.keys(manifest.sensors),
           executing: 0,
           scheduled: 0,
           nextDueAt: nil
@@ -49,9 +45,12 @@ defmodule Coflux.Topics.Repositories do
     {:ok, topic}
   end
 
-  defp process_notification(topic, {:targets, repository, targets}) do
-    targets = targets |> filter_targets() |> Map.new(&build_target/1)
-    Topic.set(topic, [repository, :targets], targets)
+  defp process_notification(topic, {:manifests, manifests}) do
+    Enum.reduce(manifests, topic, fn {repository, manifest}, topic ->
+      topic
+      |> Topic.set([repository, :workflows], Map.keys(manifest.workflows))
+      |> Topic.set([repository, :sensors], Map.keys(manifest.sensors))
+    end)
   end
 
   defp process_notification(topic, {:scheduled, repository, execution_id, execute_at}) do
@@ -77,23 +76,6 @@ defmodule Coflux.Topics.Repositories do
       scheduled = Map.delete(scheduled, execution_id)
       {executing, scheduled}
     end)
-  end
-
-  defp filter_targets(targets) do
-    Map.filter(targets, fn {_, target} ->
-      target.type in [:workflow, :sensor]
-    end)
-  end
-
-  defp build_target({name, target}) do
-    {name,
-     %{
-       type: target.type,
-       parameters:
-         Enum.map(target.parameters, fn {name, default, annotation} ->
-           %{name: name, default: default, annotation: annotation}
-         end)
-     }}
   end
 
   defp update_executing(topic, repository, fun) do

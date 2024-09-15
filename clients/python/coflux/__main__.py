@@ -7,7 +7,7 @@ import watchfiles
 import httpx
 import yaml
 
-from . import Agent, config, loader
+from . import Agent, config, loader, decorators, models
 
 T = t.TypeVar("T")
 
@@ -104,12 +104,105 @@ def _get_provides(argument: tuple[str] | None) -> dict[str, list[str]]:
     }
 
 
-async def _run(agent: Agent, modules: list[types.ModuleType | str]) -> None:
-    for module in modules:
+def _load_repository(
+    module: types.ModuleType,
+) -> dict[str, tuple[models.Target, t.Callable]]:
+    attrs = (getattr(module, k) for k in dir(module))
+    return {
+        a.name: (a.definition, a.fn)
+        for a in attrs
+        if isinstance(a, decorators.Target) and a.definition
+    }
+
+
+def _load_repositories(
+    modules: list[types.ModuleType | str],
+) -> dict[str, dict[str, tuple[models.Target, t.Callable]]]:
+    targets = {}
+    for module in list(modules):
         if isinstance(module, str):
             module = loader.load_module(module)
-        await agent.register_module(module)
-    await agent.run()
+        targets[module.__name__] = _load_repository(module)
+    return targets
+
+
+def _register_manifests(
+    project_id: str,
+    environment_name: str,
+    host: str,
+    targets: dict[str, dict[str, tuple[models.Target, t.Callable]]],
+) -> None:
+    manifests = {
+        repository: {
+            "workflows": {
+                workflow_name: {
+                    "parameters": [
+                        {
+                            "name": p.name,
+                            "annotation": p.annotation,
+                            "default": p.default,
+                        }
+                        for p in definition.parameters
+                    ],
+                    "waitFor": list(definition.wait_for),
+                    "cache": (
+                        definition.cache
+                        and {
+                            "params": definition.cache.params,
+                            "maxAge": definition.cache.max_age,
+                            "namespace": definition.cache.namespace,
+                            "version": definition.cache.version,
+                        }
+                    ),
+                    "defer": (
+                        definition.defer
+                        and {
+                            "params": definition.defer.params,
+                        }
+                    ),
+                    "delay": definition.delay,
+                    "retries": (
+                        definition.retries
+                        and {
+                            "limit": definition.retries.limit,
+                            "delayMin": definition.retries.delay_min,
+                            "delayMax": definition.retries.delay_max,
+                        }
+                    ),
+                    "requires": definition.requires,
+                }
+                for workflow_name, (definition, _) in target.items()
+                if definition.type == "workflow"
+            },
+            "sensors": {
+                sensor_name: {
+                    "parameters": [
+                        {
+                            "name": p.name,
+                            "annotation": p.annotation,
+                            "default": p.default,
+                        }
+                        for p in definition.parameters
+                    ],
+                    "requires": definition.requires,
+                }
+                for sensor_name, (definition, _) in target.items()
+                if definition.type == "sensor"
+            },
+        }
+        for repository, target in targets.items()
+    }
+    # TODO: handle response?
+    _api_request(
+        "POST",
+        host,
+        "register_manifests",
+        json={
+            "projectId": project_id,
+            "environmentName": environment_name,
+            "manifests": manifests,
+        },
+    )
 
 
 def _init(
@@ -120,12 +213,17 @@ def _init(
     host: str,
     concurrency: int,
     launch_id: str | None,
+    register: bool,
 ) -> None:
     try:
+        targets = _load_repositories(list(modules))
+        if register:
+            _register_manifests(project, environment, host, targets)
+
         with Agent(
-            project, environment, provides, host, concurrency, launch_id
+            project, environment, provides, host, targets, concurrency, launch_id
         ) as agent:
-            asyncio.run(_run(agent, list(modules)))
+            asyncio.run(agent.run())
     except KeyboardInterrupt:
         pass
 
@@ -387,6 +485,46 @@ def environment_archive(
     click.secho(f"Archived environment '{environment_}'.", fg="green")
 
 
+@cli.command("repositories.register")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+)
+@click.option(
+    "-e",
+    "--environment",
+    help="Environment name",
+)
+@click.argument("module_name", nargs=-1)
+def repositories_register(
+    project: str | None,
+    environment: str | None,
+    host: str | None,
+    module_name: tuple[str],
+) -> None:
+    """
+    Register repositories with the server for the specified environment.
+
+    Paths to scripts can be passed instead of module names.
+
+    Options will be loaded from the configuration file, unless overridden as arguments (or environment variables).
+    """
+    if not module_name:
+        raise click.ClickException("No module(s) specified.")
+    project_ = _get_project(project)
+    environment_ = _get_environment(environment)
+    host_ = _get_host(host)
+    targets = _load_repositories(list(module_name))
+    _register_manifests(project_, environment_, host_, targets)
+    click.secho("Repository manifests registered.", fg="green")
+
+
 @cli.command("agent.run")
 @click.option(
     "-p",
@@ -418,10 +556,22 @@ def environment_archive(
     help="Limit on number of executions to process at once",
 )
 @click.option(
-    "--reload",  # TODO: rename 'watch'?
+    "--watch",
     is_flag=True,
     default=False,
     help="Enable auto-reload when code changes",
+)
+@click.option(
+    "--register",
+    is_flag=True,
+    default=False,
+    help="Automatically register repositories",
+)
+@click.option(
+    "--dev",
+    is_flag=True,
+    default=False,
+    help="Enable development mode (implies `--watch` and `--register`)",
 )
 @click.argument("module_name", nargs=-1)
 def agent_run(
@@ -431,7 +581,9 @@ def agent_run(
     host: str | None,
     launch: str | None,
     concurrency: int | None,
-    reload: bool,
+    watch: bool,
+    register: bool,
+    dev: bool,
     module_name: tuple[str],
 ) -> None:
     """
@@ -462,8 +614,9 @@ def agent_run(
         "host": host_,
         "concurrency": concurrency_,
         "launch_id": launch_,
+        "register": register or dev,
     }
-    if reload:
+    if watch or dev:
         watchfiles.run_process(
             ".",
             target=_init,
@@ -508,19 +661,21 @@ def workflow_schedule(
     project_ = _get_project(project)
     environment_ = _get_environment(environment)
     host_ = _get_host(host)
+    # TODO: support specifying options (or get config from manifest?)
     # TODO: handle response
     _api_request(
         "POST",
         host_,
-        "schedule",
+        "schedule_workflow",
         json={
             "projectId": project_,
-            "environment": environment_,
+            "environmentName": environment_,
             "repository": repository,
             "target": target,
             "arguments": [["json", a] for a in argument],
         },
     )
+    click.secho("Workflow scheduled.", fg="green")
     # TODO: follow logs?
     # TODO: wait for result?
 

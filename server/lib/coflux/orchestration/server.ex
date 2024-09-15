@@ -3,7 +3,7 @@ defmodule Coflux.Orchestration.Server do
 
   alias Coflux.Store
   alias Coflux.MapUtils
-  alias Coflux.Orchestration.{Environments, Sessions, Runs, Results, TagSets, Launches}
+  alias Coflux.Orchestration.{Environments, Sessions, Runs, Results, TagSets, Launches, Manifests}
 
   @session_timeout_ms 5_000
   @recurrent_rate_limit_ms 5_000
@@ -194,6 +194,52 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call(
+        {:register_manifests, environment_name, manifests},
+        _from,
+        state
+      ) do
+    case lookup_environment_by_name(state, environment_name) do
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+
+      {:ok, environment_id, _} ->
+        case Manifests.register_manifests(state.db, environment_id, manifests) do
+          :ok ->
+            state =
+              manifests
+              |> Enum.reduce(state, fn {repository, manifest}, state ->
+                state =
+                  Enum.reduce(manifest.workflows, state, fn {target_name, target}, state ->
+                    notify_listeners(
+                      state,
+                      {:workflow, repository, target_name, environment_id},
+                      {:target, target}
+                    )
+                  end)
+
+                state =
+                  Enum.reduce(manifest.sensors, state, fn {target_name, target}, state ->
+                    notify_listeners(
+                      state,
+                      {:sensor, repository, target_name, environment_id},
+                      {:target, target}
+                    )
+                  end)
+
+                state
+              end)
+              |> notify_listeners(
+                {{:repositories, environment_id}, environment_id},
+                {:manifests, manifests}
+              )
+              |> flush_notifications()
+
+            {:reply, :ok, state}
+        end
+    end
+  end
+
+  def handle_call(
         {:start_session, environment_name, launch_id, provides, concurrency, pid},
         _from,
         state
@@ -299,38 +345,17 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:register_targets, external_session_id, repository, targets}, _from, state) do
+  def handle_call({:declare_targets, external_session_id, targets}, _from, state) do
     session_id = Map.fetch!(state.session_ids, external_session_id)
 
-    case Sessions.get_or_create_manifest(state.db, repository, targets) do
-      {:ok, manifest_id} ->
-        :ok = Sessions.record_session_manifest(state.db, session_id, manifest_id)
-        environment_id = state.sessions[session_id].environment_id
+    state =
+      state
+      |> assign_targets(targets, session_id)
+      |> notify_agent(session_id)
+      |> flush_notifications()
 
-        state =
-          state
-          |> register_targets(repository, targets, session_id)
-          |> notify_listeners(
-            {{:repositories, environment_id}, environment_id},
-            {:targets, repository, targets}
-          )
-          |> notify_agent(session_id)
-
-        state =
-          targets
-          |> Enum.reduce(state, fn {target_name, target}, state ->
-            notify_listeners(
-              state,
-              {:target, repository, target_name, environment_id},
-              {:target, target.type, target.parameters}
-            )
-          end)
-          |> flush_notifications()
-
-        send(self(), :execute)
-
-        {:reply, :ok, state}
-    end
+    send(self(), :execute)
+    {:reply, :ok, state}
   end
 
   def handle_call({:schedule_run, repository, target_name, arguments, opts}, _from, state) do
@@ -370,8 +395,8 @@ defmodule Coflux.Orchestration.Server do
              cache_environment_ids,
              opts
            ) do
-        {:ok, _run_id, external_run_id, _step_id, external_step_id, execution_id, attempt, result,
-         created_at, child_added} ->
+        {:ok, external_run_id, external_step_id, execution_id, attempt, result, created_at,
+         child_added, recurrent} ->
           state =
             if child_added do
               {parent_run_id, parent_id} = parent
@@ -388,7 +413,10 @@ defmodule Coflux.Orchestration.Server do
           state =
             notify_listeners(
               state,
-              {:target, repository, target_name, environment_id},
+              if(recurrent,
+                do: {:sensor, repository, target_name, environment_id},
+                else: {:workflow, repository, target_name, environment_id}
+              ),
               {:run, external_run_id, created_at}
             )
 
@@ -448,21 +476,21 @@ defmodule Coflux.Orchestration.Server do
            cache_environment_ids,
            opts
          ) do
-      {:ok, _step_id, external_step_id, execution_id, attempt, created_at, memoised, result,
-       child_added} ->
+      {:ok, external_step_id, execution_id, attempt, created_at, memo_hit, result, child_added} ->
         execute_after = Keyword.get(opts, :execute_after)
         requires = Keyword.get(opts, :requires) || %{}
 
         state =
-          if !memoised do
-            memo_key = Keyword.get(opts, :memo_key)
+          if !memo_hit do
+            is_memoised = !!Keyword.get(opts, :memo)
             arguments = Enum.map(arguments, &build_value(&1, state))
 
             notify_listeners(
               state,
               {:run, run.id},
-              {:step, external_step_id, repository, target_name, memo_key, parent_id, created_at,
-               arguments, requires, attempt, execution_id, environment_id, execute_after}
+              {:step, external_step_id, repository, target_name, is_memoised, parent_id,
+               created_at, arguments, requires, attempt, execution_id, environment_id,
+               execute_after}
             )
           else
             state
@@ -493,7 +521,7 @@ defmodule Coflux.Orchestration.Server do
           end
 
         state =
-          if !memoised && !result do
+          if !memo_hit && !result do
             execute_at = execute_after || created_at
 
             state =
@@ -790,7 +818,7 @@ defmodule Coflux.Orchestration.Server do
         {:reply, {:error, error}, state}
 
       {:ok, _} ->
-        {:ok, targets} = Sessions.get_latest_targets(state.db, environment_id)
+        {:ok, manifests} = Manifests.get_latest_manifests(state.db, environment_id)
 
         executing =
           state.sessions
@@ -823,7 +851,7 @@ defmodule Coflux.Orchestration.Server do
         {:ok, ref, state} =
           add_listener(state, {{:repositories, environment_id}, environment_id}, pid)
 
-        {:reply, {:ok, targets, executions, ref}, state}
+        {:reply, {:ok, manifests, executions, ref}, state}
     end
   end
 
@@ -863,22 +891,40 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call(
-        {:subscribe_target, repository, target_name, environment_id, pid},
+        {:subscribe_workflow, repository, target_name, environment_id, pid},
         _from,
         state
       ) do
-    case lookup_environment_by_id(state, environment_id) do
+    with {:ok, _} <- lookup_environment_by_id(state, environment_id),
+         {:ok, workflow} <-
+           Manifests.get_latest_workflow(state.db, environment_id, repository, target_name),
+         {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id) do
+      {:ok, ref, state} =
+        add_listener(state, {:workflow, repository, target_name, environment_id}, pid)
+
+      {:reply, {:ok, workflow, runs, ref}, state}
+    else
       {:error, error} ->
         {:reply, {:error, error}, state}
+    end
+  end
 
-      {:ok, _} ->
-        {:ok, target} = Sessions.get_target(state.db, repository, target_name, environment_id)
-        {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id)
+  def handle_call(
+        {:subscribe_sensor, repository, target_name, environment_id, pid},
+        _from,
+        state
+      ) do
+    with {:ok, _} <- lookup_environment_by_id(state, environment_id),
+         {:ok, sensor} <-
+           Manifests.get_latest_sensor(state.db, environment_id, repository, target_name),
+         {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id) do
+      {:ok, ref, state} =
+        add_listener(state, {:sensor, repository, target_name, environment_id}, pid)
 
-        {:ok, ref, state} =
-          add_listener(state, {:target, repository, target_name, environment_id}, pid)
-
-        {:reply, {:ok, target, runs, ref}, state}
+      {:reply, {:ok, sensor, runs, ref}, state}
+    else
+      {:error, error} ->
+        {:reply, {:error, error}, state}
     end
   end
 
@@ -1469,7 +1515,10 @@ defmodule Coflux.Orchestration.Server do
              execute_after, created_at}
           )
           |> notify_listeners(
-            {:target, run_repository, run_target, environment_id},
+            if(run.recurrent,
+              do: {:sensor, run_repository, run_target, environment_id},
+              else: {:workflow, run_repository, run_target, environment_id}
+            ),
             {:run, run.external_id, run.created_at}
           )
 
@@ -1480,7 +1529,7 @@ defmodule Coflux.Orchestration.Server do
 
   defp result_retryable?(result) do
     case result do
-      {:error, _, _, _, _} -> true
+      {:error, _, _, _} -> true
       :abandoned -> true
       _ -> false
     end
@@ -1603,16 +1652,16 @@ defmodule Coflux.Orchestration.Server do
         {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, execution_id)
 
         {retry_id, state} =
-          if result_retryable?(result) && step.retry_count > 0 do
+          if result_retryable?(result) && step.retry_limit > 0 do
             {:ok, executions} = Runs.get_step_executions(state.db, step.id)
 
             attempts = Enum.count(executions)
 
-            if attempts <= step.retry_count do
+            if attempts <= step.retry_limit do
               # TODO: add jitter (within min/max delay)
               delay_s =
                 step.retry_delay_min +
-                  (attempts - 1) / (step.retry_count - 1) *
+                  (attempts - 1) / step.retry_limit *
                     (step.retry_delay_max - step.retry_delay_min)
 
               execute_after = System.os_time(:millisecond) + delay_s * 1000
@@ -1701,25 +1750,29 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp register_targets(state, repository, targets, session_id) do
-    Enum.reduce(targets, state, fn {name, spec}, state ->
-      state
-      |> update_in(
-        [
-          Access.key(:targets),
-          Access.key(repository, %{}),
-          Access.key(name, %{type: nil, session_ids: MapSet.new()})
-        ],
-        fn target ->
-          target
-          |> Map.put(:type, spec.type)
-          |> Map.update!(:session_ids, &MapSet.put(&1, session_id))
-        end
-      )
-      |> update_in(
-        [Access.key(:sessions), session_id, :targets, Access.key(repository, MapSet.new())],
-        &MapSet.put(&1, name)
-      )
+  defp assign_targets(state, targets, session_id) do
+    Enum.reduce(targets, state, fn {repository, repository_targets}, state ->
+      Enum.reduce(repository_targets, state, fn {type, target_names}, state ->
+        Enum.reduce(target_names, state, fn target_name, state ->
+          state
+          |> update_in(
+            [
+              Access.key(:targets),
+              Access.key(repository, %{}),
+              Access.key(target_name, %{type: nil, session_ids: MapSet.new()})
+            ],
+            fn target ->
+              target
+              |> Map.put(:type, type)
+              |> Map.update!(:session_ids, &MapSet.put(&1, session_id))
+            end
+          )
+          |> update_in(
+            [Access.key(:sessions), session_id, :targets, Access.key(repository, MapSet.new())],
+            &MapSet.put(&1, target_name)
+          )
+        end)
+      end)
     end)
   end
 
@@ -1804,7 +1857,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp is_execution_ready?(state, wait_for, arguments) do
-    Enum.all?(wait_for || [], fn index ->
+    Enum.all?(wait_for, fn index ->
       case Enum.at(arguments, index) do
         {_, _, placeholders} ->
           placeholders

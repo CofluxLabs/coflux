@@ -47,15 +47,13 @@ defmodule Coflux.Handlers.Agent do
     message = Jason.decode!(text)
 
     case message["request"] do
-      "register" ->
-        [repository, targets] = message["params"]
-        targets = parse_targets(targets)
+      "declare_targets" ->
+        [targets] = message["params"]
 
-        case Orchestration.register_targets(
+        case Orchestration.declare_targets(
                state.project_id,
                state.session_id,
-               repository,
-               targets
+               parse_targets(targets)
              ) do
           :ok ->
             {[], state}
@@ -68,15 +66,12 @@ defmodule Coflux.Handlers.Agent do
           target,
           arguments,
           parent_id,
-          execute_after,
           wait_for,
-          cache_key,
-          cache_max_age,
-          defer_key,
-          memo_key,
-          retry_count,
-          retry_delay_min,
-          retry_delay_max,
+          cache,
+          defer,
+          memo,
+          execute_after,
+          retries,
           requires
         ] = message["params"]
 
@@ -91,13 +86,10 @@ defmodule Coflux.Handlers.Agent do
                      parent_id: parent_id,
                      execute_after: execute_after,
                      wait_for: wait_for,
-                     cache_key: cache_key,
-                     cache_max_age: cache_max_age,
-                     retry_count: retry_count,
-                     retry_delay_min: retry_delay_min,
-                     retry_delay_max: retry_delay_max,
-                     defer_key: defer_key,
-                     memo_key: memo_key,
+                     cache: parse_cache(cache),
+                     defer: parse_defer(defer),
+                     memo: memo,
+                     retries: parse_retries(retries),
                      requires: requires
                    ) do
                 {:ok, _run_id, _step_id, execution_id} ->
@@ -116,13 +108,10 @@ defmodule Coflux.Handlers.Agent do
                      Enum.map(arguments, &parse_value/1),
                      execute_after: execute_after,
                      wait_for: wait_for,
-                     cache_key: cache_key,
-                     cache_max_age: cache_max_age,
-                     retry_count: retry_count,
-                     retry_delay_min: retry_delay_min,
-                     retry_delay_max: retry_delay_max,
-                     defer_key: defer_key,
-                     memo_key: memo_key,
+                     cache: parse_cache(cache),
+                     defer: parse_defer(defer),
+                     memo: memo,
+                     retries: parse_retries(retries),
                      requires: requires
                    ) do
                 {:ok, _run_id, _step_id, execution_id} ->
@@ -364,30 +353,12 @@ defmodule Coflux.Handlers.Agent do
     {:text, Jason.encode!([3, id, error])}
   end
 
-  defp parse_targets(targets) do
-    Map.new(targets, fn {key, value} ->
-      {key,
-       %{
-         type: parse_type(Map.fetch!(value, "type")),
-         parameters: Enum.map(Map.fetch!(value, "parameters"), &parse_parameter/1)
-       }}
-    end)
-  end
-
   defp parse_type(type) do
     case type do
       "workflow" -> :workflow
       "task" -> :task
       "sensor" -> :sensor
     end
-  end
-
-  defp parse_parameter(parameters) do
-    {
-      Map.fetch!(parameters, "name"),
-      Map.get(parameters, "default"),
-      Map.get(parameters, "annotation")
-    }
   end
 
   defp parse_frames(frames) do
@@ -419,6 +390,45 @@ defmodule Coflux.Handlers.Agent do
 
       ["blob", blob_key, metadata, format, placeholders] ->
         {{:blob, blob_key, metadata}, format, parse_placeholders(placeholders)}
+    end
+  end
+
+  def parse_targets(targets) do
+    # TODO: validate
+    Map.new(targets, fn {repository_name, repository_targets} ->
+      {repository_name,
+       Map.new(repository_targets, fn {type, target_names} ->
+         {parse_type(type), target_names}
+       end)}
+    end)
+  end
+
+  def parse_cache(value) do
+    if value do
+      # TODO: validate
+      %{
+        params: Map.fetch!(value, "params"),
+        max_age: Map.fetch!(value, "max_age"),
+        namespace: Map.fetch!(value, "namespace"),
+        version: Map.fetch!(value, "version")
+      }
+    end
+  end
+
+  def parse_defer(value) do
+    if value do
+      # TODO: validate
+      %{params: Map.fetch!(value, "params")}
+    end
+  end
+
+  def parse_retries(value) do
+    if value do
+      %{
+        limit: Map.fetch!(value, "limit"),
+        delay_min: Map.fetch!(value, "delay_min"),
+        delay_max: Map.fetch!(value, "delay_max")
+      }
     end
   end
 

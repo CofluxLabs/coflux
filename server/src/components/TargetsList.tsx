@@ -57,7 +57,8 @@ function Target({ url, icon: Icon, name, isActive, isOnline }: TargetProps) {
 type Props = {
   projectId: string | undefined;
   environmentName: string | undefined;
-  activeTarget: { repository: string; target: string | null } | undefined;
+  activeRepository: string | undefined;
+  activeTarget: string | undefined;
   repositories: Record<string, models.Repository>;
   agents: Record<string, Record<string, string[]>> | undefined;
 };
@@ -65,6 +66,7 @@ type Props = {
 export default function TargetsList({
   projectId,
   environmentName,
+  activeRepository,
   activeTarget,
   repositories,
   agents,
@@ -73,7 +75,10 @@ export default function TargetsList({
   return (
     <div className="p-2">
       {Object.entries(repositories).map(
-        ([repository, { targets, executing, nextDueAt, scheduled }]) => {
+        ([
+          repository,
+          { workflows, sensors, executing, nextDueAt, scheduled },
+        ]) => {
           const nextDueDiff = nextDueAt
             ? DateTime.fromMillis(nextDueAt).diff(now, [
                 "days",
@@ -82,10 +87,7 @@ export default function TargetsList({
                 "seconds",
               ])
             : undefined;
-          const isActive =
-            !!activeTarget &&
-            activeTarget.repository == repository &&
-            !activeTarget.target;
+          const isActive = activeRepository == repository && !activeTarget;
           return (
             <div key={repository} className="py-2">
               <Link
@@ -142,20 +144,37 @@ export default function TargetsList({
                   ) : undefined}
                 </div>
               </Link>
-              {Object.keys(targets).length ? (
+              {workflows.length || sensors.length ? (
                 <ul>
-                  {Object.entries(targets).map(([name, target]) => {
+                  {workflows.map((name) => {
                     const isActive =
-                      !!activeTarget &&
-                      activeTarget.repository == repository &&
-                      activeTarget.target == name;
+                      activeRepository == repository && activeTarget == name;
                     return (
                       <Target
                         key={name}
                         name={name}
-                        icon={target.type == "sensor" ? IconCpu : IconSubtask}
+                        icon={IconSubtask}
                         url={buildUrl(
-                          `/projects/${projectId}/targets/${encodeURIComponent(
+                          `/projects/${projectId}/workflows/${encodeURIComponent(
+                            repository,
+                          )}/${name}`,
+                          { environment: environmentName },
+                        )}
+                        isActive={isActive}
+                        isOnline={isTargetOnline(agents, repository, name)}
+                      />
+                    );
+                  })}
+                  {sensors.map((name) => {
+                    const isActive =
+                      activeRepository == repository && activeTarget == name;
+                    return (
+                      <Target
+                        key={name}
+                        name={name}
+                        icon={IconCpu}
+                        url={buildUrl(
+                          `/projects/${projectId}/sensors/${encodeURIComponent(
                             repository,
                           )}/${name}`,
                           { environment: environmentName },

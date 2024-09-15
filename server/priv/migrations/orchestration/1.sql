@@ -10,8 +10,70 @@ CREATE TABLE tag_set_items (
   FOREIGN KEY (tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
 );
 
+CREATE TABLE parameter_sets (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL UNIQUE
+);
+
+CREATE TABLE parameter_set_items (
+  parameter_set_id INTEGER NOT NULL,
+  position INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  default_ TEXT,
+  annotation TEXT,
+  PRIMARY KEY (parameter_set_id, position)
+  FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE CASCADE
+);
+
+CREATE TABLE manifests (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL UNIQUE
+);
+
+CREATE TABLE workflows (
+  id INTEGER PRIMARY KEY,
+  manifest_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  parameter_set_id INTEGER NOT NULL,
+  wait_for INTEGER NOT NULL,
+  cache_params TEXT,
+  cache_max_age INTEGER,
+  cache_namespace TEXT,
+  cache_version TEXT,
+  defer_params TEXT,
+  delay INTEGER NOT NULL,
+  retry_limit INTEGER NOT NULL,
+  retry_delay_min INTEGER NOT NULL,
+  retry_delay_max INTEGER NOT NULL,
+  requires_tag_set_id INTEGER,
+  UNIQUE (manifest_id, name),
+  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE,
+  FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE CASCADE,
+  FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
+);
+
+CREATE TABLE sensors (
+  id INTEGER PRIMARY KEY,
+  manifest_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  parameter_set_id INTEGER NOT NULL,
+  requires_tag_set_id INTEGER,
+  UNIQUE (manifest_id, name),
+  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE,
+  FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE CASCADE
+);
+
 CREATE TABLE environments (
   id INTEGER PRIMARY KEY
+);
+
+CREATE TABLE environment_manifests (
+  environment_id INTEGER NOT NULL,
+  repository TEXT NOT NULL,
+  manifest_id INTEGER,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
+  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
 CREATE TABLE environment_versions (
@@ -73,32 +135,6 @@ CREATE TABLE launch_results (
   FOREIGN KEY (launch_id) REFERENCES launches
 );
 
-CREATE TABLE manifests (
-  id INTEGER PRIMARY KEY,
-  repository TEXT NOT NULL,
-  targets_hash INTEGER NOT NULL,
-  UNIQUE (repository, targets_hash)
-);
-
-CREATE TABLE targets (
-  id INTEGER PRIMARY KEY,
-  manifest_id INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  type INTEGER NOT NULL,
-  UNIQUE (manifest_id, name),
-  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
-);
-
-CREATE TABLE target_parameters (
-  target_id INTEGER NOT NULL,
-  position INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  default_ TEXT,
-  annotation TEXT,
-  PRIMARY KEY (target_id, position)
-  FOREIGN KEY (target_id) REFERENCES targets ON DELETE CASCADE
-);
-
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
   external_id TEXT NOT NULL UNIQUE,
@@ -109,15 +145,6 @@ CREATE TABLE sessions (
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
   FOREIGN KEY (launch_id) REFERENCES launches ON DELETE CASCADE,
   FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
-);
-
-CREATE TABLE session_manifests (
-  session_id INTEGER NOT NULL,
-  manifest_id INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (session_id, manifest_id),
-  FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE,
-  FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
 CREATE TABLE runs (
@@ -138,11 +165,11 @@ CREATE TABLE steps (
   repository TEXT NOT NULL,
   target TEXT NOT NULL,
   priority INTEGER NOT NULL, -- TODO: move to executions?
-  wait_for INTEGER,
+  wait_for INTEGER NOT NULL,
   cache_key TEXT,
   defer_key TEXT,
   memo_key TEXT,
-  retry_count INTEGER NOT NULL,
+  retry_limit INTEGER NOT NULL,
   retry_delay_min INTEGER NOT NULL,
   retry_delay_max INTEGER NOT NULL,
   requires_tag_set_id INTEGER,

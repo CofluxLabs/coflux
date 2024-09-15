@@ -25,8 +25,6 @@ import {
   useRepositories,
 } from "../topics";
 
-type Target = { repository: string; target: string | null };
-
 type ConnectionStatusProps = {
   agents: Record<string, Record<string, string[]>> | undefined;
 };
@@ -68,7 +66,7 @@ function ConnectionStatus({ agents }: ConnectionStatusProps) {
 }
 
 type OutletContext = {
-  setActiveTarget: (target: Target | undefined) => void;
+  setActive: (active: [string, string | undefined] | undefined) => void;
 };
 
 export default function ProjectLayout() {
@@ -76,7 +74,9 @@ export default function ProjectLayout() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
-  const [activeTarget, setActiveTarget] = useState<Target>();
+  const [active, setActive] = useState<
+    [string, string | undefined] | undefined
+  >();
   const projects = useProjects();
   const environments = useEnvironments(projectId);
   const environmentId = findKey(
@@ -108,7 +108,8 @@ export default function ProjectLayout() {
             <TargetsList
               projectId={projectId}
               environmentName={environmentName}
-              activeTarget={activeTarget}
+              activeRepository={active?.[0]}
+              activeTarget={active?.[1]}
               repositories={repositories}
               agents={agents}
             />
@@ -117,16 +118,19 @@ export default function ProjectLayout() {
         </div>
       )}
       <div className="flex-1 flex flex-col">
-        <Outlet context={{ setActiveTarget }} />
+        <Outlet context={{ setActive }} />
       </div>
     </div>
   );
 }
 
-export function useSetActiveTarget(target: Target | undefined) {
-  const { setActiveTarget } = useOutletContext<OutletContext>();
+export function useSetActiveTarget(
+  repository: string | undefined,
+  target: string | undefined,
+) {
+  const { setActive } = useOutletContext<OutletContext>();
   useEffect(() => {
-    setActiveTarget(target);
-    return () => setActiveTarget(undefined);
-  }, [setActiveTarget, target]);
+    setActive(repository ? [repository, target] : undefined);
+    return () => setActive(undefined);
+  }, [setActive, target]);
 }

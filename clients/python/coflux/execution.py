@@ -6,7 +6,6 @@ import time
 import enum
 import asyncio
 import datetime as dt
-import hashlib
 import traceback
 import sys
 import tempfile
@@ -85,15 +84,12 @@ class ScheduleExecutionRequest(t.NamedTuple):
     repository: str
     target: str
     arguments: list[models.Value]
+    wait_for: set[int]
+    cache: models.Cache | None
+    defer: models.Defer | None
+    memo: list[int] | bool
     execute_after: dt.datetime | None
-    wait: set[int] | None
-    cache_key: str | None
-    cache_max_age: int | float | None
-    defer_key: str | None
-    memo_key: str | None
-    retry_count: int
-    retry_delay_min: int
-    retry_delay_max: int
+    retries: models.Retries | None
     requires: models.Requires | None
 
 
@@ -127,77 +123,6 @@ class RemoteException(Exception):
     def __init__(self, message, remote_type):
         super().__init__(message)
         self.remote_type = remote_type
-
-
-def _parse_retries(
-    retries: int | tuple[int, int] | tuple[int, int, int]
-) -> tuple[int, int, int]:
-    # TODO: parse string (e.g., '1h')
-    match retries:
-        case int(count):
-            return (count, 0, 0)
-        case (count, delay):
-            return (count, delay, delay)
-        case (count, delay_min, delay_max):
-            return (count, delay_min, delay_max)
-        case other:
-            raise ValueError(other)
-
-
-def _parse_cache(
-    cache: bool | int | float | dt.timedelta,
-    cache_key: t.Callable[[t.Tuple[t.Any, ...]], str] | None,
-    namespace: str,
-    arguments: tuple[t.Any, ...],
-    serialised_arguments: list[models.Value],
-) -> tuple[str | None, int | float | None]:
-    if cache is False:
-        return None, None
-    cache_key_ = _build_key(
-        cache_key or True,
-        arguments,
-        serialised_arguments,
-        namespace,
-    )
-    if cache is True:
-        return cache_key_, None
-    cache_max_age = cache.total_seconds() if isinstance(cache, dt.timedelta) else cache
-    return cache_key_, cache_max_age
-
-
-def _value_key(value: models.Value) -> str:
-    # TODO: tidy
-    match value:
-        case ["raw", content, format, placeholders]:
-            # TODO: better/safer encoding
-            placeholders_ = ";".join(
-                f"{k}={v1}|{v2}" for k, (v1, v2) in sorted(placeholders.items())
-            )
-            return f"raw:{format}:{placeholders_}:{content}"
-        case ["blob", key, _metadata, format, placeholders]:
-            # TODO: better/safer encoding
-            placeholders_ = ";".join(
-                f"{k}={v1}|{v2}" for k, (v1, v2) in sorted(placeholders.items())
-            )
-            return f"blob:{format}:{placeholders_}:{key}"
-
-
-def _build_key(
-    key: bool | t.Callable[[tuple[t.Any]], str],
-    arguments: tuple[t.Any, ...],
-    serialised_arguments: list[models.Value],
-    prefix: str | None = None,
-) -> str | None:
-    if not key:
-        return None
-    cache_key = (
-        key(*arguments)
-        if callable(key)
-        else "\0".join(_value_key(v) for v in serialised_arguments)
-    )
-    if prefix is not None:
-        cache_key = prefix + "\0" + cache_key
-    return hashlib.sha256(cache_key.encode()).hexdigest()
 
 
 def _exception_type(exception: Exception):
@@ -349,15 +274,13 @@ class Channel:
         target: str,
         arguments: tuple[t.Any, ...],
         *,
-        wait: set[int] | None = None,
-        cache: bool | int | float | dt.timedelta = False,
-        cache_key: t.Callable[[t.Tuple[t.Any, ...]], str] | None = None,
-        cache_namespace: str | None = None,
-        retries: int | tuple[int, int] | tuple[int, int, int] = 0,
-        defer: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
+        wait_for: set[int] | None = None,
+        cache: models.Cache | None = None,
+        retries: models.Retries | None = None,
+        defer: models.Defer | None = None,
         execute_after: dt.datetime | None = None,
         delay: int | float | dt.timedelta = 0,
-        memo: bool | t.Callable[[t.Tuple[t.Any, ...]], str] = False,
+        memo: list[int] | bool = False,
         requires: models.Requires | None = None,
     ) -> models.Execution[t.Any]:
         if delay:
@@ -371,34 +294,18 @@ class Channel:
         serialised_arguments = [
             serialisation.serialise(a, self._blob_store) for a in arguments
         ]
-        default_namespace = f"{repository}:{target}"
-        cache_key_, cache_max_age = _parse_cache(
-            cache,
-            cache_key,
-            cache_namespace or default_namespace,
-            arguments,
-            serialised_arguments,
-        )
-        defer_key = _build_key(
-            defer, arguments, serialised_arguments, default_namespace
-        )
-        memo_key = _build_key(memo, arguments, serialised_arguments, default_namespace)
-        retry_count, retry_delay_min, retry_delay_max = _parse_retries(retries)
         execution_id = self._request(
             ScheduleExecutionRequest(
                 type,
                 repository,
                 target,
                 serialised_arguments,
+                wait_for or set(),
+                cache,
+                defer,
+                memo,
                 execute_after,
-                wait,
-                cache_key_,
-                cache_max_age,
-                defer_key,
-                memo_key,
-                retry_count,
-                retry_delay_min,
-                retry_delay_max,
+                retries,
                 requires,
             )
         )
@@ -752,15 +659,12 @@ class Execution:
                 repository,
                 target,
                 arguments,
+                wait_for,
+                cache,
+                defer,
+                memo,
                 execute_after,
-                wait,
-                cache_key,
-                cache_max_age,
-                defer_key,
-                memo_key,
-                retry_count,
-                retry_delay_min,
-                retry_delay_max,
+                retries,
                 requires,
             ):
                 execute_after_ms = execute_after and (execute_after.timestamp() * 1000)
@@ -772,15 +676,12 @@ class Execution:
                         target,
                         _json_safe_arguments(arguments),
                         self._id,
+                        list(wait_for),
+                        cache and cache._asdict(),
+                        defer and defer._asdict(),
+                        memo,
                         execute_after_ms,
-                        list(wait) if wait else None,
-                        cache_key,
-                        cache_max_age,
-                        defer_key,
-                        memo_key,
-                        retry_count,
-                        retry_delay_min,
-                        retry_delay_max,
+                        retries and retries._asdict(),
                         requires,
                     ),
                     request_id,
@@ -834,6 +735,11 @@ class Manager:
         self._executions: dict[str, Execution] = {}
         self._last_heartbeat_sent = None
 
+    async def _declare_targets(
+        self, targets: dict[str, dict[models.TargetType, list[str]]]
+    ) -> None:
+        await self._connection.notify("declare_targets", (targets,))
+
     async def _send_heartbeats(self) -> t.NoReturn:
         while True:
             now = time.time()
@@ -856,7 +762,9 @@ class Manager:
             or (now - self._last_heartbeat_sent) > threshold_s
         )
 
-    async def run(self):
+    async def run(self, targets: dict[str, dict[models.TargetType, list[str]]]) -> None:
+        # TODO: only declare targets once when starting session? (not on reconnect)
+        await self._declare_targets(targets)
         await self._send_heartbeats()
 
     def execute(
@@ -866,7 +774,7 @@ class Manager:
         target: str,
         arguments: list[models.Value],
         loop: asyncio.AbstractEventLoop,
-    ):
+    ) -> None:
         if execution_id in self._executions:
             raise Exception(f"Execution ({execution_id}) already running")
         execution = Execution(
@@ -883,7 +791,9 @@ class Manager:
             args=(execution, loop),
         ).start()
 
-    def _run_execution(self, execution: Execution, loop: asyncio.AbstractEventLoop):
+    def _run_execution(
+        self, execution: Execution, loop: asyncio.AbstractEventLoop
+    ) -> None:
         self._executions[execution.id] = execution
         try:
             execution.run()

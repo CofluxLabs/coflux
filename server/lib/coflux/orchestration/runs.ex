@@ -20,7 +20,7 @@ defmodule Coflux.Orchestration.Runs do
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
-      {:ok, step_id, external_step_id, execution_id, attempt, now, false, result, child_added} =
+      {:ok, external_step_id, execution_id, attempt, now, false, result, child_added} =
         schedule_step(
           db,
           run_id,
@@ -35,8 +35,8 @@ defmodule Coflux.Orchestration.Runs do
           opts
         )
 
-      {:ok, run_id, external_run_id, step_id, external_step_id, execution_id, attempt, result,
-       now, child_added}
+      {:ok, external_run_id, external_step_id, execution_id, attempt, result, now, child_added,
+       recurrent}
     end)
   end
 
@@ -54,7 +54,7 @@ defmodule Coflux.Orchestration.Runs do
         priority,
         wait_for,
         cache_key,
-        retry_count,
+        retry_limit,
         retry_delay_min,
         retry_delay_max,
         created_at
@@ -80,7 +80,7 @@ defmodule Coflux.Orchestration.Runs do
         s.priority,
         s.wait_for,
         s.cache_key,
-        s.retry_count,
+        s.retry_limit,
         s.retry_delay_min,
         s.retry_delay_max,
         s.created_at
@@ -133,6 +133,35 @@ defmodule Coflux.Orchestration.Runs do
     end)
   end
 
+  defp encode_placeholders(placeholders) do
+    placeholders
+    |> Enum.sort()
+    |> Enum.map_join(";", fn {key, {execution_id, asset_id}} ->
+      "#{key}=#{execution_id}|#{asset_id}"
+    end)
+  end
+
+  defp build_key(params, arguments, namespace, version \\ nil) do
+    params =
+      if params == true,
+        do: Enum.map(Enum.with_index(arguments), fn {_, i} -> i end),
+        else: params
+
+    parameter_parts =
+      Enum.map(params, fn index ->
+        case Enum.at(arguments, index) do
+          {{:raw, content}, format, placeholders} ->
+            [1, content, 0, format, encode_placeholders(placeholders)]
+
+          {{:blob, blob_key, _metadata}, format, placeholders} ->
+            [2, blob_key, 0, format, encode_placeholders(placeholders)]
+        end
+      end)
+
+    data = Enum.intersperse([namespace | [version || "" | parameter_parts]], 0)
+    :crypto.hash(:sha256, data)
+  end
+
   defp schedule_step(
          db,
          run_id,
@@ -147,16 +176,15 @@ defmodule Coflux.Orchestration.Runs do
          opts
        ) do
     priority = Keyword.get(opts, :priority, 0)
-    execute_after = Keyword.get(opts, :execute_after)
     wait_for = Keyword.get(opts, :wait_for)
-    cache_key = Keyword.get(opts, :cache_key)
-    cache_max_age = Keyword.get(opts, :cache_max_age)
-    defer_key = Keyword.get(opts, :defer_key)
-    memo_key = Keyword.get(opts, :memo_key)
-    retry_count = Keyword.get(opts, :retry_count, 0)
-    retry_delay_min = Keyword.get(opts, :retry_delay_min, 0)
-    retry_delay_max = Keyword.get(opts, :retry_delay_max, retry_delay_min)
+    cache = Keyword.get(opts, :cache)
+    defer = Keyword.get(opts, :defer)
+    memo = Keyword.get(opts, :memo)
+    execute_after = Keyword.get(opts, :execute_after)
+    retries = Keyword.get(opts, :retries)
     requires = Keyword.get(opts, :requires) || %{}
+
+    memo_key = if memo, do: build_key(memo, arguments, "#{repository}:#{target}")
 
     memoised_execution =
       if memo_key do
@@ -165,15 +193,25 @@ defmodule Coflux.Orchestration.Runs do
         end
       end
 
-    {step_id, external_step_id, execution_id, attempt, now, memoised, result} =
+    {step_id, external_step_id, execution_id, attempt, now, memo_hit, result} =
       case memoised_execution do
         {step_id, external_step_id, execution_id, attempt, now} ->
           {step_id, external_step_id, execution_id, attempt, now, true, false}
 
         nil ->
+          cache_key =
+            if cache,
+              do:
+                build_key(
+                  cache.params,
+                  arguments,
+                  cache.namespace || "#{repository}:#{target}",
+                  cache.version
+                )
+
           cached_execution_id =
             if cache_key do
-              recorded_after = if cache_max_age, do: now - cache_max_age * 1000, else: 0
+              recorded_after = if cache.max_age, do: now - cache.max_age * 1000, else: 0
 
               case find_cached_execution(db, cache_environment_ids, cache_key, recorded_after) do
                 {:ok, cached_execution_id} ->
@@ -189,6 +227,10 @@ defmodule Coflux.Orchestration.Runs do
               end
             end
 
+          defer_key =
+            if defer,
+              do: build_key(defer.params, arguments, "#{repository}:#{target}")
+
           # TODO: validate parent belongs to run?
           {:ok, step_id, external_step_id} =
             insert_step(
@@ -202,9 +244,9 @@ defmodule Coflux.Orchestration.Runs do
               cache_key,
               defer_key,
               memo_key,
-              retry_count,
-              retry_delay_min,
-              retry_delay_max,
+              if(retries, do: retries.limit, else: 0),
+              if(retries, do: retries.delay_min, else: 0),
+              if(retries, do: retries.delay_max, else: 0),
               requires_tag_set_id,
               now
             )
@@ -247,7 +289,7 @@ defmodule Coflux.Orchestration.Runs do
         false
       end
 
-    {:ok, step_id, external_step_id, execution_id, attempt, now, memoised, result, child_added}
+    {:ok, external_step_id, execution_id, attempt, now, memo_hit, result, child_added}
   end
 
   def rerun_step(db, step_id, environment_id, execute_after) do
@@ -682,7 +724,7 @@ defmodule Coflux.Orchestration.Runs do
   end
 
   defp encode_wait_for(indexes) do
-    indexes && Enum.reduce(indexes, 0, &Bitwise.bor(&2, Bitwise.bsl(1, &1)))
+    Enum.reduce(indexes, 0, &Bitwise.bor(&2, Bitwise.bsl(1, &1)))
   end
 
   defp insert_step(
@@ -696,7 +738,7 @@ defmodule Coflux.Orchestration.Runs do
          cache_key,
          defer_key,
          memo_key,
-         retry_count,
+         retry_limit,
          retry_delay_min,
          retry_delay_max,
          requires_tag_set_id,
@@ -711,11 +753,11 @@ defmodule Coflux.Orchestration.Runs do
                repository: repository,
                target: target,
                priority: priority,
-               wait_for: encode_wait_for(wait_for),
+               wait_for: encode_wait_for(wait_for || []),
                cache_key: cache_key,
                defer_key: defer_key,
                memo_key: memo_key,
-               retry_count: retry_count,
+               retry_limit: retry_limit,
                retry_delay_min: retry_delay_min,
                retry_delay_max: retry_delay_max,
                requires_tag_set_id: requires_tag_set_id,

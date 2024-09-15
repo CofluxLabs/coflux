@@ -2,9 +2,47 @@ import typing as t
 
 T = t.TypeVar("T")
 
-# TODO: use named tuples
+
+TargetType = t.Literal["workflow", "task", "sensor"]
+
+
+class Parameter(t.NamedTuple):
+    name: str
+    annotation: str | None
+    default: str | None
+
+
+class Cache(t.NamedTuple):
+    params: list[int] | t.Literal[True]
+    max_age: int | float | None
+    namespace: str | None
+    version: str | None
+
+
+class Defer(t.NamedTuple):
+    params: list[int] | t.Literal[True]
+
+
+class Retries(t.NamedTuple):
+    limit: int
+    delay_min: int
+    delay_max: int
+
 
 Requires = dict[str, list[str]]
+
+
+class Target(t.NamedTuple):
+    type: TargetType
+    parameters: list[Parameter]
+    wait_for: set[int]
+    cache: Cache | None
+    defer: Defer | None
+    delay: int | float
+    retries: Retries | None
+    memo: list[int] | bool
+    requires: Requires | None
+
 
 Metadata = dict[str, t.Any]
 

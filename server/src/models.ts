@@ -14,16 +14,41 @@ export type Parameter = {
   annotation: string;
 };
 
-export type Target = {
-  type: "workflow" | "task" | "sensor" | null;
-  repository: string;
-  target: string;
+export type Workflow = {
   parameters: Parameter[] | null;
+  configuration: {
+    waitFor: number[];
+    cache: {
+      params: number[] | true;
+      maxAge?: number;
+      namespace?: string;
+      version?: string;
+    };
+    defer: {
+      params: number[] | true;
+    };
+    delay: number;
+    retries: {
+      limit: number;
+      delayMin?: number;
+      delayMax?: number;
+    };
+    requires: Record<string, string[]>;
+  };
+  runs: Record<string, Pick<Run, "createdAt">>;
+};
+
+export type Sensor = {
+  parameters: Parameter[] | null;
+  configuration: {
+    requires: Record<string, string[]>;
+  };
   runs: Record<string, Pick<Run, "createdAt">>;
 };
 
 export type Repository = {
-  targets: Record<string, Target>;
+  workflows: string[];
+  sensors: string[];
   executing: number;
   nextDueAt: number | null;
   scheduled: number;
@@ -94,7 +119,9 @@ export type Result =
   | { type: "deferred"; executionId: string; execution: Reference }
   | { type: "cached"; executionId: string; execution: Reference };
 
-export type Child = Pick<Target, "repository" | "target"> & {
+export type Child = {
+  repository: string;
+  target: string;
   runId: string;
   stepId: string;
   createdAt: number;

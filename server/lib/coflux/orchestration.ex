@@ -17,6 +17,10 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:archive_environment, environment_name})
   end
 
+  def register_manifests(project_id, environment_name, manifests) do
+    call_server(project_id, {:register_manifests, environment_name, manifests})
+  end
+
   def start_session(project_id, environment_name, launch_id, provides, concurrency, pid) do
     call_server(
       project_id,
@@ -28,8 +32,8 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:resume_session, session_id, pid})
   end
 
-  def register_targets(project_id, session_id, repository, targets) do
-    call_server(project_id, {:register_targets, session_id, repository, targets})
+  def declare_targets(project_id, session_id, targets) do
+    call_server(project_id, {:declare_targets, session_id, targets})
   end
 
   def schedule_run(project_id, repository, target, arguments, opts \\ []) do
@@ -98,8 +102,12 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:subscribe_agents, environment_id, pid})
   end
 
-  def subscribe_target(project_id, repository, target, environment_id, pid) do
-    call_server(project_id, {:subscribe_target, repository, target, environment_id, pid})
+  def subscribe_workflow(project_id, repository, target, environment_id, pid) do
+    call_server(project_id, {:subscribe_workflow, repository, target, environment_id, pid})
+  end
+
+  def subscribe_sensor(project_id, repository, target, environment_id, pid) do
+    call_server(project_id, {:subscribe_sensor, repository, target, environment_id, pid})
   end
 
   def subscribe_run(project_id, run_id, pid) do

@@ -4,6 +4,7 @@ defmodule Coflux.Handlers.Api do
   alias Coflux.{Orchestration, Projects, MapUtils}
 
   @projects_server Coflux.ProjectsServer
+  @max_parameters 20
 
   def init(req, opts) do
     req = handle(req, :cowboy_req.method(req), :cowboy_req.path_info(req))
@@ -168,16 +169,48 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp handle(req, "POST", ["schedule"]) do
+  defp handle(req, "POST", ["register_manifests"]) do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        repository: "repository",
-        target: "target",
-        type: {"type", &parse_target_type/1},
         environment_name: "environmentName",
-        arguments: {"arguments", &parse_arguments/1}
+        manifests: {"manifests", &parse_manifests/1}
       })
+
+    if Enum.empty?(errors) do
+      case Orchestration.register_manifests(
+             arguments.project_id,
+             arguments.environment_name,
+             arguments.manifests
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["schedule_workflow"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(
+        req,
+        %{
+          project_id: "projectId",
+          repository: "repository",
+          target: "target",
+          environment_name: "environmentName",
+          arguments: {"arguments", &parse_arguments/1}
+        },
+        %{
+          wait_for: {"waitFor", &parse_indexes/1},
+          cache: {"cache", &parse_cache/1},
+          defer: {"defer", &parse_defer/1},
+          execute_after: {"executeAfter", &parse_integer(&1, optional: true)},
+          retries: {"retries", &parse_retries/1},
+          requries: {"requires", &parse_tag_set/1}
+        }
+      )
 
     if Enum.empty?(errors) do
       case Orchestration.schedule_run(
@@ -186,7 +219,51 @@ defmodule Coflux.Handlers.Api do
              arguments.target,
              arguments.arguments,
              environment: arguments.environment_name,
-             recurrent: arguments.type == :sensor
+             execute_after: arguments[:execute_after],
+             wait_for: arguments[:wait_for],
+             cache: arguments[:cache],
+             defer: arguments[:defer],
+             delay: arguments[:delay],
+             retries: arguments[:retries],
+             requires: arguments[:requires]
+           ) do
+        {:ok, run_id, step_id, execution_id} ->
+          json_response(req, %{
+            "runId" => run_id,
+            "stepId" => step_id,
+            "executionId" => execution_id
+          })
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["schedule_sensor"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(
+        req,
+        %{
+          project_id: "projectId",
+          repository: "repository",
+          target: "target",
+          environment_name: "environmentName",
+          arguments: {"arguments", &parse_arguments/1}
+        },
+        %{
+          requires: {"requires", &parse_tag_set/1}
+        }
+      )
+
+    if Enum.empty?(errors) do
+      case Orchestration.schedule_run(
+             arguments.project_id,
+             arguments.repository,
+             arguments.target,
+             arguments.arguments,
+             environment: arguments.environment_name,
+             recurrent: true,
+             requires: arguments[:requires]
            ) do
         {:ok, run_id, step_id, execution_id} ->
           json_response(req, %{
@@ -271,6 +348,15 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
+  def is_valid_string?(value, opts) do
+    cond do
+      not is_binary(value) -> false
+      opts[:max_length] && String.length(value) > opts[:max_length] -> false
+      opts[:regex] && !Regex.match?(opts[:regex], value) -> false
+      true -> true
+    end
+  end
+
   defp is_valid_repository_pattern?(pattern) do
     cond do
       not is_binary(pattern) ->
@@ -286,15 +372,15 @@ defmodule Coflux.Handlers.Api do
   end
 
   defp is_valid_tag_key?(key) do
-    is_binary(key) && Regex.match?(~r/^[a-z0-9_-]{1,20}$/i, key)
+    is_valid_string?(key, regex: ~r/^[a-z0-9_-]{1,20}$/i)
   end
 
   defp is_valid_tag_value?(value) do
-    is_binary(value) && Regex.match?(~r/^[a-z0-9_-]{1,30}$/i, value)
+    is_valid_string?(value, regex: ~r/^[a-z0-9_-]{1,30}$/i)
   end
 
   defp is_valid_pool_name?(name) do
-    is_binary(name) && Regex.match?(~r/^[a-z][a-z0-9_-]{0,19}$/i, name)
+    is_valid_string?(name, regex: ~r/^[a-z][a-z0-9_-]{0,19}$/i)
   end
 
   defp parse_repositories(value) do
@@ -307,7 +393,7 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp parse_provides_item(key, value) do
+  defp parse_tag_set_item(key, value) do
     value =
       value
       |> List.wrap()
@@ -326,19 +412,24 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp parse_provides(value) do
-    if is_map(value) && map_size(value) <= 10 do
-      Enum.reduce_while(value, {:ok, %{}}, fn {key, value}, {:ok, result} ->
-        case parse_provides_item(key, value) do
-          {:ok, key, value} ->
-            {:cont, {:ok, Map.put(result, key, value)}}
+  defp parse_tag_set(value) do
+    cond do
+      is_nil(value) ->
+        {:ok, %{}}
 
-          {:error, error} ->
-            {:halt, {:error, error}}
-        end
-      end)
-    else
-      {:error, :invalid}
+      is_map(value) && map_size(value) <= 10 ->
+        Enum.reduce_while(value, {:ok, %{}}, fn {key, value}, {:ok, result} ->
+          case parse_tag_set_item(key, value) do
+            {:ok, key, value} ->
+              {:cont, {:ok, Map.put(result, key, value)}}
+
+            {:error, error} ->
+              {:halt, {:error, error}}
+          end
+        end)
+
+      true ->
+        {:error, :invalid}
     end
   end
 
@@ -369,7 +460,7 @@ defmodule Coflux.Handlers.Api do
       Enum.reduce_while(
         [
           {"repositories", &parse_repositories/1, :repositories, []},
-          {"provides", &parse_provides/1, :provides, %{}},
+          {"provides", &parse_tag_set/1, :provides, %{}},
           {"launcher", &parse_launcher/1, :launcher, nil}
         ],
         {:ok, %{}},
@@ -411,20 +502,12 @@ defmodule Coflux.Handlers.Api do
                 {:halt, {:error, error}}
             end
           else
-            {:error, :invalid}
+            {:halt, {:error, :invalid}}
           end
         end)
 
       true ->
         {:error, :invalid}
-    end
-  end
-
-  defp parse_target_type(type) do
-    case type do
-      "workflow" -> {:ok, :workflow}
-      "sensor" -> {:ok, :sensor}
-      _ -> {:error, :invalid}
     end
   end
 
@@ -458,6 +541,242 @@ defmodule Coflux.Handlers.Api do
       end
     else
       {:ok, []}
+    end
+  end
+
+  def is_valid_repository_name?(value) do
+    is_valid_string?(value, max_length: 100, regex: ~r/^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$/i)
+  end
+
+  def is_valid_target_name?(value) do
+    is_valid_string?(value, max_length: 100, regex: ~r/^[a-z_][a-z0-9_]*$/i)
+  end
+
+  defp parse_parameter(value) do
+    # TODO: validate
+    name = Map.fetch!(value, "name")
+    default = Map.get(value, "default")
+    annotation = Map.get(value, "annotation")
+    {:ok, {name, default, annotation}}
+  end
+
+  defp parse_parameters(value) do
+    if is_list(value) && length(value) <= @max_parameters do
+      with {:ok, backwards} <-
+             Enum.reduce_while(value, {:ok, []}, fn parameter, {:ok, result} ->
+               case parse_parameter(parameter) do
+                 {:ok, parsed} -> {:cont, {:ok, [parsed | result]}}
+                 {:error, error} -> {:halt, {:error, error}}
+               end
+             end) do
+        {:ok, Enum.reverse(backwards)}
+      end
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp parse_indexes(value, opts \\ []) do
+    cond do
+      opts[:allow_boolean] && !value ->
+        {:ok, false}
+
+      opts[:allow_boolean] && value == true ->
+        {:ok, true}
+
+      is_list(value) && length(value) <= @max_parameters ->
+        with {:ok, backwards} <-
+               Enum.reduce_while(value, {:ok, []}, fn item, {:ok, result} ->
+                 case parse_integer(item) do
+                   {:ok, value} -> {:cont, {:ok, [value | result]}}
+                   {:error, error} -> {:halt, {:error, error}}
+                 end
+               end) do
+          {:ok, Enum.reverse(backwards)}
+        end
+
+      true ->
+        {:error, :invalid}
+    end
+  end
+
+  defp parse_integer(value, opts \\ []) do
+    cond do
+      opts[:optional] && is_nil(value) -> {:ok, nil}
+      is_integer(value) -> {:ok, value}
+      true -> {:error, :invalid}
+    end
+  end
+
+  defp parse_string(value, opts) do
+    cond do
+      opts[:optional] && is_nil(value) -> {:ok, nil}
+      is_valid_string?(value, opts) -> {:ok, value}
+      true -> {:error, :invalid}
+    end
+  end
+
+  defp parse_cache(value) do
+    cond do
+      is_nil(value) ->
+        {:ok, nil}
+
+      is_map(value) ->
+        with {:ok, params} <- parse_indexes(Map.get(value, "params"), allow_boolean: true),
+             {:ok, max_age} <- parse_integer(Map.get(value, "maxAge"), optional: true),
+             # TODO: regex
+             {:ok, namespace} <- parse_string(Map.get(value, "namespace"), optional: true),
+             # TODO: regex
+             {:ok, version} <- parse_string(Map.get(value, "version"), optional: true) do
+          {:ok,
+           %{
+             params: params,
+             max_age: max_age,
+             namespace: namespace,
+             version: version
+           }}
+        end
+
+      true ->
+        {:error, :invalid}
+    end
+  end
+
+  defp parse_defer(value) do
+    cond do
+      is_nil(value) ->
+        {:ok, nil}
+
+      is_map(value) ->
+        with {:ok, params} <- parse_indexes(Map.get(value, "params"), allow_boolean: true) do
+          {:ok, %{params: params}}
+        end
+
+      true ->
+        {:error, :invalid}
+    end
+  end
+
+  defp parse_retries(value) do
+    cond do
+      is_nil(value) ->
+        {:ok, nil}
+
+      is_map(value) ->
+        with {:ok, limit} <- parse_integer(Map.get(value, "limit")),
+             {:ok, delay_min} <- parse_integer(Map.get(value, "delayMin"), optional: true),
+             {:ok, delay_max} <- parse_integer(Map.get(value, "delayMax"), optional: true) do
+          {:ok, %{limit: limit, delay_min: delay_min, delay_max: delay_max}}
+        end
+
+      true ->
+        {:error, :invalid}
+    end
+  end
+
+  defp parse_workflow(value) do
+    if is_map(value) do
+      with {:ok, parameters} <- parse_parameters(Map.get(value, "parameters")),
+           {:ok, wait_for} <- parse_indexes(Map.get(value, "waitFor")),
+           {:ok, cache} <- parse_cache(Map.get(value, "cache")),
+           {:ok, defer} <- parse_defer(Map.get(value, "defer")),
+           {:ok, delay} <- parse_integer(Map.get(value, "delay")),
+           {:ok, retries} <- parse_retries(Map.get(value, "retries")),
+           {:ok, requires} <- parse_tag_set(Map.get(value, "requires")) do
+        {:ok,
+         %{
+           parameters: parameters,
+           wait_for: wait_for,
+           cache: cache,
+           defer: defer,
+           delay: delay,
+           retries: retries,
+           requires: requires
+         }}
+      else
+        {:error, error} ->
+          {:error, error}
+      end
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp parse_sensor(value) do
+    if is_map(value) do
+      with {:ok, parameters} <- parse_parameters(Map.get(value, "parameters")),
+           {:ok, requires} <- parse_tag_set(Map.get(value, "requires")) do
+        {:ok,
+         %{
+           parameters: parameters,
+           requires: requires
+         }}
+      end
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp parse_workflows(value) do
+    Enum.reduce_while(value, {:ok, %{}}, fn {workflow_name, workflow}, {:ok, result} ->
+      if is_valid_target_name?(workflow_name) do
+        case parse_workflow(workflow) do
+          {:ok, parsed} ->
+            {:cont, {:ok, Map.put(result, workflow_name, parsed)}}
+
+          {:error, error} ->
+            {:halt, {:error, error}}
+        end
+      else
+        {:halt, {:error, :invalid}}
+      end
+    end)
+  end
+
+  defp parse_sensors(value) do
+    Enum.reduce_while(value, {:ok, %{}}, fn {sensor_name, sensor}, {:ok, result} ->
+      if is_valid_target_name?(sensor_name) do
+        case parse_sensor(sensor) do
+          {:ok, parsed} ->
+            {:cont, {:ok, Map.put(result, sensor_name, parsed)}}
+
+          {:error, error} ->
+            {:halt, {:error, error}}
+        end
+      else
+        {:halt, {:error, :invalid}}
+      end
+    end)
+  end
+
+  defp parse_manifest(value) do
+    if is_map(value) do
+      with {:ok, workflows} <- parse_workflows(Map.get(value, "workflows", %{})),
+           {:ok, sensors} <- parse_sensors(Map.get(value, "sensors", %{})) do
+        {:ok, %{workflows: workflows, sensors: sensors}}
+      end
+    else
+      {:error, :invalid}
+    end
+  end
+
+  defp parse_manifests(value) do
+    if is_map(value) do
+      Enum.reduce_while(value, {:ok, %{}}, fn {repository, manifest}, {:ok, result} ->
+        if is_valid_repository_name?(repository) do
+          case parse_manifest(manifest) do
+            {:ok, parsed} ->
+              {:cont, {:ok, Map.put(result, repository, parsed)}}
+
+            {:error, error} ->
+              {:halt, {:error, error}}
+          end
+        else
+          {:halt, {:error, :invalid}}
+        end
+      end)
+    else
+      {:error, :invalid}
     end
   end
 end

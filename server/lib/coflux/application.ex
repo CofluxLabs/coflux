@@ -34,7 +34,8 @@ defmodule Coflux.Application do
       Topics.Environments,
       Topics.Repositories,
       Topics.Run,
-      Topics.Target,
+      Topics.Workflow,
+      Topics.Sensor,
       Topics.Logs,
       Topics.Repository
     ]

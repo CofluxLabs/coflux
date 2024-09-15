@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { IconBox } from "@tabler/icons-react";
 import { DateTime } from "luxon";
@@ -55,12 +54,7 @@ export default function RepositoryPage() {
   );
   const executions = useExecutions(projectId, repositoryName, environmentId);
   useTitlePart(repositoryName);
-  const target = useMemo(
-    () =>
-      repositoryName ? { repository: repositoryName, target: null } : undefined,
-    [repositoryName],
-  );
-  useSetActiveTarget(target);
+  useSetActiveTarget(repositoryName, undefined);
   const now = useNow(500);
   if (!executions) {
     return <Loading />;

@@ -1,23 +1,11 @@
 import asyncio
 import random
-import types
 import typing as t
 import urllib.parse
 import websockets
 import traceback
 
-from . import server, execution, decorators, models
-
-
-def _load_module(
-    module: types.ModuleType,
-) -> dict[str, tuple[decorators.TargetDefinition, t.Callable]]:
-    attrs = (getattr(module, k) for k in dir(module))
-    return {
-        a.name: (a.definition, a.fn)
-        for a in attrs
-        if isinstance(a, decorators.Target) and a.definition
-    }
+from . import server, execution, models
 
 
 def _parse_placeholder(placeholder: list) -> tuple[int, None] | tuple[None, int]:
@@ -54,6 +42,7 @@ class Agent:
         environment_name: str,
         provides: dict[str, list[str]],
         server_host: str,
+        targets: dict[str, dict[str, tuple[models.Target, t.Callable]]],
         concurrency: int,
         launch_id: str | None,
     ):
@@ -63,7 +52,7 @@ class Agent:
         self._provides = provides
         self._server_host = server_host
         self._concurrency = concurrency
-        self._modules = {}
+        self._targets = targets
         self._connection = server.Connection(
             {"execute": self._handle_execute, "abort": self._handle_abort}
         )
@@ -79,7 +68,7 @@ class Agent:
     async def _handle_execute(self, *args) -> None:
         (execution_id, repository, target_name, arguments) = args
         print(f"Handling execute '{target_name}' ({execution_id})...")
-        target = self._modules[repository][target_name][1].__name__
+        target = self._targets[repository][target_name][1].__name__
         arguments = [_parse_value(a) for a in arguments]
         loop = asyncio.get_running_loop()
         self._execution_manager.execute(
@@ -122,9 +111,15 @@ class Agent:
             try:
                 async with websockets.connect(url) as websocket:
                     print("Connected.")
+                    targets: dict[str, dict[models.TargetType, list[str]]] = {}
+                    for repository, repository_targets in self._targets.items():
+                        for target_name, (target, _) in repository_targets.items():
+                            targets.setdefault(repository, {}).setdefault(
+                                target.type, []
+                            ).append(target_name)
                     coros = [
                         asyncio.create_task(self._connection.run(websocket)),
-                        asyncio.create_task(self._execution_manager.run()),
+                        asyncio.create_task(self._execution_manager.run(targets)),
                     ]
                     done, pending = await asyncio.wait(
                         coros, return_when=asyncio.FIRST_COMPLETED
@@ -145,8 +140,6 @@ class Agent:
                     print("Session expired. Resetting and reconnecting...")
                     self._connection.reset()
                     self._execution_manager.abort_all()
-                    for module_name, targets in self._modules.items():
-                        await self._register_module(module_name, targets)
                 else:
                     delay = 1 + 3 * random.random()  # TODO: exponential backoff
                     print(f"Disconnected (reconnecting in {delay:.1f} seconds).")
@@ -156,25 +149,3 @@ class Agent:
                 delay = 1 + 3 * random.random()  # TODO: exponential backoff
                 print(f"Can't connect (retrying in {delay:.1f} seconds).")
                 await asyncio.sleep(delay)
-
-    async def register_module(
-        self, module: types.ModuleType, *, name: str | None = None
-    ) -> None:
-        module_name = name or module.__name__
-        targets = _load_module(module)
-        self._modules[module_name] = targets
-        await self._register_module(module_name, targets)
-
-    async def _register_module(
-        self,
-        module_name: str,
-        targets: dict[str, tuple[decorators.TargetDefinition, t.Callable]],
-    ):
-        manifest = {
-            name: {
-                "type": definition.type,
-                "parameters": [p._asdict() for p in definition.parameters],
-            }
-            for name, (definition, _) in targets.items()
-        }
-        await self._connection.notify("register", (module_name, manifest))
