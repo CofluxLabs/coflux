@@ -337,10 +337,11 @@ function BlobLink({ value }: BlobLinkProps) {
 
 type ValueProps = {
   value: Extract<models.Value, { type: "raw" }>;
+  projectId: string;
   className?: string;
 };
 
-function Value({ value, className }: ValueProps) {
+function Value({ value, projectId, className }: ValueProps) {
   return (
     <span className={classNames("font-mono text-sm", className)}>
       {reactStringReplace(value.content, /"\{(\d+)\}"/g, (match, index) => {
@@ -366,6 +367,8 @@ function Value({ value, className }: ValueProps) {
             return (
               <AssetLink
                 key={index}
+                projectId={projectId}
+                assetId={placeholder.assetId}
                 asset={asset}
                 className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 rounded"
               >
@@ -383,14 +386,16 @@ function Value({ value, className }: ValueProps) {
 
 type ArgumentProps = {
   argument: models.Value;
+  projectId: string;
 };
 
-function Argument({ argument }: ArgumentProps) {
+function Argument({ argument, projectId }: ArgumentProps) {
   switch (argument.type) {
     case "raw":
       return (
         <Value
           value={argument}
+          projectId={projectId}
           className="bg-white p-1 border border-slate-300 rounded"
         />
       );
@@ -403,16 +408,17 @@ function Argument({ argument }: ArgumentProps) {
 
 type ArgumentsSectionProps = {
   arguments_: models.Value[];
+  projectId: string;
 };
 
-function ArgumentsSection({ arguments_ }: ArgumentsSectionProps) {
+function ArgumentsSection({ arguments_, projectId }: ArgumentsSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Arguments</h3>
       <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs">
         {arguments_.map((argument, index) => (
           <li key={index} className="my-1">
-            <Argument argument={argument} />
+            <Argument argument={argument} projectId={projectId} />
           </li>
         ))}
       </ol>
@@ -609,9 +615,10 @@ function ChildrenSection({ runId, run, execution }: ChildrenSectionProps) {
 
 type ResultSectionProps = {
   result: Extract<models.Result, { type: "value" }>;
+  projectId: string;
 };
 
-function ResultSection({ result }: ResultSectionProps) {
+function ResultSection({ result, projectId }: ResultSectionProps) {
   const value = result.value;
   return (
     <div>
@@ -619,7 +626,7 @@ function ResultSection({ result }: ResultSectionProps) {
       {value.type == "raw" ? (
         <div className="bg-white rounded block p-1 border border-slate-300 break-all whitespace-break-spaces text-sm">
           {" "}
-          <Value value={value} />
+          <Value value={value} projectId={projectId} />
         </div>
       ) : value.type == "blob" ? (
         <BlobLink value={value} />
@@ -744,12 +751,16 @@ function CachedSection({ result }: CachedSectionProps) {
 
 type AssetItemProps = {
   asset: models.Asset;
+  projectId: string;
+  assetId: string;
 };
 
-function AssetItem({ asset }: AssetItemProps) {
+function AssetItem({ asset, projectId, assetId }: AssetItemProps) {
   return (
     <li className="block my-1">
       <AssetLink
+        projectId={projectId}
+        assetId={assetId}
         asset={asset}
         className="flex items-start gap-1 rounded hover:bg-white/50 p-1"
       >
@@ -769,16 +780,22 @@ function AssetItem({ asset }: AssetItemProps) {
 
 type AssetsSectionProps = {
   execution: models.Execution;
+  projectId: string;
 };
 
-function AssetsSection({ execution }: AssetsSectionProps) {
+function AssetsSection({ execution, projectId }: AssetsSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Assets</h3>
       {Object.keys(execution.assets).length ? (
         <ul>
           {Object.entries(execution.assets).map(([assetId, asset]) => (
-            <AssetItem key={assetId} asset={asset} />
+            <AssetItem
+              key={assetId}
+              asset={asset}
+              projectId={projectId}
+              assetId={assetId}
+            />
           ))}
         </ul>
       ) : (
@@ -868,7 +885,7 @@ export default function StepDetail({
       />
       <div className="flex flex-col overflow-auto p-4 gap-5">
         {step.arguments?.length > 0 && (
-          <ArgumentsSection arguments_={step.arguments} />
+          <ArgumentsSection arguments_={step.arguments} projectId={projectId} />
         )}
         {Object.keys(step.requires).length > 0 && (
           <RequiresSection requires={step.requires} />
@@ -881,7 +898,7 @@ export default function StepDetail({
           </Fragment>
         )}
         {execution?.result?.type == "value" ? (
-          <ResultSection result={execution.result} />
+          <ResultSection result={execution.result} projectId={projectId} />
         ) : execution?.result?.type == "error" ? (
           <ErrorSection result={execution.result} />
         ) : execution?.result?.type == "deferred" ? (
@@ -891,7 +908,7 @@ export default function StepDetail({
         ) : undefined}
         {execution?.assignedAt && (
           <Fragment>
-            <AssetsSection execution={execution} />
+            <AssetsSection execution={execution} projectId={projectId} />
             <LogsSection
               projectId={projectId}
               runId={runId}

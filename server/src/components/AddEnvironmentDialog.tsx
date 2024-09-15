@@ -73,7 +73,12 @@ export default function AddEnvironmentDialog({
     .filter(([_, e]) => e.status != 1)
     .reduce((acc, [id, e]) => ({ ...acc, [id]: e.name }), {});
   return (
-    <Dialog title="Add environment" open={open} onClose={onClose}>
+    <Dialog
+      title="Add environment"
+      open={open}
+      onClose={onClose}
+      className="p-6 max-w-lg"
+    >
       {errors && (
         <Alert variant="warning">
           <p>Failed to create environment. Please check errors below.</p>
