@@ -109,6 +109,7 @@ export default function RunDialog({
           />
         </div>
       }
+      className="p-6 max-w-xl"
       open={open}
       onClose={onClose}
     >

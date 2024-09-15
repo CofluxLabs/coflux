@@ -53,7 +53,12 @@ export default function NewProjectDialog({}: Props) {
     [navigate, projectName],
   );
   return (
-    <Dialog title="New project" open={true} onClose={handleClose}>
+    <Dialog
+      title="New project"
+      open={true}
+      className="p-6 max-w-lg"
+      onClose={handleClose}
+    >
       {errors && (
         <Alert variant="warning">
           <p>Failed to create project. Please check errors below.</p>

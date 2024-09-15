@@ -775,9 +775,12 @@ defmodule Coflux.Orchestration.Server do
     {:reply, {:ok, asset_id}, state}
   end
 
-  def handle_call({:get_asset, asset_id, from_execution_id}, _from, state) do
-    case Results.get_asset_by_id(state.db, asset_id, false) do
-      {:ok, {asset_execution_id, type, path, blob_key, _, _}} ->
+  def handle_call({:get_asset, asset_id, opts}, _from, state) do
+    from_execution_id = opts[:from_execution_id]
+    load_metadata = opts[:load_metadata]
+
+    case Results.get_asset_by_id(state.db, asset_id, load_metadata) do
+      {:ok, {asset_execution_id, type, path, blob_key, _created_at, metadata}} ->
         state =
           if from_execution_id do
             {:ok, id} = Runs.record_asset_dependency(state.db, from_execution_id, asset_id)
@@ -785,13 +788,13 @@ defmodule Coflux.Orchestration.Server do
             if id do
               {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
               asset_execution = resolve_execution(state.db, asset_execution_id)
-              asset_ = resolve_asset(state.db, asset_id, false)
+              asset = resolve_asset(state.db, asset_id, false)
 
               notify_listeners(
                 state,
                 {:run, step.run_id},
                 {:asset_dependency, from_execution_id, asset_execution_id, asset_execution,
-                 asset_id, asset_}
+                 asset_id, asset}
               )
             else
               state
@@ -800,7 +803,7 @@ defmodule Coflux.Orchestration.Server do
             state
           end
 
-        {:reply, {:ok, type, path, blob_key}, state}
+        {:reply, {:ok, type, path, blob_key, metadata}, state}
 
       {:ok, nil} ->
         {:reply, {:error, :not_found}, state}

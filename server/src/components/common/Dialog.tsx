@@ -1,14 +1,22 @@
 import { Fragment, ReactNode } from "react";
 import { Dialog as HeadlessDialog, Transition } from "@headlessui/react";
+import classNames from "classnames";
 
 type Props = {
   open: boolean;
   title?: ReactNode;
-  children: ReactNode;
+  className?: string;
   onClose: () => void;
+  children: ReactNode;
 };
 
-export default function Dialog({ title, open, children, onClose }: Props) {
+export default function Dialog({
+  title,
+  open,
+  className = "p-6",
+  onClose,
+  children,
+}: Props) {
   return (
     <Transition appear={true} show={open} as={Fragment}>
       <HeadlessDialog
@@ -42,7 +50,12 @@ export default function Dialog({ title, open, children, onClose }: Props) {
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <div className="inline-block w-full max-w-md p-6 my-8 text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
+            <div
+              className={classNames(
+                "inline-block w-full my-8 text-left align-middle transition-all transform bg-white shadow-xl rounded-lg",
+                className,
+              )}
+            >
               {title && (
                 <HeadlessDialog.Title className="text-2xl font-bold text-slate-900 mb-4">
                   {title}

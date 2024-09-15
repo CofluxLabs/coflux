@@ -19,7 +19,7 @@ type Item = [
 
 export default function AssetsPage() {
   const { run } = useContext();
-  const { run: runId } = useParams();
+  const { run: runId, project: projectId } = useParams();
   const assets: Item[] = sortBy(
     Object.entries(run.steps).flatMap(([stepId, step]) =>
       Object.entries(step.executions).flatMap(([attempt, execution]) =>
@@ -62,7 +62,12 @@ export default function AssetsPage() {
                     </StepLink>
                   </td>
                   <td className="py-1">
-                    <AssetLink asset={asset} className="flex items-start gap-1">
+                    <AssetLink
+                      asset={asset}
+                      projectId={projectId!}
+                      assetId={assetId}
+                      className="flex items-start gap-1"
+                    >
                       <AssetIcon asset={asset} size={18} className="mt-1" />
                       {asset.path + (asset.type == 1 ? "/" : "")}
                     </AssetLink>
