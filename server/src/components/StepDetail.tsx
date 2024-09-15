@@ -495,7 +495,9 @@ function ExecutionSection({ execution }: ExecutionSectionProps) {
   return (
     <>
       <div>
-        <h3 className="uppercase text-sm font-bold text-slate-400">Started</h3>
+        <h3 className="uppercase text-sm font-bold text-slate-400">
+          Scheduled
+        </h3>
         <p>{scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}</p>
       </div>
       <div>
