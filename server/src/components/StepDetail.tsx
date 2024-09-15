@@ -764,9 +764,9 @@ function AssetItem({ asset, projectId, assetId }: AssetItemProps) {
         asset={asset}
         className="flex items-start gap-1 rounded hover:bg-white/50 p-1"
       >
-        <AssetIcon asset={asset} size={18} className="mt-1" />
-        <span className="flex flex-col">
-          <span className="">
+        <AssetIcon asset={asset} size={18} className="mt-1 shrink-0" />
+        <span className="flex flex-col min-w-0">
+          <span className="text-ellipsis overflow-hidden whitespace-nowrap">
             {truncatePath(asset.path) + (asset.type == 1 ? "/" : "")}
           </span>
           <span className="text-slate-500 text-xs">
