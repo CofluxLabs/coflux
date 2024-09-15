@@ -1,5 +1,6 @@
 import {
   CSSProperties,
+  ComponentProps,
   Fragment,
   ReactNode,
   useCallback,
@@ -40,6 +41,7 @@ import { getAssetMetadata } from "../assets";
 import AssetIcon from "./AssetIcon";
 import EnvironmentLabel from "./EnvironmentLabel";
 import { useEnvironments, useLogs } from "../topics";
+import Tabs, { Tab } from "./common/Tabs";
 
 function getRunEnvironmentId(run: models.Run) {
   const initialStepId = minBy(
@@ -231,7 +233,7 @@ function Header({
     [environments, onRerunStep, stepId, changeAttempt],
   );
   return (
-    <div className="p-4 pt-5 flex items-start border-b border-slate-200">
+    <div className="p-4 pt-5 flex items-start">
       <div className="flex-1 flex flex-col gap-2">
         <div className="flex justify-between items-center gap-2">
           <div className="flex items-center flex-wrap gap-x-2">
@@ -419,9 +421,9 @@ function ArgumentsSection({ arguments_, projectId }: ArgumentsSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Arguments</h3>
-      <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs">
+      <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs space-y-1">
         {arguments_.map((argument, index) => (
-          <li key={index} className="my-1">
+          <li key={index}>
             <Argument argument={argument} projectId={projectId} />
           </li>
         ))}
@@ -483,43 +485,48 @@ function ExecutionSection({ execution }: ExecutionSectionProps) {
       ? DateTime.fromMillis(execution.completedAt)
       : null;
   return (
-    <div>
-      <h3 className="uppercase text-sm font-bold text-slate-400">Execution</h3>
-      <p>
-        Started:{" "}
-        {scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}
-      </p>
-      {assignedAt && completedAt ? (
-        <p>
-          Duration:{" "}
-          {formatDiff(
-            completedAt.diff(assignedAt, [
-              "days",
-              "hours",
-              "minutes",
-              "seconds",
-              "milliseconds",
-            ]),
-          )}{" "}
-          <span className="text-slate-500 text-sm">
-            (+
-            {formatDiff(
-              assignedAt!.diff(scheduledAt, [
-                "days",
-                "hours",
-                "minutes",
-                "seconds",
-                "milliseconds",
-              ]),
-              true,
-            )}{" "}
-            wait)
-          </span>
-        </p>
-      ) : assignedAt ? (
-        <p>Executing...</p>
-      ) : null}
-    </div>
+    <>
+      <div>
+        <h3 className="uppercase text-sm font-bold text-slate-400">Started</h3>
+        <p>{scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}</p>
+      </div>
+      <div>
+        {assignedAt && completedAt ? (
+          <>
+            <h3 className="uppercase text-sm font-bold text-slate-400">
+              Duration
+            </h3>
+            <p>
+              {formatDiff(
+                completedAt.diff(assignedAt, [
+                  "days",
+                  "hours",
+                  "minutes",
+                  "seconds",
+                  "milliseconds",
+                ]),
+              )}{" "}
+              <span className="text-slate-500 text-sm">
+                (+
+                {formatDiff(
+                  assignedAt!.diff(scheduledAt, [
+                    "days",
+                    "hours",
+                    "minutes",
+                    "seconds",
+                    "milliseconds",
+                  ]),
+                  true,
+                )}{" "}
+                wait)
+              </span>
+            </p>
+          </>
+        ) : assignedAt ? (
+          <p>Executing...</p>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -858,6 +865,18 @@ type Props = {
   onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
 };
 
+function StepDetailTab({ className, ...props }: ComponentProps<typeof Tab>) {
+  return (
+    <Tab
+      className={classNames(
+        "flex-1 overflow-auto flex flex-col gap-4 p-4",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export default function StepDetail({
   runId,
   stepId,
@@ -873,10 +892,7 @@ export default function StepDetail({
   const execution = step.executions[attempt];
   const runEnvironmentId = getRunEnvironmentId(run);
   return (
-    <div
-      className={classNames("overflow-hidden flex flex-col", className)}
-      style={style}
-    >
+    <div className={classNames("flex flex-col", className)} style={style}>
       <Header
         projectId={projectId}
         activeEnvironmentId={activeEnvironmentId}
@@ -887,41 +903,52 @@ export default function StepDetail({
         attempt={attempt}
         onRerunStep={onRerunStep}
       />
-      <div className="flex flex-col overflow-auto p-4 gap-5">
-        {step.arguments?.length > 0 && (
-          <ArgumentsSection arguments_={step.arguments} projectId={projectId} />
-        )}
-        {Object.keys(step.requires).length > 0 && (
-          <RequiresSection requires={step.requires} />
-        )}
-        {execution && <ExecutionSection execution={execution} />}
-        {execution?.assignedAt && (
-          <Fragment>
-            <DependenciesSection execution={execution} />
-            <ChildrenSection runId={runId} run={run} execution={execution} />
-          </Fragment>
-        )}
-        {execution?.result?.type == "value" ? (
-          <ResultSection result={execution.result} projectId={projectId} />
-        ) : execution?.result?.type == "error" ? (
-          <ErrorSection result={execution.result} />
-        ) : execution?.result?.type == "deferred" ? (
-          <DeferredSection execution={execution} />
-        ) : execution?.result?.type == "cached" ? (
-          <CachedSection result={execution.result} />
-        ) : undefined}
-        {execution?.assignedAt && (
-          <Fragment>
+      <Tabs className="flex-1 flex flex-col min-h-0">
+        <StepDetailTab label="Overview">
+          {step.arguments?.length > 0 && (
+            <ArgumentsSection
+              arguments_={step.arguments}
+              projectId={projectId}
+            />
+          )}
+          {Object.keys(step.requires).length > 0 && (
+            <RequiresSection requires={step.requires} />
+          )}
+          {execution?.result?.type == "value" ? (
+            <ResultSection result={execution.result} projectId={projectId} />
+          ) : execution?.result?.type == "error" ? (
+            <ErrorSection result={execution.result} />
+          ) : execution?.result?.type == "deferred" ? (
+            <DeferredSection execution={execution} />
+          ) : execution?.result?.type == "cached" ? (
+            <CachedSection result={execution.result} />
+          ) : undefined}
+          {Object.keys(execution.assets).length > 0 && (
             <AssetsSection execution={execution} projectId={projectId} />
+          )}
+        </StepDetailTab>
+        <StepDetailTab label="Timing">
+          {execution && <ExecutionSection execution={execution} />}
+        </StepDetailTab>
+        <StepDetailTab label="Connections" disabled={!execution.assignedAt}>
+          {execution?.assignedAt && (
+            <Fragment>
+              <DependenciesSection execution={execution} />
+              <ChildrenSection runId={runId} run={run} execution={execution} />
+            </Fragment>
+          )}
+        </StepDetailTab>
+        <StepDetailTab label="Logs" disabled={!execution?.assignedAt}>
+          {execution?.assignedAt && (
             <LogsSection
               projectId={projectId}
               runId={runId}
               execution={execution}
               activeEnvironmentId={activeEnvironmentId}
             />
-          </Fragment>
-        )}
-      </div>
+          )}
+        </StepDetailTab>
+      </Tabs>
     </div>
   );
 }
