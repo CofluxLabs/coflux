@@ -51,6 +51,30 @@ function getRunEnvironmentId(run: models.Run) {
   return run.steps[initialStepId].executions[1].environmentId;
 }
 
+type ExecutionStatusProps = {
+  execution: models.Execution;
+};
+
+function ExecutionStatus({ execution }: ExecutionStatusProps) {
+  return execution.result?.type == "cached" ? (
+    <Badge intent="none" label="Cached" />
+  ) : execution.result?.type == "deferred" ? (
+    <Badge intent="none" label="Deferred" />
+  ) : execution.result?.type == "value" ? (
+    <Badge intent="success" label="Completed" />
+  ) : execution.result?.type == "error" ? (
+    <Badge intent="danger" label="Failed" />
+  ) : execution.result?.type == "abandoned" ? (
+    <Badge intent="warning" label="Abandoned" />
+  ) : execution.result?.type == "cancelled" ? (
+    <Badge intent="warning" label="Cancelled" />
+  ) : !execution.assignedAt ? (
+    <Badge intent="info" label="Assigning" />
+  ) : !execution.result ? (
+    <Badge intent="info" label="Running" />
+  ) : null;
+}
+
 type AttemptSelectorOptionProps = {
   attempt: number;
   execution: models.Execution;
@@ -63,23 +87,7 @@ function AttemptSelectorOption({
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-sm">#{attempt}</span>
-      {execution.result?.type == "cached" ? (
-        <Badge intent="none" label="Cached" />
-      ) : execution.result?.type == "deferred" ? (
-        <Badge intent="none" label="Deferred" />
-      ) : execution.result?.type == "value" ? (
-        <Badge intent="success" label="Completed" />
-      ) : execution.result?.type == "error" ? (
-        <Badge intent="danger" label="Failed" />
-      ) : execution.result?.type == "abandoned" ? (
-        <Badge intent="warning" label="Abandoned" />
-      ) : execution.result?.type == "cancelled" ? (
-        <Badge intent="warning" label="Cancelled" />
-      ) : !execution.assignedAt ? (
-        <Badge intent="info" label="Assigning" />
-      ) : !execution.result ? (
-        <Badge intent="info" label="Running" />
-      ) : null}
+      <ExecutionStatus execution={execution} />
     </div>
   );
 }
@@ -120,19 +128,19 @@ function AttemptSelector({
           <ListboxOptions className="absolute p-1 mt-1 overflow-auto text-base bg-white rounded shadow-lg max-h-60">
             {sortBy(Object.entries(executions), "attempt").map(
               ([attempt, execution]) => (
-                <ListboxOption key={attempt} value={attempt}>
+                <ListboxOption
+                  key={attempt}
+                  value={attempt}
+                  className={classNames(
+                    "p-1 cursor-pointer rounded flex gap-1 data-[active]:bg-slate-100",
+                    selected && "font-bold",
+                  )}
+                >
                   {({ selected }) => (
-                    <div
-                      className={classNames(
-                        "p-1 cursor-default rounded data-[active]:bg-slate-100",
-                        selected && "font-bold",
-                      )}
-                    >
-                      <AttemptSelectorOption
-                        attempt={parseInt(attempt, 10)}
-                        execution={execution}
-                      />
-                    </div>
+                    <AttemptSelectorOption
+                      attempt={parseInt(attempt, 10)}
+                      execution={execution}
+                    />
                   )}
                 </ListboxOption>
               ),
