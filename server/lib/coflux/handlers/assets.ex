@@ -4,6 +4,8 @@ defmodule Coflux.Handlers.Assets do
   alias Coflux.Utils
   alias Coflux.Orchestration
 
+  @default_mime_type "application/octet-stream"
+
   def init(req, opts) do
     bindings = :cowboy_req.bindings(req)
     path = :cowboy_req.path_info(req)
@@ -39,17 +41,9 @@ defmodule Coflux.Handlers.Assets do
   end
 
   defp file_asset(blob_key, metadata, req) do
-    content_type = Map.get(metadata, "type", "application/octet-stream")
-
-    case File.read(blob_path(blob_key)) do
-      {:ok, content} ->
-        :cowboy_req.reply(
-          200,
-          %{"content-type" => content_type},
-          content,
-          req
-        )
-    end
+    content_type = Map.get(metadata, "type") || @default_mime_type
+    stream = blob_key |> blob_path() |> File.stream!()
+    stream_response(req, %{"content-type" => content_type}, stream)
   end
 
   defp directory_asset(blob_key, path, req) do
@@ -97,11 +91,15 @@ defmodule Coflux.Handlers.Assets do
   end
 
   defp directory_file(unzip, path, req) do
-    mime_type = MIME.from_path(path)
-    req = :cowboy_req.stream_reply(200, %{"content-type" => mime_type}, req)
+    mime_type = MIME.from_path(path) || @default_mime_type
+    stream = Unzip.file_stream!(unzip, path)
+    stream_response(req, %{"content-type" => mime_type}, stream)
+  end
 
-    unzip
-    |> Unzip.file_stream!(path)
+  defp stream_response(req, headers, stream) do
+    req = :cowboy_req.stream_reply(200, headers, req)
+
+    stream
     |> Stream.each(fn part ->
       :cowboy_req.stream_body(part, :nofin, req)
     end)
