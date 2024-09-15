@@ -256,9 +256,9 @@ defmodule Coflux.Handlers.Agent do
           case Orchestration.get_asset(
                  state.project_id,
                  asset_id,
-                 from_execution_id
+                 from_execution_id: from_execution_id
                ) do
-            {:ok, asset_type, path, blob_key} ->
+            {:ok, asset_type, path, blob_key, _metadata} ->
               {[success_message(message["id"], [asset_type, path, blob_key])], state}
 
             {:error, error} ->
