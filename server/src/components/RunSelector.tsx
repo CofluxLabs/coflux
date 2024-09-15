@@ -1,5 +1,11 @@
 import { Fragment } from "react";
-import { Menu, Transition } from "@headlessui/react";
+import {
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuItems,
+  Transition,
+} from "@headlessui/react";
 import { sortBy } from "lodash";
 import classNames from "classnames";
 import { Link, useLocation } from "react-router-dom";
@@ -56,39 +62,34 @@ function Options({
           .map((runId) => {
             const createdAt = DateTime.fromMillis(runs[runId].createdAt);
             return (
-              <Menu.Item key={runId}>
-                {({ active }) => (
-                  <Link
-                    to={getRunUrl(
-                      projectId!,
-                      runId,
-                      activeEnvironmentName,
-                      location.pathname,
-                    )}
+              <MenuItem key={runId}>
+                <Link
+                  to={getRunUrl(
+                    projectId!,
+                    runId,
+                    activeEnvironmentName,
+                    location.pathname,
+                  )}
+                  className="block p-2 data-[active]:bg-slate-100"
+                >
+                  <h3
                     className={classNames(
-                      "block p-2",
-                      active && "bg-slate-100",
+                      "font-mono",
+                      runId == selectedRunId && "font-bold",
                     )}
                   >
-                    <h3
-                      className={classNames(
-                        "font-mono",
-                        runId == selectedRunId && "font-bold",
-                      )}
-                    >
-                      {runId}
-                    </h3>
-                    <p
-                      className="text-xs text-slate-500 whitespace-nowrap"
-                      title={createdAt.toLocaleString(
-                        DateTime.DATETIME_SHORT_WITH_SECONDS,
-                      )}
-                    >
-                      {createdAt.toRelative()} ago
-                    </p>
-                  </Link>
-                )}
-              </Menu.Item>
+                    {runId}
+                  </h3>
+                  <p
+                    className="text-xs text-slate-500 whitespace-nowrap"
+                    title={createdAt.toLocaleString(
+                      DateTime.DATETIME_SHORT_WITH_SECONDS,
+                    )}
+                  >
+                    {createdAt.toRelative()} ago
+                  </p>
+                </Link>
+              </MenuItem>
             );
           })}
       </Fragment>
@@ -192,19 +193,19 @@ export default function RunSelector({
       <Menu>
         {({ open }) => (
           <div className="relative">
-            <Menu.Button className="flex items-center w-full py-1 px-2 gap-1 bg-white border border-slate-300 hover:bg-slate-50">
+            <MenuButton className="flex items-center w-full py-1 px-2 gap-1 bg-white border border-slate-300 hover:bg-slate-50">
               <span className="font-mono text-sm">{runId}</span>
               <span className="text-slate-400">
                 <IconChevronDown size={16} />
               </span>
-            </Menu.Button>
+            </MenuButton>
             <Transition
               as={Fragment}
               leave="transition ease-in duration-100"
               leaveFrom="opacity-100"
               leaveTo="opacity-0"
             >
-              <Menu.Items
+              <MenuItems
                 className="absolute z-10 overflow-y-scroll text-base bg-white rounded shadow-lg max-h-60"
                 static={true}
               >
@@ -216,7 +217,7 @@ export default function RunSelector({
                     selectedRunId={runId}
                   />
                 )}
-              </Menu.Items>
+              </MenuItems>
             </Transition>
           </div>
         )}

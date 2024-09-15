@@ -62,7 +62,7 @@ function PreviewDialog({
 }: FilePreviewProps) {
   if (showPreview(type)) {
     return (
-      <Dialog open={open} className="w-[80vw] h-[80vh]" onClose={onClose}>
+      <Dialog open={open} className="max-w-[80vw] h-[80vh]" onClose={onClose}>
         <div className="h-full rounded-lg overflow-hidden flex flex-col min-w-2xl">
           <iframe
             src={assetUrl(projectId, assetId, path)}

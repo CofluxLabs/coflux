@@ -8,7 +8,17 @@ import {
 import classNames from "classnames";
 import { minBy, sortBy } from "lodash";
 import { DateTime } from "luxon";
-import { Listbox, Menu, Transition } from "@headlessui/react";
+import {
+  Listbox,
+  ListboxButton,
+  ListboxOption,
+  ListboxOptions,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuItems,
+  Transition,
+} from "@headlessui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   IconChevronDown,
@@ -87,7 +97,7 @@ function AttemptSelector({
   return (
     <Listbox value={selected} onChange={onChange}>
       <div className="relative">
-        <Listbox.Button className="flex items-center gap-1 relative p-1 pl-2 bg-white text-left text-slate-600 border border-slate-300 rounded-md shadow-sm font-bold">
+        <ListboxButton className="flex items-center gap-1 relative p-1 pl-2 bg-white text-left text-slate-600 border border-slate-300 rounded-md shadow-sm font-bold">
           {selectedExecution && (
             <AttemptSelectorOption
               attempt={selected}
@@ -95,7 +105,7 @@ function AttemptSelector({
             />
           )}
           <IconChevronDown size={16} className="opacity-40" />
-        </Listbox.Button>
+        </ListboxButton>
         <Transition
           as={Fragment}
           enter="transition ease-in duration-100"
@@ -105,16 +115,15 @@ function AttemptSelector({
           leaveFrom="opacity-100 scale-100"
           leaveTo="opacity-0 scale-95"
         >
-          <Listbox.Options className="absolute p-1 mt-1 overflow-auto text-base bg-white rounded shadow-lg max-h-60">
+          <ListboxOptions className="absolute p-1 mt-1 overflow-auto text-base bg-white rounded shadow-lg max-h-60">
             {sortBy(Object.entries(executions), "attempt").map(
               ([attempt, execution]) => (
-                <Listbox.Option key={attempt} value={attempt}>
-                  {({ selected, active }) => (
+                <ListboxOption key={attempt} value={attempt}>
+                  {({ selected }) => (
                     <div
                       className={classNames(
-                        "p-1 cursor-default rounded",
+                        "p-1 cursor-default rounded data-[active]:bg-slate-100",
                         selected && "font-bold",
-                        active && "bg-slate-100",
                       )}
                     >
                       <AttemptSelectorOption
@@ -123,10 +132,10 @@ function AttemptSelector({
                       />
                     </div>
                   )}
-                </Listbox.Option>
+                </ListboxOption>
               ),
             )}
-          </Listbox.Options>
+          </ListboxOptions>
         </Transition>
       </div>
     </Listbox>
@@ -269,7 +278,7 @@ function Header({
             </Button>
             {childEnvironmentIds?.length ? (
               <Menu>
-                <Menu.Button
+                <MenuButton
                   as={Button}
                   disabled={rerunning}
                   outline={true}
@@ -277,32 +286,27 @@ function Header({
                   className="rounded-l-none -ml-px"
                 >
                   <IconChevronDown size={16} />
-                </Menu.Button>
+                </MenuButton>
                 <Transition
                   as={Fragment}
                   leave="transition ease-in duration-100"
                   leaveFrom="opacity-100"
                   leaveTo="opacity-0"
                 >
-                  <Menu.Items className="absolute top-full left-0 z-10 overflow-y-scroll bg-white rounded shadow-lg max-h-60 flex flex-col p-1 mt-1 min-w-full">
+                  <MenuItems className="absolute top-full left-0 z-10 overflow-y-scroll bg-white rounded shadow-lg max-h-60 flex flex-col p-1 mt-1 min-w-full">
                     {childEnvironmentIds
                       .filter((id) => id != executionEnvironmentId)
                       .map((environmentId) => (
-                        <Menu.Item key={environmentId} as={Fragment}>
-                          {({ active }) => (
-                            <button
-                              className={classNames(
-                                "p-1 text-left text-sm rounded",
-                                active && "bg-slate-100",
-                              )}
-                              onClick={() => handleRerunClick(environmentId)}
-                            >
-                              {environments?.[environmentId].name}
-                            </button>
-                          )}
-                        </Menu.Item>
+                        <MenuItem key={environmentId} as={Fragment}>
+                          <button
+                            className="p-1 text-left text-sm rounded data-[active]:bg-slate-100"
+                            onClick={() => handleRerunClick(environmentId)}
+                          >
+                            {environments?.[environmentId].name}
+                          </button>
+                        </MenuItem>
                       ))}
-                  </Menu.Items>
+                  </MenuItems>
                 </Transition>
               </Menu>
             ) : null}
