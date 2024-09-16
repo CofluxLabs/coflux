@@ -55,9 +55,7 @@ export default function InternalLayout() {
           projectId={projectId!}
           activeEnvironmentName={activeEnvironmentName}
         />
-        <div className="flex-1 overflow-hidden bg-white flex flex-col">
-          <Outlet />
-        </div>
+        <Outlet />
       </div>
     </SocketProvider>
   );

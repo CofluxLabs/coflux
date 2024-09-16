@@ -167,36 +167,34 @@ export default function RunLayout() {
               activeEnvironmentName={activeEnvironmentName}
             />
           )}
-          <div className="flex flex-1 overflow-hidden">
-            <div className="grow flex flex-col">
-              <div className="border-b px-4">
-                {run.recurrent ? (
-                  <Tab page="runs">Runs</Tab>
-                ) : (
-                  <Fragment>
-                    <Tab page="graph">Graph</Tab>
-                    <Tab page="timeline">Timeline</Tab>
-                  </Fragment>
-                )}
-                <Tab page="logs">Logs</Tab>
-                {!run.recurrent && <Tab page="assets">Assets</Tab>}
-              </div>
-              <div className="flex-1 basis-0 overflow-auto" ref={ref}>
-                <Outlet
-                  context={{ run, width: width || 0, height: height || 0 }}
-                />
-              </div>
+          <div className="grow flex flex-col">
+            <div className="border-b px-4">
+              {run.recurrent ? (
+                <Tab page="runs">Runs</Tab>
+              ) : (
+                <Fragment>
+                  <Tab page="graph">Graph</Tab>
+                  <Tab page="timeline">Timeline</Tab>
+                </Fragment>
+              )}
+              <Tab page="logs">Logs</Tab>
+              {!run.recurrent && <Tab page="assets">Assets</Tab>}
             </div>
-            <DetailPanel
-              runId={runId!}
-              stepId={activeStepId}
-              attemptNumber={activeAttemptNumber}
-              run={run}
-              projectId={projectId!}
-              activeEnvironmentId={activeEnvironmentId!}
-              className="absolute right-0 top-0 bottom-0 w-[400px]"
-            />
+            <div className="flex-1 basis-0 overflow-auto" ref={ref}>
+              <Outlet
+                context={{ run, width: width || 0, height: height || 0 }}
+              />
+            </div>
           </div>
+          <DetailPanel
+            runId={runId!}
+            stepId={activeStepId}
+            attemptNumber={activeAttemptNumber}
+            run={run}
+            projectId={projectId!}
+            activeEnvironmentId={activeEnvironmentId!}
+            className="absolute right-0 top-0 bottom-0 w-[400px]"
+          />
         </div>
       </HoverContext>
     );

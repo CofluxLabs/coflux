@@ -101,10 +101,10 @@ export default function ProjectLayout() {
     project && environmentName && `${project.name} (${environmentName})`,
   );
   return (
-    <div className="flex-auto flex overflow-hidden">
+    <div className="flex-1 flex min-h-0">
       {repositories && (
         <div className="w-64 bg-slate-100 text-slate-100 border-r border-slate-200 flex-none flex flex-col">
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto min-h-0">
             <TargetsList
               projectId={projectId}
               environmentName={environmentName}
@@ -117,7 +117,7 @@ export default function ProjectLayout() {
           <ConnectionStatus agents={agents} />
         </div>
       )}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         <Outlet context={{ setActive }} />
       </div>
     </div>
