@@ -1,11 +1,5 @@
 import { Fragment } from "react";
-import {
-  Menu,
-  MenuButton,
-  MenuItem,
-  MenuItems,
-  Transition,
-} from "@headlessui/react";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { sortBy } from "lodash";
 import classNames from "classnames";
 import { Link, useLocation } from "react-router-dom";
@@ -70,24 +64,24 @@ function Options({
                     activeEnvironmentName,
                     location.pathname,
                   )}
-                  className="block p-2 data-[active]:bg-slate-100"
+                  className="flex items-baseline gap-1 text-sm px-1.5 py-0.5 data-[active]:bg-slate-100 rounded"
                 >
-                  <h3
+                  <span
                     className={classNames(
                       "font-mono",
                       runId == selectedRunId && "font-bold",
                     )}
                   >
                     {runId}
-                  </h3>
-                  <p
-                    className="text-xs text-slate-500 whitespace-nowrap"
+                  </span>
+                  <span
+                    className="text-xs text-slate-400 whitespace-nowrap"
                     title={createdAt.toLocaleString(
                       DateTime.DATETIME_SHORT_WITH_SECONDS,
                     )}
                   >
-                    {createdAt.toRelative()} ago
-                  </p>
+                    {createdAt.toRelative()}
+                  </span>
                 </Link>
               </MenuItem>
             );
@@ -191,36 +185,24 @@ export default function RunSelector({
         currentRunId={runId}
       />
       <Menu>
-        {({ open }) => (
-          <div className="relative">
-            <MenuButton className="flex items-center w-full py-1 px-2 gap-1 bg-white border border-slate-300 hover:bg-slate-50">
-              <span className="font-mono text-sm">{runId}</span>
-              <span className="text-slate-400">
-                <IconChevronDown size={16} />
-              </span>
-            </MenuButton>
-            <Transition
-              as={Fragment}
-              leave="transition ease-in duration-100"
-              leaveFrom="opacity-100"
-              leaveTo="opacity-0"
-            >
-              <MenuItems
-                className="absolute z-10 overflow-y-scroll text-base bg-white rounded shadow-lg max-h-60"
-                static={true}
-              >
-                {open && (
-                  <Options
-                    runs={runs}
-                    projectId={projectId}
-                    activeEnvironmentName={activeEnvironmentName}
-                    selectedRunId={runId}
-                  />
-                )}
-              </MenuItems>
-            </Transition>
-          </div>
-        )}
+        <MenuButton className="flex items-center w-full py-1 px-2 gap-1 bg-white border border-slate-300 hover:bg-slate-50">
+          <span className="font-mono text-sm">{runId}</span>
+          <span className="text-slate-400">
+            <IconChevronDown size={16} />
+          </span>
+        </MenuButton>
+        <MenuItems
+          transition
+          className="overflow-y-scroll border bg-white rounded shadow-lg p-1 transition duration-100 ease-out data-[closed]:opacity-0"
+          anchor={{ to: "bottom start", gap: 2, padding: 20 }}
+        >
+          <Options
+            runs={runs}
+            projectId={projectId}
+            activeEnvironmentName={activeEnvironmentName}
+            selectedRunId={runId}
+          />
+        </MenuItems>
       </Menu>
       <NextPreviousButton
         direction="next"
