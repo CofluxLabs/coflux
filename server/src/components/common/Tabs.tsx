@@ -6,7 +6,7 @@ import {
   TabPanel,
 } from "@headlessui/react";
 import classNames from "classnames";
-import { Fragment, ReactElement, ReactNode } from "react";
+import { ComponentProps, Fragment, ReactElement, ReactNode } from "react";
 
 type TabProps = {
   label: ReactNode;
@@ -19,14 +19,13 @@ export function Tab({ className, children }: TabProps) {
   return <TabPanel className={classNames(className)}>{children}</TabPanel>;
 }
 
-type Props = {
-  className?: string;
+type Props = ComponentProps<typeof TabGroup> & {
   children: ReactElement<TabProps>[];
 };
 
-export default function Tabs({ className, children }: Props) {
+export default function Tabs({ children, ...props }: Props) {
   return (
-    <TabGroup className={className}>
+    <TabGroup {...props}>
       <TabList className="border-b border-slate-200 px-4">
         {children.map((c, i) => (
           <HeadlessTab

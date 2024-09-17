@@ -59,6 +59,9 @@ type DetailPanelProps = {
   projectId: string;
   activeEnvironmentId: string;
   className?: string;
+  width: number;
+  activeTab: number;
+  maximised: boolean;
 };
 
 function DetailPanel({
@@ -69,6 +72,9 @@ function DetailPanel({
   projectId,
   activeEnvironmentId,
   className,
+  width,
+  activeTab,
+  maximised,
 }: DetailPanelProps) {
   const previousStepId = usePrevious(stepId);
   const previousAttemptNumber = usePrevious(attemptNumber);
@@ -91,8 +97,16 @@ function DetailPanel({
       leaveFrom="translate-x-0"
       leaveTo="translate-x-full"
     >
-      <div className={classNames(className, "pt-2 pr-2 pb-2 flex")}>
-        <div className="bg-slate-100 border border-slate-200 rounded-md flex flex-1 max-w-full">
+      <div
+        className={classNames(className, "flex")}
+        style={{ width: maximised ? undefined : width }}
+      >
+        <div
+          className={classNames(
+            "bg-slate-100 border border-slate-200 flex flex-1 max-w-full",
+            maximised ? "rounded-lg" : "rounded-md",
+          )}
+        >
           {stepIdOrPrevious && (
             <StepDetail
               runId={runId}
@@ -103,6 +117,8 @@ function DetailPanel({
               activeEnvironmentId={activeEnvironmentId}
               className="flex-1"
               onRerunStep={handleRerunStep}
+              activeTab={activeTab}
+              maximised={maximised}
             />
           )}
         </div>
@@ -125,6 +141,8 @@ export default function RunLayout() {
     ? parseInt(searchParams.get("attempt")!, 10)
     : undefined;
   const activeEnvironmentName = searchParams.get("environment") || undefined;
+  const activeTab = parseInt(searchParams.get("tab") || "", 10) || 0;
+  const maximised = !!searchParams.get("maximised");
   const environments = useEnvironments(projectId);
   const activeEnvironmentId = findKey(
     environments,
@@ -137,16 +155,15 @@ export default function RunLayout() {
   );
   useSetActiveTarget(initialStep?.repository, initialStep?.target);
   const { ref, width, height } = useResizeObserver<HTMLDivElement>();
+  const detailWidth = Math.min(Math.max(window.innerWidth / 3, 400), 600);
   if (!run || !initialStep) {
     return <Loading />;
   } else {
     return (
       <HoverContext>
         <div
-          className={classNames(
-            "flex-1 flex flex-col relative",
-            activeStepId && "pr-[400px]",
-          )}
+          className={classNames("flex-1 flex flex-col relative")}
+          style={{ paddingRight: activeStepId && !maximised ? detailWidth : 0 }}
         >
           {run.recurrent ? (
             <SensorHeader
@@ -193,7 +210,14 @@ export default function RunLayout() {
             run={run}
             projectId={projectId!}
             activeEnvironmentId={activeEnvironmentId!}
-            className="absolute right-0 top-0 bottom-0 w-[400px]"
+            className={classNames(
+              maximised
+                ? "fixed inset-0 px-10 py-10 bg-black/40"
+                : "absolute right-0 top-0 bottom-0 w-[400px] pt-2 pr-2 pb-2",
+            )}
+            width={detailWidth}
+            activeTab={activeTab}
+            maximised={maximised}
           />
         </div>
       </HoverContext>

@@ -26,8 +26,8 @@ export default function Badge({ label, intent }: Props) {
   return (
     <span
       className={classNames(
-        "rounded-md px-1.5 py-0.5 text-xs uppercase font-bold",
-        classNameForIntent(intent)
+        "rounded-md px-1 py-px text-xs uppercase font-semibold",
+        classNameForIntent(intent),
       )}
     >
       {label}

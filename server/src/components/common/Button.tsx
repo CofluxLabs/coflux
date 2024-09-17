@@ -3,8 +3,8 @@ import { ButtonHTMLAttributes, ReactNode, forwardRef } from "react";
 import { Size, Variant } from "./types";
 
 const outlineStyles = {
-  true: "bg-white border",
-  false: "text-white",
+  true: "border bg-white",
+  false: "text-white shadow-sm",
 };
 
 const variantOutlineStyles = {
@@ -81,7 +81,7 @@ const variantOutlineStyles = {
 };
 
 const sizeStyles = {
-  sm: "rounded px-2 py-0.5 text-sm",
+  sm: "rounded px-1.5 py-0.5 text-xs h-6",
   md: "rounded-md px-3 py-1",
   lg: "rounded-lg px-4 py-1.5 text-lg",
 };
@@ -111,7 +111,7 @@ const Button = forwardRef<HTMLButtonElement, Props>(function Button(
     <button
       ref={ref}
       className={classNames(
-        "focus:ring focus:outline-none focus:ring-opacity-50 font-medium text-center shadow-sm flex items-center gap-1",
+        "focus:ring focus:outline-none focus:ring-opacity-50 font-medium text-center flex items-center gap-1",
         outlineStyles[outline ? "true" : "false"],
         variantOutlineStyles[variant][outline ? "true" : "false"],
         sizeStyles[size],

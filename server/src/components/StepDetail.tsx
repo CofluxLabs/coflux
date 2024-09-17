@@ -10,22 +10,23 @@ import classNames from "classnames";
 import { minBy, sortBy } from "lodash";
 import { DateTime } from "luxon";
 import {
-  Listbox,
-  ListboxButton,
-  ListboxOption,
-  ListboxOptions,
   Menu,
   MenuButton,
   MenuItem,
   MenuItems,
   Transition,
 } from "@headlessui/react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
   IconFunction,
   IconPinned,
   IconReload,
+  IconWindowMaximize,
+  IconWindowMinimize,
+  IconX,
 } from "@tabler/icons-react";
 import reactStringReplace from "react-string-replace";
 
@@ -75,6 +76,81 @@ function ExecutionStatus({ execution }: ExecutionStatusProps) {
   ) : null;
 }
 
+function getNextPrevious(
+  attempts: number[],
+  selected: number,
+  direction: "next" | "previous",
+) {
+  const index = attempts.indexOf(selected);
+  if (index >= 0) {
+    if (direction == "next") {
+      if (index < attempts.length - 1) {
+        return attempts[index + 1];
+      }
+    } else {
+      if (index > 0) {
+        return attempts[index - 1];
+      }
+    }
+  }
+
+  return null;
+}
+
+type NextPreviousButtonProps = {
+  direction: "next" | "previous";
+  activeEnvironmentName: string | undefined;
+  stepId: string;
+  currentAttempt: number;
+  executions: Record<number, models.Execution>;
+  activeTab: number;
+  maximised: boolean;
+};
+
+function NextPreviousButton({
+  direction,
+  activeEnvironmentName,
+  stepId,
+  currentAttempt,
+  executions,
+  activeTab,
+  maximised,
+}: NextPreviousButtonProps) {
+  const location = useLocation();
+  const attempts = Object.keys(executions)
+    .map((a) => parseInt(a, 10))
+    .sort((a, b) => a - b);
+  const attempt = getNextPrevious(attempts, currentAttempt, direction);
+  const Icon = direction == "next" ? IconChevronRight : IconChevronLeft;
+  const className = classNames(
+    "p-1 bg-white border border-slate-300 flex items-center",
+    attempt ? "hover:bg-slate-100 text-slate-500" : "text-slate-200",
+    direction == "next" ? "rounded-r-md -ml-px" : "rounded-l-md -mr-px",
+  );
+  if (attempt) {
+    return (
+      <Link
+        to={buildUrl(location.pathname, {
+          environment: activeEnvironmentName,
+          step: stepId,
+          attempt,
+          tab: activeTab,
+          maximised: maximised ? "true" : undefined,
+        })}
+        className={className}
+      >
+        <Icon size={16} />
+      </Link>
+    );
+  } else {
+    return (
+      <span className={className}>
+        <Icon size={16} />
+      </span>
+    );
+  }
+}
+
 type AttemptSelectorOptionProps = {
   attempt: number;
   execution: models.Execution;
@@ -94,20 +170,35 @@ function AttemptSelectorOption({
 
 type AttemptSelectorProps = {
   selected: number;
+  activeEnvironmentName: string | undefined;
+  stepId: string;
+  activeTab: number;
+  maximised: boolean;
   executions: Record<number, models.Execution>;
-  onChange: (number: number) => void;
 };
 
 function AttemptSelector({
   selected,
+  activeEnvironmentName,
+  stepId,
+  activeTab,
+  maximised,
   executions,
-  onChange,
 }: AttemptSelectorProps) {
   const selectedExecution = executions[selected];
   return (
-    <Listbox value={selected} onChange={onChange}>
-      <div className="relative">
-        <ListboxButton className="flex items-center gap-1 relative p-1 pl-2 bg-white text-left text-slate-600 border border-slate-300 rounded-md shadow-sm font-bold">
+    <div className="flex shadow-sm">
+      <NextPreviousButton
+        direction="previous"
+        activeEnvironmentName={activeEnvironmentName}
+        stepId={stepId}
+        currentAttempt={selected}
+        executions={executions}
+        activeTab={activeTab}
+        maximised={maximised}
+      />
+      <Menu>
+        <MenuButton className="flex items-center gap-1 p-1 pl-2 bg-white text-left text-slate-600 border border-slate-300 ">
           {selectedExecution && (
             <AttemptSelectorOption
               attempt={selected}
@@ -115,40 +206,51 @@ function AttemptSelector({
             />
           )}
           <IconChevronDown size={16} className="opacity-40" />
-        </ListboxButton>
-        <Transition
-          as={Fragment}
-          enter="transition ease-in duration-100"
-          enterFrom="opacity-0 scale-95"
-          enterTo="opacity-100 scale-100"
-          leave="transition ease-in duration-100"
-          leaveFrom="opacity-100 scale-100"
-          leaveTo="opacity-0 scale-95"
+        </MenuButton>
+        <MenuItems
+          transition
+          className="p-1 overflow-auto bg-white rounded shadow-lg transition duration-100 ease-out data-[closed]:opacity-0"
+          anchor={{ to: "bottom start", gap: 2, padding: 20 }}
         >
-          <ListboxOptions className="absolute p-1 mt-1 overflow-auto text-base bg-white rounded shadow-lg max-h-60">
-            {sortBy(Object.entries(executions), "attempt").map(
-              ([attempt, execution]) => (
-                <ListboxOption
-                  key={attempt}
-                  value={attempt}
-                  className={classNames(
-                    "p-1 cursor-pointer rounded flex gap-1 data-[active]:bg-slate-100",
-                    selected && "font-bold",
-                  )}
-                >
-                  {({ selected }) => (
+          {sortBy(Object.entries(executions), "attempt").map(
+            ([attempt_, execution]) => {
+              const attempt = parseInt(attempt_, 10);
+              return (
+                <MenuItem key={attempt}>
+                  <Link
+                    to={buildUrl(location.pathname, {
+                      environment: activeEnvironmentName,
+                      step: stepId,
+                      attempt,
+                      tab: activeTab,
+                      maximised: maximised ? "true" : undefined,
+                    })}
+                    className={classNames(
+                      "p-1 cursor-pointer rounded flex items-center gap-1 data-[active]:bg-slate-100",
+                      attempt == selected && "font-bold",
+                    )}
+                  >
                     <AttemptSelectorOption
-                      attempt={parseInt(attempt, 10)}
+                      attempt={attempt}
                       execution={execution}
                     />
-                  )}
-                </ListboxOption>
-              ),
-            )}
-          </ListboxOptions>
-        </Transition>
-      </div>
-    </Listbox>
+                  </Link>
+                </MenuItem>
+              );
+            },
+          )}
+        </MenuItems>
+      </Menu>
+      <NextPreviousButton
+        direction="next"
+        activeEnvironmentName={activeEnvironmentName}
+        stepId={stepId}
+        currentAttempt={selected}
+        executions={executions}
+        activeTab={activeTab}
+        maximised={maximised}
+      />
+    </div>
   );
 }
 
@@ -183,6 +285,87 @@ function getBaseExecution(step: models.Step, run: models.Run) {
   }
 }
 
+type RerunButtonProps = {
+  run: models.Run;
+  stepId: string;
+  step: models.Step;
+  executionEnvironmentId: string;
+  environments: Record<string, models.Environment> | undefined;
+  onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
+};
+
+function RerunButton({
+  run,
+  stepId,
+  step,
+  executionEnvironmentId,
+  environments,
+  onRerunStep,
+}: RerunButtonProps) {
+  const [rerunning, setRerunning] = useState(false);
+  const baseEnvironmentId = getBaseExecution(step, run).environmentId;
+  const childEnvironmentIds =
+    environments && getEnvironmentOptions(environments, baseEnvironmentId);
+  const handleRerunClick = useCallback(
+    (environmentId: string) => {
+      const environmentName = environments![environmentId].name;
+      setRerunning(true);
+      onRerunStep(stepId, environmentName).finally(() => {
+        setRerunning(false);
+      });
+    },
+    [environments, onRerunStep, stepId],
+  );
+  return (
+    <div className="flex shadow-sm relative">
+      <Button
+        disabled={rerunning}
+        outline={true}
+        size="sm"
+        className="[&:not(:last-child)]:rounded-r-none whitespace-nowrap"
+        left={<IconReload size={14} strokeWidth={1.5} className="shrink-0" />}
+        onClick={() => handleRerunClick(executionEnvironmentId)}
+      >
+        Re-run
+      </Button>
+      {childEnvironmentIds?.length ? (
+        <Menu>
+          <MenuButton
+            as={Button}
+            disabled={rerunning}
+            outline={true}
+            size="sm"
+            className="rounded-l-none -ml-px"
+          >
+            <IconChevronDown strokeWidth={1.5} size={16} />
+          </MenuButton>
+          <Transition
+            as={Fragment}
+            leave="transition ease-in duration-100"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <MenuItems className="absolute top-full left-0 z-10 overflow-y-scroll bg-white rounded shadow-lg max-h-60 flex flex-col p-1 mt-1 min-w-full">
+              {childEnvironmentIds
+                .filter((id) => id != executionEnvironmentId)
+                .map((environmentId) => (
+                  <MenuItem key={environmentId} as={Fragment}>
+                    <button
+                      className="p-1 text-left text-sm rounded data-[active]:bg-slate-100"
+                      onClick={() => handleRerunClick(environmentId)}
+                    >
+                      {environments?.[environmentId].name}
+                    </button>
+                  </MenuItem>
+                ))}
+            </MenuItems>
+          </Transition>
+        </Menu>
+      ) : null}
+    </div>
+  );
+}
+
 type HeaderProps = {
   projectId: string;
   activeEnvironmentId: string;
@@ -191,6 +374,9 @@ type HeaderProps = {
   stepId: string;
   step: models.Step;
   attempt: number;
+  environments: Record<string, models.Environment> | undefined;
+  activeTab: number;
+  maximised: boolean;
   onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
 };
 
@@ -202,11 +388,12 @@ function Header({
   stepId,
   step,
   attempt,
+  environments,
+  activeTab,
+  maximised,
   onRerunStep,
 }: HeaderProps) {
-  const environments = useEnvironments(projectId);
   const activeEnvironmentName = environments?.[activeEnvironmentId].name;
-  const [rerunning, setRerunning] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const changeAttempt = useCallback(
@@ -216,51 +403,121 @@ function Header({
           environment: environmentName || activeEnvironmentName,
           step: stepId,
           attempt,
+          tab: activeTab,
+          maximised: maximised ? "true" : undefined,
         }),
       );
     },
-    [stepId, activeEnvironmentName, navigate, location],
+    [stepId, activeEnvironmentName, navigate, location, activeTab, maximised],
   );
-  const executionEnvironmentId = step.executions[attempt].environmentId;
-  const baseEnvironmentId = getBaseExecution(step, run).environmentId;
-  const childEnvironmentIds =
-    environments && getEnvironmentOptions(environments, baseEnvironmentId);
-  const handleRerunClick = useCallback(
-    (environmentId: string) => {
-      const environmentName = environments![environmentId].name;
-      setRerunning(true);
-      onRerunStep(stepId, environmentName)
-        .then(({ attempt }) => {
-          // TODO: wait for attempt to be synced to topic
-          changeAttempt(attempt, environmentName);
-        })
-        .finally(() => {
-          setRerunning(false);
-        });
+  const handleRerunStep = useCallback(
+    (stepId: string, environmentName: string) => {
+      return onRerunStep(stepId, environmentName).then(({ attempt }) => {
+        // TODO: wait for attempt to be synced to topic
+        changeAttempt(attempt, environmentName);
+      });
     },
-    [environments, onRerunStep, stepId, changeAttempt],
+    [changeAttempt],
   );
+  const executionEnvironmentId = step.executions[attempt]?.environmentId;
+  const handleMaximiseClick = useCallback(() => {
+    navigate(
+      buildUrl(location.pathname, {
+        environment: activeEnvironmentName,
+        step: stepId,
+        attempt,
+        tab: activeTab,
+        maximised: maximised ? undefined : "true",
+      }),
+    );
+  }, [
+    navigate,
+    location,
+    activeEnvironmentName,
+    stepId,
+    attempt,
+    activeTab,
+    maximised,
+  ]);
+  const handleCloseClick = useCallback(() => {
+    navigate(
+      buildUrl(location.pathname, {
+        environment: activeEnvironmentName,
+      }),
+    );
+  }, [navigate, location, activeEnvironmentName]);
   return (
-    <div className="p-4 pt-5 flex items-start">
+    <div className="p-4 flex items-start">
       <div className="flex-1 flex flex-col gap-2">
-        <div className="flex justify-between items-center gap-2">
-          <div className="flex items-center flex-wrap gap-x-2">
-            <h2
-              className={classNames("font-mono", !step.parentId && "font-bold")}
-            >
-              {step.target}
-            </h2>
-            <span className="text-slate-500 text-sm">({step.repository})</span>
-            {step.isMemoised && (
-              <span
-                className="text-slate-500"
-                title="This execution has been memoised"
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex items-baseline flex-wrap gap-1 leading-tight">
+              <div className="flex items-baseline gap-1">
+                <span className="text-slate-400 text-sm">
+                  {step.repository}
+                </span>
+                <span className="text-slate-400">/</span>
+              </div>
+              <h2
+                className={classNames(
+                  "font-mono",
+                  !step.parentId && "font-bold",
+                )}
               >
-                <IconPinned size={16} />
-              </span>
-            )}
+                {step.target}
+              </h2>
+              {step.isMemoised && (
+                <span
+                  className="text-slate-500 self-center"
+                  title="This execution has been memoised"
+                >
+                  <IconPinned size={16} />
+                </span>
+              )}
+            </div>
           </div>
-
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              outline={true}
+              variant="secondary"
+              title={maximised ? "Pop-in details" : "Pop-out details"}
+              onClick={handleMaximiseClick}
+            >
+              {maximised ? (
+                <IconWindowMinimize strokeWidth={1.5} size={14} />
+              ) : (
+                <IconWindowMaximize strokeWidth={1.5} size={14} />
+              )}
+            </Button>
+            <Button
+              size="sm"
+              outline={true}
+              variant="secondary"
+              title="Hide details"
+              onClick={handleCloseClick}
+            >
+              <IconX strokeWidth={1.5} size={14} />
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <AttemptSelector
+            selected={attempt}
+            activeEnvironmentName={activeEnvironmentName}
+            stepId={stepId}
+            activeTab={activeTab}
+            maximised={maximised}
+            executions={step.executions}
+          />
+          <RerunButton
+            run={run}
+            stepId={stepId}
+            step={step}
+            executionEnvironmentId={executionEnvironmentId}
+            environments={environments}
+            onRerunStep={handleRerunStep}
+          />
           {executionEnvironmentId != runEnvironmentId && (
             <EnvironmentLabel
               projectId={projectId}
@@ -268,59 +525,6 @@ function Header({
               warning="This execution ran in a different environment"
             />
           )}
-        </div>
-        <div className="flex items-center gap-1">
-          <AttemptSelector
-            selected={attempt}
-            executions={step.executions}
-            onChange={changeAttempt}
-          />
-          <div className="flex shadow-sm relative">
-            <Button
-              disabled={rerunning}
-              outline={true}
-              size="sm"
-              className="[&:not(:last-child)]:rounded-r-none"
-              left={<IconReload size={14} />}
-              onClick={() => handleRerunClick(executionEnvironmentId)}
-            >
-              Re-run
-            </Button>
-            {childEnvironmentIds?.length ? (
-              <Menu>
-                <MenuButton
-                  as={Button}
-                  disabled={rerunning}
-                  outline={true}
-                  size="sm"
-                  className="rounded-l-none -ml-px"
-                >
-                  <IconChevronDown size={16} />
-                </MenuButton>
-                <Transition
-                  as={Fragment}
-                  leave="transition ease-in duration-100"
-                  leaveFrom="opacity-100"
-                  leaveTo="opacity-0"
-                >
-                  <MenuItems className="absolute top-full left-0 z-10 overflow-y-scroll bg-white rounded shadow-lg max-h-60 flex flex-col p-1 mt-1 min-w-full">
-                    {childEnvironmentIds
-                      .filter((id) => id != executionEnvironmentId)
-                      .map((environmentId) => (
-                        <MenuItem key={environmentId} as={Fragment}>
-                          <button
-                            className="p-1 text-left text-sm rounded data-[active]:bg-slate-100"
-                            onClick={() => handleRerunClick(environmentId)}
-                          >
-                            {environments?.[environmentId].name}
-                          </button>
-                        </MenuItem>
-                      ))}
-                  </MenuItems>
-                </Transition>
-              </Menu>
-            ) : null}
-          </div>
         </div>
       </div>
     </div>
@@ -863,18 +1067,6 @@ function LogsSection({
   );
 }
 
-type Props = {
-  runId: string;
-  stepId: string;
-  attempt: number;
-  run: models.Run;
-  projectId: string;
-  activeEnvironmentId: string;
-  className?: string;
-  style?: CSSProperties;
-  onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
-};
-
 function StepDetailTab({ className, ...props }: ComponentProps<typeof Tab>) {
   return (
     <Tab
@@ -887,6 +1079,20 @@ function StepDetailTab({ className, ...props }: ComponentProps<typeof Tab>) {
   );
 }
 
+type Props = {
+  runId: string;
+  stepId: string;
+  attempt: number;
+  run: models.Run;
+  projectId: string;
+  activeEnvironmentId: string;
+  className?: string;
+  style?: CSSProperties;
+  onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
+  activeTab: number;
+  maximised: boolean;
+};
+
 export default function StepDetail({
   runId,
   stepId,
@@ -897,10 +1103,30 @@ export default function StepDetail({
   className,
   style,
   onRerunStep,
+  activeTab,
+  maximised,
 }: Props) {
   const step = run.steps[stepId];
-  const execution = step.executions[attempt];
+  const execution: models.Execution | undefined = step.executions[attempt];
   const runEnvironmentId = getRunEnvironmentId(run);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const environments = useEnvironments(projectId);
+  const activeEnvironmentName = environments?.[activeEnvironmentId].name;
+  const handleTabChange = useCallback(
+    (tab: number) => {
+      navigate(
+        buildUrl(location.pathname, {
+          environment: activeEnvironmentName,
+          step: stepId,
+          attempt,
+          tab,
+          maximised: maximised ? "true" : undefined,
+        }),
+      );
+    },
+    [navigate, location, activeEnvironmentName, stepId, attempt],
+  );
   return (
     <div className={classNames("flex flex-col", className)} style={style}>
       <Header
@@ -911,9 +1137,16 @@ export default function StepDetail({
         stepId={stepId}
         step={step}
         attempt={attempt}
+        environments={environments}
         onRerunStep={onRerunStep}
+        activeTab={activeTab}
+        maximised={maximised}
       />
-      <Tabs className="flex-1 flex flex-col min-h-0">
+      <Tabs
+        className={"flex-1 flex flex-col min-h-0"}
+        selectedIndex={activeTab}
+        onChange={handleTabChange}
+      >
         <StepDetailTab label="Overview">
           {step.arguments?.length > 0 && (
             <ArgumentsSection
@@ -933,14 +1166,14 @@ export default function StepDetail({
           ) : execution?.result?.type == "cached" ? (
             <CachedSection result={execution.result} />
           ) : undefined}
-          {Object.keys(execution.assets).length > 0 && (
+          {execution && Object.keys(execution.assets).length > 0 && (
             <AssetsSection execution={execution} projectId={projectId} />
           )}
         </StepDetailTab>
         <StepDetailTab label="Timing">
           {execution && <ExecutionSection execution={execution} />}
         </StepDetailTab>
-        <StepDetailTab label="Connections" disabled={!execution.assignedAt}>
+        <StepDetailTab label="Connections" disabled={!execution?.assignedAt}>
           {execution?.assignedAt && (
             <Fragment>
               <DependenciesSection execution={execution} />
