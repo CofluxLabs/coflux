@@ -545,6 +545,7 @@ function BlobLink({ value }: BlobLinkProps) {
       <a
         href={`/blobs/${value.key}`}
         className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
+        target="_blank"
       >
         Blob
       </a>
