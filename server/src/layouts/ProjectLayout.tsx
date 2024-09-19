@@ -117,17 +117,15 @@ export default function ProjectLayout() {
               />
             </div>
           ) : (
-            <div className="flex-1 flex flex-col">
-              <div className="flex-1 rounded-xl m-8 border-2 border-slate-300/50 border-dashed flex flex-col gap-2 justify-center items-center">
-                <IconInfoSquareRounded
-                  size={40}
-                  strokeWidth={1.5}
-                  className="text-slate-300/50"
-                />
-                <p className="text-slate-300 text-lg px-2 max-w-48 text-center leading-tight">
-                  No repositories registered
-                </p>
-              </div>
+            <div className="flex-1 flex flex-col gap-1 justify-center items-center">
+              <IconInfoSquareRounded
+                size={32}
+                strokeWidth={1.5}
+                className="text-slate-300/50"
+              />
+              <p className="text-slate-300 text-lg px-2 max-w-48 text-center leading-tight">
+                No repositories registered
+              </p>
             </div>
           )}
           <ConnectionStatus agents={agents} />
