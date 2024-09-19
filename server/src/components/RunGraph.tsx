@@ -109,24 +109,25 @@ function StepNode({
               >
                 {step.target}
               </span>
-              <span className="flex">
-                {execution && execution.environmentId != runEnvironmentId && (
-                  <EnvironmentLabel
-                    projectId={projectId}
-                    environmentId={execution.environmentId}
-                    size="sm"
-                    warning="This execution ran in a different environment"
-                    compact
-                  />
-                )}
-              </span>
+              {step.isMemoised && (
+                <span
+                  className="text-slate-500"
+                  title="This execution has been memoised"
+                >
+                  <IconPinned size={12} />
+                </span>
+              )}
+              {execution && execution.environmentId != runEnvironmentId && (
+                <EnvironmentLabel
+                  projectId={projectId}
+                  environmentId={execution.environmentId}
+                  size="sm"
+                  warning="This execution ran in a different environment"
+                  compact
+                />
+              )}
             </span>
           </span>
-          {step.isMemoised && (
-            <span className="text-slate-500" title="Memoised">
-              <IconPinned size={12} />
-            </span>
-          )}
         </span>
         {execution && !execution.result && !execution.assignedAt && (
           <span>
