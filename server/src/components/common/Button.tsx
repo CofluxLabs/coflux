@@ -81,7 +81,7 @@ const variantOutlineStyles = {
 };
 
 const sizeStyles = {
-  sm: "rounded px-1.5 py-0.5 text-xs h-6",
+  sm: "rounded-md px-2 py-0.5 text-xs h-6",
   md: "rounded-md px-3 py-1",
   lg: "rounded-lg px-4 py-1.5 text-lg",
 };

@@ -14,7 +14,10 @@ import {
   MenuButton,
   MenuItem,
   MenuItems,
-  Transition,
+  Popover,
+  PopoverBackdrop,
+  PopoverButton,
+  PopoverPanel,
 } from "@headlessui/react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -43,6 +46,7 @@ import AssetIcon from "./AssetIcon";
 import EnvironmentLabel from "./EnvironmentLabel";
 import { useEnvironments, useLogs } from "../topics";
 import Tabs, { Tab } from "./common/Tabs";
+import Select from "./common/Select";
 
 function getRunEnvironmentId(run: models.Run) {
   const initialStepId = minBy(
@@ -304,64 +308,70 @@ function RerunButton({
 }: RerunButtonProps) {
   const [rerunning, setRerunning] = useState(false);
   const baseEnvironmentId = getBaseExecution(step, run).environmentId;
+  const [environmentId, setEnvironmentId] = useState<string | null>(
+    executionEnvironmentId,
+  );
   const childEnvironmentIds =
     environments && getEnvironmentOptions(environments, baseEnvironmentId);
+  const environmentOptions = (childEnvironmentIds || []).reduce(
+    (acc, environmentId) => ({
+      ...acc,
+      [environmentId]: environments![environmentId].name,
+    }),
+    {},
+  );
   const handleRerunClick = useCallback(
-    (environmentId: string) => {
-      const environmentName = environments![environmentId].name;
+    (close: () => void) => {
+      const environmentName =
+        environments![environmentId || baseEnvironmentId].name;
       setRerunning(true);
       onRerunStep(stepId, environmentName).finally(() => {
         setRerunning(false);
+        close();
       });
     },
-    [environments, onRerunStep, stepId],
+    [environments, environmentId, onRerunStep, stepId],
   );
   return (
     <div className="flex shadow-sm relative">
-      <Button
-        disabled={rerunning}
-        outline={true}
-        size="sm"
-        className="[&:not(:last-child)]:rounded-r-none whitespace-nowrap"
-        left={<IconReload size={14} strokeWidth={1.5} className="shrink-0" />}
-        onClick={() => handleRerunClick(executionEnvironmentId)}
-      >
-        Re-run
-      </Button>
-      {childEnvironmentIds?.length ? (
-        <Menu>
-          <MenuButton
-            as={Button}
-            disabled={rerunning}
-            outline={true}
-            size="sm"
-            className="rounded-l-none -ml-px"
-          >
-            <IconChevronDown strokeWidth={1.5} size={16} />
-          </MenuButton>
-          <Transition
-            as={Fragment}
-            leave="transition ease-in duration-100"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <MenuItems className="absolute top-full left-0 z-10 overflow-y-scroll bg-white rounded shadow-lg max-h-60 flex flex-col p-1 mt-1 min-w-full">
-              {childEnvironmentIds
-                .filter((id) => id != executionEnvironmentId)
-                .map((environmentId) => (
-                  <MenuItem key={environmentId} as={Fragment}>
-                    <button
-                      className="p-1 text-left text-sm rounded data-[active]:bg-slate-100"
-                      onClick={() => handleRerunClick(environmentId)}
-                    >
-                      {environments?.[environmentId].name}
-                    </button>
-                  </MenuItem>
-                ))}
-            </MenuItems>
-          </Transition>
-        </Menu>
-      ) : null}
+      <Popover>
+        <PopoverButton
+          as={Button}
+          disabled={rerunning}
+          size="sm"
+          className="whitespace-nowrap"
+          left={<IconReload size={14} className="shrink-0" />}
+          right={<IconChevronDown size={16} className="shrink-0" />}
+        >
+          Re-run
+        </PopoverButton>
+        <PopoverBackdrop className="fixed inset-0 bg-black/15" />
+        <PopoverPanel
+          transition
+          anchor={{ to: "bottom end", gap: 10, offset: 20 }}
+          className="bg-white shadow-xl rounded-lg p-2 !overflow-visible min-w-[300px]"
+        >
+          {({ close }) => (
+            <>
+              <div className="absolute border-b-[10px] border-b-white border-x-transparent border-x-[10px] top-[-10px] right-[30px] w-[20px] h-[10px]"></div>
+              <div className="flex items-center gap-1">
+                <Select
+                  options={environmentOptions}
+                  value={environmentId}
+                  onChange={setEnvironmentId}
+                  className="flex-1"
+                />
+                <Button
+                  disabled={rerunning}
+                  onClick={() => handleRerunClick(close)}
+                >
+                  Re-run
+                </Button>
+              </div>
+            </>
+          )}
+        </PopoverPanel>
+      </Popover>
     </div>
   );
 }
@@ -477,6 +487,14 @@ function Header({
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <RerunButton
+              run={run}
+              stepId={stepId}
+              step={step}
+              executionEnvironmentId={executionEnvironmentId}
+              environments={environments}
+              onRerunStep={handleRerunStep}
+            />
             <Button
               size="sm"
               outline={true}
@@ -485,9 +503,9 @@ function Header({
               onClick={handleMaximiseClick}
             >
               {maximised ? (
-                <IconWindowMinimize strokeWidth={1.5} size={14} />
+                <IconWindowMinimize size={14} />
               ) : (
-                <IconWindowMaximize strokeWidth={1.5} size={14} />
+                <IconWindowMaximize size={14} />
               )}
             </Button>
             <Button
@@ -497,7 +515,7 @@ function Header({
               title="Hide details"
               onClick={handleCloseClick}
             >
-              <IconX strokeWidth={1.5} size={14} />
+              <IconX size={14} />
             </Button>
           </div>
         </div>
@@ -509,14 +527,6 @@ function Header({
             activeTab={activeTab}
             maximised={maximised}
             executions={step.executions}
-          />
-          <RerunButton
-            run={run}
-            stepId={stepId}
-            step={step}
-            executionEnvironmentId={executionEnvironmentId}
-            environments={environments}
-            onRerunStep={handleRerunStep}
           />
           {executionEnvironmentId != runEnvironmentId && (
             <EnvironmentLabel

@@ -33,6 +33,7 @@ type Props<T extends string> = {
   variant?: Variant;
   size?: Size;
   empty?: string;
+  className?: string;
   onChange: (value: T | null) => void;
 };
 
@@ -42,6 +43,7 @@ export default function Select<T extends string>({
   variant,
   size = "md",
   empty,
+  className,
   onChange,
 }: Props<T>) {
   const { id: fieldId, hasError } = useField();
@@ -52,7 +54,7 @@ export default function Select<T extends string>({
   ];
   return (
     <Listbox value={value} onChange={onChange}>
-      <div className="relative">
+      <div className={classNames("relative", className)}>
         <ListboxButton
           id={fieldId}
           className={classNames(
