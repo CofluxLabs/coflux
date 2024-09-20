@@ -32,6 +32,7 @@ type Props = {
   interactive?: boolean;
   warning?: string;
   accessory?: ReactNode;
+  compact?: boolean;
 };
 
 export default function EnvironmentLabel({
@@ -41,6 +42,7 @@ export default function EnvironmentLabel({
   interactive,
   warning,
   accessory,
+  compact,
 }: Props) {
   const environments = useEnvironments(projectId);
   const environment = environments?.[environmentId];
@@ -48,26 +50,30 @@ export default function EnvironmentLabel({
     <span
       className={classNames(
         "flex items-center gap-0.5 overflow-hidden",
-        size == "sm" ? "px-1 py-px rounded-md" : "px-1.5 py-0.5 rounded-lg",
+        size == "sm"
+          ? "px-1 py-px rounded-md h-5"
+          : "px-1.5 py-0.5 rounded-lg h-6",
         classNameForEnvironment(environment?.name, interactive),
       )}
       title={warning}
     >
       {warning && (
         <IconExclamationCircle
-          size={size == "sm" ? 12 : 14}
+          size={size == "sm" ? 13 : 15}
           className="shrink-0"
         />
       )}
-      <span
-        className={classNames(
-          "whitespace-nowrap overflow-hidden text-ellipsis",
-          size == "sm" ? "px-px text-xs" : "px-0.5 text-sm",
-          environment?.status == 1 && "line-through opacity-50",
-        )}
-      >
-        {environment?.name}
-      </span>
+      {!compact && (
+        <span
+          className={classNames(
+            "whitespace-nowrap overflow-hidden text-ellipsis",
+            size == "sm" ? "px-px text-xs" : "px-0.5 text-sm",
+            environment?.status == 1 && "line-through opacity-50",
+          )}
+        >
+          {environment?.name}
+        </span>
+      )}
       {accessory}
     </span>
   );

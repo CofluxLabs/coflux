@@ -46,7 +46,7 @@ export default function AssetsPage() {
             {assets.map(
               ([stepId, step, attempt, _execution, assetId, asset]) => (
                 <tr key={assetId}>
-                  <td className="py-1">
+                  <td className="p-1">
                     <StepLink
                       runId={runId!}
                       stepId={stepId}
@@ -61,19 +61,19 @@ export default function AssetsPage() {
                       </span>
                     </StepLink>
                   </td>
-                  <td className="py-1">
+                  <td className="p-1">
                     <AssetLink
                       asset={asset}
                       projectId={projectId!}
                       assetId={assetId}
-                      className="flex items-start gap-1"
+                      className="flex items-start gap-1 whitespace-nowrap"
                     >
                       <AssetIcon asset={asset} size={18} className="mt-1" />
                       {asset.path + (asset.type == 1 ? "/" : "")}
                     </AssetLink>
                   </td>
-                  <td className="py-1">
-                    <span className="text-slate-500 text-sm">
+                  <td className="p-1">
+                    <span className="text-slate-500 text-sm whitespace-nowrap">
                       {getAssetMetadata(asset).join(", ")}
                     </span>
                   </td>

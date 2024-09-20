@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import {
   IconSubtask,
   IconCpu,
-  TablerIconsProps,
+  IconProps,
   IconInnerShadowTopLeft,
   IconAlertCircle,
   IconClock,
@@ -28,7 +28,7 @@ function isTargetOnline(
 
 type TargetProps = {
   url: string;
-  icon: ComponentType<TablerIconsProps>;
+  icon: ComponentType<IconProps>;
   name: string;
   isActive: boolean;
   isOnline: boolean;

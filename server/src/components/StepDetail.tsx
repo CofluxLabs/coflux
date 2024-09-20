@@ -1,5 +1,6 @@
 import {
   CSSProperties,
+  ComponentProps,
   Fragment,
   ReactNode,
   useCallback,
@@ -8,13 +9,27 @@ import {
 import classNames from "classnames";
 import { minBy, sortBy } from "lodash";
 import { DateTime } from "luxon";
-import { Listbox, Menu, Transition } from "@headlessui/react";
-import { useLocation, useNavigate } from "react-router-dom";
+import {
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuItems,
+  Popover,
+  PopoverBackdrop,
+  PopoverButton,
+  PopoverPanel,
+} from "@headlessui/react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
   IconFunction,
   IconPinned,
   IconReload,
+  IconWindowMaximize,
+  IconWindowMinimize,
+  IconX,
 } from "@tabler/icons-react";
 import reactStringReplace from "react-string-replace";
 
@@ -30,6 +45,8 @@ import { getAssetMetadata } from "../assets";
 import AssetIcon from "./AssetIcon";
 import EnvironmentLabel from "./EnvironmentLabel";
 import { useEnvironments, useLogs } from "../topics";
+import Tabs, { Tab } from "./common/Tabs";
+import Select from "./common/Select";
 
 function getRunEnvironmentId(run: models.Run) {
   const initialStepId = minBy(
@@ -37,6 +54,105 @@ function getRunEnvironmentId(run: models.Run) {
     (stepId) => run.steps[stepId].createdAt,
   )!;
   return run.steps[initialStepId].executions[1].environmentId;
+}
+
+type ExecutionStatusProps = {
+  execution: models.Execution;
+};
+
+function ExecutionStatus({ execution }: ExecutionStatusProps) {
+  return execution.result?.type == "cached" ? (
+    <Badge intent="none" label="Cached" />
+  ) : execution.result?.type == "deferred" ? (
+    <Badge intent="none" label="Deferred" />
+  ) : execution.result?.type == "value" ? (
+    <Badge intent="success" label="Completed" />
+  ) : execution.result?.type == "error" ? (
+    <Badge intent="danger" label="Failed" />
+  ) : execution.result?.type == "abandoned" ? (
+    <Badge intent="warning" label="Abandoned" />
+  ) : execution.result?.type == "cancelled" ? (
+    <Badge intent="warning" label="Cancelled" />
+  ) : !execution.assignedAt ? (
+    <Badge intent="info" label="Assigning" />
+  ) : !execution.result ? (
+    <Badge intent="info" label="Running" />
+  ) : null;
+}
+
+function getNextPrevious(
+  attempts: number[],
+  selected: number,
+  direction: "next" | "previous",
+) {
+  const index = attempts.indexOf(selected);
+  if (index >= 0) {
+    if (direction == "next") {
+      if (index < attempts.length - 1) {
+        return attempts[index + 1];
+      }
+    } else {
+      if (index > 0) {
+        return attempts[index - 1];
+      }
+    }
+  }
+
+  return null;
+}
+
+type NextPreviousButtonProps = {
+  direction: "next" | "previous";
+  activeEnvironmentName: string | undefined;
+  stepId: string;
+  currentAttempt: number;
+  executions: Record<number, models.Execution>;
+  activeTab: number;
+  maximised: boolean;
+};
+
+function NextPreviousButton({
+  direction,
+  activeEnvironmentName,
+  stepId,
+  currentAttempt,
+  executions,
+  activeTab,
+  maximised,
+}: NextPreviousButtonProps) {
+  const location = useLocation();
+  const attempts = Object.keys(executions)
+    .map((a) => parseInt(a, 10))
+    .sort((a, b) => a - b);
+  const attempt = getNextPrevious(attempts, currentAttempt, direction);
+  const Icon = direction == "next" ? IconChevronRight : IconChevronLeft;
+  const className = classNames(
+    "p-1 bg-white border border-slate-300 flex items-center",
+    attempt ? "hover:bg-slate-100 text-slate-500" : "text-slate-200",
+    direction == "next" ? "rounded-r-md -ml-px" : "rounded-l-md -mr-px",
+  );
+  if (attempt) {
+    return (
+      <Link
+        to={buildUrl(location.pathname, {
+          environment: activeEnvironmentName,
+          step: stepId,
+          attempt,
+          tab: activeTab,
+          maximised: maximised ? "true" : undefined,
+        })}
+        className={className}
+      >
+        <Icon size={16} />
+      </Link>
+    );
+  } else {
+    return (
+      <span className={className}>
+        <Icon size={16} />
+      </span>
+    );
+  }
 }
 
 type AttemptSelectorOptionProps = {
@@ -51,43 +167,42 @@ function AttemptSelectorOption({
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-sm">#{attempt}</span>
-      {execution.result?.type == "cached" ? (
-        <Badge intent="none" label="Cached" />
-      ) : execution.result?.type == "deferred" ? (
-        <Badge intent="none" label="Deferred" />
-      ) : execution.result?.type == "value" ? (
-        <Badge intent="success" label="Completed" />
-      ) : execution.result?.type == "error" ? (
-        <Badge intent="danger" label="Failed" />
-      ) : execution.result?.type == "abandoned" ? (
-        <Badge intent="warning" label="Abandoned" />
-      ) : execution.result?.type == "cancelled" ? (
-        <Badge intent="warning" label="Cancelled" />
-      ) : !execution.assignedAt ? (
-        <Badge intent="info" label="Assigning" />
-      ) : !execution.result ? (
-        <Badge intent="info" label="Running" />
-      ) : null}
+      <ExecutionStatus execution={execution} />
     </div>
   );
 }
 
 type AttemptSelectorProps = {
   selected: number;
+  activeEnvironmentName: string | undefined;
+  stepId: string;
+  activeTab: number;
+  maximised: boolean;
   executions: Record<number, models.Execution>;
-  onChange: (number: number) => void;
 };
 
 function AttemptSelector({
   selected,
+  activeEnvironmentName,
+  stepId,
+  activeTab,
+  maximised,
   executions,
-  onChange,
 }: AttemptSelectorProps) {
   const selectedExecution = executions[selected];
   return (
-    <Listbox value={selected} onChange={onChange}>
-      <div className="relative">
-        <Listbox.Button className="flex items-center gap-1 relative p-1 pl-2 bg-white text-left text-slate-600 border border-slate-300 rounded-md shadow-sm font-bold">
+    <div className="flex shadow-sm">
+      <NextPreviousButton
+        direction="previous"
+        activeEnvironmentName={activeEnvironmentName}
+        stepId={stepId}
+        currentAttempt={selected}
+        executions={executions}
+        activeTab={activeTab}
+        maximised={maximised}
+      />
+      <Menu>
+        <MenuButton className="flex items-center gap-1 p-1 pl-2 bg-white text-left text-slate-600 border border-slate-300 ">
           {selectedExecution && (
             <AttemptSelectorOption
               attempt={selected}
@@ -95,41 +210,51 @@ function AttemptSelector({
             />
           )}
           <IconChevronDown size={16} className="opacity-40" />
-        </Listbox.Button>
-        <Transition
-          as={Fragment}
-          enter="transition ease-in duration-100"
-          enterFrom="opacity-0 scale-95"
-          enterTo="opacity-100 scale-100"
-          leave="transition ease-in duration-100"
-          leaveFrom="opacity-100 scale-100"
-          leaveTo="opacity-0 scale-95"
+        </MenuButton>
+        <MenuItems
+          transition
+          className="p-1 overflow-auto bg-white rounded shadow-lg transition duration-100 ease-out data-[closed]:opacity-0"
+          anchor={{ to: "bottom start", gap: 2, padding: 20 }}
         >
-          <Listbox.Options className="absolute p-1 mt-1 overflow-auto text-base bg-white rounded shadow-lg max-h-60">
-            {sortBy(Object.entries(executions), "attempt").map(
-              ([attempt, execution]) => (
-                <Listbox.Option key={attempt} value={attempt}>
-                  {({ selected, active }) => (
-                    <div
-                      className={classNames(
-                        "p-1 cursor-default rounded",
-                        selected && "font-bold",
-                        active && "bg-slate-100",
-                      )}
-                    >
-                      <AttemptSelectorOption
-                        attempt={parseInt(attempt, 10)}
-                        execution={execution}
-                      />
-                    </div>
-                  )}
-                </Listbox.Option>
-              ),
-            )}
-          </Listbox.Options>
-        </Transition>
-      </div>
-    </Listbox>
+          {sortBy(Object.entries(executions), "attempt").map(
+            ([attempt_, execution]) => {
+              const attempt = parseInt(attempt_, 10);
+              return (
+                <MenuItem key={attempt}>
+                  <Link
+                    to={buildUrl(location.pathname, {
+                      environment: activeEnvironmentName,
+                      step: stepId,
+                      attempt,
+                      tab: activeTab,
+                      maximised: maximised ? "true" : undefined,
+                    })}
+                    className={classNames(
+                      "p-1 cursor-pointer rounded flex items-center gap-1 data-[active]:bg-slate-100",
+                      attempt == selected && "font-bold",
+                    )}
+                  >
+                    <AttemptSelectorOption
+                      attempt={attempt}
+                      execution={execution}
+                    />
+                  </Link>
+                </MenuItem>
+              );
+            },
+          )}
+        </MenuItems>
+      </Menu>
+      <NextPreviousButton
+        direction="next"
+        activeEnvironmentName={activeEnvironmentName}
+        stepId={stepId}
+        currentAttempt={selected}
+        executions={executions}
+        activeTab={activeTab}
+        maximised={maximised}
+      />
+    </div>
   );
 }
 
@@ -164,6 +289,93 @@ function getBaseExecution(step: models.Step, run: models.Run) {
   }
 }
 
+type RerunButtonProps = {
+  run: models.Run;
+  stepId: string;
+  step: models.Step;
+  executionEnvironmentId: string;
+  environments: Record<string, models.Environment> | undefined;
+  onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
+};
+
+function RerunButton({
+  run,
+  stepId,
+  step,
+  executionEnvironmentId,
+  environments,
+  onRerunStep,
+}: RerunButtonProps) {
+  const [rerunning, setRerunning] = useState(false);
+  const baseEnvironmentId = getBaseExecution(step, run).environmentId;
+  const [environmentId, setEnvironmentId] = useState<string | null>(
+    executionEnvironmentId,
+  );
+  const childEnvironmentIds =
+    environments && getEnvironmentOptions(environments, baseEnvironmentId);
+  const environmentOptions = (childEnvironmentIds || []).reduce(
+    (acc, environmentId) => ({
+      ...acc,
+      [environmentId]: environments![environmentId].name,
+    }),
+    {},
+  );
+  const handleRerunClick = useCallback(
+    (close: () => void) => {
+      const environmentName =
+        environments![environmentId || baseEnvironmentId].name;
+      setRerunning(true);
+      onRerunStep(stepId, environmentName).finally(() => {
+        setRerunning(false);
+        close();
+      });
+    },
+    [environments, environmentId, onRerunStep, stepId],
+  );
+  return (
+    <div className="flex shadow-sm relative">
+      <Popover>
+        <PopoverButton
+          as={Button}
+          disabled={rerunning}
+          size="sm"
+          className="whitespace-nowrap"
+          left={<IconReload size={14} className="shrink-0" />}
+          right={<IconChevronDown size={16} className="shrink-0" />}
+        >
+          Re-run
+        </PopoverButton>
+        <PopoverBackdrop className="fixed inset-0 bg-black/15" />
+        <PopoverPanel
+          transition
+          anchor={{ to: "bottom end", gap: 10, offset: 20 }}
+          className="bg-white shadow-xl rounded-lg p-2 !overflow-visible min-w-[300px]"
+        >
+          {({ close }) => (
+            <>
+              <div className="absolute border-b-[10px] border-b-white border-x-transparent border-x-[10px] top-[-10px] right-[30px] w-[20px] h-[10px]"></div>
+              <div className="flex items-center gap-1">
+                <Select
+                  options={environmentOptions}
+                  value={environmentId}
+                  onChange={setEnvironmentId}
+                  className="flex-1"
+                />
+                <Button
+                  disabled={rerunning}
+                  onClick={() => handleRerunClick(close)}
+                >
+                  Re-run
+                </Button>
+              </div>
+            </>
+          )}
+        </PopoverPanel>
+      </Popover>
+    </div>
+  );
+}
+
 type HeaderProps = {
   projectId: string;
   activeEnvironmentId: string;
@@ -172,6 +384,9 @@ type HeaderProps = {
   stepId: string;
   step: models.Step;
   attempt: number;
+  environments: Record<string, models.Environment> | undefined;
+  activeTab: number;
+  maximised: boolean;
   onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
 };
 
@@ -183,11 +398,12 @@ function Header({
   stepId,
   step,
   attempt,
+  environments,
+  activeTab,
+  maximised,
   onRerunStep,
 }: HeaderProps) {
-  const environments = useEnvironments(projectId);
   const activeEnvironmentName = environments?.[activeEnvironmentId].name;
-  const [rerunning, setRerunning] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const changeAttempt = useCallback(
@@ -197,51 +413,123 @@ function Header({
           environment: environmentName || activeEnvironmentName,
           step: stepId,
           attempt,
+          tab: activeTab,
+          maximised: maximised ? "true" : undefined,
         }),
       );
     },
-    [stepId, activeEnvironmentName, navigate, location],
+    [stepId, activeEnvironmentName, navigate, location, activeTab, maximised],
   );
-  const executionEnvironmentId = step.executions[attempt].environmentId;
-  const baseEnvironmentId = getBaseExecution(step, run).environmentId;
-  const childEnvironmentIds =
-    environments && getEnvironmentOptions(environments, baseEnvironmentId);
-  const handleRerunClick = useCallback(
-    (environmentId: string) => {
-      const environmentName = environments![environmentId].name;
-      setRerunning(true);
-      onRerunStep(stepId, environmentName)
-        .then(({ attempt }) => {
-          // TODO: wait for attempt to be synced to topic
-          changeAttempt(attempt, environmentName);
-        })
-        .finally(() => {
-          setRerunning(false);
-        });
+  const handleRerunStep = useCallback(
+    (stepId: string, environmentName: string) => {
+      return onRerunStep(stepId, environmentName).then(({ attempt }) => {
+        // TODO: wait for attempt to be synced to topic
+        changeAttempt(attempt, environmentName);
+      });
     },
-    [environments, onRerunStep, stepId, changeAttempt],
+    [changeAttempt],
   );
+  const executionEnvironmentId = step.executions[attempt]?.environmentId;
+  const handleMaximiseClick = useCallback(() => {
+    navigate(
+      buildUrl(location.pathname, {
+        environment: activeEnvironmentName,
+        step: stepId,
+        attempt,
+        tab: activeTab,
+        maximised: maximised ? undefined : "true",
+      }),
+    );
+  }, [
+    navigate,
+    location,
+    activeEnvironmentName,
+    stepId,
+    attempt,
+    activeTab,
+    maximised,
+  ]);
+  const handleCloseClick = useCallback(() => {
+    navigate(
+      buildUrl(location.pathname, {
+        environment: activeEnvironmentName,
+      }),
+    );
+  }, [navigate, location, activeEnvironmentName]);
   return (
-    <div className="p-4 pt-5 flex items-start border-b border-slate-200">
+    <div className="p-4 flex items-start">
       <div className="flex-1 flex flex-col gap-2">
-        <div className="flex justify-between items-center gap-2">
-          <div className="flex items-center flex-wrap gap-x-2">
-            <h2
-              className={classNames("font-mono", !step.parentId && "font-bold")}
-            >
-              {step.target}
-            </h2>
-            <span className="text-slate-500 text-sm">({step.repository})</span>
-            {step.isMemoised && (
-              <span
-                className="text-slate-500"
-                title="This execution has been memoised"
-              >
-                <IconPinned size={16} />
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex items-baseline flex-wrap gap-1 leading-tight">
+              <div className="flex items-baseline gap-1">
+                <span className="text-slate-400 text-sm">
+                  {step.repository}
+                </span>
+                <span className="text-slate-400">/</span>
+              </div>
+              <span className="flex items-baseline gap-1">
+                <h2
+                  className={classNames(
+                    "font-mono",
+                    !step.parentId && "font-bold",
+                  )}
+                >
+                  {step.target}
+                </h2>
+                {step.isMemoised && (
+                  <span
+                    className="text-slate-500 self-center"
+                    title="This execution has been memoised"
+                  >
+                    <IconPinned size={16} />
+                  </span>
+                )}
               </span>
-            )}
+            </div>
           </div>
-
+          <div className="flex items-center gap-1">
+            <RerunButton
+              run={run}
+              stepId={stepId}
+              step={step}
+              executionEnvironmentId={executionEnvironmentId}
+              environments={environments}
+              onRerunStep={handleRerunStep}
+            />
+            <Button
+              size="sm"
+              outline={true}
+              variant="secondary"
+              title={maximised ? "Pop-in details" : "Pop-out details"}
+              onClick={handleMaximiseClick}
+            >
+              {maximised ? (
+                <IconWindowMinimize size={14} />
+              ) : (
+                <IconWindowMaximize size={14} />
+              )}
+            </Button>
+            <Button
+              size="sm"
+              outline={true}
+              variant="secondary"
+              title="Hide details"
+              onClick={handleCloseClick}
+            >
+              <IconX size={14} />
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <AttemptSelector
+            selected={attempt}
+            activeEnvironmentName={activeEnvironmentName}
+            stepId={stepId}
+            activeTab={activeTab}
+            maximised={maximised}
+            executions={step.executions}
+          />
           {executionEnvironmentId != runEnvironmentId && (
             <EnvironmentLabel
               projectId={projectId}
@@ -249,64 +537,6 @@ function Header({
               warning="This execution ran in a different environment"
             />
           )}
-        </div>
-        <div className="flex items-center gap-1">
-          <AttemptSelector
-            selected={attempt}
-            executions={step.executions}
-            onChange={changeAttempt}
-          />
-          <div className="flex shadow-sm relative">
-            <Button
-              disabled={rerunning}
-              outline={true}
-              size="sm"
-              className="[&:not(:last-child)]:rounded-r-none"
-              left={<IconReload size={14} />}
-              onClick={() => handleRerunClick(executionEnvironmentId)}
-            >
-              Re-run
-            </Button>
-            {childEnvironmentIds?.length ? (
-              <Menu>
-                <Menu.Button
-                  as={Button}
-                  disabled={rerunning}
-                  outline={true}
-                  size="sm"
-                  className="rounded-l-none -ml-px"
-                >
-                  <IconChevronDown size={16} />
-                </Menu.Button>
-                <Transition
-                  as={Fragment}
-                  leave="transition ease-in duration-100"
-                  leaveFrom="opacity-100"
-                  leaveTo="opacity-0"
-                >
-                  <Menu.Items className="absolute top-full left-0 z-10 overflow-y-scroll bg-white rounded shadow-lg max-h-60 flex flex-col p-1 mt-1 min-w-full">
-                    {childEnvironmentIds
-                      .filter((id) => id != executionEnvironmentId)
-                      .map((environmentId) => (
-                        <Menu.Item key={environmentId} as={Fragment}>
-                          {({ active }) => (
-                            <button
-                              className={classNames(
-                                "p-1 text-left text-sm rounded",
-                                active && "bg-slate-100",
-                              )}
-                              onClick={() => handleRerunClick(environmentId)}
-                            >
-                              {environments?.[environmentId].name}
-                            </button>
-                          )}
-                        </Menu.Item>
-                      ))}
-                  </Menu.Items>
-                </Transition>
-              </Menu>
-            ) : null}
-          </div>
         </div>
       </div>
     </div>
@@ -327,6 +557,7 @@ function BlobLink({ value }: BlobLinkProps) {
       <a
         href={`/blobs/${value.key}`}
         className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
+        target="_blank"
       >
         Blob
       </a>
@@ -415,9 +646,9 @@ function ArgumentsSection({ arguments_, projectId }: ArgumentsSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Arguments</h3>
-      <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs">
+      <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs space-y-1">
         {arguments_.map((argument, index) => (
-          <li key={index} className="my-1">
+          <li key={index}>
             <Argument argument={argument} projectId={projectId} />
           </li>
         ))}
@@ -479,43 +710,50 @@ function ExecutionSection({ execution }: ExecutionSectionProps) {
       ? DateTime.fromMillis(execution.completedAt)
       : null;
   return (
-    <div>
-      <h3 className="uppercase text-sm font-bold text-slate-400">Execution</h3>
-      <p>
-        Started:{" "}
-        {scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}
-      </p>
-      {assignedAt && completedAt ? (
-        <p>
-          Duration:{" "}
-          {formatDiff(
-            completedAt.diff(assignedAt, [
-              "days",
-              "hours",
-              "minutes",
-              "seconds",
-              "milliseconds",
-            ]),
-          )}{" "}
-          <span className="text-slate-500 text-sm">
-            (+
-            {formatDiff(
-              assignedAt!.diff(scheduledAt, [
-                "days",
-                "hours",
-                "minutes",
-                "seconds",
-                "milliseconds",
-              ]),
-              true,
-            )}{" "}
-            wait)
-          </span>
-        </p>
-      ) : assignedAt ? (
-        <p>Executing...</p>
-      ) : null}
-    </div>
+    <>
+      <div>
+        <h3 className="uppercase text-sm font-bold text-slate-400">
+          Scheduled
+        </h3>
+        <p>{scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}</p>
+      </div>
+      <div>
+        {assignedAt && completedAt ? (
+          <>
+            <h3 className="uppercase text-sm font-bold text-slate-400">
+              Duration
+            </h3>
+            <p>
+              {formatDiff(
+                completedAt.diff(assignedAt, [
+                  "days",
+                  "hours",
+                  "minutes",
+                  "seconds",
+                  "milliseconds",
+                ]),
+              )}{" "}
+              <span className="text-slate-500 text-sm">
+                (+
+                {formatDiff(
+                  assignedAt!.diff(scheduledAt, [
+                    "days",
+                    "hours",
+                    "minutes",
+                    "seconds",
+                    "milliseconds",
+                  ]),
+                  true,
+                )}{" "}
+                wait)
+              </span>
+            </p>
+          </>
+        ) : assignedAt ? (
+          <p>Executing...</p>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -559,57 +797,110 @@ function DependenciesSection({ execution }: DependenciesSectionProps) {
   );
 }
 
-type ChildrenSectionProps = {
+function findExecution(
+  run: models.Run,
+  executionId: string | null,
+): [string, number] | undefined {
+  if (executionId) {
+    const stepId = Object.keys(run.steps).find((sId) =>
+      Object.values(run.steps[sId].executions).some(
+        (e) => e.executionId == executionId,
+      ),
+    );
+    if (stepId) {
+      const step = run.steps[stepId];
+      const attempt = Object.keys(run.steps[stepId].executions).find(
+        (a) => step.executions[a].executionId == executionId,
+      );
+      if (attempt) {
+        return [stepId, parseInt(attempt, 10)];
+      }
+    }
+  }
+  return undefined;
+}
+
+type RelationsSectionProps = {
   runId: string;
   run: models.Run;
+  step: models.Step;
   execution: models.Execution;
 };
 
-function ChildrenSection({ runId, run, execution }: ChildrenSectionProps) {
+function RelationsSection({
+  runId,
+  run,
+  step,
+  execution,
+}: RelationsSectionProps) {
+  const parent = findExecution(run, step.parentId);
   return (
-    <div>
-      <h3 className="uppercase text-sm font-bold text-slate-400">Children</h3>
-      {execution.children.length ? (
-        <ul className="">
-          {execution.children.map((child) => {
-            if (typeof child == "string") {
-              const step = run.steps[child];
-              return (
-                <li key={child}>
-                  <StepLink
-                    runId={runId}
-                    stepId={child}
-                    attempt={1}
-                    className="rounded text-sm ring-offset-1 px-1"
-                    hoveredClassName="ring-2 ring-slate-300"
-                  >
-                    <span className="font-mono">{step.target}</span>{" "}
-                    <span className="text-slate-500">({step.repository})</span>
-                  </StepLink>
-                </li>
-              );
-            } else {
-              return (
-                <li key={child.stepId}>
-                  <StepLink
-                    runId={child.runId}
-                    stepId={child.stepId}
-                    attempt={1}
-                    className="rounded text-sm ring-offset-1 px-1"
-                    hoveredClassName="ring-2 ring-slate-300"
-                  >
-                    <span className="font-mono">{child.target}</span>{" "}
-                    <span className="text-slate-500">({child.repository})</span>
-                  </StepLink>
-                </li>
-              );
-            }
-          })}
-        </ul>
-      ) : (
-        <p className="italic">None</p>
-      )}
-    </div>
+    <>
+      <div>
+        <h3 className="uppercase text-sm font-bold text-slate-400">Parent</h3>
+        {parent ? (
+          <StepLink
+            runId={runId}
+            stepId={parent[0]}
+            attempt={parent[1]}
+            className="rounded text-sm ring-offset-1 px-1"
+            hoveredClassName="ring-2 ring-slate-300"
+          >
+            <span className="font-mono">{step.target}</span>{" "}
+            <span className="text-slate-500">({step.repository})</span>
+          </StepLink>
+        ) : (
+          <p className="italic">None</p>
+        )}
+      </div>
+      <div>
+        <h3 className="uppercase text-sm font-bold text-slate-400">Children</h3>
+        {execution.children.length ? (
+          <ul className="">
+            {execution.children.map((child) => {
+              if (typeof child == "string") {
+                const step = run.steps[child];
+                return (
+                  <li key={child}>
+                    <StepLink
+                      runId={runId}
+                      stepId={child}
+                      attempt={1}
+                      className="rounded text-sm ring-offset-1 px-1"
+                      hoveredClassName="ring-2 ring-slate-300"
+                    >
+                      <span className="font-mono">{step.target}</span>{" "}
+                      <span className="text-slate-500">
+                        ({step.repository})
+                      </span>
+                    </StepLink>
+                  </li>
+                );
+              } else {
+                return (
+                  <li key={child.stepId}>
+                    <StepLink
+                      runId={child.runId}
+                      stepId={child.stepId}
+                      attempt={1}
+                      className="rounded text-sm ring-offset-1 px-1"
+                      hoveredClassName="ring-2 ring-slate-300"
+                    >
+                      <span className="font-mono">{child.target}</span>{" "}
+                      <span className="text-slate-500">
+                        ({child.repository})
+                      </span>
+                    </StepLink>
+                  </li>
+                );
+              }
+            })}
+          </ul>
+        ) : (
+          <p className="italic">None</p>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -842,6 +1133,18 @@ function LogsSection({
   );
 }
 
+function StepDetailTab({ className, ...props }: ComponentProps<typeof Tab>) {
+  return (
+    <Tab
+      className={classNames(
+        "flex-1 overflow-auto flex flex-col gap-4 p-4",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 type Props = {
   runId: string;
   stepId: string;
@@ -852,6 +1155,8 @@ type Props = {
   className?: string;
   style?: CSSProperties;
   onRerunStep: (stepId: string, environmentName: string) => Promise<any>;
+  activeTab: number;
+  maximised: boolean;
 };
 
 export default function StepDetail({
@@ -864,15 +1169,32 @@ export default function StepDetail({
   className,
   style,
   onRerunStep,
+  activeTab,
+  maximised,
 }: Props) {
   const step = run.steps[stepId];
-  const execution = step.executions[attempt];
+  const execution: models.Execution | undefined = step.executions[attempt];
   const runEnvironmentId = getRunEnvironmentId(run);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const environments = useEnvironments(projectId);
+  const activeEnvironmentName = environments?.[activeEnvironmentId].name;
+  const handleTabChange = useCallback(
+    (tab: number) => {
+      navigate(
+        buildUrl(location.pathname, {
+          environment: activeEnvironmentName,
+          step: stepId,
+          attempt,
+          tab,
+          maximised: maximised ? "true" : undefined,
+        }),
+      );
+    },
+    [navigate, location, activeEnvironmentName, stepId, attempt],
+  );
   return (
-    <div
-      className={classNames("overflow-hidden flex flex-col", className)}
-      style={style}
-    >
+    <div className={classNames("flex flex-col", className)} style={style}>
       <Header
         projectId={projectId}
         activeEnvironmentId={activeEnvironmentId}
@@ -881,43 +1203,66 @@ export default function StepDetail({
         stepId={stepId}
         step={step}
         attempt={attempt}
+        environments={environments}
         onRerunStep={onRerunStep}
+        activeTab={activeTab}
+        maximised={maximised}
       />
-      <div className="flex flex-col overflow-auto p-4 gap-5">
-        {step.arguments?.length > 0 && (
-          <ArgumentsSection arguments_={step.arguments} projectId={projectId} />
-        )}
-        {Object.keys(step.requires).length > 0 && (
-          <RequiresSection requires={step.requires} />
-        )}
-        {execution && <ExecutionSection execution={execution} />}
-        {execution?.assignedAt && (
-          <Fragment>
-            <DependenciesSection execution={execution} />
-            <ChildrenSection runId={runId} run={run} execution={execution} />
-          </Fragment>
-        )}
-        {execution?.result?.type == "value" ? (
-          <ResultSection result={execution.result} projectId={projectId} />
-        ) : execution?.result?.type == "error" ? (
-          <ErrorSection result={execution.result} />
-        ) : execution?.result?.type == "deferred" ? (
-          <DeferredSection execution={execution} />
-        ) : execution?.result?.type == "cached" ? (
-          <CachedSection result={execution.result} />
-        ) : undefined}
-        {execution?.assignedAt && (
-          <Fragment>
+      <Tabs
+        className={"flex-1 flex flex-col min-h-0"}
+        selectedIndex={activeTab}
+        onChange={handleTabChange}
+      >
+        <StepDetailTab label="Overview">
+          {step.arguments?.length > 0 && (
+            <ArgumentsSection
+              arguments_={step.arguments}
+              projectId={projectId}
+            />
+          )}
+          {Object.keys(step.requires).length > 0 && (
+            <RequiresSection requires={step.requires} />
+          )}
+          {execution?.result?.type == "value" ? (
+            <ResultSection result={execution.result} projectId={projectId} />
+          ) : execution?.result?.type == "error" ? (
+            <ErrorSection result={execution.result} />
+          ) : execution?.result?.type == "deferred" ? (
+            <DeferredSection execution={execution} />
+          ) : execution?.result?.type == "cached" ? (
+            <CachedSection result={execution.result} />
+          ) : undefined}
+          {execution && Object.keys(execution.assets).length > 0 && (
             <AssetsSection execution={execution} projectId={projectId} />
+          )}
+        </StepDetailTab>
+        <StepDetailTab label="Timing">
+          {execution && <ExecutionSection execution={execution} />}
+        </StepDetailTab>
+        <StepDetailTab label="Connections" disabled={!execution?.assignedAt}>
+          {execution?.assignedAt && (
+            <Fragment>
+              <RelationsSection
+                runId={runId}
+                run={run}
+                step={step}
+                execution={execution}
+              />
+              <DependenciesSection execution={execution} />
+            </Fragment>
+          )}
+        </StepDetailTab>
+        <StepDetailTab label="Logs" disabled={!execution?.assignedAt}>
+          {execution?.assignedAt && (
             <LogsSection
               projectId={projectId}
               runId={runId}
               execution={execution}
               activeEnvironmentId={activeEnvironmentId}
             />
-          </Fragment>
-        )}
-      </div>
+          )}
+        </StepDetailTab>
+      </Tabs>
     </div>
   );
 }

@@ -98,10 +98,10 @@ export default function RunDialog({
       title={
         <div className="flex justify-between items-start font-normal text-base">
           <div className="flex flex-col">
+            <span className="text-slate-400 text-sm">{repository} /</span>
             <span className="font-mono font-bold text-xl leading-tight">
               {target}
             </span>
-            <span className="text-slate-500 text-sm">({repository})</span>
           </div>
           <EnvironmentLabel
             projectId={projectId}

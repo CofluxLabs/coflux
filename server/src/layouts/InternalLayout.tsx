@@ -50,14 +50,12 @@ export default function InternalLayout() {
   const activeEnvironmentName = searchParams.get("environment") || undefined;
   return (
     <SocketProvider url={`ws://${window.location.host}/topics`}>
-      <div className="flex flex-col min-h-screen max-h-screen">
+      <div className="flex flex-col min-h-screen max-h-screen overflow-hidden">
         <Header
           projectId={projectId!}
           activeEnvironmentName={activeEnvironmentName}
         />
-        <div className="flex-1 overflow-hidden bg-white flex flex-col">
-          <Outlet />
-        </div>
+        <Outlet />
       </div>
     </SocketProvider>
   );

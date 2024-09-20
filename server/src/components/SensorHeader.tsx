@@ -64,7 +64,7 @@ export default function SensorHeader({
   const run = useRun(projectId, runId, activeEnvironmentId);
   const handleRunSubmit = useCallback(
     (arguments_: ["json", string][]) => {
-      const configuration = sensor!.configuration;
+      const configuration = sensor!.configuration!;
       return api
         .scheduleSensor(
           projectId,
@@ -107,16 +107,15 @@ export default function SensorHeader({
   return (
     <div className="p-4 flex justify-between gap-2 items-start">
       <div className="flex flex-col gap-2">
-        <div className="flex items-start gap-1">
+        <div className="flex items-baseline gap-1">
+          <span className="text-slate-400">{repository}</span>
+          <span className="text-slate-400">/</span>
           <IconCpu
-            size={24}
+            size={26}
             strokeWidth={1.5}
-            className="text-slate-400 shrink-0 mt-px"
+            className="text-slate-500 shrink-0 self-start"
           />
-          <div className="flex items-center flex-wrap gap-x-2">
-            <h1 className="text-lg font-bold font-mono">{target}</h1>
-            <span className="text-slate-500">({repository})</span>
-          </div>
+          <h1 className="text-lg font-bold font-mono">{target}</h1>
         </div>
 
         {runId && (

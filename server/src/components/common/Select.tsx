@@ -1,5 +1,11 @@
 import { Fragment, ReactNode } from "react";
-import { Listbox, Transition } from "@headlessui/react";
+import {
+  Listbox,
+  ListboxButton,
+  ListboxOption,
+  ListboxOptions,
+  Transition,
+} from "@headlessui/react";
 import { IconSelector } from "@tabler/icons-react";
 import classNames from "classnames";
 
@@ -27,6 +33,7 @@ type Props<T extends string> = {
   variant?: Variant;
   size?: Size;
   empty?: string;
+  className?: string;
   onChange: (value: T | null) => void;
 };
 
@@ -36,6 +43,7 @@ export default function Select<T extends string>({
   variant,
   size = "md",
   empty,
+  className,
   onChange,
 }: Props<T>) {
   const { id: fieldId, hasError } = useField();
@@ -46,8 +54,8 @@ export default function Select<T extends string>({
   ];
   return (
     <Listbox value={value} onChange={onChange}>
-      <div className="relative">
-        <Listbox.Button
+      <div className={classNames("relative", className)}>
+        <ListboxButton
           id={fieldId}
           className={classNames(
             "w-full flex items-center bg-slate-50 rounded-md shadow-sm border focus:outline-none focus:ring",
@@ -63,7 +71,7 @@ export default function Select<T extends string>({
           <span className="pointer-events-none -mr-1">
             <IconSelector className="size-5 text-gray-400" aria-hidden="true" />
           </span>
-        </Listbox.Button>
+        </ListboxButton>
         <Transition
           as={Fragment}
           enter="transition ease-in duration-100"
@@ -73,15 +81,14 @@ export default function Select<T extends string>({
           leaveFrom="opacity-100 scale-100"
           leaveTo="opacity-0 scale-95"
         >
-          <Listbox.Options className="absolute mt-1 p-1 overflow-auto bg-white rounded-md shadow-lg max-h-60 w-full focus:outline-none border">
+          <ListboxOptions className="absolute mt-1 p-1 overflow-auto bg-white rounded-md shadow-lg max-h-60 w-full focus:outline-none border">
             {keys.map((key) => (
-              <Listbox.Option key={key} value={key}>
-                {({ selected, active }) => (
+              <ListboxOption key={key} value={key}>
+                {({ selected }) => (
                   <div
                     className={classNames(
-                      "px-2 py-1 cursor-default rounded text-sm",
+                      "px-2 py-1 cursor-default rounded text-sm data-[active]:bg-slate-100",
                       selected && "font-bold",
-                      active && "bg-slate-100",
                     )}
                   >
                     {key === null
@@ -91,9 +98,9 @@ export default function Select<T extends string>({
                         : options[key]}
                   </div>
                 )}
-              </Listbox.Option>
+              </ListboxOption>
             ))}
-          </Listbox.Options>
+          </ListboxOptions>
         </Transition>
       </div>
     </Listbox>

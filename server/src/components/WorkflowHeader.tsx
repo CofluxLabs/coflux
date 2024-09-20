@@ -70,7 +70,7 @@ export default function WorkflowHeader({
   const run = useRun(projectId, runId, activeEnvironmentId);
   const handleRunSubmit = useCallback(
     (arguments_: ["json", string][]) => {
-      const configuration = workflow!.configuration;
+      const configuration = workflow!.configuration!;
       const executeAfter = configuration.delay
         ? new Date().getTime() + configuration.delay * 1000
         : null;
@@ -117,16 +117,15 @@ export default function WorkflowHeader({
   return (
     <div className="p-4 flex justify-between gap-2 items-start">
       <div className="flex flex-col gap-2">
-        <div className="flex items-start gap-1">
+        <div className="flex items-baseline gap-1">
+          <span className="text-slate-400">{repository}</span>
+          <span className="text-slate-400">/</span>
           <IconSubtask
-            size={24}
+            size={26}
             strokeWidth={1.5}
-            className="text-slate-400 shrink-0 mt-px"
+            className="text-slate-500 shrink-0 self-start"
           />
-          <div className="flex items-center flex-wrap gap-x-2">
-            <h1 className="text-lg font-bold font-mono">{target}</h1>
-            <span className="text-slate-500">({repository})</span>
-          </div>
+          <h1 className="text-lg font-bold font-mono">{target}</h1>
         </div>
 
         {runId && (

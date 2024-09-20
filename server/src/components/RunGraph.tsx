@@ -91,41 +91,43 @@ function StepNode({
       >
         <span className="flex-1 flex items-center overflow-hidden">
           <span className="flex-1 flex flex-col gap-0.5 overflow-hidden">
-            <span className="truncate text-sm">
+            <span
+              className={classNames(
+                "truncate text-xs",
+                isDeferred ? "text-slate-300" : "text-slate-400",
+              )}
+            >
+              {step.repository} /
+            </span>
+            <span className="flex gap-1 items-center">
               <span
                 className={classNames(
-                  "font-mono",
+                  "flex-1 truncate text-sm font-mono",
                   !step.parentId && "font-bold",
                   isDeferred && "text-slate-500",
                 )}
               >
                 {step.target}
-              </span>{" "}
-              <span
-                className={classNames(
-                  "text-xs",
-                  isDeferred ? "text-slate-400" : "text-slate-500",
-                )}
-              >
-                ({step.repository})
               </span>
-            </span>
-            <span className="flex">
+              {step.isMemoised && (
+                <span
+                  className="text-slate-500"
+                  title="This execution has been memoised"
+                >
+                  <IconPinned size={12} />
+                </span>
+              )}
               {execution && execution.environmentId != runEnvironmentId && (
                 <EnvironmentLabel
                   projectId={projectId}
                   environmentId={execution.environmentId}
                   size="sm"
                   warning="This execution ran in a different environment"
+                  compact
                 />
               )}
             </span>
           </span>
-          {step.isMemoised && (
-            <span className="text-slate-500" title="Memoised">
-              <IconPinned size={12} />
-            </span>
-          )}
         </span>
         {execution && !execution.result && !execution.assignedAt && (
           <span>
@@ -184,9 +186,11 @@ function ChildNode({ runId, child }: ChildNodeProps) {
       hoveredClassName="ring ring-slate-400"
     >
       <div className="flex-1 flex flex-col overflow-hidden">
-        <span className="truncate text-slate-700 text-sm">
-          <span className="font-mono">{child.target}</span>{" "}
-          <span className="text-slate-500 text-xs">({child.repository})</span>
+        <span className="text-slate-400 truncate text-xs">
+          {child.repository} /
+        </span>
+        <span className="truncate text-slate-700 text-sm font-mono">
+          {child.target}
         </span>
       </div>
       <IconArrowUpRight size={20} className="text-slate-400" />

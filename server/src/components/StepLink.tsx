@@ -32,7 +32,6 @@ export default function StepLink({
   const location = useLocation();
   const { project: projectId } = useParams();
   const [searchParams] = useSearchParams();
-  const environmentName = searchParams.get("environment") || undefined;
   const activeStepId = searchParams.get("step") || undefined;
   const activeAttempt = searchParams.has("attempt")
     ? parseInt(searchParams.get("attempt")!)
@@ -53,7 +52,7 @@ export default function StepLink({
       to={buildUrl(
         `/projects/${projectId}/runs/${runId}${page ? "/" + page : ""}`,
         {
-          environment: environmentName,
+          ...Object.fromEntries(searchParams),
           step: isActive ? undefined : stepId,
           attempt: isActive ? undefined : attempt,
         },

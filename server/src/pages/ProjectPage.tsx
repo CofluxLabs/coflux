@@ -11,7 +11,11 @@ import {
   useProjects,
   useRepositories,
 } from "../topics";
-import { Disclosure } from "@headlessui/react";
+import {
+  Disclosure,
+  DisclosureButton,
+  DisclosurePanel,
+} from "@headlessui/react";
 import { IconChevronDown, IconInfoCircle } from "@tabler/icons-react";
 
 function generatePackageName(projectName: string | undefined) {
@@ -41,14 +45,14 @@ function Step({ title, children }: StepProps) {
     <Disclosure as="li" className="my-4" defaultOpen={true}>
       {({ open }) => (
         <div className="flex flex-col">
-          <Disclosure.Button className="text-left flex items-center gap-1">
+          <DisclosureButton className="text-left flex items-center gap-1">
             {title}
             <IconChevronDown
               size={16}
               className={classNames("text-slate-400", open && "rotate-180")}
             />
-          </Disclosure.Button>
-          <Disclosure.Panel>{children}</Disclosure.Panel>
+          </DisclosureButton>
+          <DisclosurePanel>{children}</DisclosurePanel>
         </div>
       )}
     </Disclosure>
