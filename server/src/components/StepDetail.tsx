@@ -468,22 +468,24 @@ function Header({
                 </span>
                 <span className="text-slate-400">/</span>
               </div>
-              <h2
-                className={classNames(
-                  "font-mono",
-                  !step.parentId && "font-bold",
-                )}
-              >
-                {step.target}
-              </h2>
-              {step.isMemoised && (
-                <span
-                  className="text-slate-500 self-center"
-                  title="This execution has been memoised"
+              <span className="flex items-baseline gap-1">
+                <h2
+                  className={classNames(
+                    "font-mono",
+                    !step.parentId && "font-bold",
+                  )}
                 >
-                  <IconPinned size={16} />
-                </span>
-              )}
+                  {step.target}
+                </h2>
+                {step.isMemoised && (
+                  <span
+                    className="text-slate-500 self-center"
+                    title="This execution has been memoised"
+                  >
+                    <IconPinned size={16} />
+                  </span>
+                )}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-1">
