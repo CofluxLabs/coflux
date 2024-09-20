@@ -20,7 +20,7 @@ defmodule Coflux.Topics.Workflow do
       {:ok, workflow, runs, ref} ->
         value =
           %{
-            parameters: build_parameters(workflow.parameters),
+            parameters: if(workflow, do: build_parameters(workflow.parameters)),
             configuration: build_configuration(workflow),
             runs: build_runs(runs)
           }
@@ -85,14 +85,16 @@ defmodule Coflux.Topics.Workflow do
   end
 
   defp build_configuration(workflow) do
-    %{
-      waitFor: workflow.wait_for,
-      cache: build_cache_configuration(workflow.cache),
-      defer: build_defer_configuration(workflow.defer),
-      delay: workflow.delay,
-      retries: build_retries_configuration(workflow.retries),
-      requires: workflow.requires
-    }
+    if workflow do
+      %{
+        waitFor: workflow.wait_for,
+        cache: build_cache_configuration(workflow.cache),
+        defer: build_defer_configuration(workflow.defer),
+        delay: workflow.delay,
+        retries: build_retries_configuration(workflow.retries),
+        requires: workflow.requires
+      }
+    end
   end
 
   defp build_runs(runs) do

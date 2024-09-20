@@ -34,7 +34,7 @@ export type Workflow = {
       delayMax?: number;
     };
     requires: Record<string, string[]>;
-  };
+  } | null;
   runs: Record<string, Pick<Run, "createdAt">>;
 };
 
@@ -42,7 +42,7 @@ export type Sensor = {
   parameters: Parameter[] | null;
   configuration: {
     requires: Record<string, string[]>;
-  };
+  } | null;
   runs: Record<string, Pick<Run, "createdAt">>;
 };
 

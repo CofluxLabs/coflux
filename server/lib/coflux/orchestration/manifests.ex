@@ -160,7 +160,7 @@ defmodule Coflux.Orchestration.Manifests do
            {environment_id, repository, target_name}
          ) do
       {:ok, nil} ->
-        {:error, :not_found}
+        {:ok, nil}
 
       {:ok,
        {parameter_set_id, wait_for, cache_params, cache_max_age, cache_namespace, cache_version,
@@ -198,7 +198,7 @@ defmodule Coflux.Orchestration.Manifests do
            {environment_id, repository, target_name}
          ) do
       {:ok, nil} ->
-        {:error, :not_found}
+        {:ok, nil}
 
       {:ok, {parameter_set_id, requires_tag_set_id}} ->
         build_sensor(db, parameter_set_id, requires_tag_set_id)

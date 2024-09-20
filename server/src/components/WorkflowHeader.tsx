@@ -70,7 +70,7 @@ export default function WorkflowHeader({
   const run = useRun(projectId, runId, activeEnvironmentId);
   const handleRunSubmit = useCallback(
     (arguments_: ["json", string][]) => {
-      const configuration = workflow!.configuration;
+      const configuration = workflow!.configuration!;
       const executeAfter = configuration.delay
         ? new Date().getTime() + configuration.delay * 1000
         : null;

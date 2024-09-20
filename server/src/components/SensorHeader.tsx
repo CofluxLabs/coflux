@@ -64,7 +64,7 @@ export default function SensorHeader({
   const run = useRun(projectId, runId, activeEnvironmentId);
   const handleRunSubmit = useCallback(
     (arguments_: ["json", string][]) => {
-      const configuration = sensor!.configuration;
+      const configuration = sensor!.configuration!;
       return api
         .scheduleSensor(
           projectId,

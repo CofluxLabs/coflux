@@ -19,7 +19,7 @@ defmodule Coflux.Topics.Sensor do
          ) do
       {:ok, sensor, runs, ref} ->
         value = %{
-          parameters: build_parameters(sensor.parameters),
+          parameters: if(sensor, do: build_parameters(sensor.parameters)),
           configuration: build_configuration(sensor),
           runs: build_runs(runs)
         }
@@ -57,9 +57,11 @@ defmodule Coflux.Topics.Sensor do
   end
 
   defp build_configuration(sensor) do
-    %{
-      requires: sensor.requires
-    }
+    if sensor do
+      %{
+        requires: sensor.requires
+      }
+    end
   end
 
   defp build_runs(runs) do
