@@ -834,10 +834,9 @@ function RelationsSection({
   const parent = findExecution(run, step.parentId);
   return (
     <>
-      {parent && (
-        <div>
-          <h3 className="uppercase text-sm font-bold text-slate-400">Parent</h3>
-
+      <div>
+        <h3 className="uppercase text-sm font-bold text-slate-400">Parent</h3>
+        {parent ? (
           <StepLink
             runId={runId}
             stepId={parent[0]}
@@ -848,8 +847,10 @@ function RelationsSection({
             <span className="font-mono">{step.target}</span>{" "}
             <span className="text-slate-500">({step.repository})</span>
           </StepLink>
-        </div>
-      )}
+        ) : (
+          <p className="italic">None</p>
+        )}
+      </div>
       <div>
         <h3 className="uppercase text-sm font-bold text-slate-400">Children</h3>
         {execution.children.length ? (
