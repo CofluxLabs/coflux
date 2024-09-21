@@ -13,7 +13,7 @@ defmodule Coflux.Orchestration.Server do
               db: nil,
               execute_timer: nil,
 
-              # id -> %{name, base_id, status, version, pools}
+              # id -> %{name, base_id, status, pools}
               environments: %{},
 
               # name -> id
@@ -186,7 +186,7 @@ defmodule Coflux.Orchestration.Server do
           |> notify_listeners(:environments, {:environment, environment_id, environment})
           |> flush_notifications()
 
-        {:reply, {:ok, environment.version}, state}
+        {:reply, :ok, state}
 
       {:error, error} ->
         {:reply, {:error, error}, state}

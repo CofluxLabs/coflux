@@ -83,8 +83,8 @@ defmodule Coflux.Handlers.Api do
              arguments[:base_id],
              arguments[:pools]
            ) do
-        {:ok, version} ->
-          json_response(req, %{version: version})
+        {:ok, environment_id} ->
+          json_response(req, %{id: environment_id})
 
         {:error, errors} ->
           errors =
@@ -153,8 +153,8 @@ defmodule Coflux.Handlers.Api do
              arguments.project_id,
              arguments.environment_id
            ) do
-        {:ok, version} ->
-          json_response(req, %{version: version})
+        :ok ->
+          :cowboy_req.reply(204, req)
 
         {:error, :descendants} ->
           json_error_response(req, "bad_request",
