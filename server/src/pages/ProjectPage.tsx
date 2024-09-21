@@ -76,7 +76,8 @@ function GettingStarted({ projectId, environmentId }: GettingStartedProps) {
   const agentConnected = agents && Object.keys(agents).length > 0;
   const anyEnvironments =
     environments &&
-    Object.values(environments).filter((e) => e.status != 1).length > 0;
+    Object.values(environments).filter((e) => e.status != "archived").length >
+      0;
   if (anyEnvironments) {
     return (
       <div className="overflow-auto">
@@ -173,7 +174,7 @@ export default function ProjectPage() {
   const environments = useEnvironments(projectId);
   const environmentId = findKey(
     environments,
-    (e) => e.name == environmentName && e.status != 1,
+    (e) => e.name == environmentName && e.status != "archived",
   );
   const repositories = useRepositories(projectId, environmentId);
   if (

@@ -5,7 +5,7 @@ export type Project = {
 export type Environment = {
   name: string;
   baseId: string | null;
-  status: 0 | 1;
+  status: "active" | "paused" | "archived";
 };
 
 export type Parameter = {

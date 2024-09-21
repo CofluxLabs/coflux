@@ -16,7 +16,7 @@ export default function SensorPage() {
   const environments = useEnvironments(projectId);
   const activeEnvironmentId = findKey(
     environments,
-    (e) => e.name == activeEnvironmentName && e.status != 1,
+    (e) => e.name == activeEnvironmentName && e.status != "archived",
   );
   const sensor = useSensor(
     projectId,

@@ -7,27 +7,36 @@ defmodule Coflux.Orchestration.Environments do
     case query(
            db,
            """
-           SELECT ev.environment_id, ev.name, ev.base_id, ev.status, ev.version
-           FROM environment_versions AS ev
-           JOIN (
-             SELECT environment_id, MAX(version) AS max_version
-             FROM environment_versions
-             GROUP BY environment_id
-           ) AS latest
-           ON ev.environment_id = latest.environment_id AND ev.version = latest.max_version
+           SELECT
+             e.id,
+             (SELECT es.status
+               FROM environment_statuses AS es
+               WHERE es.environment_id = e.id
+               ORDER BY es.created_at DESC
+               LIMIT 1) AS status,
+             (SELECT en.name
+               FROM environment_names AS en
+               WHERE en.environment_id = e.id
+               ORDER BY en.created_at DESC
+               LIMIT 1) AS name,
+             (SELECT eb.base_id
+               FROM environment_bases AS eb
+               WHERE eb.environment_id = e.id
+               ORDER BY eb.created_at DESC
+               LIMIT 1) AS base_id
+           FROM environments AS e
            """
          ) do
       {:ok, rows} ->
         environments =
-          Enum.reduce(rows, %{}, fn {environment_id, name, base_id, status, version}, result ->
-            {:ok, pools} = get_environment_pools(db, environment_id, version)
+          Enum.reduce(rows, %{}, fn {environment_id, status, name, base_id}, result ->
+            {:ok, pools} = get_environment_pools(db, environment_id)
 
             Map.put(result, environment_id, %{
               name: name,
               base_id: base_id,
               pools: pools,
-              status: status,
-              version: version
+              status: decode_status(status)
             })
           end)
 
@@ -35,54 +44,57 @@ defmodule Coflux.Orchestration.Environments do
     end
   end
 
-  defp get_active_environment_by_name(db, environment_name) do
-    case query_one(
+  defp environment_name_used?(db, environment_name) do
+    # TODO: neater way to do this?
+    case query(
            db,
            """
-           SELECT ev.environment_id, ev.name, ev.base_id, ev.status, ev.version
-           FROM environment_versions AS ev
-           JOIN (
-             SELECT environment_id, MAX(version) AS max_version
-             FROM environment_versions
-             GROUP BY environment_id
-           ) AS latest
-           ON ev.environment_id = latest.environment_id AND ev.version = latest.max_version
-           WHERE ev.name = ?1 AND ev.status = 0
-           """,
-           {environment_name}
+           SELECT
+             (SELECT es.status
+               FROM environment_statuses AS es
+               WHERE es.environment_id = e.id
+               ORDER BY es.created_at DESC
+               LIMIT 1) AS status,
+             (SELECT en.name
+               FROM environment_names AS en
+               WHERE en.environment_id = e.id
+               ORDER BY en.created_at DESC
+               LIMIT 1) AS name
+           FROM environments AS e
+           """
          ) do
-      {:ok, nil} ->
-        {:ok, nil}
-
-      {:ok, {environment_id, name, base_id, status, version}} ->
-        {:ok, environment_id,
-         %{
-           name: name,
-           base_id: base_id,
-           status: status,
-           version: version
-         }}
+      {:ok, rows} ->
+        {:ok,
+         Enum.any?(rows, fn {status, name} ->
+           name == environment_name && decode_status(status) != :archived
+         end)}
     end
   end
 
   defp has_active_child_environments?(db, environment_id) do
+    # TODO: neater way to do this?
     case query(
            db,
            """
-           SELECT 1
-           FROM environment_versions AS ev
-           JOIN (
-            SELECT environment_id, MAX(version) AS max_version
-            FROM environment_versions
-            GROUP BY environment_id
-           ) AS latest
-           ON ev.environment_id = latest.environment_id AND ev.version = latest.max_version
-           WHERE ev.base_id = ?1 AND ev.status = 0
-           """,
-           {environment_id}
+           SELECT
+             (SELECT es.status
+               FROM environment_statuses AS es
+               WHERE es.environment_id = e.id
+               ORDER BY es.created_at DESC
+               LIMIT 1) AS status,
+             (SELECT eb.base_id
+               FROM environment_bases AS eb
+               WHERE eb.environment_id = e.id
+               ORDER BY eb.created_at DESC
+               LIMIT 1) AS base_id
+           FROM environments AS e
+           """
          ) do
-      {:ok, []} -> {:ok, false}
-      {:ok, _} -> {:ok, true}
+      {:ok, rows} ->
+        {:ok,
+         Enum.any?(rows, fn {status, base_id} ->
+           base_id == environment_id && decode_status(status) != :archived
+         end)}
     end
   end
 
@@ -91,16 +103,29 @@ defmodule Coflux.Orchestration.Environments do
     case query_one(
            db,
            """
-           SELECT name, base_id, version, status
-           FROM environment_versions
-           WHERE environment_id = ?1
-           ORDER BY version DESC
-           LIMIT 1
+           SELECT
+             (SELECT es.status
+               FROM environment_statuses AS es
+               WHERE es.environment_id = e.id
+               ORDER BY es.created_at DESC
+               LIMIT 1) AS status,
+             (SELECT en.name
+               FROM environment_names AS en
+               WHERE en.environment_id = e.id
+               ORDER BY en.created_at DESC
+               LIMIT 1) AS name,
+             (SELECT eb.base_id
+               FROM environment_bases AS eb
+               WHERE eb.environment_id = e.id
+               ORDER BY eb.created_at DESC
+               LIMIT 1) AS base_id
+           FROM environments AS e
+           WHERE e.id = ?1
            """,
            {environment_id}
          ) do
-      {:ok, {name, base_id, version, status}} ->
-        {:ok, %{name: name, base_id: base_id, status: status, version: version}}
+      {:ok, {status, name, base_id}} ->
+        {:ok, %{status: decode_status(status), name: name, base_id: base_id}}
 
       {:ok, nil} ->
         {:ok, nil}
@@ -110,11 +135,10 @@ defmodule Coflux.Orchestration.Environments do
   def create_environment(db, name, base_id, pools) do
     with_transaction(db, fn ->
       environment = %{
+        status: :active,
         name: name,
         base_id: base_id,
-        pools: pools || %{},
-        status: 0,
-        version: 1
+        pools: pools || %{}
       }
 
       {environment, errors} =
@@ -128,13 +152,14 @@ defmodule Coflux.Orchestration.Environments do
       if Enum.any?(errors) do
         {:error, errors}
       else
-        case insert_one(db, :environments, %{}) do
-          {:ok, environment_id} ->
-            case insert_environment_version(db, environment_id, environment) do
-              {:ok, environment} ->
-                {:ok, environment_id, environment}
-            end
-        end
+        now = current_timestamp()
+        {:ok, environment_id} = insert_one(db, :environments, %{})
+        {:ok, _} = insert_environment_status(db, environment_id, environment.status, now)
+        {:ok, _} = insert_environment_name(db, environment_id, environment.name, now)
+        {:ok, _} = insert_environment_base(db, environment_id, environment.base_id, now)
+        {:ok, pools} = insert_environment_pools(db, environment_id, environment.pools, now)
+        environment = Map.put(environment, :pools, pools)
+        {:ok, environment_id, environment}
       end
     end)
   end
@@ -145,11 +170,11 @@ defmodule Coflux.Orchestration.Environments do
         {:ok, nil} ->
           {:error, :not_found}
 
-        {:ok, %{status: 1}} ->
+        {:ok, %{status: :archived}} ->
           {:error, :not_found}
 
         {:ok, environment} ->
-          {:ok, existing_pools} = get_environment_pools(db, environment_id, environment.version)
+          {:ok, existing_pools} = get_environment_pools(db, environment_id)
           environment = Map.put(environment, :pools, existing_pools)
 
           changes = extract_changes(environment, updates, [:name, :base_id, :pools])
@@ -165,20 +190,61 @@ defmodule Coflux.Orchestration.Environments do
           if Enum.any?(errors) do
             {:error, errors}
           else
-            if Enum.any?(changes) do
-              environment =
-                environment
-                |> Map.merge(changes)
-                |> Map.update!(:version, &(&1 + 1))
+            now = current_timestamp()
 
-              case insert_environment_version(db, environment_id, environment) do
-                {:ok, environment} ->
-                  {:ok, environment}
-              end
-            else
-              {:ok, environment}
+            if Map.has_key?(changes, :name) do
+              {:ok, _} = insert_environment_name(db, environment_id, changes.name, now)
             end
+
+            if Map.has_key?(changes, :base_id) do
+              {:ok, _} = insert_environment_base(db, environment_id, changes.base_id, now)
+            end
+
+            if Map.has_key?(changes, :pools) do
+              {:ok, _} = insert_environment_pools(db, environment_id, changes.pools, now)
+            end
+
+            environment = Map.merge(environment, changes)
+            {:ok, environment}
           end
+      end
+    end)
+  end
+
+  def pause_environment(db, environment_id) do
+    with_transaction(db, fn ->
+      case get_environment_by_id(db, environment_id) do
+        {:ok, nil} ->
+          {:error, :not_found}
+
+        {:ok, %{status: :archived}} ->
+          {:error, :not_found}
+
+        {:ok, %{status: :active}} ->
+          {:ok, _} = insert_environment_status(db, environment_id, :paused, current_timestamp())
+          :ok
+
+        {:ok, %{status: :paused}} ->
+          :ok
+      end
+    end)
+  end
+
+  def resume_environment(db, environment_id) do
+    with_transaction(db, fn ->
+      case get_environment_by_id(db, environment_id) do
+        {:ok, nil} ->
+          {:error, :not_found}
+
+        {:ok, %{status: :archived}} ->
+          {:error, :not_found}
+
+        {:ok, %{status: :paused}} ->
+          {:ok, _} = insert_environment_status(db, environment_id, :active, current_timestamp())
+          :ok
+
+        {:ok, %{status: :active}} ->
+          :ok
       end
     end)
   end
@@ -189,27 +255,19 @@ defmodule Coflux.Orchestration.Environments do
         {:ok, nil} ->
           {:error, :not_found}
 
-        {:ok, %{status: 1}} ->
+        {:ok, %{status: :archived}} ->
           {:error, :not_found}
 
-        {:ok, environment} ->
+        {:ok, _} ->
           case has_active_child_environments?(db, environment_id) do
             {:ok, true} ->
               {:error, :descendants}
 
             {:ok, false} ->
-              {:ok, pools} = get_environment_pools(db, environment_id, environment.version)
+              {:ok, _} =
+                insert_environment_status(db, environment_id, :archived, current_timestamp())
 
-              environment =
-                environment
-                |> Map.update!(:version, &(&1 + 1))
-                |> Map.put(:pools, pools)
-                |> Map.put(:status, 1)
-
-              case insert_environment_version(db, environment_id, environment) do
-                {:ok, environment} ->
-                  {:ok, environment}
-              end
+              :ok
           end
       end
     end)
@@ -237,9 +295,9 @@ defmodule Coflux.Orchestration.Environments do
 
   defp validate_name(name, db) do
     if is_valid_name?(name) do
-      case get_active_environment_by_name(db, name) do
-        {:ok, nil} -> :ok
-        {:ok, _} -> {:error, :exists}
+      case environment_name_used?(db, name) do
+        {:ok, false} -> :ok
+        {:ok, true} -> {:error, :exists}
       end
     else
       {:error, :invalid}
@@ -262,7 +320,7 @@ defmodule Coflux.Orchestration.Environments do
     else
       case get_environment_by_id(db, base_id) do
         {:ok, base} ->
-          if !base || base.status == 1 do
+          if !base || base.status == :archived do
             {:error, :invalid}
           else
             if environment_id do
@@ -385,15 +443,21 @@ defmodule Coflux.Orchestration.Environments do
     end
   end
 
-  defp get_environment_pools(db, environment_id, version) do
+  defp get_environment_pools(db, environment_id) do
     case query(
            db,
            """
-           SELECT id, name, pool_definition_id
-           FROM pools
-           WHERE environment_id = ?1 AND version = ?2
+           SELECT p.id, p.name, p.pool_definition_id
+           FROM pools AS p
+           JOIN (
+               SELECT name, MAX(created_at) AS created_at
+               FROM pools
+               WHERE environment_id = ?1
+               GROUP BY name
+           ) latest ON p.name = latest.name AND p.created_at = latest.created_at
+           WHERE p.environment_id = ?1
            """,
-           {environment_id, version}
+           {environment_id}
          ) do
       {:ok, rows} ->
         {:ok,
@@ -459,35 +523,63 @@ defmodule Coflux.Orchestration.Environments do
     end
   end
 
-  defp insert_environment_version(db, environment_id, environment) do
-    now = current_timestamp()
+  defp insert_environment_status(db, environment_id, status, created_at) do
+    insert_one(db, :environment_statuses, %{
+      environment_id: environment_id,
+      status: encode_status(status),
+      created_at: created_at
+    })
+  end
 
-    {:ok, _} =
-      insert_one(db, :environment_versions, %{
-        environment_id: environment_id,
-        version: environment.version,
-        name: environment.name,
-        base_id: environment.base_id,
-        status: environment.status,
-        created_at: now
-      })
+  defp insert_environment_name(db, environment_id, name, created_at) do
+    insert_one(db, :environment_names, %{
+      environment_id: environment_id,
+      name: name,
+      created_at: created_at
+    })
+  end
 
+  defp insert_environment_base(db, environment_id, base_id, created_at) do
+    insert_one(db, :environment_bases, %{
+      environment_id: environment_id,
+      base_id: base_id,
+      created_at: created_at
+    })
+  end
+
+  defp insert_environment_pools(db, environment_id, pools, created_at) do
     pools =
-      Map.new(environment.pools, fn {pool_name, pool} ->
+      Map.new(pools, fn {pool_name, pool} ->
         {:ok, pool_definition_id} = get_or_create_pool_definition(db, pool)
 
         {:ok, pool_id} =
           insert_one(db, :pools, %{
             environment_id: environment_id,
-            version: environment.version,
             name: pool_name,
-            pool_definition_id: pool_definition_id
+            pool_definition_id: pool_definition_id,
+            created_at: created_at
           })
 
         {pool_name, Map.put(pool, :id, pool_id)}
       end)
 
-    {:ok, Map.put(environment, :pools, pools)}
+    {:ok, pools}
+  end
+
+  defp encode_status(status) do
+    case status do
+      :active -> 0
+      :paused -> 1
+      :archived -> 2
+    end
+  end
+
+  defp decode_status(value) do
+    case value do
+      0 -> :active
+      1 -> :paused
+      2 -> :archived
+    end
   end
 
   defp current_timestamp() do

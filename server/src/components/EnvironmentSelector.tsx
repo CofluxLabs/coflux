@@ -26,7 +26,7 @@ function traverseEnvironments(
   depth: number = 0,
 ): [string, models.Environment, number][] {
   return Object.entries(environments)
-    .filter(([_, e]) => e.baseId == parentId && e.status != 1)
+    .filter(([_, e]) => e.baseId == parentId && e.status != "archived")
     .flatMap(([environmentId, environment]) => [
       [environmentId, environment, depth],
       ...traverseEnvironments(environments, environmentId, depth + 1),
@@ -56,7 +56,8 @@ export default function EnvironmentSelector({
     setAddEnvironmentDialogOpen(false);
   }, []);
   const noEnvironments =
-    Object.values(environments).filter((e) => e.status != 1).length == 0;
+    Object.values(environments).filter((e) => e.status != "archived").length ==
+    0;
   return (
     <Fragment>
       <Menu as="div" className="relative">

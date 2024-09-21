@@ -17,6 +17,8 @@ async function request(name: string, data: Record<string, any>) {
   });
   if (res.status == 200) {
     return await res.json();
+  } else if (res.status == 204) {
+    return;
   } else if (res.status == 400) {
     const data = await res.json();
     throw new RequestError(data.error, data.details);
@@ -35,6 +37,14 @@ export function createEnvironment(
   baseId: string | null,
 ) {
   return request("create_environment", { projectId, name, baseId });
+}
+
+export function pauseEnvironment(projectId: string, environmentId: string) {
+  return request("pause_environment", { projectId, environmentId });
+}
+
+export function resumeEnvironment(projectId: string, environmentId: string) {
+  return request("resume_environment", { projectId, environmentId });
 }
 
 export function scheduleWorkflow(

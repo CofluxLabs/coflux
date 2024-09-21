@@ -83,8 +83,8 @@ defmodule Coflux.Handlers.Api do
              arguments[:base_id],
              arguments[:pools]
            ) do
-        {:ok, version} ->
-          json_response(req, %{version: version})
+        {:ok, environment_id} ->
+          json_response(req, %{id: environment_id})
 
         {:error, errors} ->
           errors =
@@ -141,6 +141,52 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
+  defp handle(req, "POST", ["pause_environment"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(req, %{
+        project_id: "projectId",
+        environment_id: {"environmentId", &parse_environment_id/1}
+      })
+
+    if Enum.empty?(errors) do
+      case Orchestration.pause_environment(
+             arguments.project_id,
+             arguments.environment_id
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
+
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", code: 404)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["resume_environment"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(req, %{
+        project_id: "projectId",
+        environment_id: {"environmentId", &parse_environment_id/1}
+      })
+
+    if Enum.empty?(errors) do
+      case Orchestration.resume_environment(
+             arguments.project_id,
+             arguments.environment_id
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
+
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", code: 404)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
   defp handle(req, "POST", ["archive_environment"]) do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
@@ -153,8 +199,8 @@ defmodule Coflux.Handlers.Api do
              arguments.project_id,
              arguments.environment_id
            ) do
-        {:ok, version} ->
-          json_response(req, %{version: version})
+        :ok ->
+          :cowboy_req.reply(204, req)
 
         {:error, :descendants} ->
           json_error_response(req, "bad_request",

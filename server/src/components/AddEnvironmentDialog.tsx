@@ -70,7 +70,7 @@ export default function AddEnvironmentDialog({
     [navigate, name, baseId],
   );
   const environmentNames = Object.entries(environments)
-    .filter(([_, e]) => e.status != 1)
+    .filter(([_, e]) => e.status != "archived")
     .reduce((acc, [id, e]) => ({ ...acc, [id]: e.name }), {});
   return (
     <Dialog

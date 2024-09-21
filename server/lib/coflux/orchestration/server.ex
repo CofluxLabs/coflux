@@ -13,7 +13,7 @@ defmodule Coflux.Orchestration.Server do
               db: nil,
               execute_timer: nil,
 
-              # id -> %{name, base_id, status, version, pools}
+              # id -> %{name, base_id, status, pools}
               environments: %{},
 
               # name -> id
@@ -93,7 +93,7 @@ defmodule Coflux.Orchestration.Server do
   def handle_call(:get_environments, _from, state) do
     environments =
       state.environments
-      |> Enum.filter(fn {_, e} -> e.status != 1 end)
+      |> Enum.filter(fn {_, e} -> e.status != :archived end)
       |> Map.new(fn {environment_id, environment} ->
         {environment_id, %{name: environment.name, base_id: environment.base_id}}
       end)
@@ -144,9 +144,37 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
+  def handle_call({:pause_environment, environment_id}, _from, state) do
+    case Environments.pause_environment(state.db, environment_id) do
+      :ok ->
+        state =
+          state
+          |> put_in([Access.key(:environments), environment_id, Access.key(:status)], :paused)
+          |> notify_listeners(:environments, {:status, environment_id, :paused})
+          |> flush_notifications()
+
+        {:reply, :ok, state}
+    end
+  end
+
+  def handle_call({:resume_environment, environment_id}, _from, state) do
+    case Environments.resume_environment(state.db, environment_id) do
+      :ok ->
+        state =
+          state
+          |> put_in([Access.key(:environments), environment_id, Access.key(:status)], :active)
+          |> notify_listeners(:environments, {:status, environment_id, :active})
+          |> flush_notifications()
+
+        send(self(), :execute)
+
+        {:reply, :ok, state}
+    end
+  end
+
   def handle_call({:archive_environment, environment_id}, _from, state) do
     case Environments.archive_environment(state.db, environment_id) do
-      {:ok, environment} ->
+      :ok ->
         state =
           state.sessions
           |> Enum.filter(fn {_, s} -> s.environment_id == environment_id end)
@@ -182,11 +210,11 @@ defmodule Coflux.Orchestration.Server do
 
         state =
           state
-          |> put_in([Access.key(:environments), environment_id], environment)
-          |> notify_listeners(:environments, {:environment, environment_id, environment})
+          |> put_in([Access.key(:environments), environment_id, Access.key(:status)], :archived)
+          |> notify_listeners(:environments, {:status, environment_id, :archived})
           |> flush_notifications()
 
-        {:reply, {:ok, environment.version}, state}
+        {:reply, :ok, state}
 
       {:error, error} ->
         {:reply, {:error, error}, state}
@@ -1059,6 +1087,12 @@ defmodule Coflux.Orchestration.Server do
       end
 
     {:ok, executions} = Runs.get_unassigned_executions(state.db)
+
+    executions =
+      Enum.filter(executions, fn execution ->
+        state.environments[execution.environment_id].status == :active
+      end)
+
     now = System.os_time(:millisecond)
 
     {executions_due, executions_future, executions_defer} =
@@ -1337,7 +1371,7 @@ defmodule Coflux.Orchestration.Server do
       {:ok, environment_id} ->
         environment = Map.fetch!(state.environments, environment_id)
 
-        if environment.status != 1 do
+        if environment.status != :archived do
           {:ok, environment_id, environment}
         else
           {:error, :environment_invalid}

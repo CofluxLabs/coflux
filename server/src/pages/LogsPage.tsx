@@ -53,7 +53,7 @@ export default function LogsPage() {
   const environments = useEnvironments(projectId);
   const activeEnvironmentId = findKey(
     environments,
-    (e) => e.name == activeEnvironmentName && e.status != 1,
+    (e) => e.name == activeEnvironmentName && e.status != "archived",
   );
   const logs = useLogs(projectId, runId, activeEnvironmentId);
   if (runId && logs) {

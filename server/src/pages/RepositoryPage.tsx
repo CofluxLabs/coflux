@@ -50,7 +50,7 @@ export default function RepositoryPage() {
   const environments = useEnvironments(projectId);
   const environmentId = findKey(
     environments,
-    (e) => e.name == environmentName && e.status != 1,
+    (e) => e.name == environmentName && e.status != "archived",
   );
   const executions = useExecutions(projectId, repositoryName, environmentId);
   useTitlePart(repositoryName);

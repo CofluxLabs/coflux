@@ -76,14 +76,24 @@ CREATE TABLE environment_manifests (
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
-CREATE TABLE environment_versions (
+CREATE TABLE environment_statuses (
   environment_id INTEGER NOT NULL,
-  version INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  base_id INTEGER,
   status INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  PRIMARY KEY (environment_id, version),
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
+);
+
+CREATE TABLE environment_names (
+  environment_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
+);
+
+CREATE TABLE environment_bases (
+  environment_id INTEGER NOT NULL,
+  base_id INTEGER,
+  created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
   FOREIGN KEY (base_id) REFERENCES environments ON DELETE CASCADE
 );
@@ -111,11 +121,10 @@ CREATE TABLE pool_definition_launchers (
 CREATE TABLE pools (
   id INTEGER PRIMARY KEY,
   environment_id INTEGER NOT NULL,
-  version INTEGER NOT NULL,
   name TEXT NOT NULL,
-  pool_definition_id INTEGER NOT NULL,
-  UNIQUE (environment_id, version, name),
-  FOREIGN KEY (environment_id, version) REFERENCES environment_versions ON DELETE CASCADE,
+  pool_definition_id INTEGER,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
 );
 
