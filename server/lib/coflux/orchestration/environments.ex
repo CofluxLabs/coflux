@@ -66,7 +66,7 @@ defmodule Coflux.Orchestration.Environments do
       {:ok, rows} ->
         {:ok,
          Enum.any?(rows, fn {status, name} ->
-           name == environment_name && status != 1
+           name == environment_name && status != 2
          end)}
     end
   end
@@ -93,7 +93,7 @@ defmodule Coflux.Orchestration.Environments do
       {:ok, rows} ->
         {:ok,
          Enum.any?(rows, fn {status, base_id} ->
-           base_id == environment_id && status != 1
+           base_id == environment_id && status != 2
          end)}
     end
   end
@@ -170,7 +170,7 @@ defmodule Coflux.Orchestration.Environments do
         {:ok, nil} ->
           {:error, :not_found}
 
-        {:ok, %{status: 1}} ->
+        {:ok, %{status: 2}} ->
           {:error, :not_found}
 
         {:ok, environment} ->
@@ -211,31 +211,61 @@ defmodule Coflux.Orchestration.Environments do
     end)
   end
 
+  def pause_environment(db, environment_id) do
+    with_transaction(db, fn ->
+      case get_environment_by_id(db, environment_id) do
+        {:ok, nil} ->
+          {:error, :not_found}
+
+        {:ok, %{status: 2}} ->
+          {:error, :not_found}
+
+        {:ok, %{status: 0}} ->
+          {:ok, _} = insert_environment_status(db, environment_id, 1, current_timestamp())
+          :ok
+
+        {:ok, %{status: 1}} ->
+          :ok
+      end
+    end)
+  end
+
+  def resume_environment(db, environment_id) do
+    with_transaction(db, fn ->
+      case get_environment_by_id(db, environment_id) do
+        {:ok, nil} ->
+          {:error, :not_found}
+
+        {:ok, %{status: 2}} ->
+          {:error, :not_found}
+
+        {:ok, %{status: 1}} ->
+          {:ok, _} = insert_environment_status(db, environment_id, 0, current_timestamp())
+          :ok
+
+        {:ok, %{status: 0}} ->
+          :ok
+      end
+    end)
+  end
+
   def archive_environment(db, environment_id) do
     with_transaction(db, fn ->
       case get_environment_by_id(db, environment_id) do
         {:ok, nil} ->
           {:error, :not_found}
 
-        {:ok, %{status: 1}} ->
+        {:ok, %{status: 2}} ->
           {:error, :not_found}
 
-        {:ok, environment} ->
+        {:ok, _} ->
           case has_active_child_environments?(db, environment_id) do
             {:ok, true} ->
               {:error, :descendants}
 
             {:ok, false} ->
-              now = current_timestamp()
-              {:ok, _} = insert_environment_status(db, environment_id, 1, now)
-              {:ok, pools} = get_environment_pools(db, environment_id)
-
-              environment =
-                environment
-                |> Map.put(:pools, pools)
-                |> Map.put(:status, 1)
-
-              {:ok, environment}
+              {:ok, _} = insert_environment_status(db, environment_id, 2, current_timestamp())
+              :ok
           end
       end
     end)

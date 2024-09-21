@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import {
   Outlet,
   useNavigate,
@@ -13,9 +13,13 @@ import {
   IconCircle,
   IconCircleCheck,
   IconInfoSquareRounded,
+  IconPlayerPause,
+  IconPlayerPlay,
 } from "@tabler/icons-react";
 import { findKey } from "lodash";
 
+import * as models from "../models";
+import * as api from "../api";
 import TargetsList from "../components/TargetsList";
 import { pluralise } from "../utils";
 import { useTitlePart } from "../components/TitleContext";
@@ -26,42 +30,96 @@ import {
   useRepositories,
 } from "../topics";
 
-type ConnectionStatusProps = {
-  agents: Record<string, Record<string, string[]>> | undefined;
+type PlayPauseButtonProps = {
+  projectId: string;
+  environmentId: string;
+  environment: models.Environment;
 };
 
-function ConnectionStatus({ agents }: ConnectionStatusProps) {
+function PlayPauseButton({
+  projectId,
+  environmentId,
+  environment,
+}: PlayPauseButtonProps) {
+  const { status } = environment;
+  const handleClick = useCallback(() => {
+    // TODO: handle error
+    if (status == 0) {
+      api.pauseEnvironment(projectId, environmentId);
+    } else if (status == 1) {
+      api.resumeEnvironment(projectId, environmentId);
+    }
+  }, [environmentId, status]);
+  return status == 0 ? (
+    <button
+      className="text-slate-700 bg-slate-200 rounded p-0.5 hover:bg-slate-300/60"
+      title="Pause environment"
+      onClick={handleClick}
+    >
+      <IconPlayerPause strokeWidth={1.5} size={20} />
+    </button>
+  ) : status == 1 ? (
+    <button
+      className="text-slate-700 bg-slate-200 rounded p-0.5 animate-pulse hover:bg-slate-300/60"
+      title="Resume environment"
+      onClick={handleClick}
+    >
+      <IconPlayerPlay strokeWidth={1.5} size={20} />
+    </button>
+  ) : null;
+}
+
+type ConnectionStatusProps = {
+  projectId: string;
+  environmentId: string | undefined;
+  agents: Record<string, Record<string, string[]>> | undefined;
+  environment: models.Environment | undefined;
+};
+
+function ConnectionStatus({
+  projectId,
+  agents,
+  environmentId,
+  environment,
+}: ConnectionStatusProps) {
   const [_socket, status] = useSocket();
   const count = agents && Object.keys(agents).length;
   return (
     <div className="p-3 flex items-center border-t border-slate-200">
-      <span className="ml-1 text-slate-700 flex flex items-center gap-1">
+      <span className="ml-1 text-slate-700 flex-1 flex items-center gap-1 text-sm">
         {status == "connecting" ? (
           <Fragment>Connecting...</Fragment>
         ) : status == "connected" ? (
           count ? (
             <Fragment>
-              <IconCircleCheck size={20} className="text-green-500" />
+              <IconCircleCheck size={18} className="text-green-500" />
               {pluralise(count, "agent")} online
             </Fragment>
           ) : agents ? (
             <Fragment>
-              <IconAlertCircle size={20} className="text-slate-500" />
+              <IconAlertCircle size={18} className="text-slate-500" />
               No agents online
             </Fragment>
           ) : (
             <Fragment>
-              <IconCircle size={20} className="text-slate-500" />
+              <IconCircle size={18} className="text-slate-500" />
               Connected
             </Fragment>
           )
         ) : (
           <Fragment>
-            <IconAlertTriangle size={20} className="text-yellow-500" />
+            <IconAlertTriangle size={18} className="text-yellow-500" />
             Disconnected
           </Fragment>
         )}
       </span>
+      {environmentId && environment && (
+        <PlayPauseButton
+          projectId={projectId}
+          environmentId={environmentId}
+          environment={environment}
+        />
+      )}
     </div>
   );
 }
@@ -82,14 +140,15 @@ export default function ProjectLayout() {
   const environments = useEnvironments(projectId);
   const environmentId = findKey(
     environments,
-    (e) => e.name == environmentName && e.status != 1,
+    (e) => e.name == environmentName && e.status != 2,
   );
+  const environment = environmentId ? environments?.[environmentId] : undefined;
   const repositories = useRepositories(projectId, environmentId);
   const agents = useAgents(projectId, environmentId);
   const project = (projectId && projects && projects[projectId]) || undefined;
   const defaultEnvironmentName =
     environments &&
-    Object.values(environments).find((e) => e.status != 1)?.name;
+    Object.values(environments).find((e) => e.status != 2)?.name;
   useEffect(() => {
     if (projectId && !environmentName && defaultEnvironmentName) {
       // TODO: retain current url?
@@ -128,7 +187,12 @@ export default function ProjectLayout() {
               </p>
             </div>
           )}
-          <ConnectionStatus agents={agents} />
+          <ConnectionStatus
+            projectId={projectId!}
+            environmentId={environmentId}
+            agents={agents}
+            environment={environment}
+          />
         </div>
       )}
       <div className="flex-1 flex flex-col min-w-0">

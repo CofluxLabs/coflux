@@ -19,7 +19,7 @@ function Header({ projectId, activeEnvironmentName }: HeaderProps) {
   const environments = useEnvironments(projectId);
   const activeEnvironmentId = findKey(
     environments,
-    (e) => e.name == activeEnvironmentName && e.status != 1,
+    (e) => e.name == activeEnvironmentName && e.status != 2,
   );
   return (
     <div className="flex p-3 items-center bg-cyan-600 gap-1">

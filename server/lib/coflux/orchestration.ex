@@ -13,6 +13,14 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:update_environment, environment_id, updates})
   end
 
+  def pause_environment(project_id, environment_name) do
+    call_server(project_id, {:pause_environment, environment_name})
+  end
+
+  def resume_environment(project_id, environment_name) do
+    call_server(project_id, {:resume_environment, environment_name})
+  end
+
   def archive_environment(project_id, environment_name) do
     call_server(project_id, {:archive_environment, environment_name})
   end

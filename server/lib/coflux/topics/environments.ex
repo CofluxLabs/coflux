@@ -24,6 +24,10 @@ defmodule Coflux.Topics.Environments do
     Topic.set(topic, [Integer.to_string(environment_id)], build_environment(environment))
   end
 
+  defp process_notification(topic, {:status, environment_id, status}) do
+    Topic.set(topic, [Integer.to_string(environment_id), :status], status)
+  end
+
   defp build_environment(environment) do
     %{
       name: environment.name,
