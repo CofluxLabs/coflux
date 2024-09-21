@@ -16,6 +16,8 @@ import zipfile
 import itertools
 import signal
 from pathlib import Path
+from contextvars import ContextVar
+from contextlib import contextmanager
 
 from . import server, blobs, models, serialisation, decorators, loader
 
@@ -27,6 +29,11 @@ _AGENT_THRESHOLD_S = 5.0
 T = t.TypeVar("T")
 
 _channel_context: t.Optional["Channel"] = None
+_timeout: ContextVar[float | None] = ContextVar("timeout", default=None)
+
+
+class Timeout(Exception):
+    pass
 
 
 class Future(t.Generic[T]):
@@ -36,7 +43,8 @@ class Future(t.Generic[T]):
         self._error: t.Any | None = None
 
     def result(self, timeout: float | None = None):
-        self._event.wait(timeout)
+        if not self._event.wait(timeout):
+            raise Timeout()
         if self._error:
             raise Exception(self._error)
         else:
@@ -106,6 +114,10 @@ class PersistAssetRequest(t.NamedTuple):
 
 class ResolveAssetRequest(t.NamedTuple):
     asset_id: int
+
+
+class SuspendRequest(t.NamedTuple):
+    execution_ids: list[int]
 
 
 class RecordCheckpointRequest(t.NamedTuple):
@@ -239,16 +251,16 @@ class Channel:
     def _send(self, *message):
         self._connection.send(message)
 
-    def _request(self, request, key=None):
+    def _request(self, request, *, key=None, timeout=None):
         if key and key in self._cache:
-            return self._cache[key].result()
+            return self._cache[key].result(timeout)
         request_id = self._request_id()
         future = Future()
         self._requests[request_id] = future
         if key:
             self._cache[key] = future
         self._send("request", request_id, request)
-        return future.result()
+        return future.result(timeout)
 
     def _notify(self, notification):
         self._send("notify", notification)
@@ -279,7 +291,7 @@ class Channel:
         retries: models.Retries | None = None,
         defer: models.Defer | None = None,
         execute_after: dt.datetime | None = None,
-        delay: int | float | dt.timedelta = 0,
+        delay: float | dt.timedelta = 0,
         memo: list[int] | bool = False,
         requires: models.Requires | None = None,
     ) -> models.Execution[t.Any]:
@@ -314,11 +326,24 @@ class Channel:
             execution_id,
         )
 
+    @contextmanager
+    def suspense(self, timeout: float | None):
+        token = _timeout.set(timeout)
+        try:
+            yield
+        finally:
+            _timeout.reset(token)
+
     def resolve_reference(self, execution_id):
-        result = self._request(
-            ResolveReferenceRequest(execution_id), ("result", execution_id)
-        )
-        return _deserialise_result(result, self, "reference")
+        try:
+            result = self._request(
+                ResolveReferenceRequest(execution_id),
+                key=("result", execution_id),
+                timeout=_timeout.get(),
+            )
+            return _deserialise_result(result, self, "reference")
+        except Timeout:
+            self._notify(SuspendRequest([execution_id]))
 
     def record_checkpoint(self, arguments):
         serialised_arguments = [
@@ -381,8 +406,9 @@ class Channel:
                 to = self._directory.joinpath(to)
             if not to.is_relative_to(self._directory):
                 raise Exception("asset must be restored to execution directory")
+        # TODO: use timeout?
         asset_type, path_str, blob_key = self._request(
-            ResolveAssetRequest(asset.id), ("asset", asset.id)
+            ResolveAssetRequest(asset.id), key=("asset", asset.id)
         )
         target = to or self._directory.joinpath(path_str)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -430,6 +456,8 @@ def _deserialise_result(result: models.Result, channel: Channel, description: st
             raise Exception("abandoned")
         case ["cancelled"]:
             raise Exception("cancelled")
+        case ["suspended"]:
+            raise Exception("suspended")
         case result:
             raise Exception(f"unexpected result ({result})")
 
@@ -639,6 +667,10 @@ class Execution:
             case RecordErrorRequest(error):
                 self._status = ExecutionStatus.STOPPING
                 self._server_notify("put_error", (self._id, error))
+                self._process.join()
+            case SuspendRequest(execution_ids):
+                self._status = ExecutionStatus.STOPPING
+                self._server_notify("suspend", (self._id, execution_ids))
                 self._process.join()
             case RecordCheckpointRequest(arguments):
                 self._server_notify(

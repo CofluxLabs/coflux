@@ -292,7 +292,7 @@ defmodule Coflux.Orchestration.Runs do
     {:ok, external_step_id, execution_id, attempt, now, memo_hit, result, child_added}
   end
 
-  def rerun_step(db, step_id, environment_id, execute_after) do
+  def rerun_step(db, step_id, environment_id, execute_after, dependency_ids) do
     with_transaction(db, fn ->
       now = current_timestamp()
       # TODO: cancel pending executions for step?
@@ -300,6 +300,14 @@ defmodule Coflux.Orchestration.Runs do
 
       {:ok, execution_id} =
         insert_execution(db, step_id, attempt, environment_id, execute_after, now)
+
+      {:ok, _} =
+        insert_many(
+          db,
+          :result_dependencies,
+          {:execution_id, :dependency_id, :created_at},
+          Enum.map(dependency_ids, &{execution_id, &1, now})
+        )
 
       {:ok, execution_id, attempt, now}
     end)

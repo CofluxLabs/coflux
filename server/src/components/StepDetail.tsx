@@ -71,6 +71,8 @@ function ExecutionStatus({ execution }: ExecutionStatusProps) {
     <Badge intent="danger" label="Failed" />
   ) : execution.result?.type == "abandoned" ? (
     <Badge intent="warning" label="Abandoned" />
+  ) : execution.result?.type == "suspended" ? (
+    <Badge intent="warning" label="Suspended" />
   ) : execution.result?.type == "cancelled" ? (
     <Badge intent="warning" label="Cancelled" />
   ) : !execution.assignedAt ? (
@@ -1232,6 +1234,7 @@ export default function StepDetail({
           ) : execution?.result?.type == "cached" ? (
             <CachedSection result={execution.result} />
           ) : undefined}
+          {/* TODO: 'suspended' section? */}
           {execution && Object.keys(execution.assets).length > 0 && (
             <AssetsSection execution={execution} projectId={projectId} />
           )}

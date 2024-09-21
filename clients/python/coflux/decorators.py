@@ -45,7 +45,7 @@ def _parse_wait(
 
 
 def _parse_cache(
-    cache: bool | int | float | dt.timedelta,
+    cache: bool | float | dt.timedelta,
     cache_params: t.Iterable[str] | str | None,
     cache_namespace: str | None,
     cache_version: str | None,
@@ -98,7 +98,7 @@ def _parse_defer(
     )
 
 
-def _parse_delay(delay: int | float | dt.timedelta) -> int | float:
+def _parse_delay(delay: float | dt.timedelta) -> float:
     if isinstance(delay, dt.timedelta):
         return delay.total_seconds()
     return delay
@@ -116,14 +116,14 @@ def _build_definition(
     type: models.TargetType,
     fn: t.Callable,
     wait: bool | t.Iterable[str] | str,
-    cache: bool | int | float | dt.timedelta,
+    cache: bool | float | dt.timedelta,
     cache_params: t.Iterable[str] | str | None,
     cache_namespace: str | None,
     cache_version: str | None,
     retries: int | tuple[int, int] | tuple[int, int, int],
     defer: bool,
     defer_params: t.Iterable[str] | str | None,
-    delay: int | float | dt.timedelta,
+    delay: float | dt.timedelta,
     memo: bool | t.Iterable[str] | str,
     requires: dict[str, str | bool | list[str]] | None,
 ):
@@ -154,14 +154,14 @@ class Target(t.Generic[P, T]):
         repository: str | None = None,
         name: str | None = None,
         wait: bool | t.Iterable[str] | str = False,
-        cache: bool | int | float | dt.timedelta = False,
+        cache: bool | float | dt.timedelta = False,
         cache_params: t.Iterable[str] | str | None = None,
         cache_namespace: str | None = None,
         cache_version: str | None = None,
         retries: int | tuple[int, int] | tuple[int, int, int] = 0,
         defer: bool = False,
         defer_params: t.Iterable[str] | str | None = None,
-        delay: int | float | dt.timedelta = 0,
+        delay: float | dt.timedelta = 0,
         memo: bool | t.Iterable[str] | str = False,
         requires: dict[str, str | bool | list[str]] | None = None,
         is_stub: bool = False,
@@ -265,14 +265,14 @@ def task(
     *,
     name: str | None = None,
     wait: bool | t.Iterable[str] | str = False,
-    cache: bool | int | float | dt.timedelta = False,
+    cache: bool | float | dt.timedelta = False,
     cache_params: t.Iterable[str] | str | None = None,
     cache_namespace: str | None = None,
     cache_version: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool = False,
     defer_params: t.Iterable[str] | str | None = None,
-    delay: int | float | dt.timedelta = 0,
+    delay: float | dt.timedelta = 0,
     memo: bool | t.Iterable[str] = False,
     requires: dict[str, str | bool | list[str]] | None = None,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
@@ -301,14 +301,14 @@ def workflow(
     *,
     name: str | None = None,
     wait: bool | t.Iterable[str] | str = False,
-    cache: bool | int | float | dt.timedelta = False,
+    cache: bool | float | dt.timedelta = False,
     cache_params: t.Iterable[str] | str | None = None,
     cache_namespace: str | None = None,
     cache_version: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool = False,
     defer_params: t.Iterable[str] | str | None = None,
-    delay: int | float | dt.timedelta = 0,
+    delay: float | dt.timedelta = 0,
     requires: dict[str, str | bool | list[str]] | None = None,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
     def decorator(fn: t.Callable[P, T]) -> Target[P, T]:
@@ -337,14 +337,14 @@ def stub(
     name: str | None = None,
     type: t.Literal["workflow", "task"] = "task",
     wait: bool | t.Iterable[str] | str = False,
-    cache: bool | int | float | dt.timedelta = False,
+    cache: bool | float | dt.timedelta = False,
     cache_params: t.Iterable[str] | str | None = None,
     cache_namespace: str | None = None,
     cache_version: str | None = None,
     retries: int | tuple[int, int] | tuple[int, int, int] = 0,
     defer: bool = False,
     defer_params: t.Iterable[str] | str | None = None,
-    delay: int | float | dt.timedelta = 0,
+    delay: float | dt.timedelta = 0,
     memo: bool | t.Iterable[str] = False,
 ) -> t.Callable[[t.Callable[P, T]], Target[P, T]]:
     def decorator(fn: t.Callable[P, T]) -> Target[P, T]:

@@ -209,6 +209,24 @@ defmodule Coflux.Handlers.Agent do
           {[{:close, 4000, "execution_invalid"}], nil}
         end
 
+      "suspend" ->
+        # TODO: also support specifying asset dependencies?
+        [execution_id, dependency_ids] = message["params"]
+        # TODO: validate dependency_ids
+
+        if is_recognised_execution?(execution_id, state) do
+          :ok =
+            Orchestration.record_result(
+              state.project_id,
+              execution_id,
+              {:suspended, dependency_ids}
+            )
+
+          {[], state}
+        else
+          {[{:close, 4000, "execution_invalid"}], nil}
+        end
+
       "get_result" ->
         [execution_id, from_execution_id] = message["params"]
 
@@ -454,6 +472,7 @@ defmodule Coflux.Handlers.Agent do
       {:value, value} -> ["value", compose_value(value)]
       {:abandoned, nil} -> ["abandoned"]
       :cancelled -> ["cancelled"]
+      :suspended -> ["suspended"]
     end
   end
 
