@@ -1,6 +1,7 @@
 from .decorators import workflow, task, stub, sensor
 from .context import (
     checkpoint,
+    suspense,
     persist_asset,
     restore_asset,
     log_debug,
@@ -17,6 +18,7 @@ __all__ = [
     "stub",
     "sensor",
     "checkpoint",
+    "suspense",
     "log_debug",
     "log_info",
     "log_warning",

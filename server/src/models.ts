@@ -117,7 +117,8 @@ export type Result =
   | { type: "abandoned"; retryId: string | null }
   | { type: "cancelled" }
   | { type: "deferred"; executionId: string; execution: Reference }
-  | { type: "cached"; executionId: string; execution: Reference };
+  | { type: "cached"; executionId: string; execution: Reference }
+  | { type: "suspended"; successorId: string };
 
 export type Child = {
   repository: string;

@@ -367,6 +367,9 @@ defmodule Coflux.Topics.Run do
       {:cached, execution_id, execution} ->
         %{type: "cached", executionId: execution_id, execution: build_execution(execution)}
 
+      {:suspended, successor_id} ->
+        %{type: "suspended", successorId: successor_id}
+
       nil ->
         nil
     end

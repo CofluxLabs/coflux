@@ -613,7 +613,7 @@ defmodule Coflux.Orchestration.Server do
 
         if base_environment_id == environment_id ||
              is_environment_ancestor?(state, base_environment_id, environment_id) do
-          {:ok, execution_id, attempt, state} = rerun_step(state, step, environment_id, nil)
+          {:ok, execution_id, attempt, state} = rerun_step(state, step, environment_id)
           state = flush_notifications(state)
           {:reply, {:ok, execution_id, attempt}, state}
         else
@@ -1111,7 +1111,8 @@ defmodule Coflux.Orchestration.Server do
                   Results.get_checkpoint_arguments(state.db, checkpoint_id)
               end
 
-            if is_execution_ready?(state, execution.wait_for, arguments) do
+            if arguments_ready?(state.db, execution.wait_for, arguments) &&
+                 dependencies_ready?(state.db, execution.execution_id) do
               requires =
                 if execution.requires_tag_set_id,
                   do: Map.fetch!(tag_sets, execution.requires_tag_set_id),
@@ -1491,11 +1492,14 @@ defmodule Coflux.Orchestration.Server do
     {executions_due, executions_future, executions_defer}
   end
 
-  defp rerun_step(state, step, environment_id, execute_after) do
+  defp rerun_step(state, step, environment_id, opts \\ []) do
+    execute_after = Keyword.get(opts, :execute_after, nil)
+    dependency_ids = Keyword.get(opts, :dependency_ids, [])
+
     # TODO: only get run if needed for notify?
     {:ok, run} = Runs.get_run_by_id(state.db, step.run_id)
 
-    case Runs.rerun_step(state.db, step.id, environment_id, execute_after) do
+    case Runs.rerun_step(state.db, step.id, environment_id, execute_after, dependency_ids) do
       {:ok, execution_id, attempt, created_at} ->
         {:ok, {run_repository, run_target}} = Runs.get_run_target(state.db, run.id)
 
@@ -1655,57 +1659,75 @@ defmodule Coflux.Orchestration.Server do
         {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, execution_id)
 
         {retry_id, state} =
-          if result_retryable?(result) && step.retry_limit > 0 do
-            {:ok, executions} = Runs.get_step_executions(state.db, step.id)
+          cond do
+            match?({:suspended, _}, result) ->
+              {:suspended, dependency_ids} = result
 
-            attempts = Enum.count(executions)
+              # TODO: limit the number of times a step can suspend?
 
-            if attempts <= step.retry_limit do
-              # TODO: add jitter (within min/max delay)
-              delay_s =
-                step.retry_delay_min +
-                  (attempts - 1) / step.retry_limit *
-                    (step.retry_delay_max - step.retry_delay_min)
+              {:ok, retry_id, _, state} =
+                rerun_step(state, step, environment_id, dependency_ids: dependency_ids)
 
-              execute_after = System.os_time(:millisecond) + delay_s * 1000
-              # TODO: do cache lookup?
-              {:ok, retry_id, _, state} = rerun_step(state, step, environment_id, execute_after)
+              state = abort_execution(state, execution_id)
+
               {retry_id, state}
-            else
-              {nil, state}
-            end
-          else
-            {:ok, run} = Runs.get_run_by_id(state.db, step.run_id)
 
-            if run.recurrent do
+            result_retryable?(result) && step.retry_limit > 0 ->
               {:ok, executions} = Runs.get_step_executions(state.db, step.id)
 
-              if Enum.all?(executions, &elem(&1, 5)) do
-                now = System.os_time(:millisecond)
+              attempts = Enum.count(executions)
 
-                last_assigned_at =
-                  executions |> Enum.map(&elem(&1, 5)) |> Enum.max(&>=/2, fn -> nil end)
+              if attempts <= step.retry_limit do
+                # TODO: add jitter (within min/max delay)
+                delay_s =
+                  step.retry_delay_min +
+                    (attempts - 1) / step.retry_limit *
+                      (step.retry_delay_max - step.retry_delay_min)
 
-                execute_after =
-                  if last_assigned_at && now - last_assigned_at < @recurrent_rate_limit_ms do
-                    last_assigned_at + @recurrent_rate_limit_ms
-                  end
+                execute_after = System.os_time(:millisecond) + delay_s * 1000
+                # TODO: do cache lookup?
+                {:ok, retry_id, _, state} =
+                  rerun_step(state, step, environment_id, execute_after: execute_after)
 
-                {:ok, _, _, state} = rerun_step(state, step, environment_id, execute_after)
-
-                {nil, state}
+                {retry_id, state}
               else
                 {nil, state}
               end
-            else
-              {nil, state}
-            end
+
+            true ->
+              {:ok, run} = Runs.get_run_by_id(state.db, step.run_id)
+
+              if run.recurrent do
+                {:ok, executions} = Runs.get_step_executions(state.db, step.id)
+
+                if Enum.all?(executions, &elem(&1, 5)) do
+                  now = System.os_time(:millisecond)
+
+                  last_assigned_at =
+                    executions |> Enum.map(&elem(&1, 6)) |> Enum.max(&>=/2, fn -> nil end)
+
+                  execute_after =
+                    if last_assigned_at && now - last_assigned_at < @recurrent_rate_limit_ms do
+                      last_assigned_at + @recurrent_rate_limit_ms
+                    end
+
+                  {:ok, _, _, state} =
+                    rerun_step(state, step, environment_id, execute_after: execute_after)
+
+                  {nil, state}
+                else
+                  {nil, state}
+                end
+              else
+                {nil, state}
+              end
           end
 
         result =
           case result do
             {:error, type, message, frames} -> {:error, type, message, frames, retry_id}
             :abandoned -> {:abandoned, retry_id}
+            {:suspended, _} -> {:suspended, retry_id}
             other -> other
           end
 
@@ -1745,6 +1767,9 @@ defmodule Coflux.Orchestration.Server do
             resolve_result(execution_id, db)
 
           {:cached, execution_id} when not is_nil(execution_id) ->
+            resolve_result(execution_id, db)
+
+          {:suspended, execution_id} when not is_nil(execution_id) ->
             resolve_result(execution_id, db)
 
           other ->
@@ -1859,7 +1884,7 @@ defmodule Coflux.Orchestration.Server do
     end)
   end
 
-  defp is_execution_ready?(state, wait_for, arguments) do
+  defp arguments_ready?(db, wait_for, arguments) do
     Enum.all?(wait_for, fn index ->
       case Enum.at(arguments, index) do
         {_, _, placeholders} ->
@@ -1868,7 +1893,7 @@ defmodule Coflux.Orchestration.Server do
           |> Enum.map(fn {execution_id, _} -> execution_id end)
           |> Enum.reject(&is_nil/1)
           |> Enum.all?(fn execution_id ->
-            case resolve_result(execution_id, state.db) do
+            case resolve_result(execution_id, db) do
               {:ok, _} -> true
               {:pending, _} -> false
             end
@@ -1878,6 +1903,19 @@ defmodule Coflux.Orchestration.Server do
           true
       end
     end)
+  end
+
+  defp dependencies_ready?(db, execution_id) do
+    # TODO: also check assets?
+    case Runs.get_result_dependencies(db, execution_id) do
+      {:ok, result_dependencies} ->
+        Enum.all?(result_dependencies, fn {dependency_id} ->
+          case resolve_result(dependency_id, db) do
+            {:ok, _} -> true
+            {:pending, _} -> false
+          end
+        end)
+    end
   end
 
   defp choose_session(state, execution, requires) do

@@ -350,6 +350,7 @@ CREATE TABLE results (
       WHEN 3 THEN NOT (error_id OR successor_id OR value_id)
       WHEN 4 THEN successor_id AND NOT (error_id OR value_id)
       WHEN 5 THEN successor_id AND NOT (error_id OR value_id)
+      WHEN 6 THEN successor_id AND NOT (error_id OR value_id)
       ELSE FALSE
     END
   )

@@ -92,6 +92,9 @@ defmodule Coflux.Orchestration.Results do
 
           {:deferred, defer_id} ->
             {4, nil, nil, defer_id}
+
+          {:suspended, successor_id} ->
+            {6, nil, nil, successor_id}
         end
 
       case insert_result(db, execution_id, type, error_id, value_id, successor_id, now) do
@@ -146,6 +149,9 @@ defmodule Coflux.Orchestration.Results do
 
             {5, nil, nil, cached_id} ->
               {:cached, cached_id}
+
+            {6, nil, nil, successor_id} ->
+              {:suspended, successor_id}
           end
 
         {:ok, {result, created_at}}

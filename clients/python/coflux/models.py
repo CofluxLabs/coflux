@@ -14,7 +14,7 @@ class Parameter(t.NamedTuple):
 
 class Cache(t.NamedTuple):
     params: list[int] | t.Literal[True]
-    max_age: int | float | None
+    max_age: float | None
     namespace: str | None
     version: str | None
 
@@ -38,7 +38,7 @@ class Target(t.NamedTuple):
     wait_for: set[int]
     cache: Cache | None
     defer: Defer | None
-    delay: int | float
+    delay: float
     retries: Retries | None
     memo: list[int] | bool
     requires: Requires | None

@@ -27,7 +27,7 @@ def schedule(
     retries: models.Retries | None = None,
     defer: models.Defer | None = None,
     execute_after: dt.datetime | None = None,
-    delay: int | float | dt.timedelta = 0,
+    delay: float | dt.timedelta = 0,
     memo: list[int] | bool = False,
     requires: models.Requires | None = None,
 ) -> models.Execution[t.Any]:
@@ -45,6 +45,10 @@ def schedule(
         memo=memo,
         requires=requires,
     )
+
+
+def suspense(timeout: float | None):
+    return _get_channel().suspense(timeout)
 
 
 def persist_asset(
