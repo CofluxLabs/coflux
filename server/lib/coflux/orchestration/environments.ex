@@ -36,7 +36,7 @@ defmodule Coflux.Orchestration.Environments do
               name: name,
               base_id: base_id,
               pools: pools,
-              status: status
+              status: decode_status(status)
             })
           end)
 
@@ -66,7 +66,7 @@ defmodule Coflux.Orchestration.Environments do
       {:ok, rows} ->
         {:ok,
          Enum.any?(rows, fn {status, name} ->
-           name == environment_name && status != 2
+           name == environment_name && decode_status(status) != :archived
          end)}
     end
   end
@@ -93,7 +93,7 @@ defmodule Coflux.Orchestration.Environments do
       {:ok, rows} ->
         {:ok,
          Enum.any?(rows, fn {status, base_id} ->
-           base_id == environment_id && status != 2
+           base_id == environment_id && decode_status(status) != :archived
          end)}
     end
   end
@@ -125,7 +125,7 @@ defmodule Coflux.Orchestration.Environments do
            {environment_id}
          ) do
       {:ok, {status, name, base_id}} ->
-        {:ok, %{status: status, name: name, base_id: base_id}}
+        {:ok, %{status: decode_status(status), name: name, base_id: base_id}}
 
       {:ok, nil} ->
         {:ok, nil}
@@ -135,7 +135,7 @@ defmodule Coflux.Orchestration.Environments do
   def create_environment(db, name, base_id, pools) do
     with_transaction(db, fn ->
       environment = %{
-        status: 0,
+        status: :active,
         name: name,
         base_id: base_id,
         pools: pools || %{}
@@ -170,7 +170,7 @@ defmodule Coflux.Orchestration.Environments do
         {:ok, nil} ->
           {:error, :not_found}
 
-        {:ok, %{status: 2}} ->
+        {:ok, %{status: :archived}} ->
           {:error, :not_found}
 
         {:ok, environment} ->
@@ -217,14 +217,14 @@ defmodule Coflux.Orchestration.Environments do
         {:ok, nil} ->
           {:error, :not_found}
 
-        {:ok, %{status: 2}} ->
+        {:ok, %{status: :archived}} ->
           {:error, :not_found}
 
-        {:ok, %{status: 0}} ->
-          {:ok, _} = insert_environment_status(db, environment_id, 1, current_timestamp())
+        {:ok, %{status: :active}} ->
+          {:ok, _} = insert_environment_status(db, environment_id, :paused, current_timestamp())
           :ok
 
-        {:ok, %{status: 1}} ->
+        {:ok, %{status: :paused}} ->
           :ok
       end
     end)
@@ -236,14 +236,14 @@ defmodule Coflux.Orchestration.Environments do
         {:ok, nil} ->
           {:error, :not_found}
 
-        {:ok, %{status: 2}} ->
+        {:ok, %{status: :archived}} ->
           {:error, :not_found}
 
-        {:ok, %{status: 1}} ->
-          {:ok, _} = insert_environment_status(db, environment_id, 0, current_timestamp())
+        {:ok, %{status: :paused}} ->
+          {:ok, _} = insert_environment_status(db, environment_id, :active, current_timestamp())
           :ok
 
-        {:ok, %{status: 0}} ->
+        {:ok, %{status: :active}} ->
           :ok
       end
     end)
@@ -255,7 +255,7 @@ defmodule Coflux.Orchestration.Environments do
         {:ok, nil} ->
           {:error, :not_found}
 
-        {:ok, %{status: 2}} ->
+        {:ok, %{status: :archived}} ->
           {:error, :not_found}
 
         {:ok, _} ->
@@ -264,7 +264,9 @@ defmodule Coflux.Orchestration.Environments do
               {:error, :descendants}
 
             {:ok, false} ->
-              {:ok, _} = insert_environment_status(db, environment_id, 2, current_timestamp())
+              {:ok, _} =
+                insert_environment_status(db, environment_id, :archived, current_timestamp())
+
               :ok
           end
       end
@@ -318,7 +320,7 @@ defmodule Coflux.Orchestration.Environments do
     else
       case get_environment_by_id(db, base_id) do
         {:ok, base} ->
-          if !base || base.status == 1 do
+          if !base || base.status == :archived do
             {:error, :invalid}
           else
             if environment_id do
@@ -524,7 +526,7 @@ defmodule Coflux.Orchestration.Environments do
   defp insert_environment_status(db, environment_id, status, created_at) do
     insert_one(db, :environment_statuses, %{
       environment_id: environment_id,
-      status: status,
+      status: encode_status(status),
       created_at: created_at
     })
   end
@@ -562,6 +564,22 @@ defmodule Coflux.Orchestration.Environments do
       end)
 
     {:ok, pools}
+  end
+
+  defp encode_status(status) do
+    case status do
+      :active -> 0
+      :paused -> 1
+      :archived -> 2
+    end
+  end
+
+  defp decode_status(value) do
+    case value do
+      0 -> :active
+      1 -> :paused
+      2 -> :archived
+    end
   end
 
   defp current_timestamp() do

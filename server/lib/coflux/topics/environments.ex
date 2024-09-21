@@ -25,7 +25,7 @@ defmodule Coflux.Topics.Environments do
   end
 
   defp process_notification(topic, {:status, environment_id, status}) do
-    Topic.set(topic, [Integer.to_string(environment_id), :status], status)
+    Topic.set(topic, [Integer.to_string(environment_id), :status], build_status(status))
   end
 
   defp build_environment(environment) do
@@ -33,8 +33,16 @@ defmodule Coflux.Topics.Environments do
       name: environment.name,
       baseId: environment.base_id,
       pools: Map.new(environment.pools, &build_pool/1),
-      status: environment.status
+      status: build_status(environment.status)
     }
+  end
+
+  defp build_status(status) do
+    case status do
+      :active -> "active"
+      :paused -> "paused"
+      :archived -> "archived"
+    end
   end
 
   defp build_pool({name, pool}) do

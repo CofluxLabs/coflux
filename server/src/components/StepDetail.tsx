@@ -265,7 +265,7 @@ function getEnvironmentDescendantIds(
   parentId: string | null,
 ): string[] {
   return Object.entries(environments)
-    .filter(([_, e]) => e.baseId == parentId && e.status != 2)
+    .filter(([_, e]) => e.baseId == parentId && e.status != "archived")
     .flatMap(([environmentId]) => [
       environmentId,
       ...getEnvironmentDescendantIds(environments, environmentId),

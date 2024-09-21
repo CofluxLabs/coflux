@@ -44,13 +44,13 @@ function PlayPauseButton({
   const { status } = environment;
   const handleClick = useCallback(() => {
     // TODO: handle error
-    if (status == 0) {
+    if (status == "active") {
       api.pauseEnvironment(projectId, environmentId);
-    } else if (status == 1) {
+    } else if (status == "paused") {
       api.resumeEnvironment(projectId, environmentId);
     }
   }, [environmentId, status]);
-  return status == 0 ? (
+  return status == "active" ? (
     <button
       className="text-slate-700 bg-slate-200 rounded p-0.5 hover:bg-slate-300/60"
       title="Pause environment"
@@ -58,7 +58,7 @@ function PlayPauseButton({
     >
       <IconPlayerPause strokeWidth={1.5} size={20} />
     </button>
-  ) : status == 1 ? (
+  ) : status == "paused" ? (
     <button
       className="text-slate-700 bg-slate-200 rounded p-0.5 animate-pulse hover:bg-slate-300/60"
       title="Resume environment"
@@ -140,7 +140,7 @@ export default function ProjectLayout() {
   const environments = useEnvironments(projectId);
   const environmentId = findKey(
     environments,
-    (e) => e.name == environmentName && e.status != 2,
+    (e) => e.name == environmentName && e.status != "archived",
   );
   const environment = environmentId ? environments?.[environmentId] : undefined;
   const repositories = useRepositories(projectId, environmentId);
@@ -148,7 +148,7 @@ export default function ProjectLayout() {
   const project = (projectId && projects && projects[projectId]) || undefined;
   const defaultEnvironmentName =
     environments &&
-    Object.values(environments).find((e) => e.status != 2)?.name;
+    Object.values(environments).find((e) => e.status != "archived")?.name;
   useEffect(() => {
     if (projectId && !environmentName && defaultEnvironmentName) {
       // TODO: retain current url?

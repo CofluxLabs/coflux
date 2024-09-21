@@ -146,7 +146,7 @@ export default function RunLayout() {
   const environments = useEnvironments(projectId);
   const activeEnvironmentId = findKey(
     environments,
-    (e) => e.name == activeEnvironmentName && e.status != 2,
+    (e) => e.name == activeEnvironmentName && e.status != "archived",
   );
   const run = useRun(projectId, runId, activeEnvironmentId);
   const initialStep = run && Object.values(run.steps).find((s) => !s.parentId);

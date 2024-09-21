@@ -68,7 +68,7 @@ export default function EnvironmentLabel({
           className={classNames(
             "whitespace-nowrap overflow-hidden text-ellipsis",
             size == "sm" ? "px-px text-xs" : "px-0.5 text-sm",
-            environment?.status == 2 && "line-through opacity-50",
+            environment?.status == "archived" && "line-through opacity-50",
           )}
         >
           {environment?.name}
