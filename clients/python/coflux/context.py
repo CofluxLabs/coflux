@@ -51,6 +51,10 @@ def suspense(timeout: float | None):
     return _get_channel().suspense(timeout)
 
 
+def suspend(delay: float | dt.datetime | None = None):
+    return _get_channel().suspend(delay)
+
+
 def persist_asset(
     path: Path | str | None = None, *, match: str | None = None
 ) -> models.Asset:

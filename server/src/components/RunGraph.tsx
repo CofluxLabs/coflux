@@ -35,7 +35,7 @@ function classNameForExecution(execution: models.Execution) {
   } else if (result.type == "abandoned" || result.type == "cancelled") {
     return "border-yellow-400 bg-yellow-100";
   } else if (result.type == "suspended") {
-    return "border-yellow-200 bg-yellow-50";
+    return "border-slate-200 bg-slate-50";
   } else {
     return "border-slate-400 bg-slate-100";
   }

@@ -117,6 +117,7 @@ class ResolveAssetRequest(t.NamedTuple):
 
 
 class SuspendRequest(t.NamedTuple):
+    execute_after: dt.datetime | None
     execution_ids: list[int]
 
 
@@ -334,6 +335,16 @@ class Channel:
         finally:
             _timeout.reset(token)
 
+    def suspend(self, delay: float | dt.timedelta | dt.datetime | None = None):
+        execute_after = None
+        if isinstance(delay, dt.datetime):
+            execute_after = delay
+        elif isinstance(delay, (int, float)):
+            execute_after = dt.datetime.now() + dt.timedelta(seconds=delay)
+        elif isinstance(delay, dt.timedelta):
+            execute_after = dt.datetime.now() + delay
+        self._notify(SuspendRequest(execute_after, []))
+
     def resolve_reference(self, execution_id):
         try:
             result = self._request(
@@ -343,7 +354,7 @@ class Channel:
             )
             return _deserialise_result(result, self, "reference")
         except Timeout:
-            self._notify(SuspendRequest([execution_id]))
+            self._notify(SuspendRequest(None, [execution_id]))
 
     def record_checkpoint(self, arguments):
         serialised_arguments = [
@@ -668,9 +679,14 @@ class Execution:
                 self._status = ExecutionStatus.STOPPING
                 self._server_notify("put_error", (self._id, error))
                 self._process.join()
-            case SuspendRequest(execution_ids):
+            case SuspendRequest(execute_after, execution_ids):
                 self._status = ExecutionStatus.STOPPING
-                self._server_notify("suspend", (self._id, execution_ids))
+                execute_after_ms = execute_after and int(
+                    execute_after.timestamp() * 1000
+                )
+                self._server_notify(
+                    "suspend", (self._id, execute_after_ms, execution_ids)
+                )
                 self._process.join()
             case RecordCheckpointRequest(arguments):
                 self._server_notify(
@@ -699,7 +715,9 @@ class Execution:
                 retries,
                 requires,
             ):
-                execute_after_ms = execute_after and (execute_after.timestamp() * 1000)
+                execute_after_ms = execute_after and int(
+                    execute_after.timestamp() * 1000
+                )
                 self._server_request(
                     "schedule",
                     (
