@@ -21,7 +21,7 @@ defmodule Coflux.Orchestration.Runs do
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
       {:ok, external_step_id, execution_id, attempt, now, false, result, child_added} =
-        schedule_step(
+        do_schedule_step(
           db,
           run_id,
           parent_id,
@@ -35,8 +35,7 @@ defmodule Coflux.Orchestration.Runs do
           opts
         )
 
-      {:ok, external_run_id, external_step_id, execution_id, attempt, result, now, child_added,
-       recurrent}
+      {:ok, external_run_id, external_step_id, execution_id, attempt, result, now, child_added}
     end)
   end
 
@@ -103,7 +102,7 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  def schedule_task(
+  def schedule_step(
         db,
         run_id,
         parent_id,
@@ -117,7 +116,7 @@ defmodule Coflux.Orchestration.Runs do
     now = current_timestamp()
 
     with_transaction(db, fn ->
-      schedule_step(
+      do_schedule_step(
         db,
         run_id,
         parent_id,
@@ -162,7 +161,7 @@ defmodule Coflux.Orchestration.Runs do
     :crypto.hash(:sha256, data)
   end
 
-  defp schedule_step(
+  defp do_schedule_step(
          db,
          run_id,
          parent_id,

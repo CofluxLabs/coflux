@@ -6,7 +6,6 @@ import { max, sortBy } from "lodash";
 import * as models from "../models";
 import useNow from "../hooks/useNow";
 import StepLink from "./StepLink";
-import { formatDiff } from "../utils";
 
 function loadExecutionTimes(run: models.Run): {
   [key: string]: [DateTime, DateTime | null, DateTime | null];
@@ -211,7 +210,7 @@ export default function RunTimeline({ runId, run }: Props) {
                 DateTime.DATETIME_FULL_WITH_SECONDS,
               )}
             >
-              +{formatDiff(elapsedDiff)}
+              +{elapsedDiff.rescale().toHuman({ unitDisplay: "short" })}
             </span>
           </div>
         </div>

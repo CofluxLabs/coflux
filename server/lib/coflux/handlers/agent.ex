@@ -59,7 +59,7 @@ defmodule Coflux.Handlers.Agent do
             {[], state}
         end
 
-      "schedule" ->
+      "submit" ->
         [
           type,
           repository,
@@ -78,7 +78,7 @@ defmodule Coflux.Handlers.Agent do
         if is_recognised_execution?(parent_id, state) do
           case type do
             "workflow" ->
-              case Orchestration.schedule_run(
+              case Orchestration.submit_workflow(
                      state.project_id,
                      repository,
                      target,
@@ -100,7 +100,7 @@ defmodule Coflux.Handlers.Agent do
               end
 
             "task" ->
-              case Orchestration.schedule_task(
+              case Orchestration.submit_task(
                      state.project_id,
                      parent_id,
                      repository,

@@ -35,7 +35,7 @@ import reactStringReplace from "react-string-replace";
 
 import * as models from "../models";
 import Badge from "./Badge";
-import { buildUrl, formatDiff, humanSize, truncatePath } from "../utils";
+import { buildUrl, humanSize, truncatePath } from "../utils";
 import Loading from "./Loading";
 import Button from "./common/Button";
 import RunLogs from "./RunLogs";
@@ -705,9 +705,11 @@ type ExecutionSectionProps = {
 };
 
 function ExecutionSection({ execution }: ExecutionSectionProps) {
-  const scheduledAt = DateTime.fromMillis(
-    execution.executeAfter || execution.createdAt,
-  );
+  const submittedAt = DateTime.fromMillis(execution.createdAt);
+  const executeAt =
+    execution.executeAfter !== null
+      ? DateTime.fromMillis(execution.executeAfter)
+      : null;
   const assignedAt = execution.assignedAt
     ? DateTime.fromMillis(execution.assignedAt)
     : null;
@@ -719,10 +721,28 @@ function ExecutionSection({ execution }: ExecutionSectionProps) {
     <>
       <div>
         <h3 className="uppercase text-sm font-bold text-slate-400">
-          Scheduled
+          Submitted
         </h3>
-        <p>{scheduledAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}</p>
+        <p>{submittedAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}</p>
       </div>
+      {executeAt && executeAt != submittedAt && (
+        <div>
+          <h3 className="uppercase text-sm font-bold text-slate-400">
+            Scheduled
+          </h3>
+          <p>
+            {executeAt.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}{" "}
+            <span className="text-slate-500 text-sm">
+              (+
+              {executeAt
+                .diff(submittedAt)
+                .rescale()
+                .toHuman({ unitDisplay: "narrow" })}
+              )
+            </span>
+          </p>
+        </div>
+      )}
       <div>
         {assignedAt && completedAt ? (
           <>
@@ -730,27 +750,16 @@ function ExecutionSection({ execution }: ExecutionSectionProps) {
               Duration
             </h3>
             <p>
-              {formatDiff(
-                completedAt.diff(assignedAt, [
-                  "days",
-                  "hours",
-                  "minutes",
-                  "seconds",
-                  "milliseconds",
-                ]),
-              )}{" "}
+              {completedAt
+                .diff(assignedAt)
+                .rescale()
+                .toHuman({ unitDisplay: "narrow" })}{" "}
               <span className="text-slate-500 text-sm">
                 (+
-                {formatDiff(
-                  assignedAt!.diff(scheduledAt, [
-                    "days",
-                    "hours",
-                    "minutes",
-                    "seconds",
-                    "milliseconds",
-                  ]),
-                  true,
-                )}{" "}
+                {assignedAt
+                  .diff(executeAt || submittedAt)
+                  .rescale()
+                  .toHuman({ unitDisplay: "narrow" })}{" "}
                 wait)
               </span>
             </p>
@@ -988,15 +997,10 @@ function DeferredSection({ execution }: DeferredSectionProps) {
       <h3 className="uppercase text-sm font-bold text-slate-400">Deferred</h3>
       <p>
         After:{" "}
-        {formatDiff(
-          scheduledAt.diff(completedAt!, [
-            "days",
-            "hours",
-            "minutes",
-            "seconds",
-            "milliseconds",
-          ]),
-        )}
+        {scheduledAt
+          .diff(completedAt!)
+          .rescale()
+          .toHuman({ unitDisplay: "short" })}
       </p>
       {result.execution && (
         <p>

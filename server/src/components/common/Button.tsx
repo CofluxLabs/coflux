@@ -10,8 +10,8 @@ const outlineStyles = {
 const variantOutlineStyles = {
   primary: {
     true: [
-      "border-cyan-500/50 text-cyan-500 enabled:shadow-cyan-500/30",
-      "hover:text-cyan-600 hover:text-cyan-600 hover:border-cyan-500",
+      "border-cyan-400/50 text-cyan-500 enabled:shadow-cyan-500/30",
+      "hover:text-cyan-600 hover:border-cyan-500",
       "focus:ring-cyan-300",
       "disabled:border-cyan-500/20 disabled:text-cyan-500/30",
     ],
@@ -24,8 +24,8 @@ const variantOutlineStyles = {
   },
   secondary: {
     true: [
-      "border-slate-500/50 text-slate-500 enabled:shadow-slate-500/30",
-      "hover:text-slate-600 hover:text-slate-600 hover:border-slate-500",
+      "border-slate-400/50 text-slate-500 enabled:shadow-slate-500/30",
+      "hover:text-slate-600 hover:border-slate-400",
       "focus:ring-slate-300",
       "disabled:border-slate-500/20 disabled:text-slate-500/30",
     ],
@@ -38,8 +38,8 @@ const variantOutlineStyles = {
   },
   success: {
     true: [
-      "border-green-500/50 text-green-500 enabled:shadow-green-500/30",
-      "hover:text-green-600 hover:text-green-600 hover:border-green-500",
+      "border-green-400/50 text-green-500 enabled:shadow-green-500/30",
+      "hover:text-green-600 hover:border-green-500",
       "focus:ring-green-300",
       "disabled:border-green-500/20 disabled:text-green-500/30",
     ],
@@ -52,8 +52,8 @@ const variantOutlineStyles = {
   },
   warning: {
     true: [
-      "border-yellow-500/50 text-yellow-500 enabled:shadow-yellow-500/30",
-      "hover:text-yellow-600 hover:text-yellow-600 hover:border-yellow-500",
+      "border-yellow-400/50 text-yellow-500 enabled:shadow-yellow-500/30",
+      "hover:text-yellow-600 hover:border-yellow-500",
       "focus:ring-yellow-300",
       "disabled:border-yellow-500/20 disabled:text-yellow-500/30",
     ],
@@ -66,8 +66,8 @@ const variantOutlineStyles = {
   },
   danger: {
     true: [
-      "border-red-500/50 text-red-500 enabled:shadow-red-500/30",
-      "hover:text-red-600 hover:text-red-600 hover:border-red-500",
+      "border-red-400/50 text-red-500 enabled:shadow-red-500/30",
+      "hover:text-red-600 hover:border-red-500",
       "focus:ring-red-300",
       "disabled:border-red-500/20 disabled:text-red-500/30",
     ],
@@ -81,7 +81,7 @@ const variantOutlineStyles = {
 };
 
 const sizeStyles = {
-  sm: "rounded-md px-2 py-0.5 text-xs h-6",
+  sm: "rounded px-2 py-0.5 text-xs h-6",
   md: "rounded-md px-3 py-1",
   lg: "rounded-lg px-4 py-1.5 text-lg",
 };

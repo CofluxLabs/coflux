@@ -47,7 +47,7 @@ export function resumeEnvironment(projectId: string, environmentId: string) {
   return request("resume_environment", { projectId, environmentId });
 }
 
-export function scheduleWorkflow(
+export function submitWorkflow(
   projectId: string,
   repository: string,
   target: string,
@@ -73,7 +73,7 @@ export function scheduleWorkflow(
     requires: Record<string, string[]>;
   }>,
 ) {
-  return request("schedule_workflow", {
+  return request("submit_workflow", {
     ...options,
     projectId,
     repository,
@@ -83,7 +83,7 @@ export function scheduleWorkflow(
   });
 }
 
-export function scheduleSensor(
+export function startSensor(
   projectId: string,
   repository: string,
   target: string,
@@ -93,7 +93,7 @@ export function scheduleSensor(
     requires: Record<string, string[]>;
   }>,
 ) {
-  return request("schedule_sensor", {
+  return request("start_sensor", {
     ...options,
     projectId,
     repository,

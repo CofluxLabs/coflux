@@ -16,7 +16,7 @@ def _get_channel() -> execution.Channel:
     return channel
 
 
-def schedule(
+def submit(
     type: t.Literal["workflow", "task"],
     repository: str,
     target: str,
@@ -31,7 +31,7 @@ def schedule(
     memo: list[int] | bool = False,
     requires: models.Requires | None = None,
 ) -> models.Execution[t.Any]:
-    return _get_channel().schedule_execution(
+    return _get_channel().submit_execution(
         type,
         repository,
         target,
