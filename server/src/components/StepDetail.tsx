@@ -72,7 +72,7 @@ function ExecutionStatus({ execution }: ExecutionStatusProps) {
   ) : execution.result?.type == "abandoned" ? (
     <Badge intent="warning" label="Abandoned" />
   ) : execution.result?.type == "suspended" ? (
-    <Badge intent="warning" label="Suspended" />
+    <Badge intent="none" label="Suspended" />
   ) : execution.result?.type == "cancelled" ? (
     <Badge intent="warning" label="Cancelled" />
   ) : !execution.assignedAt ? (

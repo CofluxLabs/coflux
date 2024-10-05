@@ -78,6 +78,8 @@ function classNameForResult(result: models.Result | null) {
     return "bg-green-300";
   } else if (result.type == "error") {
     return "bg-red-300";
+  } else if (result.type == "suspended") {
+    return "bg-slate-300";
   } else {
     return "bg-yellow-300";
   }
