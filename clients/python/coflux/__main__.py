@@ -251,7 +251,12 @@ def cli():
     default="./data/",
     help="The directory to store data",
 )
-def server(port: int, data_dir: Path):
+@click.option(
+    "--image",
+    default="ghcr.io/cofluxlabs/coflux",
+    help="The Docker image to run",
+)
+def server(port: int, data_dir: Path, image: str):
     """
     Start a local server.
 
@@ -261,12 +266,12 @@ def server(port: int, data_dir: Path):
         "docker",
         "run",
         "--pull",
-        "always",
+        ("missing" if image.startswith("sha256:") else "always"),
         "--publish",
         f"{port}:7777",
         "--volume",
         f"{data_dir}:/data",
-        "ghcr.io/cofluxlabs/coflux",
+        image,
     ]
     process = subprocess.run(command)
     sys.exit(process.returncode)
