@@ -211,7 +211,8 @@ defmodule Coflux.Handlers.Agent do
 
       "suspend" ->
         # TODO: also support specifying asset dependencies?
-        [execution_id, dependency_ids] = message["params"]
+        [execution_id, execute_after, dependency_ids] = message["params"]
+        # TODO: validate execute_after
         # TODO: validate dependency_ids
 
         if is_recognised_execution?(execution_id, state) do
@@ -219,7 +220,7 @@ defmodule Coflux.Handlers.Agent do
             Orchestration.record_result(
               state.project_id,
               execution_id,
-              {:suspended, dependency_ids}
+              {:suspended, execute_after, dependency_ids}
             )
 
           {[], state}

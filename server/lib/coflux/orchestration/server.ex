@@ -1694,13 +1694,16 @@ defmodule Coflux.Orchestration.Server do
 
         {retry_id, state} =
           cond do
-            match?({:suspended, _}, result) ->
-              {:suspended, dependency_ids} = result
+            match?({:suspended, _, _}, result) ->
+              {:suspended, execute_after, dependency_ids} = result
 
               # TODO: limit the number of times a step can suspend?
 
               {:ok, retry_id, _, state} =
-                rerun_step(state, step, environment_id, dependency_ids: dependency_ids)
+                rerun_step(state, step, environment_id,
+                  execute_after: execute_after,
+                  dependency_ids: dependency_ids
+                )
 
               state = abort_execution(state, execution_id)
 
@@ -1761,7 +1764,7 @@ defmodule Coflux.Orchestration.Server do
           case result do
             {:error, type, message, frames} -> {:error, type, message, frames, retry_id}
             :abandoned -> {:abandoned, retry_id}
-            {:suspended, _} -> {:suspended, retry_id}
+            {:suspended, _, _} -> {:suspended, retry_id}
             other -> other
           end
 
