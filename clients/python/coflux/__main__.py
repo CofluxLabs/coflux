@@ -6,6 +6,9 @@ import typing as t
 import watchfiles
 import httpx
 import yaml
+import subprocess
+import sys
+from pathlib import Path
 
 from . import Agent, config, loader, decorators, models
 
@@ -231,6 +234,42 @@ def _init(
 @click.group()
 def cli():
     pass
+
+
+@cli.command("server")
+@click.option(
+    "-p",
+    "--port",
+    type=int,
+    default=7777,
+    help="Port to run server on",
+)
+@click.option(
+    "-d",
+    "--data-dir",
+    type=click.Path(file_okay=False, path_type=Path, resolve_path=True),
+    default="./data/",
+    help="The directory to store data",
+)
+def server(port: int, data_dir: Path):
+    """
+    Start the Coflux server.
+
+    This is just a wrapper around Docker (which must be installed and running), useful for running the server in a development environment.
+    """
+    command = [
+        "docker",
+        "run",
+        "--pull",
+        "always",
+        "--publish",
+        f"{port}:7777",
+        "--volume",
+        f"{data_dir}:/data",
+        "ghcr.io/cofluxlabs/coflux",
+    ]
+    process = subprocess.run(command)
+    sys.exit(process.returncode)
 
 
 @cli.command("configure")
