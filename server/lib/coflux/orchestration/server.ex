@@ -386,7 +386,7 @@ defmodule Coflux.Orchestration.Server do
     {:reply, :ok, state}
   end
 
-  def handle_call({:schedule_run, repository, target_name, arguments, opts}, _from, state) do
+  def handle_call({:submit_workflow, repository, target_name, arguments, opts}, _from, state) do
     {:ok, parent} =
       case Keyword.get(opts, :parent_id) do
         nil ->
@@ -424,7 +424,7 @@ defmodule Coflux.Orchestration.Server do
              opts
            ) do
         {:ok, external_run_id, external_step_id, execution_id, attempt, result, created_at,
-         child_added, recurrent} ->
+         child_added} ->
           state =
             if child_added do
               {parent_run_id, parent_id} = parent
@@ -441,10 +441,7 @@ defmodule Coflux.Orchestration.Server do
           state =
             notify_listeners(
               state,
-              if(recurrent,
-                do: {:sensor, repository, target_name, environment_id},
-                else: {:workflow, repository, target_name, environment_id}
-              ),
+              {:workflow, repository, target_name, environment_id},
               {:run, external_run_id, created_at}
             )
 
@@ -483,7 +480,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call(
-        {:schedule_task, parent_id, repository, target_name, arguments, opts},
+        {:submit_task, parent_id, repository, target_name, arguments, opts},
         _from,
         state
       ) do
@@ -493,7 +490,7 @@ defmodule Coflux.Orchestration.Server do
 
     cache_environment_ids = get_cache_environment_ids(state, environment_id)
 
-    case Runs.schedule_task(
+    case Runs.schedule_step(
            state.db,
            run.id,
            parent_id,
@@ -574,6 +571,67 @@ defmodule Coflux.Orchestration.Server do
         state = flush_notifications(state)
 
         {:reply, {:ok, run.external_id, external_step_id, execution_id}, state}
+    end
+  end
+
+  def handle_call({:start_sensor, repository, target_name, arguments, opts}, _from, state) do
+    environment_name = Keyword.fetch!(opts, :environment)
+
+    case lookup_environment_by_name(state, environment_name) do
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+
+      {:ok, environment_id, _} ->
+        cache_environment_ids = get_cache_environment_ids(state, environment_id)
+        opts = Keyword.put(opts, :recurrent, true)
+
+        case Runs.schedule_run(
+               state.db,
+               repository,
+               target_name,
+               arguments,
+               environment_id,
+               cache_environment_ids,
+               opts
+             ) do
+          {:ok, external_run_id, external_step_id, execution_id, attempt, result, created_at,
+           _child_added} ->
+            state =
+              notify_listeners(
+                state,
+                {:sensor, repository, target_name, environment_id},
+                {:run, external_run_id, created_at}
+              )
+
+            state =
+              if !result do
+                # TODO: neater way to get execute_after?
+                execute_after = Keyword.get(opts, :execute_after)
+                execute_at = execute_after || created_at
+
+                state =
+                  state
+                  |> notify_listeners(
+                    {:repositories, environment_id},
+                    {:scheduled, repository, execution_id, execute_at}
+                  )
+                  |> notify_listeners(
+                    {:repository, repository, environment_id},
+                    {:scheduled, execution_id, target_name, external_run_id, external_step_id,
+                     attempt, execute_after, created_at}
+                  )
+
+                send(self(), :execute)
+
+                state
+              else
+                state
+              end
+
+            state = flush_notifications(state)
+
+            {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
+        end
     end
   end
 

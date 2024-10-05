@@ -87,7 +87,7 @@ class RecordErrorRequest(t.NamedTuple):
     error: Error
 
 
-class ScheduleExecutionRequest(t.NamedTuple):
+class SubmitExecutionRequest(t.NamedTuple):
     type: t.Literal["workflow", "task"]
     repository: str
     target: str
@@ -280,7 +280,7 @@ class Channel:
         # TODO: wait for confirmation?
         self._running = False
 
-    def schedule_execution(
+    def submit_execution(
         self,
         type: t.Literal["workflow", "task"],
         repository: str,
@@ -308,7 +308,7 @@ class Channel:
             serialisation.serialise(a, self._blob_store) for a in arguments
         ]
         execution_id = self._request(
-            ScheduleExecutionRequest(
+            SubmitExecutionRequest(
                 type,
                 repository,
                 target,
@@ -702,7 +702,7 @@ class Execution:
 
     def _handle_request(self, request_id, request):
         match request:
-            case ScheduleExecutionRequest(
+            case SubmitExecutionRequest(
                 type,
                 repository,
                 target,
@@ -719,7 +719,7 @@ class Execution:
                     execute_after.timestamp() * 1000
                 )
                 self._server_request(
-                    "schedule",
+                    "submit",
                     (
                         type,
                         repository,

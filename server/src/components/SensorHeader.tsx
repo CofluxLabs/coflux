@@ -66,7 +66,7 @@ export default function SensorHeader({
     (arguments_: ["json", string][]) => {
       const configuration = sensor!.configuration!;
       return api
-        .scheduleSensor(
+        .startSensor(
           projectId,
           repository!,
           target!,

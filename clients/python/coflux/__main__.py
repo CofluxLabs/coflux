@@ -713,7 +713,7 @@ def submit(
     _api_request(
         "POST",
         host_,
-        "schedule_workflow",
+        "submit_workflow",
         json={
             "projectId": project_,
             "environmentName": environment_,
@@ -722,7 +722,7 @@ def submit(
             "arguments": [["json", a] for a in argument],
         },
     )
-    click.secho("Workflow scheduled.", fg="green")
+    click.secho("Workflow submitted.", fg="green")
     # TODO: follow logs?
     # TODO: wait for result?
 

@@ -206,7 +206,7 @@ class Target(t.Generic[P, T]):
         definition = self._definition
         assert definition and definition.type in ("workflow", "task")
         try:
-            return context.schedule(
+            return context.submit(
                 definition.type,
                 self._repository,
                 self._name,

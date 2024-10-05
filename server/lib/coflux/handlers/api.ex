@@ -237,7 +237,7 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp handle(req, "POST", ["schedule_workflow"]) do
+  defp handle(req, "POST", ["submit_workflow"]) do
     {:ok, arguments, errors, req} =
       read_arguments(
         req,
@@ -259,7 +259,7 @@ defmodule Coflux.Handlers.Api do
       )
 
     if Enum.empty?(errors) do
-      case Orchestration.schedule_run(
+      case Orchestration.submit_workflow(
              arguments.project_id,
              arguments.repository,
              arguments.target,
@@ -285,7 +285,7 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp handle(req, "POST", ["schedule_sensor"]) do
+  defp handle(req, "POST", ["start_sensor"]) do
     {:ok, arguments, errors, req} =
       read_arguments(
         req,
@@ -302,13 +302,12 @@ defmodule Coflux.Handlers.Api do
       )
 
     if Enum.empty?(errors) do
-      case Orchestration.schedule_run(
+      case Orchestration.start_sensor(
              arguments.project_id,
              arguments.repository,
              arguments.target,
              arguments.arguments,
              environment: arguments.environment_name,
-             recurrent: true,
              requires: arguments[:requires]
            ) do
         {:ok, run_id, step_id, execution_id} ->

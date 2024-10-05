@@ -75,7 +75,7 @@ export default function WorkflowHeader({
         ? new Date().getTime() + configuration.delay * 1000
         : null;
       return api
-        .scheduleWorkflow(
+        .submitWorkflow(
           projectId,
           repository!,
           target!,
