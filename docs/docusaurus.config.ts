@@ -45,7 +45,7 @@ const config: Config = {
       attributes: {
         rel: "preconnect",
         href: "https://fonts.gstatic.com",
-        crossorigin: true,
+        crossorigin: "",
       },
     },
     {
