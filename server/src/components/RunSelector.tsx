@@ -29,7 +29,7 @@ function getRunUrl(
 }
 
 type OptionsProps = {
-  runs: Record<string, Pick<models.Run, "createdAt">>;
+  runs: Record<string, Pick<models.Run, "createdAt">> | undefined;
   projectId: string | null;
   activeEnvironmentName: string | undefined;
   selectedRunId: string;
@@ -42,7 +42,9 @@ function Options({
   selectedRunId,
 }: OptionsProps) {
   const location = useLocation();
-  if (!Object.keys(runs).length) {
+  if (!runs) {
+    return <p className="p-2 italic text-sm">Loading...</p>;
+  } else if (!Object.keys(runs).length) {
     return (
       <p className="p-2 italic whitespace-nowrap text-sm">
         No runs in this environment
@@ -115,7 +117,7 @@ function getNextPrevious(
 type NextPreviousButtonProps = {
   projectId: string | null;
   activeEnvironmentName: string | undefined;
-  runs: Record<string, Pick<models.Run, "createdAt">>;
+  runs: Record<string, Pick<models.Run, "createdAt">> | undefined;
   currentRunId: string;
   direction: "next" | "previous";
 };
@@ -129,7 +131,9 @@ function NextPreviousButton({
 }: NextPreviousButtonProps) {
   const location = useLocation();
   // TODO: move to parent?
-  const runIds = sortBy(Object.keys(runs), (runId) => runs[runId].createdAt);
+  const runIds = runs
+    ? sortBy(Object.keys(runs), (runId) => runs[runId].createdAt)
+    : [];
   const runId = getNextPrevious(runIds, currentRunId, direction);
   const Icon = direction == "next" ? IconChevronRight : IconChevronLeft;
   const className = classNames(
@@ -161,7 +165,7 @@ function NextPreviousButton({
 }
 
 type Props = {
-  runs: Record<string, Pick<models.Run, "createdAt">>;
+  runs: Record<string, Pick<models.Run, "createdAt">> | undefined;
   projectId: string | null;
   runId: string;
   activeEnvironmentName: string | undefined;

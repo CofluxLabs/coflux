@@ -130,14 +130,12 @@ export default function WorkflowHeader({
 
         {runId && (
           <div className="flex items-center gap-2">
-            {workflow && (
-              <RunSelector
-                runs={workflow.runs}
-                projectId={projectId}
-                runId={runId}
-                activeEnvironmentName={activeEnvironmentName}
-              />
-            )}
+            <RunSelector
+              runs={workflow?.runs}
+              projectId={projectId}
+              runId={runId}
+              activeEnvironmentName={activeEnvironmentName}
+            />
 
             {runEnvironmentId && runEnvironmentId != activeEnvironmentId && (
               <EnvironmentLabel
