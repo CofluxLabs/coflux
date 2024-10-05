@@ -50,12 +50,12 @@ def send_notification(user_id):
 
 In this case, the `fetch_user` task will only be executed once for the run, even if steps are re-run (provided the user ID doesn't change).
 
-## Memo keys
+## Memo parameters
 
-By default the memo key is composed of all arguments. It can be overridden by specifying a function (or lambda) that takes the task's arguments and returns a string:
+As with caching, by default the memoisation considers all arguments. This can be changed by specifying the individual parameters:
 
 ```python
-@task(memo=lambda machine_id, config: str(machine_id))
+@task(memo=["machine_id"])
 def apply_configuration(machine_id, config)
     ...
 ```
