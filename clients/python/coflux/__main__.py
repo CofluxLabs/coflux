@@ -669,12 +669,14 @@ def agent(
         "register": register or dev,
     }
     if watch or dev:
+        filter = watchfiles.PythonFilter()
         watchfiles.run_process(
             ".",
             target=_init,
             args=args,
             kwargs=kwargs,
             callback=_callback,
+            watch_filter=filter,
         )
     else:
         _init(*args, **kwargs)
