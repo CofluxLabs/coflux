@@ -648,13 +648,17 @@ function ArgumentsSection({ arguments_, projectId }: ArgumentsSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Arguments</h3>
-      <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs space-y-1">
-        {arguments_.map((argument, index) => (
-          <li key={index}>
-            <Argument argument={argument} projectId={projectId} />
-          </li>
-        ))}
-      </ol>
+      {arguments_.length > 0 ? (
+        <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs space-y-1">
+          {arguments_.map((argument, index) => (
+            <li key={index}>
+              <Argument argument={argument} projectId={projectId} />
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="italic">None</p>
+      )}
     </div>
   );
 }
@@ -1216,12 +1220,7 @@ export default function StepDetail({
         onChange={handleTabChange}
       >
         <StepDetailTab label="Overview">
-          {step.arguments?.length > 0 && (
-            <ArgumentsSection
-              arguments_={step.arguments}
-              projectId={projectId}
-            />
-          )}
+          <ArgumentsSection arguments_={step.arguments} projectId={projectId} />
           {Object.keys(step.requires).length > 0 && (
             <RequiresSection requires={step.requires} />
           )}
@@ -1234,7 +1233,6 @@ export default function StepDetail({
           ) : execution?.result?.type == "cached" ? (
             <CachedSection result={execution.result} />
           ) : undefined}
-          {/* TODO: 'suspended' section? */}
           {execution && Object.keys(execution.assets).length > 0 && (
             <AssetsSection execution={execution} projectId={projectId} />
           )}
