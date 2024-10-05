@@ -126,12 +126,14 @@ function GettingStarted({ projectId, environmentId }: GettingStartedProps) {
               <CodeBlock
                 className="bg-slate-100"
                 prompt="$"
-                code={[`coflux agent.run ${exampleRepositoryName} --dev`]}
+                code={[`coflux agent --dev ${exampleRepositoryName}`]}
               />
               <Hint>
                 <p>
                   The <code className="bg-slate-100">--dev</code> flag enables
-                  file watching and automatic repository registration - the
+                  file watching and automatic repository registration
+                  (equivalent to <code className="bg-slate-100">--reload</code>{" "}
+                  and <code className="bg-slate-100">--register</code>) - the
                   agent will automatically restart when changes to the source
                   code are detected, and automtically register workflow
                   definitions.
