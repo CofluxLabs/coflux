@@ -42,6 +42,7 @@ class Target(t.NamedTuple):
     retries: Retries | None
     memo: list[int] | bool
     requires: Requires | None
+    is_stub: bool
 
 
 Metadata = dict[str, t.Any]

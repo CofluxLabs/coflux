@@ -114,7 +114,7 @@ def _load_repository(
     return {
         a.name: (a.definition, a.fn)
         for a in attrs
-        if isinstance(a, decorators.Target) and a.definition
+        if isinstance(a, decorators.Target) and not a.definition.is_stub
     }
 
 

@@ -524,7 +524,7 @@ def _execute(
             resolved_arguments = _resolve_arguments(arguments, channel)
             channel.notify_executing()
             target = getattr(module, target_name)
-            if not isinstance(target, decorators.Target) or not target.definition:
+            if not isinstance(target, decorators.Target) or target.definition.is_stub:
                 raise Exception("not valid target")
             value = target.fn(*resolved_arguments)
         except KeyboardInterrupt:
