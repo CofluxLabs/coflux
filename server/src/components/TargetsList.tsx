@@ -12,7 +12,7 @@ import {
 import { DateTime } from "luxon";
 
 import * as models from "../models";
-import { buildUrl, formatDiff, pluralise } from "../utils";
+import { buildUrl, pluralise } from "../utils";
 import useNow from "../hooks/useNow";
 
 function isTargetOnline(
@@ -108,10 +108,11 @@ export default function TargetsList({
                   </h2>
                   {nextDueDiff && nextDueDiff.toMillis() < -1000 ? (
                     <span
-                      title={`Executions overdue (${formatDiff(
-                        nextDueDiff,
-                        true,
-                      )})`}
+                      title={`Executions overdue (${nextDueDiff
+                        .rescale()
+                        .toHuman({
+                          unitDisplay: "short",
+                        })})`}
                     >
                       <IconAlertCircle
                         size={16}
@@ -135,7 +136,7 @@ export default function TargetsList({
                     <span
                       title={`${pluralise(scheduled, "execution")} scheduled${
                         nextDueDiff
-                          ? ` (${formatDiff(nextDueDiff!, true)})`
+                          ? ` (${nextDueDiff.rescale().toHuman({ unitDisplay: "narrow" })})`
                           : ""
                       }`}
                     >

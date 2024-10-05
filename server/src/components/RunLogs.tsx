@@ -9,7 +9,6 @@ import {
 } from "@tabler/icons-react";
 
 import * as models from "../models";
-import { formatDiff } from "../utils";
 
 function classForLevel(level: models.LogMessageLevel) {
   switch (level) {
@@ -141,7 +140,7 @@ export default function RunLogs({
                             DateTime.DATETIME_SHORT_WITH_SECONDS,
                           )}
                         >
-                          +{formatDiff(diff)}
+                          +{diff.rescale().toHuman({ unitDisplay: "short" })}
                         </span>
                         <span className="flex-1">
                           <span

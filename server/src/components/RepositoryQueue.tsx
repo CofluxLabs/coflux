@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 import * as models from "../models";
-import { buildUrl, formatDiff } from "../utils";
+import { buildUrl } from "../utils";
 import { DateTime } from "luxon";
 import classNames from "classnames";
 
@@ -73,7 +73,7 @@ export default function RepositoryQueue({
                     </td>
                     <td className="text-right">
                       <span className="text-slate-400">
-                        {formatDiff(diff, true)}
+                        {diff.rescale().toHuman({ unitDisplay: "narrow" })}
                       </span>
                     </td>
                   </tr>
