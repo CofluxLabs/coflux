@@ -61,7 +61,10 @@ function Bar({ x1, x2, x0, d, className, style }: BarProps) {
   const width = x2.diff(x1).toMillis() / d;
   return (
     <div
-      className={classNames("absolute h-full rounded -ml-2", className)}
+      className={classNames(
+        "absolute h-full rounded-full -ml-2 border border-white",
+        className,
+      )}
       style={{
         ...style,
         left: percentage(left),
@@ -122,24 +125,7 @@ export default function RunTimeline({ runId, run }: Props) {
     (id) => run.steps[id].createdAt,
   );
   return (
-    <div className="px-4">
-      <div className="flex text-slate-400 text-sm sticky top-0 z-10">
-        <div className="w-40"></div>
-        <div className="flex-1 ml-2 flex border-x border-slate-200 px-1 py-2 bg-white/90">
-          <div className="flex-1">
-            {earliestTime.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}
-          </div>
-          <div>
-            <span
-              title={latestTime.toLocaleString(
-                DateTime.DATETIME_FULL_WITH_SECONDS,
-              )}
-            >
-              +{formatDiff(elapsedDiff)}
-            </span>
-          </div>
-        </div>
-      </div>
+    <div className="p-4">
       {stepIds.map((stepId) => {
         const step = run.steps[stepId];
         const latestAttempt = max(
@@ -168,17 +154,16 @@ export default function RunTimeline({ runId, run }: Props) {
             </div>
             <div className="flex-1 flex ml-2 pl-3 pr-1 border-x border-slate-200">
               <div className="flex-1 flex items-center">
-                <div className="flex-1 relative h-2">
+                <div className="flex-1 relative h-3">
                   <Bar
                     x1={stepTimes[stepId]}
                     x2={stepFinishedAt}
                     x0={earliestTime}
                     d={totalMillis}
-                    style={{ boxShadow: "inset 0 0 3px rgb(226, 232, 240)" }}
+                    style={{ boxShadow: "inset 0 0 5px rgb(226, 232, 240)" }}
                   />
-                  {Object.entries(step.executions)
-                    .reverse()
-                    .map(([attempt, execution]) => {
+                  {Object.entries(step.executions).map(
+                    ([attempt, execution]) => {
                       const [executeAt, assignedAt, resultAt] =
                         executionTimes[`${stepId}:${attempt}`];
                       return (
@@ -193,7 +178,7 @@ export default function RunTimeline({ runId, run }: Props) {
                             x2={resultAt || latestTime}
                             x0={earliestTime}
                             d={totalMillis}
-                            className="bg-slate-200"
+                            className="bg-slate-100"
                           />
                           {assignedAt && (
                             <Bar
@@ -206,13 +191,31 @@ export default function RunTimeline({ runId, run }: Props) {
                           )}
                         </StepLink>
                       );
-                    })}
+                    },
+                  )}
                 </div>
               </div>
             </div>
           </div>
         );
       })}
+      <div className="flex text-slate-400 text-sm sticky bottom-0">
+        <div className="w-40"></div>
+        <div className="flex-1 ml-2 flex border-x border-slate-200 px-2 py-3 bg-white/90">
+          <div className="flex-1">
+            {earliestTime.toLocaleString(DateTime.DATETIME_FULL_WITH_SECONDS)}
+          </div>
+          <div>
+            <span
+              title={latestTime.toLocaleString(
+                DateTime.DATETIME_FULL_WITH_SECONDS,
+              )}
+            >
+              +{formatDiff(elapsedDiff)}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
