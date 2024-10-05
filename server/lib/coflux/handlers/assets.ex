@@ -42,7 +42,7 @@ defmodule Coflux.Handlers.Assets do
 
   defp file_asset(blob_key, metadata, req) do
     content_type = Map.get(metadata, "type") || @default_mime_type
-    stream = blob_key |> blob_path() |> File.stream!()
+    stream = blob_key |> blob_path() |> File.stream!(2048)
     stream_response(req, %{"content-type" => content_type}, stream)
   end
 
