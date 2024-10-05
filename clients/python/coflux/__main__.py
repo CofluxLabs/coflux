@@ -253,7 +253,7 @@ def cli():
 )
 def server(port: int, data_dir: Path):
     """
-    Start the Coflux server.
+    Start a local server.
 
     This is just a wrapper around Docker (which must be installed and running), useful for running the server in a development environment.
     """
@@ -301,7 +301,7 @@ def configure(
     environment: str | None,
 ):
     """
-    Populate the configuration file with default values.
+    Populate/update the configuration file.
     """
     # TODO: connect to server to check details?
     click.secho("Writing configuration...", fg="black")
@@ -316,7 +316,15 @@ def configure(
     click.secho(f"Configuration written to '{config.path}'.", fg="green")
 
 
-@cli.command("environment.create")
+@cli.group()
+def env():
+    """
+    Manage environments.
+    """
+    pass
+
+
+@env.command("create")
 @click.option(
     "-p",
     "--project",
@@ -337,7 +345,7 @@ def configure(
     type=click.File(),
 )
 @click.argument("name")
-def environment_create(
+def env_create(
     project: str | None,
     host: str | None,
     base: str | None,
@@ -379,7 +387,7 @@ def environment_create(
     click.secho(f"Created environment '{name}'.", fg="green")
 
 
-@cli.command("environment.update")
+@env.command("update")
 @click.option(
     "-p",
     "--project",
@@ -418,7 +426,7 @@ def environment_create(
     is_flag=True,
     help="Clear all pools from the environment",
 )
-def environment_update(
+def env_update(
     project: str | None,
     host: str | None,
     environment: str | None,
@@ -476,7 +484,7 @@ def environment_update(
     click.secho(f"Updated environment '{name or environment_}'.", fg="green")
 
 
-@cli.command("environment.archive")
+@env.command("archive")
 @click.option(
     "-p",
     "--project",
@@ -492,7 +500,7 @@ def environment_update(
     "--host",
     help="Host to connect to",
 )
-def environment_archive(
+def env_archive(
     project: str | None,
     environment: str | None,
     host: str | None,
@@ -524,7 +532,7 @@ def environment_archive(
     click.secho(f"Archived environment '{environment_}'.", fg="green")
 
 
-@cli.command("repositories.register")
+@cli.command("register")
 @click.option(
     "-p",
     "--project",
@@ -541,14 +549,14 @@ def environment_archive(
     help="Environment name",
 )
 @click.argument("module_name", nargs=-1)
-def repositories_register(
+def register(
     project: str | None,
     environment: str | None,
     host: str | None,
     module_name: tuple[str],
 ) -> None:
     """
-    Register repositories with the server for the specified environment.
+    Register repositories with the server.
 
     Paths to scripts can be passed instead of module names.
 
@@ -564,7 +572,7 @@ def repositories_register(
     click.secho("Repository manifests registered.", fg="green")
 
 
-@cli.command("agent.run")
+@cli.command("agent")
 @click.option(
     "-p",
     "--project",
@@ -613,7 +621,7 @@ def repositories_register(
     help="Enable development mode (implies `--watch` and `--register`)",
 )
 @click.argument("module_name", nargs=-1)
-def agent_run(
+def agent(
     project: str | None,
     environment: str | None,
     provides: tuple[str],
@@ -626,9 +634,9 @@ def agent_run(
     module_name: tuple[str],
 ) -> None:
     """
-    Run the agent, loading the specified modules as repositories.
+    Start an agent.
 
-    Paths to scripts can be passed instead of module names.
+    Loads the specified modules as repositories. Paths to scripts can be passed instead of module names.
 
     Options will be loaded from the configuration file, unless overridden as arguments (or environment variables).
     """
@@ -667,7 +675,7 @@ def agent_run(
         _init(*args, **kwargs)
 
 
-@cli.command("workflow.schedule")
+@cli.command("submit")
 @click.option(
     "-p",
     "--project",
@@ -686,7 +694,7 @@ def agent_run(
 @click.argument("repository")
 @click.argument("target")
 @click.argument("argument", nargs=-1)
-def workflow_schedule(
+def submit(
     project: str,
     environment: str,
     host: str,
@@ -695,7 +703,7 @@ def workflow_schedule(
     argument: tuple[str],
 ) -> None:
     """
-    Schedule a workflow run.
+    Submit a workflow to be run.
     """
     project_ = _get_project(project)
     environment_ = _get_environment(environment)
