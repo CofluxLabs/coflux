@@ -1,6 +1,6 @@
 # 1. Installing
 
-Coflux is available as a Python package on PyPI. You can **install it using `pip`** or similar:
+Coflux is available as a Python package on PyPI. You can install it using `pip` or similar:
 
 ```bash
 pip install coflux

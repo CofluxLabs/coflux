@@ -6,10 +6,10 @@ We've defined our workflow, started the Coflux server, and started an agent. The
 
 We can do this in the web UI:
 
-1. **Select the `print_greeting` workflow** in the sidebar.
-2. **Click the 'Run...' button**.
-3. **Enter a name** (it must be _JSON-encoded_ (e.g., `"Joe"`, in quotes).
-4. **Click 'Run'**.
+1. Select the `print_greeting` workflow in the sidebar.
+2. Click the 'Run...' button.
+3. Enter a name (it must be _JSON-encoded_ (e.g., `"Joe"`, in quotes).
+4. Click 'Run'.
 
 In the web UI, you'll see the run graph appear as the run executes.
 

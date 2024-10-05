@@ -1,6 +1,6 @@
 # 2. Starting the server
 
-Use the CLI to **start the server** locally:
+Use the CLI to start the server locally:
 
 ```bash
 coflux server
@@ -20,15 +20,15 @@ docker run \
 ```
 :::
 
-**Open up the web UI** at http://localhost:7777.
+Open up the web UI at http://localhost:7777.
 
 ## Setting up a project
 
 Before we can connect an agent, we need to create a Coflux project and an environment.
 
-In the web UI, **click 'New project...', enter a project name, and click 'Create'**.
+In the web UI, click 'New project...', enter a project name, and click 'Create'.
 
-Now that you have an empty project, you'll be prompted to add an environment. **Enter a name (or use the suggested one), and click 'Create'**.
+Now that you have an empty project, you'll be prompted to add an environment. Enter a name (or use the suggested one), and click 'Create'.
 
 Take note of the project ID and environment name in the instructions.
 

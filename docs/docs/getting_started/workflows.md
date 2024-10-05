@@ -24,6 +24,6 @@ This defines a `print_greeting` workflow, which takes a `name` as an argument. W
 
 Workflows are defined in _repositories_. Typically these are Python modules, but they can alternatively be loaded from a Python script, which this guide will demonstrate.
 
-**Put the workflow above into `hello.py`.**
+Put the workflow above into `hello.py`.
 
 Before coming back to more advanced features, let's see how to get this workflow running...

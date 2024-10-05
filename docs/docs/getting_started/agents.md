@@ -12,7 +12,7 @@ Importantly, they can be run locally, automatically watching for code changes, r
 
 ## Initialise
 
-Use the `configure` command to populate a configuration. This isn't necessary, but avoids having to specify configuration manually in the following commands. **Run the following command**:
+Use the `configure` command to populate a configuration. This isn't necessary, but avoids having to specify configuration manually in the following commands. Run the following command:
 
 ```bash
 coflux configure
@@ -22,7 +22,7 @@ You will be prompted to enter the host (`localhost:7777`), the project ID, and t
 
 ## Run
 
-Now the agent can be started. **Run the following command**:
+Now the agent can be started. Run the following command:
 
 ```bash
 coflux agent --dev hello.py
