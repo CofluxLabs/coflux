@@ -1,3 +1,16 @@
+## 0.4.0
+
+Enhancements:
+
+- Adds CLI command for registering manifests.
+- Adds CLI command for starting the server.
+- Adds a '--dev' to the `agent` command (equivalent to `--reload` and `--register`).
+- Tidies up command naming.
+
+Fixes:
+
+- Support for 'stub' targets.
+
 ## 0.3.0
 
 Enhancements:
