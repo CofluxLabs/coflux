@@ -1,3 +1,13 @@
+## 0.4.0
+
+Enhancements:
+
+- Separates registration of manifests from initialisation of agent sessions.
+- Adds support for pausing an environment (no new executions will be assigned until unpaused).
+- Adds support for executions to 'suspend'.
+- Adds experimental support for previewing the contents of directory assets in the UI.
+- Adds an initial experimental implementation for 'pools'.
+
 ## 0.3.0
 
 Enhancements:
