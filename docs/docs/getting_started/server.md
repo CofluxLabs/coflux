@@ -1,8 +1,15 @@
-# 2. Running the server
+# 2. Starting the server
 
-The Coflux server can be run as a Docker container. Data will be stored in the working directory.
+Use the CLI to start the server locally:
 
-From a suitable directory, **run the following command**:
+```bash
+coflux server
+```
+
+:::note
+The command is just a wrapper around `docker run`, so you'll need to have Docker installed and running.
+
+Alternatively you can start the server with Docker directly:
 
 ```bash
 docker run \
@@ -11,13 +18,18 @@ docker run \
   -v $(pwd):/data \
   ghcr.io/cofluxlabs/coflux
 ```
+:::
 
-**Open up the web UI** at http://localhost:7777.
+Open up the web UI at http://localhost:7777.
 
 ## Setting up a project
 
 Before we can connect an agent, we need to create a Coflux project and an environment.
 
-**Create a project and an environment using the web UI**, and **take note of the project ID and environment name**.
+In the web UI, click 'New project...', enter a project name, and click 'Create'.
 
-Next, we can start an agent...
+Now that you have an empty project, you'll be prompted to add an environment. Enter a name (or use the suggested one), and click 'Create'.
+
+Take note of the project ID and environment name in the instructions.
+
+Next, we can define a workflow...

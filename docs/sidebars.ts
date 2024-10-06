@@ -7,8 +7,9 @@ const sidebars: SidebarsConfig = {
       type: "category",
       label: "Getting started",
       items: [
-        "getting_started/workflows",
+        "getting_started/install",
         "getting_started/server",
+        "getting_started/workflows",
         "getting_started/agents",
         "getting_started/runs",
       ],

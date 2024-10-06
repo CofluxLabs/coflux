@@ -6,13 +6,13 @@ Caching can be used to:
 - Avoid making an external request too frequently (e.g., to an API that implements rate limiting).
 
 :::note
-Caching can also be used to avoid executing some side-effect too frequently, although [deferring](/deferring) may be a more effective approach.
+Caching can also be used to avoid executing some side-effect too frequently by including a time-based argument (e.g., today's date), although [deferring](/deferring) may be a more effective approach.
 :::
 
 The simplest way to enable caching is by setting the `cache` option to `True`:
 
 ```python
-@cf.task(cache=True)
+@cf.workflow(cache=True)
 def add_numbers(a, b):
     return a + b
 ```
@@ -52,7 +52,7 @@ def my_workflow():
 
 ## Pending executions
 
-In the case of tasks being delayed (either intentionally, or a result of overloading), pending executions with caching enabled will become linked together _before_ execution has completed (or started). For example, with a recursive Fibonacci task, multiple tasks for the same _n_ value that are queued at the same time will be linked together:
+In the case of tasks being delayed (either intentionally, or while waiting to be assigned), pending executions with caching enabled will become linked together _before_ execution has completed (or started). For example, with a recursive Fibonacci task, multiple tasks for the same _n_ value that are queued at the same time will be linked together:
 
 ```python
 @cf.task(cache=True)
@@ -65,17 +65,42 @@ def fib(n: int) -> int:
 
 This property is generally desirable, but it means that if the first task fails, they both fail.
 
-## Cache keys
+## Cache parameters
 
-Caching is implemented by having the caller evaluate a 'cache key', which is then used as a lookup for existing steps. The default implementation considers all (serialised) arguments for the task, but this can be overridden if needed. For example:
+By default, all parameters are considered for a cache match, but if needed specific parameters can be specified. For example:
 
 ```python
-@cf.task(cache=True, cache_key=lambda product_id, _url: str(product_id))
+@cf.task(cache=True, cache_params=["product_id"])
 def fetch_product(product_id, url):
     ...
 ```
 
-Here we have a function to fetch a specified product from the provided URL. If the URL changes, we might not want that to invalidate the cache, so we set the cache key function to only consider the product ID.
+In this case, only the `product_id` parameter will be used - a different `url` won't affect the cache lookup.
+
+:::note
+The names of arguments can be changed without affecting the cache - this is because the names are translated to indexes.
+
+Additionally, if the order of parameters needs to be changed, the cache can be maintained by specifying (or rearranging) the `cache_params`. In the following three versions of `my_task` the addition of a parameter, and then rearranging, won't effect the cache:
+
+```python
+# before change
+@cf.task(cache=True)
+def my_task(a, b):
+    #...
+```
+
+```python
+@cf.task(cache=True, cache_params=["a", "b"])
+def my_task(a, b, c):
+    # ...
+```
+
+```python
+@cf.task(cache=True, cache_params=["a", "b2"])
+def my_task(c, b2, a):
+    # ...
+```
+:::
 
 ## Cache namespaces
 
@@ -99,41 +124,19 @@ def task_b(b):
     ...
 ```
 
-## Caching workflows
+## Cache versions
 
-:::warning
-The cache settings can be set on `@workflow`s as well as `@task`s, but they might not operate as expected. This is a little unintuitive, so it's subject to change.
-:::
-
-The cache settings are evaluated by the caller of the task/workflow, at the point that the task is scheduled. If the workflow is triggered manually, there isn't an opportunity to evaluate the configuration, so a cache key isn't assigned. However, the settings _are_ still applied when a workflow is called by another workflow (or by a [sensor](/sensors)). For example:
+When the implementation of a task changes, it may be desirable to reset the cache. This can be achieved by setting a `cache_version`:
 
 ```python
-@cf.workflow(cache=True)
-def child_workflow():
-    ...
-
-@cf.workflow()
-def parent_workflow():
-    child_workflow()
+@cf.task(cache=True, cache_version="v2")
+def my_task():
+    # ...
 ```
 
-In this case, both workflows will be available for scheduling - e.g., from the web UI. If you schedule `parent_workflow`, when it runs it will identify that `child_workflow` supports caching, and evaluate its cache key. However, if you schedule `child_workflow` directly from the UI, there isn't be an opportunity for the cache key to be evaluated, so caching wouldn't happen.
+## Environment inheritence
 
-The workaround to this is to have the workflow wrap a child task:
-
-```python
-@cf.task(cache=True)
-def child_task():
-    ...
-
-@cf.workflow()
-def child_workflow():
-    return child_task()
-```
-
-## Environments
-
-Environments can be linked together such that one environment may refer to another as its 'base' environment. This allows environments to be linked together into a tree. Cached results will be used from any ancestral environments, but not from descendant environments. For example, if a 'development' environment has a 'production' environment as its base, it will use results cached in production. This means that production results can be re-used when experimenting on a code change in a development environments. But, importantly, the production environment won't use a result that's been cached in the development environment.
+The inheritence of environments effects caching - refer to [the explanation on the concepts page](/concepts#environment-inheritence).
 
 ## Forcing execution
 

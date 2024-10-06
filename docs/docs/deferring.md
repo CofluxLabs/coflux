@@ -28,14 +28,14 @@ With this configuration, the initial task call will be delayed by 60 seconds, an
 
 Deferring can also be useful without specifying an explicit delay in the case where there's a backlog of tasks waiting to be executed.
 
-## Defer keys
+## Defer parameters
 
-Passing `True` for the `defer` option indicates that all the arguments should be considered. Alternatively, a function (or lambda) can be passed, which takes the task arguments (e.g., `user_id` and `document_id` in the example above). This function should return an alternative key, which will be used to consider uniqueness (for the task). For example, if might be necessary for the function to know the specific update that is triggering the notification, but this wouldn't be relevant for deduplication:
+Similarly to how caching is configured, specific parameters can be specified for use with deferring, if needed:
 
 ```python
-@cf.task(delay=60, defer=lambda u, d, _: f"#{u}:#{d}")
+@cf.task(delay=60, defer=True, defer_params=["user_id", "document_id"])
 def send_notification(user_id, document_id, update):
     ...
 ```
 
-In this case, subsequent calls for the same user and document would be de-duplicated, even though the update is different each time.
+In this case, subsequent calls for the same user and document would be de-duplicated, even though the update is different each time. Initial calls to `send_notification` would be discarded, in favour of the latest call.

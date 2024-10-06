@@ -114,7 +114,7 @@ def _load_repository(
     return {
         a.name: (a.definition, a.fn)
         for a in attrs
-        if isinstance(a, decorators.Target) and a.definition
+        if isinstance(a, decorators.Target) and not a.definition.is_stub
     }
 
 
@@ -251,7 +251,12 @@ def cli():
     default="./data/",
     help="The directory to store data",
 )
-def server(port: int, data_dir: Path):
+@click.option(
+    "--image",
+    default="ghcr.io/cofluxlabs/coflux",
+    help="The Docker image to run",
+)
+def server(port: int, data_dir: Path, image: str):
     """
     Start a local server.
 
@@ -261,12 +266,12 @@ def server(port: int, data_dir: Path):
         "docker",
         "run",
         "--pull",
-        "always",
+        ("missing" if image.startswith("sha256:") else "always"),
         "--publish",
         f"{port}:7777",
         "--volume",
         f"{data_dir}:/data",
-        "ghcr.io/cofluxlabs/coflux",
+        image,
     ]
     process = subprocess.run(command)
     sys.exit(process.returncode)
@@ -664,12 +669,14 @@ def agent(
         "register": register or dev,
     }
     if watch or dev:
+        filter = watchfiles.PythonFilter()
         watchfiles.run_process(
             ".",
             target=_init,
             args=args,
             kwargs=kwargs,
             callback=_callback,
+            watch_filter=filter,
         )
     else:
         _init(*args, **kwargs)

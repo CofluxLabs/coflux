@@ -126,6 +126,7 @@ def _build_definition(
     delay: float | dt.timedelta,
     memo: bool | t.Iterable[str] | str,
     requires: dict[str, str | bool | list[str]] | None,
+    is_stub: bool,
 ):
     parameters = inspect.signature(fn).parameters.values()
     for p in parameters:
@@ -142,6 +143,7 @@ def _build_definition(
         _parse_retries(retries),
         _parse_memo(memo, parameters_),
         _parse_requires(requires),
+        is_stub,
     )
 
 
@@ -169,24 +171,21 @@ class Target(t.Generic[P, T]):
         self._fn = fn
         self._name = name or fn.__name__
         self._repository = repository or fn.__module__
-        self._definition = (
-            None
-            if is_stub
-            else _build_definition(
-                type,
-                fn,
-                wait,
-                cache,
-                cache_params,
-                cache_namespace,
-                cache_version,
-                retries,
-                defer,
-                defer_params,
-                delay,
-                memo,
-                requires,
-            )
+        self._definition = _build_definition(
+            type,
+            fn,
+            wait,
+            cache,
+            cache_params,
+            cache_namespace,
+            cache_version,
+            retries,
+            defer,
+            defer_params,
+            delay,
+            memo,
+            requires,
+            is_stub,
         )
         functools.update_wrapper(self, fn)
 
@@ -195,7 +194,7 @@ class Target(t.Generic[P, T]):
         return self._name
 
     @property
-    def definition(self) -> models.Target | None:
+    def definition(self) -> models.Target:
         return self._definition
 
     @property
@@ -203,21 +202,20 @@ class Target(t.Generic[P, T]):
         return self._fn
 
     def submit(self, *args: P.args, **kwargs: P.kwargs) -> models.Execution[T]:
-        definition = self._definition
-        assert definition and definition.type in ("workflow", "task")
+        assert self._definition.type in ("workflow", "task")
         try:
             return context.submit(
-                definition.type,
+                self._definition.type,
                 self._repository,
                 self._name,
                 args,
-                wait_for=definition.wait_for,
-                cache=definition.cache,
-                retries=definition.retries,
-                defer=definition.defer,
-                delay=definition.delay,
-                memo=definition.memo,
-                requires=definition.requires,
+                wait_for=self._definition.wait_for,
+                cache=self._definition.cache,
+                retries=self._definition.retries,
+                defer=self._definition.defer,
+                delay=self._definition.delay,
+                memo=self._definition.memo,
+                requires=self._definition.requires,
             )
         except context.NotInContextException:
             result = self._fn(*args, **kwargs)

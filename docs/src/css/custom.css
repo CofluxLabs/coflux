@@ -7,6 +7,8 @@
   --ifm-color-primary-lighter: #22d3ee;
   --ifm-color-primary-lightest: #67e8f9;
   --ifm-code-font-size: 95%;
+  --ifm-navbar-height: auto;
+  --ifm-navbar-padding-vertical: 1rem;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
@@ -21,8 +23,24 @@
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
 
-.sidebarViewport_node_modules-\@docusaurus-theme-classic-lib-theme-DocRoot-Layout-Sidebar-styles-module {
-  height: auto !important;
+body {
+  font-family: "Raleway", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.navbar__logo {
+  height: 2.5rem;
+}
+
+.theme-doc-sidebar-container > div {
+  top: 80px;
+  height: auto;
+}
+
+.menu__link {
+  transition: none;
 }
 
 .footer__bottom {

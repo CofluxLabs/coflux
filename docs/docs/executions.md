@@ -3,18 +3,23 @@
 The state transitions of an execution can be represented in a diagram: 
 
 ```mermaid
-graph LR;
+graph TB;
   start((Start))-->queued
   start-->cached[Cached]
-  queued[Queued]-->assigned
+  queued[Queued]-->deferred[Deferred]
+  queued-->assigned
   queued-->cancelled
-  queued-->deferred[Deferred]
   assigned[Assigned]-->succeeded[Succeeded]
   assigned-->failed[Failed]
   assigned-->abandoned[Abandoned]
+  assigned-->suspended[Suspended]
   assigned-->cancelled[Cancelled]
 ```
 
-When an execution is first scheduled, it starts in the _Queued_ state (unless caching is enabled and there is a cache hit, in which case it transitions straight to _Cached_). From the _Queued_ state it will transition to _Assigned_ once it is due, and a suitable agent is available to run it. At that point the agent will generally execute it until it succeeds (_Succeeded_) or raises an exception (_Failed_). Executions may become _Cancelled_ either before or after they've been assigned. They may also become _Deferred_ if another execution superseeds it before it's assigned. If contact is lost with an agent for more than the timeout period, the task that are running will be marked as _Abandoned_ (we don't know whether it completed successfully).
+When an execution is first scheduled, it starts in the _Queued_ state (unless caching is enabled and there is a cache hit, in which case it transitions straight to _Cached_).
 
-If a step is automatically retried or manually re-run, a new execution will be started. An execution will only be automatically retried from the _Failed_ or _Abandoned_ states.
+From the _Queued_ state it will transition to _Assigned_ once it is due, and a suitable agent is available to run it, unless it become 'deferred' by another execution in the meantime.
+
+Once assigned, the agent will generally execute it until it succeeds (_Succeeded_) or raises an exception (_Failed_). If contact is lost with an agent for more than the timeout period, the task that are running will be marked as _Abandoned_ (we don't know whether it completed successfully). Executions may be _Cancelled_ while they're running (or before they've been assigned). An execution may choose to suspend itself (either explicitly, or from timing out while waiting for another execution to complete) - in this case it will be automatically re-run.
+
+Steps maybe be configured to automatically retry (from a failed or abandoned state), or they may be re-run manually, in which case a new execution will be started.
