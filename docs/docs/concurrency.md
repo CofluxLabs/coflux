@@ -96,22 +96,9 @@ def create_order(user_execution, product_execution):
     # ...
 ```
 
-## Suspense
+### Suspense
 
-A timeout can be imposed on the wait by using a 'suspense' context. If the timeout is reached, the execution will be suspended, and automatically re-started once the result becomes available:
-
-```python
-@cf.task()
-def create_order(user_execution, product_execution):
-    with cf.suspense(timeout=1):
-        # if the result isn't available within one second, the `create_order` execution will suspend
-        user = user_execution.result()
-    # this is outside the suspense context, so there's no timeout
-    product = product_execution.result()
-    # ...
-```
-
-This can be useful for freeing up the resources used by the waiting execution, but care must be taken to ensure that it's acceptable for everything up to the point of suspense can be re-executed again. ([Memoising](/memoising) can be useful here.)
+A timeout can be imposed on the `.result()` call by surrounding it in a 'suspense' context. See the [suspense](/suspense) page for details.
 
 ## Fire-and-forget
 
