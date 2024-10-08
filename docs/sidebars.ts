@@ -23,7 +23,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Advanced",
-      items: ["deferring", "memoising", "assets", "sensors", "stubs"],
+      items: ["suspense", "deferring", "memoising", "assets", "sensors", "stubs"],
     },
     "examples",
   ],
