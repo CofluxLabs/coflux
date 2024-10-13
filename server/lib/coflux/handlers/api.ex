@@ -254,7 +254,7 @@ defmodule Coflux.Handlers.Api do
           defer: {"defer", &parse_defer/1},
           execute_after: {"executeAfter", &parse_integer(&1, optional: true)},
           retries: {"retries", &parse_retries/1},
-          requries: {"requires", &parse_tag_set/1}
+          requires: {"requires", &parse_tag_set/1}
         }
       )
 
