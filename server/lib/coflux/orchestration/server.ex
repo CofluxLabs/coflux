@@ -267,6 +267,17 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
+  def handle_call({:get_workflow, environment_name, repository, target_name}, _from, state) do
+    with {:ok, environment_id, _} <- lookup_environment_by_name(state, environment_name),
+         {:ok, workflow} <-
+           Manifests.get_latest_workflow(state.db, environment_id, repository, target_name) do
+      {:reply, {:ok, workflow}, state}
+    else
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+    end
+  end
+
   def handle_call(
         {:start_session, environment_name, launch_id, provides, concurrency, pid},
         _from,
