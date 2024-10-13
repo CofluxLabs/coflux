@@ -11,4 +11,4 @@ RUN pip install -r requirements.txt
 
 ADD . /app
 
-ENTRYPOINT ["coflux", "agent.run", "app.repo"]
+ENTRYPOINT ["coflux", "agent", "app.repo"]

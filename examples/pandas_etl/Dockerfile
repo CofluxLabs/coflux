@@ -13,4 +13,4 @@ RUN poetry install --no-interaction --no-ansi
 
 COPY . ./
 
-ENTRYPOINT ["coflux", "agent.run", "dataprocessing.repo"]
+ENTRYPOINT ["coflux", "agent", "dataprocessing.repo"]
