@@ -21,6 +21,9 @@ import StepLink from "./StepLink";
 import { useHoverContext } from "./HoverContext";
 import buildGraph, { Graph, Edge } from "../graph";
 import EnvironmentLabel from "./EnvironmentLabel";
+import AssetIcon from "./AssetIcon";
+import { truncatePath } from "../utils";
+import AssetLink from "./AssetLink";
 
 function classNameForExecution(execution: models.Execution) {
   const result = execution.result;
@@ -141,6 +144,33 @@ function StepNode({
   );
 }
 
+type AssetNodeProps = {
+  projectId: string;
+  assetId: string;
+  asset: models.Asset;
+};
+
+function AssetNode({ projectId, assetId, asset }: AssetNodeProps) {
+  return (
+    <AssetLink
+      projectId={projectId}
+      assetId={assetId}
+      asset={asset}
+      className="h-full w-full flex gap-0.5 px-1.5 items-center bg-white rounded-full text-slate-700 text-sm ring-offset-1 hover:ring-2 ring-slate-400"
+    >
+      <AssetIcon
+        asset={asset}
+        size={16}
+        strokeWidth={1.5}
+        className="shrink-0"
+      />
+      <span className="text-ellipsis overflow-hidden whitespace-nowrap">
+        {truncatePath(asset.path) + (asset.type == 1 ? "/" : "")}
+      </span>
+    </AssetLink>
+  );
+}
+
 type ParentNodeProps = {
   parent: models.Reference | null;
 };
@@ -227,8 +257,16 @@ function EdgePath({ edge, offset, highlight }: EdgePathProps) {
             : "stroke-slate-200"
       }
       fill="none"
-      strokeWidth={highlight || edge.type == "dependency" ? 3 : 2}
-      strokeDasharray={edge.type != "dependency" ? "5" : undefined}
+      strokeWidth={
+        edge.type == "asset"
+          ? 1.5
+          : highlight || edge.type == "dependency"
+            ? 3
+            : 2
+      }
+      strokeDasharray={
+        edge.type == "asset" ? "2" : edge.type != "dependency" ? "5" : undefined
+      }
       d={buildEdgePath(edge, offset)}
     />
   );
@@ -428,6 +466,12 @@ export default function RunGraph({
                       runId={runId}
                       isActive={node.stepId == activeStepId}
                       runEnvironmentId={runEnvironmentId}
+                    />
+                  ) : node.type == "asset" ? (
+                    <AssetNode
+                      projectId={projectId}
+                      assetId={node.assetId}
+                      asset={node.asset}
                     />
                   ) : node.type == "child" ? (
                     <ChildNode runId={node.runId} child={node.child} />

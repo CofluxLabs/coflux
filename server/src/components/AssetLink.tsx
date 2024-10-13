@@ -191,7 +191,6 @@ function DirectoryBrowser({
   const previousEntry = usePrevious(entry);
   useEffect(() => {
     if (open) {
-      console.log("*1", projectId, assetId);
       fetch(`/assets/${projectId}/${assetId}`)
         .then((resp) => resp.json())
         .then((entries) => {
