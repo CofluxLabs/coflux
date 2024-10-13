@@ -6,10 +6,20 @@ import {
   useState,
 } from "react";
 
-type Hovered = [string, string | undefined, number | undefined];
+type State =
+  | {
+      runId: string;
+    }
+  | {
+      stepId: string;
+      attempt?: number;
+    }
+  | {
+      assetId: string;
+    };
 
 const Context = createContext<
-  [Hovered | undefined, (hovered: Hovered | undefined) => void] | undefined
+  [State | undefined, (hovered: State | undefined) => void] | undefined
 >(undefined);
 
 export function useHoverContext() {
@@ -19,23 +29,24 @@ export function useHoverContext() {
   }
   const [state, setState] = value;
   const isHovered = useCallback(
-    (runId: string, stepId?: string, attempt?: number) => {
+    (query: State) => {
       return (
         state &&
-        runId == state[0] &&
-        (!stepId || stepId == state[1]) &&
-        (!attempt || attempt == state[2])
+        (("runId" in query && "runId" in state && query.runId == state.runId) ||
+          ("stepId" in query &&
+            "stepId" in state &&
+            query.stepId == state.stepId &&
+            ("attempt" in query
+              ? "attempt" in state && query.attempt == state.attempt
+              : true)) ||
+          ("assetId" in query &&
+            "assetId" in state &&
+            query.assetId == state.assetId))
       );
     },
     [state],
   );
-  const setHovered = useCallback(
-    (runId?: string, stepId?: string, attempt?: number) => {
-      setState(runId ? [runId, stepId, attempt] : undefined);
-    },
-    [],
-  );
-  return { isHovered, setHovered };
+  return { isHovered, setHovered: setState };
 }
 
 type Props = {
@@ -43,7 +54,7 @@ type Props = {
 };
 
 export default function HoverContext({ children }: Props) {
-  const [state, setState] = useState<Hovered>();
+  const [state, setState] = useState<State>();
   return (
     <Context.Provider value={[state, setState]}>{children}</Context.Provider>
   );

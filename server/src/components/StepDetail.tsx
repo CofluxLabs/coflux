@@ -588,8 +588,8 @@ function Value({ value, projectId, className }: ValueProps) {
                 runId={execution.runId}
                 stepId={execution.stepId}
                 attempt={execution.attempt}
-                className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 ring-offset-1 rounded"
-                hoveredClassName="ring-2 ring-slate-300"
+                className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 ring-offset-1 ring-slate-400 rounded"
+                hoveredClassName="ring-2"
               >
                 <IconFunction size={16} className="inline-block" />
               </StepLink>
@@ -603,7 +603,8 @@ function Value({ value, projectId, className }: ValueProps) {
                 projectId={projectId}
                 assetId={placeholder.assetId}
                 asset={asset}
-                className="p-0.5 mx-0.5 bg-slate-100 hover:bg-slate-200 rounded"
+                className="p-0.5 mx-0.5 bg-slate-100 ring-offset-1 ring-slate-400 rounded"
+                hoveredClassName="ring-2"
               >
                 <AssetIcon asset={asset} className="inline-block" />
               </AssetLink>
@@ -1037,8 +1038,8 @@ function CachedSection({ result }: CachedSectionProps) {
           runId={result.execution.runId}
           stepId={result.execution.stepId}
           attempt={result.execution.attempt}
-          className="rounded text-sm ring-offset-1 px-1"
-          hoveredClassName="ring-2 ring-slate-300"
+          className="rounded text-sm ring-offset-1 px-1 ring-slate-300"
+          hoveredClassName="ring-2"
         >
           <span className="font-mono">{result.execution.target}</span>{" "}
           <span className="text-slate-500">
@@ -1058,23 +1059,24 @@ type AssetItemProps = {
 
 function AssetItem({ asset, projectId, assetId }: AssetItemProps) {
   return (
-    <li className="block my-1">
+    <li className="block my-1 flex items-center gap-1">
       <AssetLink
         projectId={projectId}
         assetId={assetId}
         asset={asset}
-        className="flex items-start gap-1 rounded hover:bg-white/50 p-1"
+        className="inline-flex items-start gap-1 rounded-full px-1 ring-slate-400"
+        hoveredClassName="ring-2"
       >
         <AssetIcon asset={asset} size={18} className="mt-1 shrink-0" />
         <span className="flex flex-col min-w-0">
           <span className="text-ellipsis overflow-hidden whitespace-nowrap">
             {truncatePath(asset.path) + (asset.type == 1 ? "/" : "")}
           </span>
-          <span className="text-slate-500 text-xs">
-            {getAssetMetadata(asset).join(", ")}
-          </span>
         </span>
       </AssetLink>
+      <span className="text-slate-500 text-xs">
+        {getAssetMetadata(asset).join(", ")}
+      </span>
     </li>
   );
 }

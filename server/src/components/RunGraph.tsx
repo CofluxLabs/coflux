@@ -74,11 +74,11 @@ function StepNode({
         <div
           className={classNames(
             "absolute w-full h-full border border-slate-300 bg-white rounded ring-offset-2",
-            isActive || isHovered(runId, stepId, attempt)
+            isActive || isHovered({ stepId, attempt })
               ? "-top-2 -right-2"
               : "-top-1 -right-1",
-            isHovered(runId, stepId) &&
-              !isHovered(runId, stepId, attempt) &&
+            isHovered({ stepId }) &&
+              !isHovered({ stepId, attempt }) &&
               "ring-2 ring-slate-400",
           )}
         ></div>
@@ -156,7 +156,8 @@ function AssetNode({ projectId, assetId, asset }: AssetNodeProps) {
       projectId={projectId}
       assetId={assetId}
       asset={asset}
-      className="h-full w-full flex gap-0.5 px-1.5 items-center bg-white rounded-full text-slate-700 text-sm ring-offset-1 hover:ring-2 ring-slate-400"
+      className="h-full w-full flex gap-0.5 px-1.5 items-center bg-white rounded-full text-slate-700 text-sm ring-offset-1 ring-slate-400"
+      hoveredClassName="ring-2"
     >
       <AssetIcon
         asset={asset}
@@ -426,11 +427,17 @@ export default function RunGraph({
           <rect width="100%" height="100%" fill="url(#grid)" />
           {graph &&
             Object.entries(graph.edges).flatMap(([edgeId, edge]) => {
+              const from = graph.nodes[edge.from];
+              const to = graph.nodes[edge.to];
               const highlight =
-                isHovered(edge.from) ||
-                isHovered(edge.to) ||
-                isHovered(runId, edge.from) ||
-                isHovered(runId, edge.to);
+                (from.type == "parent" &&
+                  from.parent &&
+                  isHovered({ runId: from.parent.runId })) ||
+                (from.type == "child" && isHovered({ runId: from.runId })) ||
+                (to.type == "child" && isHovered({ runId: to.runId })) ||
+                (from.type == "step" && isHovered({ stepId: from.stepId })) ||
+                (to.type == "step" && isHovered({ stepId: to.stepId })) ||
+                (to.type == "asset" && isHovered({ assetId: to.assetId }));
               return (
                 <EdgePath
                   key={edgeId}

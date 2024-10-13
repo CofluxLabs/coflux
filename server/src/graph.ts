@@ -179,7 +179,7 @@ export default function buildGraph(
       }
       Object.entries(execution.assets).forEach(([assetId, asset]) => {
         const text = truncatePath(asset.path) + (asset.type == 1 ? "/" : "");
-        nodes[`${stepId}/${assetId}`] = {
+        nodes[`asset:${assetId}`] = {
           type: "asset",
           stepId,
           assetId,
@@ -187,9 +187,9 @@ export default function buildGraph(
           width: Math.min(getTextWidth(text) + 32, 140),
           height: 20,
         };
-        edges[`${stepId}-${stepId}/${assetId}`] = {
+        edges[`${stepId}-asset:${assetId}`] = {
           from: stepId,
-          to: `${stepId}/${assetId}`,
+          to: `asset:${assetId}`,
           type: "asset",
         };
       });
