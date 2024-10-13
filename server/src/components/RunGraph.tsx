@@ -2,7 +2,7 @@ import {
   Fragment,
   useCallback,
   useState,
-  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
   WheelEvent as ReactWheelEvent,
   useRef,
   useEffect,
@@ -21,6 +21,9 @@ import StepLink from "./StepLink";
 import { useHoverContext } from "./HoverContext";
 import buildGraph, { Graph, Edge } from "../graph";
 import EnvironmentLabel from "./EnvironmentLabel";
+import AssetIcon from "./AssetIcon";
+import { truncatePath } from "../utils";
+import AssetLink from "./AssetLink";
 
 function classNameForExecution(execution: models.Execution) {
   const result = execution.result;
@@ -71,11 +74,11 @@ function StepNode({
         <div
           className={classNames(
             "absolute w-full h-full border border-slate-300 bg-white rounded ring-offset-2",
-            isActive || isHovered(runId, stepId, attempt)
+            isActive || isHovered({ stepId, attempt })
               ? "-top-2 -right-2"
               : "-top-1 -right-1",
-            isHovered(runId, stepId) &&
-              !isHovered(runId, stepId, attempt) &&
+            isHovered({ stepId }) &&
+              !isHovered({ stepId, attempt }) &&
               "ring-2 ring-slate-400",
           )}
         ></div>
@@ -138,6 +141,53 @@ function StepNode({
         )}
       </StepLink>
     </Fragment>
+  );
+}
+
+type AssetNodeProps = {
+  projectId: string;
+  assetId: string;
+  asset: models.Asset;
+};
+
+function AssetNode({ projectId, assetId, asset }: AssetNodeProps) {
+  return (
+    <AssetLink
+      projectId={projectId}
+      assetId={assetId}
+      asset={asset}
+      className="h-full w-full flex gap-0.5 px-1.5 items-center bg-white rounded-full text-slate-700 text-sm ring-slate-400"
+      hoveredClassName="ring-2"
+    >
+      <AssetIcon
+        asset={asset}
+        size={16}
+        strokeWidth={1.5}
+        className="shrink-0"
+      />
+      <span className="text-ellipsis overflow-hidden whitespace-nowrap">
+        {truncatePath(asset.path) + (asset.type == 1 ? "/" : "")}
+      </span>
+    </AssetLink>
+  );
+}
+
+type MoreAssetsNodeProps = {
+  assetIds: string[];
+};
+
+function MoreAssetsNode({ assetIds }: MoreAssetsNodeProps) {
+  const { isHovered } = useHoverContext();
+
+  return (
+    <span
+      className={classNames(
+        "h-full w-full px-1.5 items-center bg-white rounded-full text-slate-400 text-sm ring-slate-400 text-ellipsis overflow-hidden whitespace-nowrap",
+        assetIds.some((assetId) => isHovered({ assetId })) && "ring-2",
+      )}
+    >
+      (+{assetIds.length} more)
+    </span>
   );
 }
 
@@ -227,8 +277,16 @@ function EdgePath({ edge, offset, highlight }: EdgePathProps) {
             : "stroke-slate-200"
       }
       fill="none"
-      strokeWidth={highlight || edge.type == "dependency" ? 3 : 2}
-      strokeDasharray={edge.type != "dependency" ? "5" : undefined}
+      strokeWidth={
+        edge.type == "asset"
+          ? 1.5
+          : highlight || edge.type == "dependency"
+            ? 3
+            : 2
+      }
+      strokeDasharray={
+        edge.type == "asset" ? "2" : edge.type != "dependency" ? "5" : undefined
+      }
       d={buildEdgePath(edge, offset)}
     />
   );
@@ -307,11 +365,11 @@ export default function RunGraph({
   const maxDragX = -(canvasWidth * zoom - containerWidth);
   const maxDragY = -(canvasHeight * zoom - containerHeight);
   const [offsetX, offsetY] = offsetOverride || [maxDragX / 2, maxDragY / 2];
-  const handleMouseDown = useCallback(
-    (ev: ReactMouseEvent) => {
+  const handlePointerDown = useCallback(
+    (ev: ReactPointerEvent) => {
       const dragStart = [ev.screenX, ev.screenY];
       let dragging: [number, number] = [offsetX, offsetY];
-      const handleMove = (ev: MouseEvent) => {
+      const handleMove = (ev: PointerEvent) => {
         dragging = [
           Math.min(0, Math.max(maxDragX, offsetX - dragStart[0] + ev.screenX)),
           Math.min(0, Math.max(maxDragY, offsetY - dragStart[1] + ev.screenY)),
@@ -321,20 +379,20 @@ export default function RunGraph({
       const handleUp = () => {
         setDragging(undefined);
         setOffsetOverride(dragging);
-        window.removeEventListener("mousemove", handleMove);
-        window.removeEventListener("mouseup", handleUp);
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
       };
-      window.addEventListener("mousemove", handleMove);
-      window.addEventListener("mouseup", handleUp);
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleUp);
     },
     [offsetX, offsetY, maxDragX, maxDragY],
   );
   const handleWheel = useCallback(
     (ev: ReactWheelEvent<HTMLDivElement>) => {
-      const mouseX = ev.clientX - containerRef.current!.offsetLeft;
-      const mouseY = ev.clientY - containerRef.current!.offsetTop;
-      const canvasX = (mouseX - offsetX) / zoom;
-      const canvasY = (mouseY - offsetY) / zoom;
+      const pointerX = ev.clientX - containerRef.current!.offsetLeft;
+      const pointerY = ev.clientY - containerRef.current!.offsetTop;
+      const canvasX = (pointerX - offsetX) / zoom;
+      const canvasY = (pointerY - offsetY) / zoom;
       const newZoom = Math.max(
         minZoom,
         Math.min(1.5, zoom * (1 + ev.deltaY / -500)),
@@ -373,7 +431,7 @@ export default function RunGraph({
                 ? "cursor-grab"
                 : undefined,
           )}
-          onMouseDown={handleMouseDown}
+          onPointerDown={handlePointerDown}
         >
           <defs>
             <pattern
@@ -388,11 +446,19 @@ export default function RunGraph({
           <rect width="100%" height="100%" fill="url(#grid)" />
           {graph &&
             Object.entries(graph.edges).flatMap(([edgeId, edge]) => {
+              const from = graph.nodes[edge.from];
+              const to = graph.nodes[edge.to];
               const highlight =
-                isHovered(edge.from) ||
-                isHovered(edge.to) ||
-                isHovered(runId, edge.from) ||
-                isHovered(runId, edge.to);
+                (from.type == "parent" &&
+                  from.parent &&
+                  isHovered({ runId: from.parent.runId })) ||
+                (from.type == "child" && isHovered({ runId: from.runId })) ||
+                (to.type == "child" && isHovered({ runId: to.runId })) ||
+                (from.type == "step" && isHovered({ stepId: from.stepId })) ||
+                (to.type == "step" && isHovered({ stepId: to.stepId })) ||
+                (to.type == "asset" && isHovered({ assetId: to.assetId })) ||
+                (to.type == "assets" &&
+                  to.assetIds.some((assetId) => isHovered({ assetId })));
               return (
                 <EdgePath
                   key={edgeId}
@@ -429,6 +495,14 @@ export default function RunGraph({
                       isActive={node.stepId == activeStepId}
                       runEnvironmentId={runEnvironmentId}
                     />
+                  ) : node.type == "asset" ? (
+                    <AssetNode
+                      projectId={projectId}
+                      assetId={node.assetId}
+                      asset={node.asset}
+                    />
+                  ) : node.type == "assets" ? (
+                    <MoreAssetsNode assetIds={node.assetIds} />
                   ) : node.type == "child" ? (
                     <ChildNode runId={node.runId} child={node.child} />
                   ) : undefined}

@@ -40,8 +40,8 @@ export default function StepLink({
   const isActive =
     stepId == activeStepId && (!attempt || activeAttempt == attempt);
   const handleMouseOver = useCallback(
-    () => setHovered(runId, stepId, attempt),
-    [setHovered, runId, stepId, attempt],
+    () => setHovered({ stepId, attempt }),
+    [setHovered, stepId, attempt],
   );
   const handleMouseOut = useCallback(() => setHovered(undefined), []);
   // TODO: better way to determine current page (and run)
@@ -61,7 +61,7 @@ export default function StepLink({
         className,
         isActive
           ? activeClassName
-          : isHovered(runId, stepId, attempt)
+          : isHovered({ stepId, attempt })
             ? hoveredClassName
             : undefined,
       )}

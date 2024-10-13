@@ -2,6 +2,7 @@ import ELK from "elkjs/lib/elk.bundled.js";
 import { max, minBy } from "lodash";
 
 import * as models from "./models";
+import { truncatePath } from "./utils";
 
 type BaseNode = (
   | {
@@ -19,6 +20,17 @@ type BaseNode = (
       child: models.Child;
       runId: string;
     }
+  | {
+      type: "asset";
+      stepId: string;
+      assetId: string;
+      asset: models.Asset;
+    }
+  | {
+      type: "assets";
+      stepId: string;
+      assetIds: string[];
+    }
 ) & {
   width: number;
   height: number;
@@ -33,7 +45,7 @@ export type Edge = {
   from: string;
   to: string;
   path: { x: number; y: number }[];
-  type: "dependency" | "child" | "transitive" | "parent";
+  type: "dependency" | "child" | "transitive" | "parent" | "asset";
 };
 
 export type Graph = {
@@ -105,6 +117,24 @@ function traverseRun(
   }
 }
 
+let canvas: HTMLCanvasElement | undefined;
+
+function getTextWidth(text: string, font = "14px system-ui") {
+  canvas = canvas || document.createElement("canvas");
+  const context = canvas.getContext("2d")!;
+  context.font = font;
+  return context.measureText(text).width;
+}
+
+function truncateList<T>(array: T[], limit: number): [T[], T[]] {
+  if (array.length <= limit) {
+    return [array, []];
+  } else {
+    const adjustedLimit = Math.max(0, limit - 1);
+    return [array.slice(0, adjustedLimit), array.slice(adjustedLimit)];
+  }
+}
+
 export default function buildGraph(
   run: models.Run,
   runId: string,
@@ -131,6 +161,18 @@ export default function buildGraph(
   const nodes: Record<string, BaseNode> = {};
   const edges: Record<string, Omit<Edge, "path">> = {};
 
+  nodes[run.parent?.runId || "start"] = {
+    type: "parent",
+    parent: run.parent || null,
+    width: run.parent ? 100 : 30,
+    height: 30,
+  };
+  edges["start"] = {
+    from: run.parent?.runId || "start",
+    to: initialStepId,
+    type: "parent",
+  };
+
   traverseRun(
     run,
     stepAttempts,
@@ -139,7 +181,7 @@ export default function buildGraph(
       const step = run.steps[stepId];
       nodes[stepId] = {
         type: "step",
-        step: step,
+        step,
         stepId,
         attempt,
         width: 160,
@@ -149,6 +191,40 @@ export default function buildGraph(
       if (!execution) {
         return;
       }
+      const [assets, rest] = truncateList(Object.entries(execution.assets), 3);
+      assets.forEach(([assetId, asset]) => {
+        const text = truncatePath(asset.path) + (asset.type == 1 ? "/" : "");
+        nodes[`asset:${assetId}`] = {
+          type: "asset",
+          stepId,
+          assetId,
+          asset,
+          width: Math.min(getTextWidth(text) + 32, 140),
+          height: 20,
+        };
+        edges[`${stepId}-asset:${assetId}`] = {
+          from: stepId,
+          to: `asset:${assetId}`,
+          type: "asset",
+        };
+      });
+      if (rest.length) {
+        const nodeId = `assets:${rest.map(([id]) => id).join(",")}`;
+        const text = `(+${rest.length} more)`;
+        nodes[nodeId] = {
+          type: "assets",
+          stepId,
+          assetIds: rest.map(([id]) => id),
+          width: Math.min(getTextWidth(text) + 14, 100),
+          height: 20,
+        };
+        edges[`${stepId}-${nodeId}`] = {
+          from: stepId,
+          to: nodeId,
+          type: "asset",
+        };
+      }
+
       Object.entries(execution.dependencies).forEach(
         ([dependencyId, dependency]) => {
           if (dependency.runId == runId) {
@@ -262,37 +338,23 @@ export default function buildGraph(
     },
   );
 
-  nodes[run.parent?.runId || "start"] = {
-    type: "parent",
-    parent: run.parent || null,
-    width: run.parent ? 100 : 30,
-    height: 30,
-  };
-  edges["start"] = {
-    from: run.parent?.runId || "start",
-    to: initialStepId,
-    type: "parent",
-  };
-
   return new ELK()
     .layout({
       id: "root",
+      layoutOptions: {
+        "elk.spacing.nodeNode": "10",
+        "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      },
       children: Object.entries(nodes).map(([id, { width, height }]) => ({
         id,
         width,
         height,
       })),
-      edges: Object.entries(edges).map(([id, { from, to, type }]) => {
-        const priority = type == "parent" ? 2 : type == "child" ? 1 : 0;
-        return {
-          id,
-          sources: [from],
-          targets: [to],
-          layoutOptions: {
-            "elk.layered.priority.straightness": priority.toString(),
-          },
-        };
-      }),
+      edges: Object.entries(edges).map(([id, { from, to }]) => ({
+        id,
+        sources: [from],
+        targets: [to],
+      })),
     })
     .then((graph) => {
       const nodes_ = graph.children!.reduce((result, child) => {

@@ -19,6 +19,8 @@ import { humanSize, pluralise } from "../utils";
 import Dialog from "./common/Dialog";
 import { uniq } from "lodash";
 import usePrevious from "../hooks/usePrevious";
+import { useHoverContext } from "./HoverContext";
+import classNames from "classnames";
 
 type Entry = { path: string; size: number; type: string };
 
@@ -191,7 +193,6 @@ function DirectoryBrowser({
   const previousEntry = usePrevious(entry);
   useEffect(() => {
     if (open) {
-      console.log("*1", projectId, assetId);
       fetch(`/assets/${projectId}/${assetId}`)
         .then((resp) => resp.json())
         .then((entries) => {
@@ -263,6 +264,7 @@ type Props = {
   projectId: string;
   assetId: string;
   className?: string;
+  hoveredClassName?: string;
   children: ReactNode;
 };
 
@@ -271,9 +273,11 @@ export default function AssetLink({
   projectId,
   assetId,
   className,
+  hoveredClassName,
   children,
 }: Props) {
   const [open, setOpen] = useState<boolean>(false);
+  const { isHovered, setHovered } = useHoverContext();
   const handleLinkClick = useCallback((ev: MouseEvent) => {
     if (!ev.ctrlKey) {
       ev.preventDefault();
@@ -281,6 +285,11 @@ export default function AssetLink({
     }
   }, []);
   const handleClose = useCallback(() => setOpen(false), []);
+  const handleMouseOver = useCallback(
+    () => setHovered({ assetId }),
+    [setHovered, assetId],
+  );
+  const handleMouseOut = useCallback(() => setHovered(undefined), []);
   return (
     <Fragment>
       {asset.type == 0 ? (
@@ -304,9 +313,14 @@ export default function AssetLink({
       <a
         href={`/blobs/${asset.blobKey}`}
         title={`${asset.path}\n${getAssetMetadata(asset).join("; ")}`}
-        className={className}
+        className={classNames(
+          className,
+          isHovered({ assetId }) && hoveredClassName,
+        )}
         target="_blank"
         onClick={handleLinkClick}
+        onMouseOver={handleMouseOver}
+        onMouseOut={handleMouseOut}
       >
         {children}
       </a>

@@ -115,7 +115,7 @@ function DetailPanel({
               run={run}
               projectId={projectId}
               activeEnvironmentId={activeEnvironmentId}
-              className="flex-1"
+              className="flex-1 w-full"
               onRerunStep={handleRerunStep}
               activeTab={activeTab}
               maximised={maximised}

@@ -1,4 +1,9 @@
-import { IconFile, IconFileText, IconFolder } from "@tabler/icons-react";
+import {
+  IconFile,
+  IconFileText,
+  IconFolder,
+  IconProps,
+} from "@tabler/icons-react";
 
 import * as models from "../models";
 
@@ -19,17 +24,15 @@ function iconForAsset(asset: models.Asset) {
   }
 }
 
-type AssetIconProps = {
+type AssetIconProps = IconProps & {
   asset: models.Asset;
-  size?: number;
-  className?: string;
 };
 
 export default function AssetIcon({
   asset,
   size = 16,
-  className,
+  ...props
 }: AssetIconProps) {
   const Icon = iconForAsset(asset);
-  return <Icon size={size} className={className} />;
+  return <Icon size={size} {...props} />;
 }
