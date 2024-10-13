@@ -156,7 +156,7 @@ function AssetNode({ projectId, assetId, asset }: AssetNodeProps) {
       projectId={projectId}
       assetId={assetId}
       asset={asset}
-      className="h-full w-full flex gap-0.5 px-1.5 items-center bg-white rounded-full text-slate-700 text-sm ring-offset-1 ring-slate-400"
+      className="h-full w-full flex gap-0.5 px-1.5 items-center bg-white rounded-full text-slate-700 text-sm ring-slate-400"
       hoveredClassName="ring-2"
     >
       <AssetIcon
@@ -169,6 +169,25 @@ function AssetNode({ projectId, assetId, asset }: AssetNodeProps) {
         {truncatePath(asset.path) + (asset.type == 1 ? "/" : "")}
       </span>
     </AssetLink>
+  );
+}
+
+type MoreAssetsNodeProps = {
+  assetIds: string[];
+};
+
+function MoreAssetsNode({ assetIds }: MoreAssetsNodeProps) {
+  const { isHovered } = useHoverContext();
+
+  return (
+    <span
+      className={classNames(
+        "h-full w-full px-1.5 items-center bg-white rounded-full text-slate-400 text-sm ring-slate-400 text-ellipsis overflow-hidden whitespace-nowrap",
+        assetIds.some((assetId) => isHovered({ assetId })) && "ring-2",
+      )}
+    >
+      (+{assetIds.length} more)
+    </span>
   );
 }
 
@@ -437,7 +456,9 @@ export default function RunGraph({
                 (to.type == "child" && isHovered({ runId: to.runId })) ||
                 (from.type == "step" && isHovered({ stepId: from.stepId })) ||
                 (to.type == "step" && isHovered({ stepId: to.stepId })) ||
-                (to.type == "asset" && isHovered({ assetId: to.assetId }));
+                (to.type == "asset" && isHovered({ assetId: to.assetId })) ||
+                (to.type == "assets" &&
+                  to.assetIds.some((assetId) => isHovered({ assetId })));
               return (
                 <EdgePath
                   key={edgeId}
@@ -480,6 +501,8 @@ export default function RunGraph({
                       assetId={node.assetId}
                       asset={node.asset}
                     />
+                  ) : node.type == "assets" ? (
+                    <MoreAssetsNode assetIds={node.assetIds} />
                   ) : node.type == "child" ? (
                     <ChildNode runId={node.runId} child={node.child} />
                   ) : undefined}

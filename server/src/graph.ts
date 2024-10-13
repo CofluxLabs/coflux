@@ -26,6 +26,11 @@ type BaseNode = (
       assetId: string;
       asset: models.Asset;
     }
+  | {
+      type: "assets";
+      stepId: string;
+      assetIds: string[];
+    }
 ) & {
   width: number;
   height: number;
@@ -121,6 +126,15 @@ function getTextWidth(text: string, font = "14px system-ui") {
   return context.measureText(text).width;
 }
 
+function truncateList<T>(array: T[], limit: number): [T[], T[]] {
+  if (array.length <= limit) {
+    return [array, []];
+  } else {
+    const adjustedLimit = Math.max(0, limit - 1);
+    return [array.slice(0, adjustedLimit), array.slice(adjustedLimit)];
+  }
+}
+
 export default function buildGraph(
   run: models.Run,
   runId: string,
@@ -177,7 +191,8 @@ export default function buildGraph(
       if (!execution) {
         return;
       }
-      Object.entries(execution.assets).forEach(([assetId, asset]) => {
+      const [assets, rest] = truncateList(Object.entries(execution.assets), 3);
+      assets.forEach(([assetId, asset]) => {
         const text = truncatePath(asset.path) + (asset.type == 1 ? "/" : "");
         nodes[`asset:${assetId}`] = {
           type: "asset",
@@ -193,6 +208,22 @@ export default function buildGraph(
           type: "asset",
         };
       });
+      if (rest.length) {
+        const nodeId = `assets:${rest.map(([id]) => id).join(",")}`;
+        const text = `(+${rest.length} more)`;
+        nodes[nodeId] = {
+          type: "assets",
+          stepId,
+          assetIds: rest.map(([id]) => id),
+          width: Math.min(getTextWidth(text) + 14, 100),
+          height: 20,
+        };
+        edges[`${stepId}-${nodeId}`] = {
+          from: stepId,
+          to: nodeId,
+          type: "asset",
+        };
+      }
 
       Object.entries(execution.dependencies).forEach(
         ([dependencyId, dependency]) => {
