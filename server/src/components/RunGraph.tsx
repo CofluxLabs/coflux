@@ -2,7 +2,7 @@ import {
   Fragment,
   useCallback,
   useState,
-  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
   WheelEvent as ReactWheelEvent,
   useRef,
   useEffect,
@@ -345,11 +345,11 @@ export default function RunGraph({
   const maxDragX = -(canvasWidth * zoom - containerWidth);
   const maxDragY = -(canvasHeight * zoom - containerHeight);
   const [offsetX, offsetY] = offsetOverride || [maxDragX / 2, maxDragY / 2];
-  const handleMouseDown = useCallback(
-    (ev: ReactMouseEvent) => {
+  const handlePointerDown = useCallback(
+    (ev: ReactPointerEvent) => {
       const dragStart = [ev.screenX, ev.screenY];
       let dragging: [number, number] = [offsetX, offsetY];
-      const handleMove = (ev: MouseEvent) => {
+      const handleMove = (ev: PointerEvent) => {
         dragging = [
           Math.min(0, Math.max(maxDragX, offsetX - dragStart[0] + ev.screenX)),
           Math.min(0, Math.max(maxDragY, offsetY - dragStart[1] + ev.screenY)),
@@ -359,20 +359,20 @@ export default function RunGraph({
       const handleUp = () => {
         setDragging(undefined);
         setOffsetOverride(dragging);
-        window.removeEventListener("mousemove", handleMove);
-        window.removeEventListener("mouseup", handleUp);
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
       };
-      window.addEventListener("mousemove", handleMove);
-      window.addEventListener("mouseup", handleUp);
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleUp);
     },
     [offsetX, offsetY, maxDragX, maxDragY],
   );
   const handleWheel = useCallback(
     (ev: ReactWheelEvent<HTMLDivElement>) => {
-      const mouseX = ev.clientX - containerRef.current!.offsetLeft;
-      const mouseY = ev.clientY - containerRef.current!.offsetTop;
-      const canvasX = (mouseX - offsetX) / zoom;
-      const canvasY = (mouseY - offsetY) / zoom;
+      const pointerX = ev.clientX - containerRef.current!.offsetLeft;
+      const pointerY = ev.clientY - containerRef.current!.offsetTop;
+      const canvasX = (pointerX - offsetX) / zoom;
+      const canvasY = (pointerY - offsetY) / zoom;
       const newZoom = Math.max(
         minZoom,
         Math.min(1.5, zoom * (1 + ev.deltaY / -500)),
@@ -411,7 +411,7 @@ export default function RunGraph({
                 ? "cursor-grab"
                 : undefined,
           )}
-          onMouseDown={handleMouseDown}
+          onPointerDown={handlePointerDown}
         >
           <defs>
             <pattern
