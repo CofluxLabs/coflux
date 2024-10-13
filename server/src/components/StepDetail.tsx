@@ -931,8 +931,7 @@ function ResultSection({ result, projectId }: ResultSectionProps) {
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
       {value.type == "raw" ? (
-        <div className="bg-white rounded block p-1 border border-slate-300 break-all whitespace-break-spaces text-sm">
-          {" "}
+        <div className="bg-white rounded inline-block p-1 border border-slate-300 break-all whitespace-break-spaces text-sm">
           <Value value={value} projectId={projectId} />
         </div>
       ) : value.type == "blob" ? (
