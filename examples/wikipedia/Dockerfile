@@ -10,4 +10,4 @@ RUN python -m nltk.downloader punkt
 
 ADD . /app
 
-ENTRYPOINT ["coflux", "agent.run", "wikipedia.repo"]
+ENTRYPOINT ["coflux", "agent", "wikipedia.repo"]

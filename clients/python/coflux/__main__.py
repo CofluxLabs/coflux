@@ -8,6 +8,7 @@ import httpx
 import yaml
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import Agent, config, loader, decorators, models
@@ -715,7 +716,21 @@ def submit(
     project_ = _get_project(project)
     environment_ = _get_environment(environment)
     host_ = _get_host(host)
-    # TODO: support specifying options (or get config from manifest?)
+    # TODO: support overriding options?
+    workflow = _api_request(
+        "GET",
+        host_,
+        "get_workflow",
+        params={
+            "project": project_,
+            "environment": environment_,
+            "repository": repository,
+            "target": target,
+        },
+    )
+    execute_after = (
+        int((time.time() + workflow["delay"]) * 1000) if workflow["delay"] else None
+    )
     # TODO: handle response
     _api_request(
         "POST",
@@ -727,6 +742,12 @@ def submit(
             "repository": repository,
             "target": target,
             "arguments": [["json", a] for a in argument],
+            "waitFor": workflow["waitFor"],
+            "cache": workflow["cache"],
+            "defer": workflow["defer"],
+            "executeAfter": execute_after,
+            "retries": workflow["retries"],
+            "requires": workflow["requires"],
         },
     )
     click.secho("Workflow submitted.", fg="green")

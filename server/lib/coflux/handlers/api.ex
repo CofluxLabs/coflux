@@ -237,6 +237,22 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
+  defp handle(req, "GET", ["get_workflow"]) do
+    qs = :cowboy_req.parse_qs(req)
+    project_id = get_query_param(qs, "project")
+    environment_name = get_query_param(qs, "environment")
+    repository = get_query_param(qs, "repository")
+    target_name = get_query_param(qs, "target")
+
+    case Orchestration.get_workflow(project_id, environment_name, repository, target_name) do
+      {:ok, nil} ->
+        json_error_response(req, "not_found", status: 404)
+
+      {:ok, workflow} ->
+        json_response(req, compose_workflow(workflow))
+    end
+  end
+
   defp handle(req, "POST", ["submit_workflow"]) do
     {:ok, arguments, errors, req} =
       read_arguments(
@@ -254,7 +270,7 @@ defmodule Coflux.Handlers.Api do
           defer: {"defer", &parse_defer/1},
           execute_after: {"executeAfter", &parse_integer(&1, optional: true)},
           retries: {"retries", &parse_retries/1},
-          requries: {"requires", &parse_tag_set/1}
+          requires: {"requires", &parse_tag_set/1}
         }
       )
 
@@ -823,5 +839,47 @@ defmodule Coflux.Handlers.Api do
     else
       {:error, :invalid}
     end
+  end
+
+  defp compose_workflow_cache(cache) do
+    if cache do
+      %{
+        "params" => cache.params,
+        "maxAge" => cache.max_age,
+        "namespace" => cache.namespace,
+        "version" => cache.version
+      }
+    end
+  end
+
+  defp compose_workflow_defer(defer) do
+    if defer do
+      %{"params" => defer.params}
+    end
+  end
+
+  defp compose_workflow_retries(retries) do
+    if retries do
+      %{
+        "limit" => retries.limit,
+        "delayMin" => retries.delay_min,
+        "delayMax" => retries.delay_max
+      }
+    end
+  end
+
+  defp compose_workflow(workflow) do
+    %{
+      "parameters" =>
+        Enum.map(workflow.parameters, fn {name, default, annotation} ->
+          %{"name" => name, "default" => default, "annotation" => annotation}
+        end),
+      "waitFor" => workflow.wait_for,
+      "cache" => compose_workflow_cache(workflow.cache),
+      "defer" => compose_workflow_defer(workflow.defer),
+      "delay" => workflow.delay,
+      "retries" => compose_workflow_retries(workflow.retries),
+      "requires" => workflow.requires
+    }
   end
 end
