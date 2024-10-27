@@ -864,9 +864,12 @@ defmodule Coflux.Orchestration.Server do
     {:reply, result, state}
   end
 
-  def handle_call({:put_asset, execution_id, type, path, blob_key, metadata}, _from, state) do
+  def handle_call({:put_asset, execution_id, type, path, blob_key, size, metadata}, _from, state) do
     {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
-    {:ok, asset_id} = Results.create_asset(state.db, execution_id, type, path, blob_key, metadata)
+
+    {:ok, asset_id} =
+      Results.create_asset(state.db, execution_id, type, path, blob_key, size, metadata)
+
     asset = resolve_asset(state.db, asset_id, false)
     state = notify_listeners(state, {:run, step.run_id}, {:asset, execution_id, asset_id, asset})
     {:reply, {:ok, asset_id}, state}
@@ -877,7 +880,7 @@ defmodule Coflux.Orchestration.Server do
     load_metadata = opts[:load_metadata]
 
     case Results.get_asset_by_id(state.db, asset_id, load_metadata) do
-      {:ok, {asset_execution_id, type, path, blob_key, _created_at, metadata}} ->
+      {:ok, {asset_execution_id, type, path, blob_key, _size, _created_at, metadata}} ->
         state =
           if from_execution_id do
             {:ok, id} = Runs.record_asset_dependency(state.db, from_execution_id, asset_id)
@@ -1045,7 +1048,7 @@ defmodule Coflux.Orchestration.Server do
           Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, memo_key,
                              requires_tag_set_id, created_at} ->
             {:ok, executions} = Runs.get_step_executions(state.db, step_id)
-            {:ok, arguments} = Runs.get_step_arguments(state.db, step_id, true)
+            {:ok, arguments} = Runs.get_step_arguments(state.db, step_id)
 
             requires =
               if requires_tag_set_id do
@@ -1090,7 +1093,7 @@ defmodule Coflux.Orchestration.Server do
                      end)
 
                    {result, completed_at} =
-                     case Results.get_result(state.db, execution_id, true) do
+                     case Results.get_result(state.db, execution_id) do
                        {:ok, {result, completed_at}} ->
                          {result, completed_at}
 
@@ -1659,7 +1662,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp resolve_asset(db, asset_id, include_execution) do
-    {:ok, {execution_id, type, path, blob_key, created_at, metadata}} =
+    {:ok, {execution_id, type, path, blob_key, size, created_at, metadata}} =
       Results.get_asset_by_id(db, asset_id, true)
 
     result = %{
@@ -1667,6 +1670,7 @@ defmodule Coflux.Orchestration.Server do
       path: path,
       metadata: metadata,
       blob_key: blob_key,
+      size: size,
       execution_id: execution_id,
       created_at: created_at
     }
@@ -1678,28 +1682,27 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp resolve_placeholders(placeholders, db) do
-    Map.new(placeholders, fn {key, value} ->
-      value =
-        case value do
-          {execution_id, nil} ->
-            {:execution, execution_id, resolve_execution(db, execution_id)}
+  defp resolve_references(db, references) do
+    Enum.map(references, fn
+      {:block, serialiser, blob_key, size} ->
+        # TODO: ?
+        {:block, serialiser, blob_key, size}
 
-          {nil, asset_id} ->
-            {:asset, asset_id, resolve_asset(db, asset_id, true)}
-        end
+      {:execution, execution_id} ->
+        {:execution, execution_id, resolve_execution(db, execution_id)}
 
-      {key, value}
+      {:asset, asset_id} ->
+        {:asset, asset_id, resolve_asset(db, asset_id, true)}
     end)
   end
 
   defp build_value(value, state) do
     case value do
-      {{:raw, content}, format, placeholders} ->
-        {{:raw, content}, format, resolve_placeholders(placeholders, state.db)}
+      {:raw, content, references} ->
+        {:raw, content, resolve_references(state.db, references)}
 
-      {{:blob, key, metadata}, format, placeholders} ->
-        {{:blob, key, metadata}, format, resolve_placeholders(placeholders, state.db)}
+      {:blob, key, size, references} ->
+        {:blob, key, size, resolve_references(state.db, references)}
     end
   end
 
@@ -1992,22 +1995,26 @@ defmodule Coflux.Orchestration.Server do
 
   defp arguments_ready?(db, wait_for, arguments) do
     Enum.all?(wait_for, fn index ->
-      case Enum.at(arguments, index) do
-        {_, _, placeholders} ->
-          placeholders
-          |> Map.values()
-          |> Enum.map(fn {execution_id, _} -> execution_id end)
-          |> Enum.reject(&is_nil/1)
-          |> Enum.all?(fn execution_id ->
-            case resolve_result(execution_id, db) do
-              {:ok, _} -> true
-              {:pending, _} -> false
-            end
-          end)
+      references =
+        case Enum.at(arguments, index) do
+          {:raw, _, references} -> references
+          {:blob, _, _, references} -> references
+          nil -> []
+        end
 
-        nil ->
+      Enum.all?(references, fn
+        {:execution, execution_id} ->
+          case resolve_result(execution_id, db) do
+            {:ok, _} -> true
+            {:pending, _} -> false
+          end
+
+        {:block, _serialiser, _blob_key, _size} ->
           true
-      end
+
+        {:asset, _asset_id} ->
+          true
+      end)
     end)
   end
 

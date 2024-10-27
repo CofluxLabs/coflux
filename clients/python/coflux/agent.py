@@ -8,26 +8,29 @@ import traceback
 from . import server, execution, models
 
 
-def _parse_placeholder(placeholder: list) -> tuple[int, None] | tuple[None, int]:
-    match placeholder:
-        case [execution_id, None]:
-            return (execution_id, None)
-        case [None, asset_id]:
-            return (None, asset_id)
+def _parse_reference(reference: t.Any) -> models.Reference:
+    match reference:
+        case ["execution", execution_id]:
+            return ("execution", execution_id)
+        case ["asset", asset_id]:
+            return ("asset", asset_id)
+        case ["block", serialiser, blob_key, size]:
+            return ("block", serialiser, blob_key, size)
         case other:
-            raise Exception(f"unhandle placeholder value: {other}")
+            raise Exception(f"unexpected reference: {other}")
 
 
-def _parse_placeholders(placeholders: dict[int, list]) -> models.Placeholders:
-    return {key: _parse_placeholder(value) for key, value in placeholders.items()}
+def _parse_references(references: list[t.Any]) -> list[models.Reference]:
+    return [_parse_reference(r) for r in references]
 
 
+# TODO: remove duplication in execution.py
 def _parse_value(value: list) -> models.Value:
     match value:
-        case ["raw", content, format, placeholders]:
-            return ("raw", content.encode(), format, _parse_placeholders(placeholders))
-        case ["blob", key, metadata, format, placeholders]:
-            return ("blob", key, metadata, format, _parse_placeholders(placeholders))
+        case ["raw", content, references]:
+            return ("raw", content.encode(), _parse_references(references))
+        case ["blob", key, size, references]:
+            return ("blob", key, size, _parse_references(references))
     raise Exception(f"unexpected value: {value}")
 
 

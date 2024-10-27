@@ -550,10 +550,6 @@ type BlobLinkProps = {
 };
 
 function BlobLink({ value }: BlobLinkProps) {
-  const hints = [value.format];
-  if (value.metadata.size) {
-    hints.push(humanSize(value.metadata.size));
-  }
   return (
     <span className="">
       <a
@@ -563,7 +559,9 @@ function BlobLink({ value }: BlobLinkProps) {
       >
         Blob
       </a>
-      <span className="text-slate-500 text-xs ml-1">({hints.join("; ")})</span>
+      <span className="text-slate-500 text-xs ml-1">
+        ({humanSize(value.size)})
+      </span>
     </span>
   );
 }

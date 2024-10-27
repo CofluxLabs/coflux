@@ -47,11 +47,15 @@ class Target(t.NamedTuple):
 
 Metadata = dict[str, t.Any]
 
-Placeholders = dict[int, tuple[int, None] | tuple[None, int]]
+Reference = (
+    tuple[t.Literal["execution"], int]
+    | tuple[t.Literal["asset"], int]
+    | tuple[t.Literal["block"], str, str, int]
+)
 
 Value = t.Union[
-    tuple[t.Literal["raw"], bytes, str, Placeholders],
-    tuple[t.Literal["blob"], str, Metadata, str, Placeholders],
+    tuple[t.Literal["raw"], bytes, list[Reference]],
+    tuple[t.Literal["blob"], str, int, list[Reference]],
 ]
 
 Result = t.Union[

@@ -280,51 +280,53 @@ defmodule Coflux.Topics.Run do
       path: asset.path,
       metadata: asset.metadata,
       blobKey: asset.blob_key,
+      size: asset.size,
       createdAt: asset.created_at
     }
   end
 
   defp build_value(value) do
     case value do
-      {{:raw, content}, format, placeholders} ->
+      {:raw, content, references} ->
         %{
           type: "raw",
           content: content,
-          format: format,
-          placeholders: build_placeholders(placeholders)
+          references: build_references(references)
         }
 
-      {{:blob, key, metadata}, format, placeholders} ->
+      {:blob, key, size, references} ->
         %{
           type: "blob",
           key: key,
-          metadata: metadata,
-          format: format,
-          placeholders: build_placeholders(placeholders)
+          size: size,
+          references: build_references(references)
         }
     end
   end
 
-  defp build_placeholders(placeholders) do
-    Map.new(placeholders, fn {key, value} ->
-      value =
-        case value do
-          {:execution, execution_id, execution} ->
-            %{
-              type: "execution",
-              executionId: Integer.to_string(execution_id),
-              execution: build_execution(execution)
-            }
+  defp build_references(references) do
+    Enum.map(references, fn
+      {:block, serialiser, blob_key, size} ->
+        %{
+          type: "block",
+          serialiser: serialiser,
+          blobKey: blob_key,
+          size: size
+        }
 
-          {:asset, asset_id, asset} ->
-            %{
-              type: "asset",
-              assetId: Integer.to_string(asset_id),
-              asset: build_asset(asset)
-            }
-        end
+      {:execution, execution_id, execution} ->
+        %{
+          type: "execution",
+          executionId: Integer.to_string(execution_id),
+          execution: build_execution(execution)
+        }
 
-      {key, value}
+      {:asset, asset_id, asset} ->
+        %{
+          type: "asset",
+          assetId: Integer.to_string(asset_id),
+          asset: build_asset(asset)
+        }
     end)
   end
 
