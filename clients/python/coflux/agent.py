@@ -28,7 +28,7 @@ def _parse_references(references: list[t.Any]) -> list[models.Reference]:
 def _parse_value(value: list) -> models.Value:
     match value:
         case ["raw", content, references]:
-            return ("raw", content.encode(), _parse_references(references))
+            return ("raw", content, _parse_references(references))
         case ["blob", key, size, references]:
             return ("blob", key, size, _parse_references(references))
     raise Exception(f"unexpected value: {value}")

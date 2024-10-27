@@ -135,7 +135,7 @@ defmodule Coflux.Orchestration.Runs do
   defp get_argument_key_parts(parameter) do
     references =
       case parameter do
-        {:raw, _content, references} -> references
+        {:raw, _data, references} -> references
         {:blob, _blob_key, _size, references} -> references
       end
 
@@ -149,8 +149,9 @@ defmodule Coflux.Orchestration.Runs do
           end)
       ]
 
+    # TODO: safer data encoding? (consider order of, e.g., dicts)
     case parameter do
-      {:raw, content, _references} -> Enum.concat([1, content], references_parts)
+      {:raw, data, _references} -> Enum.concat([1, Jason.encode!(data)], references_parts)
       {:blob, blob_key, _size, _references} -> Enum.concat([2, blob_key], references_parts)
     end
   end

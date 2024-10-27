@@ -546,7 +546,7 @@ def _json_safe_value(value: models.Value):
     # TODO: tidy
     match value:
         case ("raw", content, references):
-            return ["raw", content.decode(), _json_safe_references(references)]
+            return ["raw", content, _json_safe_references(references)]
         case ("blob", key, size, references):
             return ["blob", key, size, _json_safe_references(references)]
 
@@ -574,7 +574,7 @@ def _parse_references(references) -> list[models.Reference]:
 def _parse_value(value: t.Any) -> models.Value:
     match value:
         case ["raw", content, references]:
-            return ("raw", content.encode(), _parse_references(references))
+            return ("raw", content, _parse_references(references))
         case ["blob", key, size, references]:
             return ("blob", key, size, _parse_references(references))
         case other:

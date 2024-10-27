@@ -7,7 +7,7 @@ from . import blobs, models
 
 T = t.TypeVar("T")
 
-_BLOB_THRESHOLD = 100
+_BLOB_THRESHOLD = 200
 
 
 def _json_dumps(obj: t.Any) -> str:
@@ -72,10 +72,10 @@ def serialise(
             # TODO: better handle id being none
             assert value.id is not None
             references.append(("execution", value.id))
-            return {"type": "ref", "id": len(references) - 1}
+            return {"type": "ref", "index": len(references) - 1}
         elif isinstance(value, models.Asset):
             references.append(("asset", value.id))
-            return {"type": "ref", "id": len(references) - 1}
+            return {"type": "ref", "index": len(references) - 1}
         elif isinstance(value, tuple):
             # TODO: include name
             return {"type": "tuple", "items": [_serialise(x) for x in value]}
@@ -85,13 +85,14 @@ def serialise(
                 if data is not None:
                     blob_key = blob_store.put(data)
                     references.append(("block", serialiser.type, blob_key, len(data)))
-                    return {"type": "ref", "id": len(references) - 1}
+                    return {"type": "ref", "index": len(references) - 1}
             raise Exception(f"no serialiser for type '{type(value)}'")
 
-    data = _json_dumps(_serialise(value)).encode()
-    size = len(data)
+    data = _serialise(value)
+    json_data = _json_dumps(data).encode()
+    size = len(json_data)
     if size > _BLOB_THRESHOLD:
-        blob_key = blob_store.put(data)
+        blob_key = blob_store.put(json_data)
         return ("blob", blob_key, size, references)
     else:
         return ("raw", data, references)
@@ -106,10 +107,10 @@ def _find_serialiser(serialisers: list[Serialiser], type: str) -> Serialiser:
 
 def _get_value_data(
     value: models.Value, blob_store: blobs.Store
-) -> tuple[bytes, list[models.Reference]]:
+) -> tuple[t.Any, list[models.Reference]]:
     match value:
         case ("blob", key, _, references):
-            return blob_store.get(key), references
+            return json.loads(blob_store.get(key)), references
         case ("raw", data, references):
             return data, references
 
@@ -137,7 +138,7 @@ def deserialise(
                 case "tuple":
                     return tuple(_deserialise(x) for x in data["items"])
                 case "ref":
-                    reference = references[data["id"]]
+                    reference = references[data["index"]]
                     match reference:
                         case ("execution", execution_id):
                             return models.Execution(
@@ -155,4 +156,4 @@ def deserialise(
         else:
             raise Exception(f"unhandled data type ({type(data)})")
 
-    return _deserialise(json.loads(data))
+    return _deserialise(data)

@@ -54,7 +54,7 @@ Reference = (
 )
 
 Value = t.Union[
-    tuple[t.Literal["raw"], bytes, list[Reference]],
+    tuple[t.Literal["raw"], t.Any, list[Reference]],
     tuple[t.Literal["blob"], str, int, list[Reference]],
 ]
 

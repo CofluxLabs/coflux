@@ -90,18 +90,30 @@ export type Reference =
       asset: Asset;
     };
 
-export type Value =
+export type Data =
+  | number
+  | boolean
+  | null
+  | string
+  | Data[]
+  | { type: "dict"; items: Data[] }
+  | { type: "set"; items: Data[] }
+  | { type: "tuple"; items: Data[] }
+  | { type: "ref"; index: number };
+
+export type Value = (
   | {
       type: "raw";
-      content: string;
+      data: Data;
     }
-  | ({
+  | {
       type: "blob";
       key: string;
       size: number;
-    } & {
-      references: Reference[];
-    });
+    }
+) & {
+  references: Reference[];
+};
 
 export type ErrorFrame = {
   file: string;

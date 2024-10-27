@@ -287,10 +287,10 @@ defmodule Coflux.Topics.Run do
 
   defp build_value(value) do
     case value do
-      {:raw, content, references} ->
+      {:raw, data, references} ->
         %{
           type: "raw",
-          content: content,
+          data: data,
           references: build_references(references)
         }
 

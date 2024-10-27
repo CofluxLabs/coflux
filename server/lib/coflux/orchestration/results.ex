@@ -224,7 +224,7 @@ defmodule Coflux.Orchestration.Results do
         value =
           case {content, blob_key} do
             {content, nil} ->
-              {:raw, content, references}
+              {:raw, Jason.decode!(content), references}
 
             {nil, blob_key} ->
               {:blob, blob_key, size, references}
@@ -234,7 +234,7 @@ defmodule Coflux.Orchestration.Results do
     end
   end
 
-  defp hash_value(content, blob_id, references) do
+  defp hash_value(data, blob_id, references) do
     reference_parts =
       Enum.flat_map(references, fn reference ->
         case reference do
@@ -245,7 +245,10 @@ defmodule Coflux.Orchestration.Results do
       end)
 
     data =
-      [content || 0, if(blob_id, do: Integer.to_string(blob_id), else: 0)]
+      [
+        if(data, do: Jason.encode!(data), else: 0),
+        if(blob_id, do: Integer.to_string(blob_id), else: 0)
+      ]
       |> Enum.concat(reference_parts)
       |> Enum.intersperse(0)
 
@@ -253,17 +256,17 @@ defmodule Coflux.Orchestration.Results do
   end
 
   def get_or_create_value(db, value) do
-    {content, blob_id, references} =
+    {data, blob_id, references} =
       case value do
-        {:raw, content, references} ->
-          {content, nil, references}
+        {:raw, data, references} ->
+          {data, nil, references}
 
         {:blob, blob_key, size, references} ->
           {:ok, blob_id} = get_or_create_blob(db, blob_key, size)
           {nil, blob_id, references}
       end
 
-    hash = hash_value(content, blob_id, references)
+    hash = hash_value(data, blob_id, references)
 
     case query_one(db, "SELECT id FROM values_ WHERE hash = ?1", {hash}) do
       {:ok, {id}} ->
@@ -273,7 +276,7 @@ defmodule Coflux.Orchestration.Results do
         {:ok, value_id} =
           insert_one(db, :values_, %{
             hash: hash,
-            content: content,
+            content: unless(blob_id, do: Jason.encode!(data)),
             blob_id: blob_id
           })
 

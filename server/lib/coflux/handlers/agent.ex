@@ -407,8 +407,8 @@ defmodule Coflux.Handlers.Agent do
 
   defp parse_value(value) do
     case value do
-      ["raw", content, references] ->
-        {:raw, content, parse_references(references)}
+      ["raw", data, references] ->
+        {:raw, data, parse_references(references)}
 
       ["blob", blob_key, size, references] ->
         {:blob, blob_key, size, parse_references(references)}
@@ -465,8 +465,8 @@ defmodule Coflux.Handlers.Agent do
   defp compose_value(value) do
     # TODO: leave out size?
     case value do
-      {:raw, content, references} ->
-        ["raw", content, compose_references(references)]
+      {:raw, data, references} ->
+        ["raw", data, compose_references(references)]
 
       {:blob, blob_key, size, references} ->
         ["blob", blob_key, size, compose_references(references)]
