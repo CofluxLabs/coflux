@@ -2,6 +2,7 @@ import typing as t
 import json
 import pickle
 import abc
+from pathlib import Path
 
 from . import blobs, models
 
@@ -120,6 +121,7 @@ def deserialise(
     serialisers: list[Serialiser],
     blob_store: blobs.Store,
     resolve_fn: t.Callable[[int], t.Any],
+    restore_fn: t.Callable[[int, Path | str | None], Path],
 ) -> t.Any:
     data, references = _get_value_data(value, blob_store)
 
@@ -146,7 +148,9 @@ def deserialise(
                                 execution_id,
                             )
                         case ("asset", asset_id):
-                            return models.Asset(asset_id)
+                            return models.Asset(
+                                lambda to: restore_fn(asset_id, to), asset_id
+                            )
                         case ("block", serialiser, blob_key, _size):
                             serialiser_ = _find_serialiser(serialisers, serialiser)
                             data = blob_store.get(blob_key)

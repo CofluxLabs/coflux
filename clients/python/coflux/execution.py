@@ -351,6 +351,7 @@ class Channel:
                 self._serialisers,
                 self._blob_store,
                 self._resolve_reference,
+                self._restore_asset,
             )
             for value in arguments
         ]
@@ -376,6 +377,7 @@ class Channel:
                     self._serialisers,
                     self._blob_store,
                     self._resolve_reference,
+                    self._restore_asset,
                 )
             case ["error", type_, message]:
                 raise _build_exception(type_, message)
@@ -450,13 +452,9 @@ class Channel:
         asset_id = self._request(
             PersistAssetRequest(asset_type, path_str, blob_key, size, metadata)
         )
-        return models.Asset(asset_id)
+        return models.Asset(lambda to: self._restore_asset(asset_id, to=to), asset_id)
 
-    # TODO: make method on models.Asset? and/or just take asset id
-    def restore_asset(
-        self, asset: models.Asset, *, to: Path | str | None = None
-    ) -> Path:
-        assert isinstance(asset, models.Asset)
+    def _restore_asset(self, asset_id: int, to: Path | str | None = None) -> Path:
         if to:
             if isinstance(to, str):
                 to = Path(to)
@@ -466,7 +464,7 @@ class Channel:
                 raise Exception("asset must be restored to execution directory")
         # TODO: use timeout?
         asset_type, path_str, blob_key = self._request(
-            ResolveAssetRequest(asset.id), key=("asset", asset.id)
+            ResolveAssetRequest(asset_id), key=("asset", asset_id)
         )
         target = to or self._directory.joinpath(path_str)
         target.parent.mkdir(parents=True, exist_ok=True)

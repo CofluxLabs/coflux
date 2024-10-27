@@ -61,10 +61,6 @@ def persist_asset(
     return _get_channel().persist_asset(path, match=match)
 
 
-def restore_asset(asset: models.Asset, *, to: Path | str | None = None) -> Path:
-    return _get_channel().restore_asset(asset, to=to)
-
-
 def checkpoint(*arguments: t.Any) -> None:
     return _get_channel().record_checkpoint(arguments)
 

@@ -1,4 +1,5 @@
 import typing as t
+from pathlib import Path
 
 T = t.TypeVar("T")
 
@@ -83,5 +84,18 @@ class Execution(t.Generic[T]):
         return self._resolve_fn()
 
 
-class Asset(t.NamedTuple):
-    id: int
+class Asset:
+    def __init__(
+        self,
+        restore_fn: t.Callable[[Path | str | None], Path],
+        id: int,
+    ):
+        self._restore_fn = restore_fn
+        self._id = id
+
+    @property
+    def id(self) -> int:
+        return self._id
+
+    def restore(self, *, to: Path | str | None = None) -> Path:
+        return self._restore_fn(to)
