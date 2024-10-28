@@ -24,7 +24,7 @@ defmodule Coflux.Orchestration.Results do
       arguments
       |> Enum.with_index()
       |> Enum.each(fn {value, position} ->
-        {:ok, value_id} = get_or_create_value(db, value)
+        {:ok, value_id} = get_or_create_value(db, value, now)
         {:ok, _} = insert_checkpoint_argument(db, checkpoint_id, position, value_id)
       end)
 
@@ -81,7 +81,7 @@ defmodule Coflux.Orchestration.Results do
             {0, error_id, nil, retry_id}
 
           {:value, value} ->
-            {:ok, value_id} = get_or_create_value(db, value)
+            {:ok, value_id} = get_or_create_value(db, value, now)
             {1, nil, value_id, nil}
 
           {:abandoned, retry_id} ->
@@ -188,6 +188,32 @@ defmodule Coflux.Orchestration.Results do
     end
   end
 
+  defp load_block(db, block_id) do
+    case query_one(
+           db,
+           """
+           SELECT k.serialiser, b.key, b.size
+           FROM blocks AS k
+           INNER JOIN blobs AS b ON b.id = k.blob_id
+           WHERE k.id = ?1
+           """,
+           {block_id}
+         ) do
+      {:ok, {serialiser, blob_key, size}} ->
+        metadata =
+          case query(
+                 db,
+                 "SELECT key, value FROM block_metadata WHERE block_id = ?1",
+                 {block_id}
+               ) do
+            {:ok, rows} ->
+              Map.new(rows, fn {key, value} -> {key, Jason.decode!(value)} end)
+          end
+
+        {:block, serialiser, blob_key, size, metadata}
+    end
+  end
+
   def get_value_by_id(db, value_id) do
     case query_one!(
            db,
@@ -204,20 +230,18 @@ defmodule Coflux.Orchestration.Results do
           case query(
                  db,
                  """
-                 SELECT k.serialiser, b.key, b.size, r.execution_id, r.asset_id
-                 FROM value_references AS r
-                 LEFT JOIN blocks AS k ON k.id = r.block_id
-                 LEFT JOIN blobs AS b ON b.id = k.blob_id
-                 WHERE r.value_id = ?1
-                 ORDER BY r.position
+                 SELECT block_id, execution_id, asset_id
+                 FROM value_references
+                 WHERE value_id = ?1
+                 ORDER BY position
                  """,
                  {value_id}
                ) do
             {:ok, rows} ->
               Enum.map(rows, fn
-                {serialiser, blob_key, size, nil, nil} -> {:block, serialiser, blob_key, size}
-                {nil, nil, nil, execution_id, nil} -> {:execution, execution_id}
-                {nil, nil, nil, nil, asset_id} -> {:asset, asset_id}
+                {block_id, nil, nil} -> load_block(db, block_id)
+                {nil, execution_id, nil} -> {:execution, execution_id}
+                {nil, nil, asset_id} -> {:asset, asset_id}
               end)
           end
 
@@ -238,9 +262,17 @@ defmodule Coflux.Orchestration.Results do
     reference_parts =
       Enum.flat_map(references, fn reference ->
         case reference do
-          {:block, serialiser, blob_key, _size} -> [1, serialiser, blob_key]
-          {:execution, execution_id} -> [2, Integer.to_string(execution_id)]
-          {:asset, asset_id} -> [3, Integer.to_string(asset_id)]
+          {:block, serialiser, blob_key, _size, metadata} ->
+            Enum.concat(
+              [1, serialiser, blob_key],
+              Enum.flat_map(metadata, fn {key, value} -> [key, Jason.encode!(value)] end)
+            )
+
+          {:execution, execution_id} ->
+            [2, Integer.to_string(execution_id)]
+
+          {:asset, asset_id} ->
+            [3, Integer.to_string(asset_id)]
         end
       end)
 
@@ -255,7 +287,7 @@ defmodule Coflux.Orchestration.Results do
     :crypto.hash(:sha256, data)
   end
 
-  def get_or_create_value(db, value) do
+  def get_or_create_value(db, value, now) do
     {data, blob_id, references} =
       case value do
         {:raw, data, references} ->
@@ -289,8 +321,10 @@ defmodule Coflux.Orchestration.Results do
             |> Enum.with_index()
             |> Enum.map(fn {reference, position} ->
               case reference do
-                {:block, serialiser, blob_key, size} ->
-                  {:ok, block_id} = get_or_create_block(db, serialiser, blob_key, size)
+                {:block, serialiser, blob_key, size, metadata} ->
+                  {:ok, block_id} =
+                    get_or_create_block(db, serialiser, blob_key, size, metadata, now)
+
                   {value_id, position, block_id, nil, nil}
 
                 {:execution, execution_id} ->
@@ -366,7 +400,9 @@ defmodule Coflux.Orchestration.Results do
           db,
           :asset_metadata,
           {:asset_id, :key, :value},
-          metadata |> Enum.map(fn {key, value} -> {asset_id, key, Jason.encode!(value)} end)
+          Enum.map(metadata, fn {key, value} ->
+            {asset_id, key, Jason.encode!(value)}
+          end)
         )
 
       {:ok, asset_id}
@@ -416,10 +452,20 @@ defmodule Coflux.Orchestration.Results do
     end
   end
 
-  defp get_or_create_block(db, serialiser, blob_key, size) do
-    # TODO: take timestamp as argument?
-    now = current_timestamp()
-    hash = :crypto.hash(:sha256, [serialiser, 0, blob_key])
+  defp hash_block(serialiser, blob_key, metadata) do
+    metadata_parts =
+      Enum.flat_map(metadata, fn {key, value} -> [key, Jason.encode!(value)] end)
+
+    data =
+      [serialiser, blob_key]
+      |> Enum.concat(metadata_parts)
+      |> Enum.intersperse(0)
+
+    :crypto.hash(:sha256, data)
+  end
+
+  defp get_or_create_block(db, serialiser, blob_key, size, metadata, now) do
+    hash = hash_block(serialiser, blob_key, metadata)
 
     case query_one(db, "SELECT id FROM blocks WHERE hash = ?1", {hash}) do
       {:ok, {id}} ->
@@ -428,12 +474,25 @@ defmodule Coflux.Orchestration.Results do
       {:ok, nil} ->
         {:ok, blob_id} = get_or_create_blob(db, blob_key, size)
 
-        insert_one(db, :blocks, %{
-          hash: hash,
-          serialiser: serialiser,
-          blob_id: blob_id,
-          created_at: now
-        })
+        {:ok, block_id} =
+          insert_one(db, :blocks, %{
+            hash: hash,
+            serialiser: serialiser,
+            blob_id: blob_id,
+            created_at: now
+          })
+
+        {:ok, _} =
+          insert_many(
+            db,
+            :block_metadata,
+            {:block_id, :key, :value},
+            Enum.map(metadata, fn {key, value} ->
+              {block_id, key, Jason.encode!(value)}
+            end)
+          )
+
+        {:ok, block_id}
     end
   end
 

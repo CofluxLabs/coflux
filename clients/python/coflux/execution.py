@@ -530,8 +530,8 @@ def _json_safe_reference(reference: models.Reference) -> t.Any:
             return ["execution", execution_id]
         case ("asset", asset_id):
             return ["asset", asset_id]
-        case ("block", serialiser, blob_key, size):
-            return ["block", serialiser, blob_key, size]
+        case ("block", serialiser, blob_key, size, metadata):
+            return ["block", serialiser, blob_key, size, metadata]
         case other:
             raise Exception(f"unhandled reference type ({other})")
 
@@ -559,8 +559,8 @@ def _parse_reference(reference) -> models.Reference:
             return ("execution", execution_id)
         case ["asset", asset_id]:
             return ("asset", asset_id)
-        case ["block", serialiser, blob_key, size]:
-            return ("block", serialiser, blob_key, size)
+        case ["block", serialiser, blob_key, size, metadata]:
+            return ("block", serialiser, blob_key, size, metadata)
         case other:
             raise Exception(f"unrecognised reference: {other}")
 

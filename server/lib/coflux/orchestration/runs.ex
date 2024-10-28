@@ -143,9 +143,17 @@ defmodule Coflux.Orchestration.Runs do
       [
         length(references)
         | Enum.flat_map(references, fn
-            {:block, serialiser, blob_key, _size} -> [1, serialiser, blob_key]
-            {:execution, execution_id} -> [2, Integer.to_string(execution_id)]
-            {:asset, asset_id} -> [3, Integer.to_string(asset_id)]
+            {:block, serialiser, blob_key, _size, metadata} ->
+              Enum.concat(
+                [1, serialiser, blob_key],
+                Enum.flat_map(metadata, fn {key, value} -> [key, Jason.encode!(value)] end)
+              )
+
+            {:execution, execution_id} ->
+              [2, Integer.to_string(execution_id)]
+
+            {:asset, asset_id} ->
+              [3, Integer.to_string(asset_id)]
           end)
       ]
 
@@ -270,7 +278,7 @@ defmodule Coflux.Orchestration.Runs do
               arguments
               |> Enum.with_index()
               |> Enum.map(fn {value, position} ->
-                {:ok, value_id} = Results.get_or_create_value(db, value)
+                {:ok, value_id} = Results.get_or_create_value(db, value, now)
                 {step_id, position, value_id}
               end)
             )

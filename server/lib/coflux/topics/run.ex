@@ -306,12 +306,13 @@ defmodule Coflux.Topics.Run do
 
   defp build_references(references) do
     Enum.map(references, fn
-      {:block, serialiser, blob_key, size} ->
+      {:block, serialiser, blob_key, size, metadata} ->
         %{
           type: "block",
           serialiser: serialiser,
           blobKey: blob_key,
-          size: size
+          size: size,
+          metadata: metadata
         }
 
       {:execution, execution_id, execution} ->

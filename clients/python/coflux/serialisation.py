@@ -2,6 +2,7 @@ import typing as t
 import json
 import pickle
 import abc
+import io
 from pathlib import Path
 
 from . import blobs, models
@@ -22,11 +23,11 @@ class Serialiser(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def serialise(self, value: t.Any) -> bytes | None:
+    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def deserialise(self, data: bytes) -> t.Any:
+    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
         raise NotImplementedError
 
 
@@ -35,14 +36,16 @@ class PickleSerialiser(Serialiser):
     def type(self) -> str:
         return "pickle"
 
-    def serialise(self, value: t.Any) -> bytes | None:
+    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
         try:
-            return pickle.dumps(value)
+            buffer = io.BytesIO()
+            pickle.dump(value, buffer)
+            return buffer, {}
         except pickle.PicklingError:
             return None
 
-    def deserialise(self, data: bytes) -> t.Any:
-        return pickle.loads(data)
+    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
+        return pickle.loads(buffer.getbuffer())
 
 
 def serialise(
@@ -82,18 +85,23 @@ def serialise(
             return {"type": "tuple", "items": [_serialise(x) for x in value]}
         else:
             for serialiser in serialisers:
-                data = serialiser.serialise(value)
-                if data is not None:
-                    blob_key = blob_store.put(data)
-                    references.append(("block", serialiser.type, blob_key, len(data)))
+                result = serialiser.serialise(value)
+                if result is not None:
+                    buffer, metadata = result
+                    blob_key = blob_store.put(buffer)
+                    size = buffer.getbuffer().nbytes
+                    references.append(
+                        ("block", serialiser.type, blob_key, size, metadata)
+                    )
                     return {"type": "ref", "index": len(references) - 1}
             raise Exception(f"no serialiser for type '{type(value)}'")
 
     data = _serialise(value)
-    json_data = _json_dumps(data).encode()
-    size = len(json_data)
+    encoded_data = _json_dumps(data).encode()
+    size = len(encoded_data)
     if size > _BLOB_THRESHOLD:
-        blob_key = blob_store.put(json_data)
+        buffer = io.BytesIO(encoded_data)
+        blob_key = blob_store.put(buffer)
         return ("blob", blob_key, size, references)
     else:
         return ("raw", data, references)
@@ -111,7 +119,7 @@ def _get_value_data(
 ) -> tuple[t.Any, list[models.Reference]]:
     match value:
         case ("blob", key, _, references):
-            return json.loads(blob_store.get(key)), references
+            return json.load(blob_store.get(key)), references
         case ("raw", data, references):
             return data, references
 
@@ -151,10 +159,10 @@ def deserialise(
                             return models.Asset(
                                 lambda to: restore_fn(asset_id, to), asset_id
                             )
-                        case ("block", serialiser, blob_key, _size):
+                        case ("block", serialiser, blob_key, _size, metadata):
                             serialiser_ = _find_serialiser(serialisers, serialiser)
                             data = blob_store.get(blob_key)
-                            return serialiser_.deserialise(data)
+                            return serialiser_.deserialise(data, metadata)
                 case other:
                     raise Exception(f"unhandled data type ({other})")
         else:

@@ -399,9 +399,14 @@ defmodule Coflux.Handlers.Agent do
 
   defp parse_references(references) do
     Enum.map(references, fn
-      ["block", serialiser, blob_key, size] -> {:block, serialiser, blob_key, size}
-      ["execution", execution_id] -> {:execution, execution_id}
-      ["asset", asset_id] -> {:asset, asset_id}
+      ["block", serialiser, blob_key, size, metadata] ->
+        {:block, serialiser, blob_key, size, metadata}
+
+      ["execution", execution_id] ->
+        {:execution, execution_id}
+
+      ["asset", asset_id] ->
+        {:asset, asset_id}
     end)
   end
 
@@ -456,9 +461,14 @@ defmodule Coflux.Handlers.Agent do
 
   defp compose_references(references) do
     Enum.map(references, fn
-      {:block, serialiser, blob_key, size} -> ["block", serialiser, blob_key, size]
-      {:execution, execution_id} -> ["execution", execution_id]
-      {:asset, asset_id} -> ["asset", asset_id]
+      {:block, serialiser, blob_key, size, metadata} ->
+        ["block", serialiser, blob_key, size, metadata]
+
+      {:execution, execution_id} ->
+        ["execution", execution_id]
+
+      {:asset, asset_id} ->
+        ["asset", asset_id]
     end)
   end
 

@@ -307,6 +307,14 @@ CREATE TABLE blocks (
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
 );
 
+CREATE TABLE block_metadata (
+  block_id INTEGER NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (block_id, key),
+  FOREIGN KEY (block_id) REFERENCES blocks ON DELETE CASCADE
+);
+
 CREATE TABLE values_ (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE,
