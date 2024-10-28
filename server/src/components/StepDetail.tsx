@@ -575,7 +575,7 @@ type DataProps = {
 function Data({ data, references, projectId }: DataProps) {
   if (Array.isArray(data)) {
     return (
-      <span>
+      <Fragment>
         [
         {data.map((item, index) => (
           <Fragment key={index}>
@@ -584,7 +584,7 @@ function Data({ data, references, projectId }: DataProps) {
           </Fragment>
         ))}
         ]
-      </span>
+      </Fragment>
     );
   } else if (data && typeof data == "object" && "type" in data) {
     switch (data.type) {
@@ -707,7 +707,7 @@ function Data({ data, references, projectId }: DataProps) {
   } else if (data === false) {
     return <span className="text-orange-700">False</span>;
   } else if (data === null) {
-    return <span className="text-slate-700 italic">None</span>;
+    return <span className="text-orange-700 italic">None</span>;
   } else {
     throw new Error(`Unexpected data type: ${data}`);
   }
