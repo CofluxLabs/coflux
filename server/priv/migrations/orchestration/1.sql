@@ -298,12 +298,18 @@ CREATE TABLE blobs (
   size INTEGER NOT NULL
 );
 
+CREATE TABLE serialisers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
+);
+
 CREATE TABLE blocks (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL,
-  serialiser TEXT NOT NULL,
+  serialiser_id INTEGER NOT NULL,
   blob_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
+  FOREIGN KEY (serialiser_id) REFERENCES serialisers ON DELETE RESTRICT,
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
 );
 

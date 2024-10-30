@@ -192,8 +192,9 @@ defmodule Coflux.Orchestration.Results do
     case query_one(
            db,
            """
-           SELECT k.serialiser, b.key, b.size
+           SELECT s.name, b.key, b.size
            FROM blocks AS k
+           INNER JOIN serialisers AS s ON s.id = k.serialiser_id
            INNER JOIN blobs AS b ON b.id = k.blob_id
            WHERE k.id = ?1
            """,
@@ -452,6 +453,13 @@ defmodule Coflux.Orchestration.Results do
     end
   end
 
+  defp get_or_create_serialiser(db, name) do
+    case query_one(db, "SELECT id FROM serialisers WHERE name = ?1", {name}) do
+      {:ok, {id}} -> {:ok, id}
+      {:ok, nil} -> insert_one(db, :serialisers, %{name: name})
+    end
+  end
+
   defp hash_block(serialiser, blob_key, metadata) do
     metadata_parts =
       Enum.flat_map(metadata, fn {key, value} -> [key, Jason.encode!(value)] end)
@@ -472,12 +480,13 @@ defmodule Coflux.Orchestration.Results do
         {:ok, id}
 
       {:ok, nil} ->
+        {:ok, serialiser_id} = get_or_create_serialiser(db, serialiser)
         {:ok, blob_id} = get_or_create_blob(db, blob_key, size)
 
         {:ok, block_id} =
           insert_one(db, :blocks, %{
             hash: hash,
-            serialiser: serialiser,
+            serialiser_id: serialiser_id,
             blob_id: blob_id,
             created_at: now
           })
