@@ -14,6 +14,7 @@ import {
   MenuButton,
   MenuItem,
   MenuItems,
+  MenuSeparator,
   Popover,
   PopoverBackdrop,
   PopoverButton,
@@ -25,6 +26,7 @@ import {
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
+  IconDownload,
   IconFunction,
   IconPinned,
   IconReload,
@@ -47,6 +49,7 @@ import EnvironmentLabel from "./EnvironmentLabel";
 import { useEnvironments, useLogs } from "../topics";
 import Tabs, { Tab } from "./common/Tabs";
 import Select from "./common/Select";
+import Alert from "./common/Alert";
 
 function getRunEnvironmentId(run: models.Run) {
   const initialStepId = minBy(
@@ -215,7 +218,7 @@ function AttemptSelector({
         </MenuButton>
         <MenuItems
           transition
-          className="p-1 overflow-auto bg-white rounded shadow-lg transition duration-100 ease-out data-[closed]:opacity-0"
+          className="p-1 overflow-auto bg-white shadow-xl rounded-md origin-top transition duration-200 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
           anchor={{ to: "bottom start", gap: 2, padding: 20 }}
         >
           {sortBy(Object.entries(executions), "attempt").map(
@@ -545,27 +548,6 @@ function Header({
   );
 }
 
-type BlobLinkProps = {
-  value: Extract<models.Value, { type: "blob" }>;
-};
-
-function BlobLink({ value }: BlobLinkProps) {
-  return (
-    <span className="">
-      <a
-        href={`/blobs/${value.key}`}
-        className="border border-slate-300 hover:border-slate-600 text-slate-600 text-sm rounded px-2 py-1 my-2 inline-block"
-        target="_blank"
-      >
-        Blob
-      </a>
-      <span className="text-slate-500 text-xs ml-1">
-        ({humanSize(value.size)})
-      </span>
-    </span>
-  );
-}
-
 type DataProps = {
   data: models.Data;
   references: models.Reference[];
@@ -628,12 +610,12 @@ function Data({ data, references, projectId }: DataProps) {
         );
       case "dict":
         return (
-          <div className="flex flex-col">
+          <Fragment>
             {"{"}
             {chunk(data.items, 2).map(([key, value], index) => (
               <div
                 key={index}
-                className="pl-4 border-l border-slate-100 ml-1 flex"
+                className="pl-4 border-l border-slate-100 ml-1 whitespace-nowrap"
               >
                 <Data
                   data={key}
@@ -643,7 +625,7 @@ function Data({ data, references, projectId }: DataProps) {
                 <IconArrowRightBar
                   size={20}
                   strokeWidth={1}
-                  className="text-slate-400 mx-1"
+                  className="text-slate-400 mx-1 inline-block"
                 />
                 <Data
                   data={value}
@@ -696,7 +678,7 @@ function Data({ data, references, projectId }: DataProps) {
     }
   } else if (typeof data == "string") {
     return (
-      <span className="text-slate-400">
+      <span className="text-slate-400 whitespace-nowrap">
         "<span className="text-green-700">{data}</span>"
       </span>
     );
@@ -713,45 +695,90 @@ function Data({ data, references, projectId }: DataProps) {
   }
 }
 
+function getValueData(value: models.Value) {
+  if (value.type == "raw") {
+    return value.data;
+  } else {
+    const json = sessionStorage.getItem(`blobs.${value.key}`);
+    if (json) {
+      return JSON.parse(json);
+    } else {
+      return undefined;
+    }
+  }
+}
+
 type ValueProps = {
-  value: Extract<models.Value, { type: "raw" }>;
+  value: models.Value;
   projectId: string;
   className?: string;
   block?: boolean;
 };
 
 function Value({ value, projectId, className, block }: ValueProps) {
+  const [_, setCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<any>();
+  const handleLoadClick = useCallback(() => {
+    if (value.type == "blob") {
+      setError(undefined);
+      setLoading(true);
+      fetch(`/blobs/${value.key}`)
+        .then((resp) => {
+          if (resp.ok) {
+            return resp.text();
+          } else {
+            throw new Error(`unexpected response code (${resp.status})`);
+          }
+        })
+        .then((data) => {
+          sessionStorage.setItem(`blobs.${value.key}`, data);
+          setCount((c) => c + 1);
+        })
+        .catch(setError)
+        .finally(() => setLoading(false));
+    }
+  }, [value]);
+  const handleUnloadClick = useCallback(() => {
+    if (value.type == "blob") {
+      sessionStorage.removeItem(`blobs.${value.key}`);
+      setCount((c) => c + 1);
+    }
+  }, [value]);
+  const data = getValueData(value);
   return (
-    <span
-      className={classNames(
-        "bg-white rounded px-2 py-1 border border-slate-300 font-mono text-sm",
-        block ? "block" : "inline-block",
-        className,
-      )}
-    >
-      <Data
-        data={value.data}
-        references={value.references}
-        projectId={projectId}
-      />
+    <span className={classNames(className, block ? "block" : "inline-block")}>
+      {data !== undefined ? (
+        <Fragment>
+          <div className="bg-white rounded p-1 border border-slate-300 font-mono text-sm overflow-auto">
+            <Data
+              data={data}
+              references={value.references}
+              projectId={projectId}
+            />
+          </div>
+          {value.type == "blob" && (
+            <Button
+              size="sm"
+              outline={true}
+              onClick={handleUnloadClick}
+              className="mt-1"
+            >
+              Unload
+            </Button>
+          )}
+        </Fragment>
+      ) : loading ? (
+        <span className="italic text-slate-500 text-sm">Loading...</span>
+      ) : error ? (
+        <Alert variant="danger">{error.toString()}</Alert>
+      ) : value.type == "blob" ? (
+        <Button size="sm" outline={true} onClick={handleLoadClick}>
+          Load ({humanSize(value.size)})
+        </Button>
+      ) : null}
     </span>
   );
-}
-
-type ArgumentProps = {
-  argument: models.Value;
-  projectId: string;
-};
-
-function Argument({ argument, projectId }: ArgumentProps) {
-  switch (argument.type) {
-    case "raw":
-      return <Value value={argument} projectId={projectId} />;
-    case "blob":
-      return <BlobLink value={argument} />;
-    default:
-      throw new Error(`Unhandled argument type (${argument})`);
-  }
 }
 
 type ArgumentsSectionProps = {
@@ -764,10 +791,14 @@ function ArgumentsSection({ arguments_, projectId }: ArgumentsSectionProps) {
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Arguments</h3>
       {arguments_.length > 0 ? (
-        <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs space-y-1">
+        <ol className="list-decimal list-inside ml-1 marker:text-slate-400 marker:text-xs space-y-1 mt-1">
           {arguments_.map((argument, index) => (
             <li key={index}>
-              <Argument argument={argument} projectId={projectId} />
+              <Value
+                value={argument}
+                projectId={projectId}
+                className="align-middle"
+              />
             </li>
           ))}
         </ol>
@@ -1044,16 +1075,12 @@ function ResultSection({ result, projectId }: ResultSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
-      {value.type == "raw" ? (
-        <Value
-          value={value}
-          projectId={projectId}
-          block={true}
-          className="overflow-auto"
-        />
-      ) : value.type == "blob" ? (
-        <BlobLink value={value} />
-      ) : undefined}
+      <Value
+        value={value}
+        projectId={projectId}
+        block={true}
+        className="mt-1"
+      />
     </div>
   );
 }
