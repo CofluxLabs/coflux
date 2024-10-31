@@ -5,6 +5,11 @@ import abc
 import io
 from pathlib import Path
 
+try:
+    import pandas
+except ImportError:
+    pandas = None
+
 from . import blobs, models
 
 T = t.TypeVar("T")
@@ -40,12 +45,34 @@ class PickleSerialiser(Serialiser):
         try:
             buffer = io.BytesIO()
             pickle.dump(value, buffer)
-            return buffer, {}
+            return buffer, {"type": str(type(value))}
         except pickle.PicklingError:
             return None
 
     def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
         return pickle.loads(buffer.getbuffer())
+
+
+class PandasSerialiser(Serialiser):
+    @property
+    def type(self) -> str:
+        return "pandas"
+
+    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
+        # TODO: support series
+        if pandas and isinstance(value, pandas.DataFrame):
+            buffer = io.BytesIO()
+            value.to_parquet(buffer)
+            return buffer, {
+                "content_type": "application/vnd.apache.parquet",
+                "shape": value.shape,
+            }
+
+    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
+        if not pandas:
+            raise Exception("Pandas dependency not available")
+        # TODO: check metadata["content_type"]
+        return pandas.read_parquet(buffer)
 
 
 def serialise(

@@ -215,6 +215,7 @@ class Channel:
         self._exit_stack = contextlib.ExitStack()
         # TODO: configure this somehow?
         self._serialisers: list[serialisation.Serialiser] = [
+            serialisation.PandasSerialiser(),
             serialisation.PickleSerialiser(),
         ]
 
