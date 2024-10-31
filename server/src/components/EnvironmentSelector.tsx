@@ -1,12 +1,11 @@
 import { Fragment, useCallback, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
-import classNames from "classnames";
 import {
   Menu,
   MenuButton,
   MenuItem,
   MenuItems,
-  Transition,
+  MenuSeparator,
 } from "@headlessui/react";
 import {
   IconCheck,
@@ -78,69 +77,52 @@ export default function EnvironmentSelector({
             </span>
           )}
         </MenuButton>
-        <Transition
-          as={Fragment}
-          enter="transition ease-in duration-100"
-          enterFrom="opacity-0 scale-95"
-          enterTo="opacity-100 scale-100"
-          leave="transition ease-in duration-100"
-          leaveFrom="opacity-100 scale-100"
-          leaveTo="opacity-0 scale-95"
+        <MenuItems
+          transition
+          anchor={{ to: "bottom start", gap: 4, padding: 20 }}
+          className="bg-white flex flex-col overflow-y-scroll shadow-xl rounded-md origin-top transition duration-200 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
         >
-          <MenuItems
-            className="absolute z-10 overflow-y-scroll text-base bg-white rounded-md shadow-lg divide-y divide-slate-100 origin-top mt-1"
-            static={true}
-          >
-            {Object.keys(environments).length > 0 && (
-              <div className="p-1">
-                {traverseEnvironments(environments).map(
-                  ([environmentId, environment, depth]) => (
-                    <MenuItem key={environmentId}>
-                      <Link
-                        to={buildUrl(location.pathname, {
-                          environment: environment.name,
-                        })}
-                        className={classNames(
-                          "flex items-center gap-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm data-[active]:bg-slate-100",
-                        )}
-                      >
-                        {environment.name == activeEnvironment ? (
-                          <IconCheck size={16} className="mt-0.5" />
-                        ) : (
-                          <span className="w-[16px]" />
-                        )}
-                        {times(depth).map((i) =>
-                          i == depth - 1 ? (
-                            <IconCornerDownRight
-                              key={i}
-                              size={16}
-                              className="text-slate-300"
-                            />
-                          ) : (
-                            <span key={i} className="w-2" />
-                          ),
-                        )}
-                        {environment.name}
-                      </Link>
-                    </MenuItem>
-                  ),
-                )}
-              </div>
+          {Object.keys(environments).length > 0 &&
+            traverseEnvironments(environments).map(
+              ([environmentId, environment, depth]) => (
+                <MenuItem key={environmentId}>
+                  <Link
+                    to={buildUrl(location.pathname, {
+                      environment: environment.name,
+                    })}
+                    className="flex items-center gap-1 m-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm data-[active]:bg-slate-100"
+                  >
+                    {environment.name == activeEnvironment ? (
+                      <IconCheck size={16} className="mt-0.5" />
+                    ) : (
+                      <span className="w-[16px]" />
+                    )}
+                    {times(depth).map((i) =>
+                      i == depth - 1 ? (
+                        <IconCornerDownRight
+                          key={i}
+                          size={16}
+                          className="text-slate-300"
+                        />
+                      ) : (
+                        <span key={i} className="w-2" />
+                      ),
+                    )}
+                    {environment.name}
+                  </Link>
+                </MenuItem>
+              ),
             )}
-            <div className="p-1">
-              <MenuItem>
-                <button
-                  className={classNames(
-                    "w-full flex px-2 py-1 rounded whitespace-nowrap text-sm data-[active]:bg-slate-100",
-                  )}
-                  onClick={handleAddEnvironmentClick}
-                >
-                  Add environment...
-                </button>
-              </MenuItem>
-            </div>
-          </MenuItems>
-        </Transition>
+          <MenuSeparator className="my-1 h-px bg-slate-100" />
+          <MenuItem>
+            <button
+              className="flex m-1 px-2 py-1 rounded whitespace-nowrap text-sm data-[active]:bg-slate-100"
+              onClick={handleAddEnvironmentClick}
+            >
+              Add environment...
+            </button>
+          </MenuItem>
+        </MenuItems>
       </Menu>
       <AddEnvironmentDialog
         environments={environments}

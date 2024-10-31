@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { Link, useParams } from "react-router-dom";
 import classNames from "classnames";
 import {
@@ -6,7 +5,7 @@ import {
   MenuButton,
   MenuItem,
   MenuItems,
-  Transition,
+  MenuSeparator,
 } from "@headlessui/react";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 
@@ -33,52 +32,36 @@ export default function ProjectSelector({ projects }: Props) {
         </span>
         <IconChevronDown size={16} className="opacity-40 mt-0.5" />
       </MenuButton>
-      <Transition
-        as={Fragment}
-        enter="transition ease-in duration-100"
-        enterFrom="opacity-0 scale-95"
-        enterTo="opacity-100 scale-100"
-        leave="transition ease-in duration-100"
-        leaveFrom="opacity-100 scale-100"
-        leaveTo="opacity-0 scale-95"
+      <MenuItems
+        transition
+        anchor={{ to: "bottom start", gap: 4, padding: 20 }}
+        className="bg-white flex flex-col overflow-y-scroll shadow-xl rounded-md origin-top transition duration-200 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
       >
-        <MenuItems
-          className="absolute z-10 overflow-y-scroll text-base bg-white rounded-md shadow-lg divide-y divide-slate-100 origin-top mt-1"
-          static={true}
-        >
-          <div className="p-1">
-            {Object.entries(projects).map(([projectId, project]) => (
-              <MenuItem key={projectId}>
-                <Link
-                  to={`/projects/${projectId}`}
-                  className={classNames(
-                    "flex items-center gap-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm data-[active]:bg-slate-100",
-                  )}
-                >
-                  {projectId == activeProjectId ? (
-                    <IconCheck size={16} className="mt-0.5" />
-                  ) : (
-                    <span className="w-[16px]" />
-                  )}
-                  {project.name}
-                </Link>
-              </MenuItem>
-            ))}
-          </div>
-          <div className="p-1">
-            <MenuItem>
-              <Link
-                to="/projects"
-                className={classNames(
-                  "flex px-2 py-1 rounded whitespace-nowrap text-sm data-[active]:bg-slate-100",
-                )}
-              >
-                Manage projects...
-              </Link>
-            </MenuItem>
-          </div>
-        </MenuItems>
-      </Transition>
+        {Object.entries(projects).map(([projectId, project]) => (
+          <MenuItem key={projectId}>
+            <Link
+              to={`/projects/${projectId}`}
+              className="flex items-center gap-1 m-1 pl-2 pr-3 py-1 rounded whitespace-nowrap text-sm data-[active]:bg-slate-100"
+            >
+              {projectId == activeProjectId ? (
+                <IconCheck size={16} className="mt-0.5" />
+              ) : (
+                <span className="w-[16px]" />
+              )}
+              {project.name}
+            </Link>
+          </MenuItem>
+        ))}
+        <MenuSeparator className="my-1 h-px bg-slate-100" />
+        <MenuItem>
+          <Link
+            to="/projects"
+            className="flex m-1 px-2 py-1 rounded whitespace-nowrap text-sm data-[active]:bg-slate-100"
+          >
+            Manage projects...
+          </Link>
+        </MenuItem>
+      </MenuItems>
     </Menu>
   );
 }
