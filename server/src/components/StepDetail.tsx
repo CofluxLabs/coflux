@@ -635,19 +635,55 @@ function Data({ data, references, projectId }: DataProps) {
               </div>
             ))}
             {"}"}
-          </div>
+          </Fragment>
         );
       case "ref":
         const reference = references[data.index];
         switch (reference.type) {
           case "block":
             return (
-              <span className="bg-slate-100 rounded px-1.5 py-0.5 text-xs font-sans">
-                {reference.serialiser}{" "}
-                <span className="text-slate-500">
-                  ({humanSize(reference.size)})
-                </span>
-              </span>
+              <Menu>
+                <MenuButton className="bg-slate-100 rounded px-1.5 py-0.5 text-xs font-sans inline-flex gap-1">
+                  {reference.serialiser}
+                  <span className="text-slate-500">
+                    ({humanSize(reference.size)})
+                  </span>
+                  <IconChevronDown
+                    size={16}
+                    className="text-slate-600"
+                    strokeWidth={1.5}
+                  />
+                </MenuButton>
+                <MenuItems
+                  transition
+                  anchor="bottom"
+                  className="bg-white shadow-xl rounded-md origin-top transition duration-200 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+                >
+                  <dl className="flex flex-col gap-1 p-2">
+                    {Object.entries(reference.metadata).map(([key, value]) => (
+                      <div key={key}>
+                        <dt className="text-xs text-slate-500">{key}</dt>
+                        <dd className="text-sm text-slate-900">
+                          {typeof value == "string"
+                            ? value
+                            : JSON.stringify(value)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <MenuSeparator className="my-1 h-px bg-slate-100" />
+                  <MenuItem>
+                    <a
+                      href={`/blobs/${reference.blobKey}`}
+                      download
+                      className="text-sm m-1 p-1 rounded-md data-[active]:bg-slate-100 flex items-center gap-1"
+                    >
+                      <IconDownload size={16} />
+                      Download
+                    </a>
+                  </MenuItem>
+                </MenuItems>
+              </Menu>
             );
           case "execution":
             const execution = reference.execution;

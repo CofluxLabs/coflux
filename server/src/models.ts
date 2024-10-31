@@ -78,6 +78,7 @@ export type Reference =
       serialiser: string;
       blobKey: string;
       size: number;
+      metadata: Record<string, any>;
     }
   | {
       type: "execution";
