@@ -13,7 +13,7 @@ type BaseNode = (
     }
   | {
       type: "parent";
-      parent: models.Reference | null;
+      parent: models.ExecutionReference | null;
     }
   | {
       type: "child";

@@ -1,143 +1,198 @@
 import typing as t
 import json
-import re
 import pickle
+import abc
+import io
+from pathlib import Path
+
+try:
+    import pandas
+except ImportError:
+    pandas = None
 
 from . import blobs, models
 
 T = t.TypeVar("T")
 
-_BLOB_THRESHOLD = 100
+_BLOB_THRESHOLD = 200
 
 
 def _json_dumps(obj: t.Any) -> str:
     return json.dumps(obj, separators=(",", ":"))
 
 
-def _find_numbers(data: t.Any) -> set[int]:
-    numbers = set()
-    if isinstance(data, str):
-        match = re.match(r"\{(\d+)\}", data)
-        if match:
-            numbers.add(int(match.group(1)))
-    elif isinstance(data, (list, tuple)):
-        for item in data:
-            numbers.update(_find_numbers(item))
-    elif isinstance(data, dict):
-        for v in data.values():
-            numbers.update(_find_numbers(v))
-    return numbers
+class Serialiser(abc.ABC):
+    @property
+    @abc.abstractmethod
+    def type(self) -> str:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
+        raise NotImplementedError
 
 
-def _choose_number(
-    existing: set[int], placeholders: dict[int, t.Any], counter=0
-) -> int:
-    if counter not in existing and counter not in placeholders:
-        return counter
-    return _choose_number(existing, placeholders, counter + 1)
+class PickleSerialiser(Serialiser):
+    @property
+    def type(self) -> str:
+        return "pickle"
+
+    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
+        try:
+            buffer = io.BytesIO()
+            pickle.dump(value, buffer)
+            return buffer, {"type": str(type(value))}
+        except pickle.PicklingError:
+            return None
+
+    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
+        return pickle.loads(buffer.getbuffer())
 
 
-def _do_substitution(placeholders: dict[int, T], value: T, existing: set[int]):
-    number = next(
-        (k for k, v in placeholders.items() if v == value),
-        None,
-    )
-    if not number:
-        number = _choose_number(existing, placeholders)
-        placeholders[number] = value
-    return f"{{{number}}}"
+class PandasSerialiser(Serialiser):
+    @property
+    def type(self) -> str:
+        return "pandas"
 
+    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
+        # TODO: support series
+        if pandas and isinstance(value, pandas.DataFrame):
+            buffer = io.BytesIO()
+            value.to_parquet(buffer)
+            return buffer, {
+                "content_type": "application/vnd.apache.parquet",
+                "shape": value.shape,
+            }
 
-def _substitute_placeholders(
-    data: t.Any,
-    existing: set[int],
-    placeholders: models.Placeholders,
-) -> t.Any:
-    if isinstance(data, models.Execution) and data.id:
-        return _do_substitution(placeholders, (data.id, None), existing)
-    elif isinstance(data, models.Asset):
-        return _do_substitution(placeholders, (None, data.id), existing)
-    elif isinstance(data, list):
-        return [_substitute_placeholders(item, existing, placeholders) for item in data]
-    elif isinstance(data, dict):
-        return {
-            k: _substitute_placeholders(v, existing, placeholders)
-            for k, v in data.items()
-        }
-    else:
-        return data
-
-
-def _replace_placeholders(
-    data: t.Any,
-    placeholders: dict[str, models.Execution | models.Asset],
-):
-    if isinstance(data, str):
-        return placeholders.get(data) or data
-    elif isinstance(data, list):
-        return [_replace_placeholders(item, placeholders) for item in data]
-    elif isinstance(data, dict):
-        return {k: _replace_placeholders(v, placeholders) for k, v in data.items()}
-    return data
-
-
-def _serialise(
-    data: t.Any
-) -> tuple[str, bytes, models.Placeholders, models.Metadata]:
-    placeholders = {}
-    avoid_numbers = _find_numbers(data)
-    value = _substitute_placeholders(data, avoid_numbers, placeholders)
-    try:
-        json_value = _json_dumps(value).encode()
-        return "json", json_value, placeholders, {"size": len(json_value)}
-    except TypeError:
-        pickle_value = pickle.dumps(value)
-        return "pickle", pickle_value, placeholders, {"size": len(pickle_value)}
+    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
+        if not pandas:
+            raise Exception("Pandas dependency not available")
+        # TODO: check metadata["content_type"]
+        return pandas.read_parquet(buffer)
 
 
 def serialise(
     value: t.Any,
+    serialisers: list[Serialiser],
     blob_store: blobs.Store,
 ) -> models.Value:
-    format, serialised, placeholders, metadata = _serialise(value)
-    if format != "json" or len(serialised) > _BLOB_THRESHOLD:
-        key = blob_store.put(serialised)
-        return ("blob", key, metadata, format, placeholders)
-    return ("raw", serialised, format, placeholders)
+    references: list[models.Reference] = []
+
+    def _serialise(value: t.Any) -> t.Any:
+        if value is None or isinstance(value, (str, bool, int, float)):
+            return value
+        elif isinstance(value, list):
+            return [_serialise(v) for v in value]
+        elif isinstance(value, dict):
+            # TODO: sort?
+            return {
+                "type": "dict",
+                "items": [_serialise(x) for kv in value.items() for x in kv],
+            }
+        elif isinstance(value, set):
+            # TODO: sort?
+            return {
+                "type": "set",
+                "items": [_serialise(x) for x in value],
+            }
+        elif isinstance(value, models.Execution):
+            # TODO: better handle id being none
+            assert value.id is not None
+            references.append(("execution", value.id))
+            return {"type": "ref", "index": len(references) - 1}
+        elif isinstance(value, models.Asset):
+            references.append(("asset", value.id))
+            return {"type": "ref", "index": len(references) - 1}
+        elif isinstance(value, tuple):
+            # TODO: include name
+            return {"type": "tuple", "items": [_serialise(x) for x in value]}
+        else:
+            for serialiser in serialisers:
+                result = serialiser.serialise(value)
+                if result is not None:
+                    buffer, metadata = result
+                    blob_key = blob_store.put(buffer)
+                    size = buffer.getbuffer().nbytes
+                    references.append(
+                        ("block", serialiser.type, blob_key, size, metadata)
+                    )
+                    return {"type": "ref", "index": len(references) - 1}
+            raise Exception(f"no serialiser for type '{type(value)}'")
+
+    data = _serialise(value)
+    encoded_data = _json_dumps(data).encode()
+    size = len(encoded_data)
+    if size > _BLOB_THRESHOLD:
+        buffer = io.BytesIO(encoded_data)
+        blob_key = blob_store.put(buffer)
+        return ("blob", blob_key, size, references)
+    else:
+        return ("raw", data, references)
 
 
-def _deserialise(format: str, content: bytes):
-    match format:
-        case "json":
-            return json.loads(content.decode())
-        case "pickle":
-            return pickle.loads(content)
-        case format:
-            raise Exception(f"unsupported format ({format})")
+def _find_serialiser(serialisers: list[Serialiser], type: str) -> Serialiser:
+    serialiser = next((s for s in serialisers if s.type == type), None)
+    if not serialiser:
+        raise Exception(f"unrecognised serialiser ({type})")
+    return serialiser
 
 
-def _compose_placeholder(
-    placeholder: tuple[int, None] | tuple[None, int],
-    resolve_fn: t.Callable[[int], t.Any],
-):
-    match placeholder:
-        case (execution_id, None):
-            return models.Execution(lambda: resolve_fn(execution_id), execution_id)
-        case (None, asset_id):
-            return models.Asset(asset_id)
-        case other:
-            raise Exception(f"unrecognised placeholder ({other})")
+def _get_value_data(
+    value: models.Value, blob_store: blobs.Store
+) -> tuple[t.Any, list[models.Reference]]:
+    match value:
+        case ("blob", key, _, references):
+            return json.load(blob_store.get(key)), references
+        case ("raw", data, references):
+            return data, references
 
 
 def deserialise(
-    format: str,
-    content: bytes,
-    placeholders: models.Placeholders,
+    value: models.Value,
+    serialisers: list[Serialiser],
+    blob_store: blobs.Store,
     resolve_fn: t.Callable[[int], t.Any],
+    restore_fn: t.Callable[[int, Path | str | None], Path],
 ) -> t.Any:
-    data = _deserialise(format, content)
-    placeholders_ = {
-        f"{{{key}}}": _compose_placeholder(value, resolve_fn)
-        for key, value in placeholders.items()
-    }
-    return _replace_placeholders(data, placeholders_)
+    data, references = _get_value_data(value, blob_store)
+
+    def _deserialise(data: t.Any):
+        if data is None or isinstance(data, (str, bool, int, float)):
+            return data
+        elif isinstance(data, list):
+            return [_deserialise(v) for v in data]
+        elif isinstance(data, dict):
+            match data["type"]:
+                case "dict":
+                    pairs = zip(data["items"][::2], data["items"][1::2])
+                    return {_deserialise(k): _deserialise(v) for k, v in pairs}
+                case "set":
+                    return {_deserialise(x) for x in data["items"]}
+                case "tuple":
+                    return tuple(_deserialise(x) for x in data["items"])
+                case "ref":
+                    reference = references[data["index"]]
+                    match reference:
+                        case ("execution", execution_id):
+                            return models.Execution(
+                                lambda: resolve_fn(execution_id),
+                                execution_id,
+                            )
+                        case ("asset", asset_id):
+                            return models.Asset(
+                                lambda to: restore_fn(asset_id, to), asset_id
+                            )
+                        case ("block", serialiser, blob_key, _size, metadata):
+                            serialiser_ = _find_serialiser(serialisers, serialiser)
+                            data = blob_store.get(blob_key)
+                            return serialiser_.deserialise(data, metadata)
+                case other:
+                    raise Exception(f"unhandled data type ({other})")
+        else:
+            raise Exception(f"unhandled data type ({type(data)})")
+
+    return _deserialise(data)

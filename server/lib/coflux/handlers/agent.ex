@@ -250,7 +250,7 @@ defmodule Coflux.Handlers.Agent do
         end
 
       "put_asset" ->
-        [execution_id, type, path, blob_key, metadata] = message["params"]
+        [execution_id, type, path, blob_key, size, metadata] = message["params"]
 
         if is_recognised_execution?(execution_id, state) do
           {:ok, asset_id} =
@@ -260,6 +260,7 @@ defmodule Coflux.Handlers.Agent do
               type,
               path,
               blob_key,
+              size,
               metadata
             )
 
@@ -396,19 +397,26 @@ defmodule Coflux.Handlers.Agent do
     end
   end
 
-  defp parse_placeholders(placeholders) do
-    Map.new(placeholders, fn {placeholder, [execution_id, asset_id]} ->
-      {String.to_integer(placeholder), {execution_id, asset_id}}
+  defp parse_references(references) do
+    Enum.map(references, fn
+      ["block", serialiser, blob_key, size, metadata] ->
+        {:block, serialiser, blob_key, size, metadata}
+
+      ["execution", execution_id] ->
+        {:execution, execution_id}
+
+      ["asset", asset_id] ->
+        {:asset, asset_id}
     end)
   end
 
   defp parse_value(value) do
     case value do
-      ["raw", content, format, placeholders] ->
-        {{:raw, content}, format, parse_placeholders(placeholders)}
+      ["raw", data, references] ->
+        {:raw, data, parse_references(references)}
 
-      ["blob", blob_key, metadata, format, placeholders] ->
-        {{:blob, blob_key, metadata}, format, parse_placeholders(placeholders)}
+      ["blob", blob_key, size, references] ->
+        {:blob, blob_key, size, parse_references(references)}
     end
   end
 
@@ -451,19 +459,27 @@ defmodule Coflux.Handlers.Agent do
     end
   end
 
-  defp compose_placeholders(placeholders) do
-    Map.new(placeholders, fn {placeholder, {execution_id, asset_id}} ->
-      {Integer.to_string(placeholder), [execution_id, asset_id]}
+  defp compose_references(references) do
+    Enum.map(references, fn
+      {:block, serialiser, blob_key, size, metadata} ->
+        ["block", serialiser, blob_key, size, metadata]
+
+      {:execution, execution_id} ->
+        ["execution", execution_id]
+
+      {:asset, asset_id} ->
+        ["asset", asset_id]
     end)
   end
 
   defp compose_value(value) do
+    # TODO: leave out size?
     case value do
-      {{:raw, content}, format, placeholders} ->
-        ["raw", content, format, compose_placeholders(placeholders)]
+      {:raw, data, references} ->
+        ["raw", data, compose_references(references)]
 
-      {{:blob, blob_key, metadata}, format, placeholders} ->
-        ["blob", blob_key, metadata, format, compose_placeholders(placeholders)]
+      {:blob, blob_key, size, references} ->
+        ["blob", blob_key, size, compose_references(references)]
     end
   end
 

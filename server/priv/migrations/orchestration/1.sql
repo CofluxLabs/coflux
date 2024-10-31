@@ -219,8 +219,15 @@ CREATE TABLE assets (
   path TEXT NOT NULL,
   blob_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+);
+
+CREATE TABLE asset_metadata (
+  asset_id INTEGER NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (asset_id, key),
+  FOREIGN KEY (asset_id) REFERENCES assets ON DELETE CASCADE
 );
 
 -- TODO: add 'type' (e.g., 'regular', memoised)
@@ -287,39 +294,54 @@ CREATE TABLE heartbeats (
 
 CREATE TABLE blobs (
   id INTEGER PRIMARY KEY,
-  hash BLOB NOT NULL,
-  blob_key TEXT NOT NULL -- TODO: use type BLOB?
+  key TEXT NOT NULL UNIQUE, -- TODO: use type BLOB?
+  size INTEGER NOT NULL
 );
 
--- TODO: associate separately with value/asset?
-CREATE TABLE blob_metadata (
+CREATE TABLE serialisers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE blocks (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL,
+  serialiser_id INTEGER NOT NULL,
   blob_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (serialiser_id) REFERENCES serialisers ON DELETE RESTRICT,
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
+);
+
+CREATE TABLE block_metadata (
+  block_id INTEGER NOT NULL,
   key TEXT NOT NULL,
   value TEXT NOT NULL,
-  PRIMARY KEY (blob_id, key),
-  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE CASCADE
+  PRIMARY KEY (block_id, key),
+  FOREIGN KEY (block_id) REFERENCES blocks ON DELETE CASCADE
 );
 
 CREATE TABLE values_ (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE,
-  format TEXT NOT NULL,
   content BLOB,
   blob_id INTEGER,
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
   CHECK ((content IS NULL) != (blob_id IS NULL))
 );
 
-CREATE TABLE value_placeholders (
+CREATE TABLE value_references (
   value_id INTEGER NOT NULL,
-  placeholder INTEGER NOT NULL,
+  position INTEGER NOT NULL,
+  block_id INTEGER,
   execution_id INTEGER,
   asset_id INTEGER,
-  PRIMARY KEY (value_id, placeholder),
+  PRIMARY KEY (value_id, position),
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE,
+  FOREIGN KEY (block_id) REFERENCES blocks ON DELETE RESTRICT,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE RESTRICT,
   FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT,
-  CHECK ((execution_id IS NULL) != (asset_id IS NULL))
+  CHECK ((block_id IS NOT NULL) + (execution_id IS NOT NULL) + (asset_id IS NOT NULL) = 1)
 );
 
 CREATE TABLE errors (

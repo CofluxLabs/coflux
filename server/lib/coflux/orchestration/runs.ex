@@ -132,12 +132,36 @@ defmodule Coflux.Orchestration.Runs do
     end)
   end
 
-  defp encode_placeholders(placeholders) do
-    placeholders
-    |> Enum.sort()
-    |> Enum.map_join(";", fn {key, {execution_id, asset_id}} ->
-      "#{key}=#{execution_id}|#{asset_id}"
-    end)
+  defp get_argument_key_parts(parameter) do
+    references =
+      case parameter do
+        {:raw, _data, references} -> references
+        {:blob, _blob_key, _size, references} -> references
+      end
+
+    references_parts =
+      [
+        length(references)
+        | Enum.flat_map(references, fn
+            {:block, serialiser, blob_key, _size, metadata} ->
+              Enum.concat(
+                [1, serialiser, blob_key],
+                Enum.flat_map(metadata, fn {key, value} -> [key, Jason.encode!(value)] end)
+              )
+
+            {:execution, execution_id} ->
+              [2, Integer.to_string(execution_id)]
+
+            {:asset, asset_id} ->
+              [3, Integer.to_string(asset_id)]
+          end)
+      ]
+
+    # TODO: safer data encoding? (consider order of, e.g., dicts)
+    case parameter do
+      {:raw, data, _references} -> Enum.concat([1, Jason.encode!(data)], references_parts)
+      {:blob, blob_key, _size, _references} -> Enum.concat([2, blob_key], references_parts)
+    end
   end
 
   defp build_key(params, arguments, namespace, version \\ nil) do
@@ -147,17 +171,13 @@ defmodule Coflux.Orchestration.Runs do
         else: params
 
     parameter_parts =
-      Enum.map(params, fn index ->
-        case Enum.at(arguments, index) do
-          {{:raw, content}, format, placeholders} ->
-            [1, content, 0, format, encode_placeholders(placeholders)]
+      Enum.map(params, &get_argument_key_parts(Enum.at(arguments, &1)))
 
-          {{:blob, blob_key, _metadata}, format, placeholders} ->
-            [2, blob_key, 0, format, encode_placeholders(placeholders)]
-        end
-      end)
+    data =
+      [namespace, version || ""]
+      |> Enum.concat(parameter_parts)
+      |> Enum.intersperse(0)
 
-    data = Enum.intersperse([namespace | [version || "" | parameter_parts]], 0)
     :crypto.hash(:sha256, data)
   end
 
@@ -258,7 +278,7 @@ defmodule Coflux.Orchestration.Runs do
               arguments
               |> Enum.with_index()
               |> Enum.map(fn {value, position} ->
-                {:ok, value_id} = Results.get_or_create_value(db, value)
+                {:ok, value_id} = Results.get_or_create_value(db, value, now)
                 {step_id, position, value_id}
               end)
             )
@@ -595,7 +615,7 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  def get_step_arguments(db, step_id, load_metadata \\ false) do
+  def get_step_arguments(db, step_id) do
     case query(
            db,
            """
@@ -609,7 +629,7 @@ defmodule Coflux.Orchestration.Runs do
       {:ok, rows} ->
         values =
           Enum.map(rows, fn {value_id} ->
-            case Results.get_value_by_id(db, value_id, load_metadata) do
+            case Results.get_value_by_id(db, value_id) do
               {:ok, value} -> value
             end
           end)

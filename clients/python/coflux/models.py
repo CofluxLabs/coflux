@@ -1,4 +1,5 @@
 import typing as t
+from pathlib import Path
 
 T = t.TypeVar("T")
 
@@ -47,11 +48,15 @@ class Target(t.NamedTuple):
 
 Metadata = dict[str, t.Any]
 
-Placeholders = dict[int, tuple[int, None] | tuple[None, int]]
+Reference = (
+    tuple[t.Literal["execution"], int]
+    | tuple[t.Literal["asset"], int]
+    | tuple[t.Literal["block"], str, str, int, dict[str, t.Any]]
+)
 
 Value = t.Union[
-    tuple[t.Literal["raw"], bytes, str, Placeholders],
-    tuple[t.Literal["blob"], str, Metadata, str, Placeholders],
+    tuple[t.Literal["raw"], t.Any, list[Reference]],
+    tuple[t.Literal["blob"], str, int, list[Reference]],
 ]
 
 Result = t.Union[
@@ -79,5 +84,18 @@ class Execution(t.Generic[T]):
         return self._resolve_fn()
 
 
-class Asset(t.NamedTuple):
-    id: int
+class Asset:
+    def __init__(
+        self,
+        restore_fn: t.Callable[[Path | str | None], Path],
+        id: int,
+    ):
+        self._restore_fn = restore_fn
+        self._id = id
+
+    @property
+    def id(self) -> int:
+        return self._id
+
+    def restore(self, *, to: Path | str | None = None) -> Path:
+        return self._restore_fn(to)

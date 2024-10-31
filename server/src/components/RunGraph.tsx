@@ -192,7 +192,7 @@ function MoreAssetsNode({ assetIds }: MoreAssetsNodeProps) {
 }
 
 type ParentNodeProps = {
-  parent: models.Reference | null;
+  parent: models.ExecutionReference | null;
 };
 
 function ParentNode({ parent }: ParentNodeProps) {

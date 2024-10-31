@@ -387,7 +387,7 @@ defmodule Coflux.Handlers.Api do
     json_error_response(req, "not_found", status: 404)
   end
 
-  defp is_valid_json(value) do
+  defp is_valid_json?(value) do
     if value do
       case Jason.decode(value) do
         {:ok, _} -> true
@@ -572,6 +572,25 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
+  defp transform_json(value) do
+    cond do
+      is_number(value) || is_boolean(value) || is_nil(value) || is_binary(value) ->
+        value
+
+      is_list(value) ->
+        Enum.map(value, &transform_json/1)
+
+      is_map(value) ->
+        %{
+          "type" => "dict",
+          "items" =>
+            Enum.flat_map(value, fn {key, value} ->
+              [key, transform_json(value)]
+            end)
+        }
+    end
+  end
+
   defp parse_arguments(arguments) do
     if arguments do
       errors =
@@ -580,7 +599,7 @@ defmodule Coflux.Handlers.Api do
         |> Enum.reduce(%{}, fn {argument, index}, errors ->
           case argument do
             ["json", value] ->
-              if is_valid_json(value) do
+              if is_valid_json?(value) do
                 errors
               else
                 Map.put(errors, index, :not_json)
@@ -594,7 +613,13 @@ defmodule Coflux.Handlers.Api do
         result =
           Enum.map(arguments, fn argument ->
             case argument do
-              ["json", value] -> {{:raw, value}, "json", %{}}
+              ["json", json] ->
+                value =
+                  json
+                  |> Jason.decode!()
+                  |> transform_json()
+
+                {:raw, value, []}
             end
           end)
 

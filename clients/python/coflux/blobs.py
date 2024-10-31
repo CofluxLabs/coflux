@@ -1,15 +1,17 @@
 import httpx
 import hashlib
+import typing as t
+import io
 from pathlib import Path
 
 CHUNK_SIZE = 5 // 2**18
 
 
-def _hash_file(filename):
+def _hash_file(buffer: t.BinaryIO):
+    buffer.seek(0)
     hash = hashlib.sha256()
-    with open(filename, "rb") as file:
-        for chunk in iter(lambda: file.read(4096), b""):
-            hash.update(chunk)
+    for chunk in iter(lambda: buffer.read(4096), b""):
+        hash.update(chunk)
     return hash.hexdigest()
 
 
@@ -27,10 +29,10 @@ class Store:
     def _url(self, key: str) -> str:
         return self._url_format.format(key=key)
 
-    def get(self, key: str) -> bytes:
+    def get(self, key: str) -> io.BytesIO:
         response = self._client.get(self._url(key))
         response.raise_for_status()
-        return response.content
+        return io.BytesIO(response.content)
 
     def download(self, key: str, path: Path) -> None:
         with path.open("wb") as file:
@@ -42,15 +44,14 @@ class Store:
     def _exists(self, key: str) -> bool:
         return self._client.head(self._url(key)).status_code == 200
 
-    def put(self, content: bytes) -> str:
-        key = hashlib.sha256(content).hexdigest()
+    def put(self, buffer: t.BinaryIO) -> str:
+        assert buffer.seekable()
+        key = _hash_file(buffer)
         if not self._exists(key):
-            self._client.put(self._url(key), content=content).raise_for_status()
+            buffer.seek(0)
+            self._client.put(self._url(key), content=buffer).raise_for_status()
         return key
 
     def upload(self, path: Path) -> str:
-        key = _hash_file(path)
-        if not self._exists(key):
-            with path.open("rb") as file:
-                self._client.put(self._url(key), content=file).raise_for_status()
-        return key
+        with open(path, "rb") as file:
+            return self.put(file)

@@ -109,6 +109,7 @@ class PersistAssetRequest(t.NamedTuple):
     type: int
     path: str
     blob_key: str
+    size: int
     metadata: dict[str, t.Any]
 
 
@@ -212,6 +213,11 @@ class Channel:
         self._cache: dict[t.Any, Future[t.Any]] = {}
         self._running = True
         self._exit_stack = contextlib.ExitStack()
+        # TODO: configure this somehow?
+        self._serialisers: list[serialisation.Serialiser] = [
+            serialisation.PandasSerialiser(),
+            serialisation.PickleSerialiser(),
+        ]
 
     def __enter__(self):
         self._exit_stack.enter_context(
@@ -228,14 +234,6 @@ class Channel:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self._exit_stack.close()
-
-    @property
-    def directory(self) -> Path:
-        return self._directory
-
-    @property
-    def blob_store(self) -> blobs.Store:
-        return self._blob_store
 
     def run(self):
         while self._running:
@@ -266,16 +264,13 @@ class Channel:
     def _notify(self, notification):
         self._send("notify", notification)
 
-    def notify_executing(self):
-        self._notify(ExecutingNotification())
-
-    def record_result(self, data: t.Any):
-        value = serialisation.serialise(data, self._blob_store)
+    def _record_result(self, data: t.Any):
+        value = serialisation.serialise(data, self._serialisers, self._blob_store)
         self._notify(RecordResultRequest(value))
         # TODO: wait for confirmation?
         self._running = False
 
-    def record_error(self, exception):
+    def _record_error(self, exception):
         self._notify(RecordErrorRequest(_serialise_exception(exception)))
         # TODO: wait for confirmation?
         self._running = False
@@ -305,7 +300,8 @@ class Channel:
             execute_after = (execute_after or dt.datetime.now()) + delay
         # TODO: parallelise?
         serialised_arguments = [
-            serialisation.serialise(a, self._blob_store) for a in arguments
+            serialisation.serialise(a, self._serialisers, self._blob_store)
+            for a in arguments
         ]
         execution_id = self._request(
             SubmitExecutionRequest(
@@ -323,7 +319,7 @@ class Channel:
             )
         )
         return models.Execution(
-            lambda: self.resolve_reference(execution_id),
+            lambda: self._resolve_reference(execution_id),
             execution_id,
         )
 
@@ -345,20 +341,71 @@ class Channel:
             execute_after = dt.datetime.now() + delay
         self._notify(SuspendRequest(execute_after, []))
 
-    def resolve_reference(self, execution_id):
+    def _resolve_arguments(
+        self,
+        arguments: list[models.Value],
+    ) -> list[t.Any]:
+        # TODO: parallelise
+        return [
+            serialisation.deserialise(
+                value,
+                self._serialisers,
+                self._blob_store,
+                self._resolve_reference,
+                self._restore_asset,
+            )
+            for value in arguments
+        ]
+
+    def execute(self, target, arguments):
+        resolved_arguments = self._resolve_arguments(arguments)
+        self._notify(ExecutingNotification())
+        try:
+            value = target.fn(*resolved_arguments)
+        except KeyboardInterrupt:
+            # TODO: record?
+            pass
+        except Exception as e:
+            self._record_error(e)
+        else:
+            self._record_result(value)
+
+    def _deserialise_result(self, result: models.Result):
+        match result:
+            case ["value", value]:
+                return serialisation.deserialise(
+                    value,
+                    self._serialisers,
+                    self._blob_store,
+                    self._resolve_reference,
+                    self._restore_asset,
+                )
+            case ["error", type_, message]:
+                raise _build_exception(type_, message)
+            case ["abandoned"]:
+                raise Exception("abandoned")
+            case ["cancelled"]:
+                raise Exception("cancelled")
+            case ["suspended"]:
+                raise Exception("suspended")
+            case result:
+                raise Exception(f"unexpected result ({result})")
+
+    def _resolve_reference(self, execution_id: int) -> t.Any:
         try:
             result = self._request(
                 ResolveReferenceRequest(execution_id),
                 key=("result", execution_id),
                 timeout=_timeout.get(),
             )
-            return _deserialise_result(result, self, "reference")
+            return self._deserialise_result(result)
         except Timeout:
             self._notify(SuspendRequest(None, [execution_id]))
 
     def record_checkpoint(self, arguments):
         serialised_arguments = [
-            serialisation.serialise(a, self._blob_store) for a in arguments
+            serialisation.serialise(a, self._serialisers, self._blob_store)
+            for a in arguments
         ]
         self._notify(RecordCheckpointRequest(serialised_arguments))
 
@@ -381,7 +428,8 @@ class Channel:
             asset_type = 0
             blob_key = self._blob_store.upload(path)
             (mime_type, _) = mimetypes.guess_type(path)
-            metadata = {"size": path.stat().st_size, "type": mime_type}
+            size = path.stat().st_size
+            metadata = {"type": mime_type}
         elif path.is_dir():
             asset_type = 1
             sizes = []
@@ -398,18 +446,16 @@ class Channel:
                                 )
                                 sizes.append(file_path.stat().st_size)
                 blob_key = self._blob_store.upload(zip_path)
-            metadata = {"totalSize": sum(sizes), "count": len(sizes)}
+            size = sum(sizes)
+            metadata = {"count": len(sizes)}
         else:
             raise Exception(f"path ({path}) isn't a file or a directory")
         asset_id = self._request(
-            PersistAssetRequest(asset_type, path_str, blob_key, metadata)
+            PersistAssetRequest(asset_type, path_str, blob_key, size, metadata)
         )
-        return models.Asset(asset_id)
+        return models.Asset(lambda to: self._restore_asset(asset_id, to=to), asset_id)
 
-    def restore_asset(
-        self, asset: models.Asset, *, to: Path | str | None = None
-    ) -> Path:
-        assert isinstance(asset, models.Asset)
+    def _restore_asset(self, asset_id: int, to: Path | str | None = None) -> Path:
         if to:
             if isinstance(to, str):
                 to = Path(to)
@@ -419,7 +465,7 @@ class Channel:
                 raise Exception("asset must be restored to execution directory")
         # TODO: use timeout?
         asset_type, path_str, blob_key = self._request(
-            ResolveAssetRequest(asset.id), key=("asset", asset.id)
+            ResolveAssetRequest(asset_id), key=("asset", asset_id)
         )
         target = to or self._directory.joinpath(path_str)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -457,56 +503,6 @@ def _build_exception(type_, message):
     return RemoteException(message, type_)
 
 
-def _deserialise_result(result: models.Result, channel: Channel, description: str):
-    match result:
-        case ["value", value]:
-            return _deserialise_value(value, channel, description)
-        case ["error", type_, message]:
-            raise _build_exception(type_, message)
-        case ["abandoned"]:
-            raise Exception("abandoned")
-        case ["cancelled"]:
-            raise Exception("cancelled")
-        case ["suspended"]:
-            raise Exception("suspended")
-        case result:
-            raise Exception(f"unexpected result ({result})")
-
-
-# TODO: move into serialisation module?
-def _deserialise_value(
-    value: models.Value,
-    channel: Channel,
-    description: str,
-) -> t.Any:
-    match value:
-        case ("raw", content, format, placeholders):
-            return serialisation.deserialise(
-                format,
-                content,
-                placeholders,
-                channel.resolve_reference,
-            )
-        case ("blob", blob_key, _metadata, format, placeholders):
-            content = channel.blob_store.get(blob_key)
-            return serialisation.deserialise(
-                format,
-                content,
-                placeholders,
-                channel.resolve_reference,
-            )
-
-
-def _resolve_arguments(
-    arguments: list[models.Value],
-    channel: Channel,
-) -> list[t.Any]:
-    # TODO: parallelise
-    return [
-        _deserialise_value(v, channel, f"argument {i}") for i, v in enumerate(arguments)
-    ]
-
-
 def _execute(
     module_name: str,
     target_name: str,
@@ -521,41 +517,65 @@ def _execute(
         threading.Thread(target=channel.run).start()
         _channel_context = channel
         try:
-            resolved_arguments = _resolve_arguments(arguments, channel)
-            channel.notify_executing()
             target = getattr(module, target_name)
             if not isinstance(target, decorators.Target) or target.definition.is_stub:
                 raise Exception("not valid target")
-            value = target.fn(*resolved_arguments)
-        except KeyboardInterrupt:
-            pass
-        except Exception as e:
-            channel.record_error(e)
-        else:
-            channel.record_result(value)
+            channel.execute(target, arguments)
         finally:
             _channel_context = None
+
+
+def _json_safe_reference(reference: models.Reference) -> t.Any:
+    match reference:
+        case ("execution", execution_id):
+            return ["execution", execution_id]
+        case ("asset", asset_id):
+            return ["asset", asset_id]
+        case ("block", serialiser, blob_key, size, metadata):
+            return ["block", serialiser, blob_key, size, metadata]
+        case other:
+            raise Exception(f"unhandled reference type ({other})")
+
+
+def _json_safe_references(references: list[models.Reference]) -> list[t.Any]:
+    return [_json_safe_reference(r) for r in references]
 
 
 def _json_safe_value(value: models.Value):
     # TODO: tidy
     match value:
-        case ("raw", content, format, placeholders):
-            return ["raw", content.decode(), format, placeholders]
-        case ("blob", key, metadata, format, placeholders):
-            return ["blob", key, metadata, format, placeholders]
+        case ("raw", content, references):
+            return ["raw", content, _json_safe_references(references)]
+        case ("blob", key, size, references):
+            return ["blob", key, size, _json_safe_references(references)]
 
 
 def _json_safe_arguments(arguments: list[models.Value]):
     return [_json_safe_value(v) for v in arguments]
 
 
+def _parse_reference(reference) -> models.Reference:
+    match reference:
+        case ["execution", execution_id]:
+            return ("execution", execution_id)
+        case ["asset", asset_id]:
+            return ("asset", asset_id)
+        case ["block", serialiser, blob_key, size, metadata]:
+            return ("block", serialiser, blob_key, size, metadata)
+        case other:
+            raise Exception(f"unrecognised reference: {other}")
+
+
+def _parse_references(references) -> list[models.Reference]:
+    return [_parse_reference(r) for r in references]
+
+
 def _parse_value(value: t.Any) -> models.Value:
     match value:
-        case ["raw", content, format, placeholders]:
-            return ("raw", content.encode(), format, placeholders)
-        case ["blob", key, metadata, format, placeholders]:
-            return ("blob", key, metadata, format, placeholders)
+        case ["raw", content, references]:
+            return ("raw", content, _parse_references(references))
+        case ["blob", key, size, references]:
+            return ("blob", key, size, _parse_references(references))
         case other:
             raise Exception(f"unrecognised value: {other}")
 
@@ -580,7 +600,7 @@ class Execution:
         execution_id: str,
         module: str,
         target: str,
-        arguments: list[models.Value],
+        arguments: list[t.Any],
         blob_url_format: str,
         server_connection: server.Connection,
         loop: asyncio.AbstractEventLoop,
@@ -741,9 +761,11 @@ class Execution:
                 self._server_request(
                     "get_result", (execution_id, self._id), request_id, _parse_result
                 )
-            case PersistAssetRequest(type, path, blob_key, metadata):
+            case PersistAssetRequest(type, path, blob_key, size, metadata):
                 self._server_request(
-                    "put_asset", (self._id, type, path, blob_key, metadata), request_id
+                    "put_asset",
+                    (self._id, type, path, blob_key, size, metadata),
+                    request_id,
                 )
             case ResolveAssetRequest(asset_id):
                 self._server_request("get_asset", (asset_id, self._id), request_id)

@@ -54,7 +54,7 @@ export type Repository = {
   scheduled: number;
 };
 
-export type Reference = {
+export type ExecutionReference = {
   runId: string;
   stepId: string;
   attempt: number;
@@ -66,16 +66,24 @@ export type Asset = {
   type: 0 | 1;
   path: string;
   blobKey: string;
+  size: number;
   metadata: Record<string, any>;
-  execution?: Reference;
+  execution?: ExecutionReference;
   createdAt: number;
 };
 
-export type Placeholder =
+export type Reference =
+  | {
+      type: "block";
+      serialiser: string;
+      blobKey: string;
+      size: number;
+      metadata: Record<string, any>;
+    }
   | {
       type: "execution";
       executionId: string;
-      execution: Reference;
+      execution: ExecutionReference;
     }
   | {
       type: "asset";
@@ -83,19 +91,29 @@ export type Placeholder =
       asset: Asset;
     };
 
+export type Data =
+  | number
+  | boolean
+  | null
+  | string
+  | Data[]
+  | { type: "dict"; items: Data[] }
+  | { type: "set"; items: Data[] }
+  | { type: "tuple"; items: Data[] }
+  | { type: "ref"; index: number };
+
 export type Value = (
   | {
       type: "raw";
-      content: string;
+      data: Data;
     }
   | {
       type: "blob";
       key: string;
-      metadata: Record<string, any>;
+      size: number;
     }
 ) & {
-  format: string;
-  placeholders: Record<string, Placeholder>;
+  references: Reference[];
 };
 
 export type ErrorFrame = {
@@ -116,8 +134,8 @@ export type Result =
   | { type: "error"; error: Error; retryId: string | null }
   | { type: "abandoned"; retryId: string | null }
   | { type: "cancelled" }
-  | { type: "deferred"; executionId: string; execution: Reference }
-  | { type: "cached"; executionId: string; execution: Reference }
+  | { type: "deferred"; executionId: string; execution: ExecutionReference }
+  | { type: "cached"; executionId: string; execution: ExecutionReference }
   | { type: "suspended"; successorId: string };
 
 export type Child = {
@@ -140,7 +158,7 @@ export type QueuedExecution = {
   assignedAt: number | null;
 };
 
-export type Dependency = Reference & {
+export type Dependency = ExecutionReference & {
   assets: Record<string, Asset>;
 };
 
@@ -172,7 +190,7 @@ export type Step = {
 export type Run = {
   createdAt: number;
   recurrent: boolean;
-  parent: Reference | null;
+  parent: ExecutionReference | null;
   steps: Record<string, Step>;
 };
 
