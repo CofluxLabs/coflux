@@ -29,6 +29,8 @@ import {
   useProjects,
   useRepositories,
 } from "../topics";
+import SettingsProvider from "../components/SettingsProvider";
+import Header from "../components/Header";
 
 type PlayPauseButtonProps = {
   projectId: string;
@@ -161,44 +163,47 @@ export default function ProjectLayout() {
     project && environmentName && `${project.name} (${environmentName})`,
   );
   return (
-    <div className="flex-1 flex min-h-0">
-      {repositories && (
-        <div className="w-64 bg-slate-100 text-slate-100 border-r border-slate-200 flex-none flex flex-col">
-          {Object.keys(repositories).length ? (
-            <div className="flex-1 overflow-auto min-h-0">
-              <TargetsList
-                projectId={projectId}
-                environmentName={environmentName}
-                activeRepository={active?.[0]}
-                activeTarget={active?.[1]}
-                repositories={repositories}
-                agents={agents}
-              />
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col gap-1 justify-center items-center">
-              <IconInfoSquareRounded
-                size={32}
-                strokeWidth={1.5}
-                className="text-slate-300/50"
-              />
-              <p className="text-slate-300 text-lg px-2 max-w-48 text-center leading-tight">
-                No repositories registered
-              </p>
-            </div>
-          )}
-          <ConnectionStatus
-            projectId={projectId!}
-            environmentId={environmentId}
-            agents={agents}
-            environment={environment}
-          />
+    <SettingsProvider projectId={projectId}>
+      <Header projectId={projectId!} activeEnvironmentName={environmentName} />
+      <div className="flex-1 flex min-h-0">
+        {repositories && (
+          <div className="w-64 bg-slate-100 text-slate-100 border-r border-slate-200 flex-none flex flex-col">
+            {Object.keys(repositories).length ? (
+              <div className="flex-1 overflow-auto min-h-0">
+                <TargetsList
+                  projectId={projectId}
+                  environmentName={environmentName}
+                  activeRepository={active?.[0]}
+                  activeTarget={active?.[1]}
+                  repositories={repositories}
+                  agents={agents}
+                />
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col gap-1 justify-center items-center">
+                <IconInfoSquareRounded
+                  size={32}
+                  strokeWidth={1.5}
+                  className="text-slate-300/50"
+                />
+                <p className="text-slate-300 text-lg px-2 max-w-48 text-center leading-tight">
+                  No repositories registered
+                </p>
+              </div>
+            )}
+            <ConnectionStatus
+              projectId={projectId!}
+              environmentId={environmentId}
+              agents={agents}
+              environment={environment}
+            />
+          </div>
+        )}
+        <div className="flex-1 flex flex-col min-w-0">
+          <Outlet context={{ setActive }} />
         </div>
-      )}
-      <div className="flex-1 flex flex-col min-w-0">
-        <Outlet context={{ setActive }} />
       </div>
-    </div>
+    </SettingsProvider>
   );
 }
 

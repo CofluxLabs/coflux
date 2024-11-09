@@ -3,12 +3,15 @@ import { IconPlus, IconPyramid } from "@tabler/icons-react";
 
 import { useTitlePart } from "../components/TitleContext";
 import { useProjects } from "../topics";
+import Header from "../components/Header";
+import { Fragment } from "react/jsx-runtime";
 
 export default function ProjectsPage() {
   const projects = useProjects();
   useTitlePart("Projects");
   return (
-    <div>
+    <Fragment>
+      <Header />
       {projects && (
         <ul className="flex flex-wrap gap-4 p-4">
           {Object.entries(projects).map(([projectId, project]) => (
@@ -49,6 +52,6 @@ export default function ProjectsPage() {
         </ul>
       )}
       <Outlet />
-    </div>
+    </Fragment>
   );
 }

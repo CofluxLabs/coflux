@@ -1,14 +1,14 @@
 import asyncio
 import click
-import os
 import types
 import typing as t
 import watchfiles
 import httpx
-import yaml
 import subprocess
 import sys
 import time
+import functools
+import tomlkit
 from pathlib import Path
 
 from . import Agent, config, loader, decorators, models
@@ -20,11 +20,6 @@ def _callback(_changes: set[tuple[watchfiles.Change, str]]) -> None:
     print("Change detected. Reloading...")
 
 
-def _get_environ(name: str, parser: t.Callable[[str], T] = lambda x: x) -> T | None:
-    value = os.environ.get(name)
-    return parser(value) if value else None
-
-
 def _api_request(method: str, host: str, action: str, **kwargs) -> t.Any:
     with httpx.Client() as client:
         response = client.request(method, f"http://{host}/api/{action}", **kwargs)
@@ -34,78 +29,26 @@ def _api_request(method: str, host: str, action: str, **kwargs) -> t.Any:
         return response.json() if is_json else None
 
 
-def _load_pools_config(file: t.TextIO):
-    # TODO: validate
-    return yaml.safe_load(file)
-
-
-@t.overload
-def _get_option(
-    argument: T | None,
-    env_name: tuple[str, t.Callable[[str], T]],
-    config_name: str | None,
-) -> T | None: ...
-
-
-@t.overload
-def _get_option(
-    argument: T | None,
-    env_name: tuple[str, t.Callable[[str], T]],
-    config_name: str | None = None,
-    default: T = None,
-) -> T: ...
-
-
-def _get_option(
-    argument: T | None,
-    env_name: tuple[str, t.Callable[[str], T]],
-    config_name: str | None = None,
-    default: T = None,
-) -> T | None:
-    if argument is not None:
-        return argument
-    env_value = _get_environ(*env_name)
-    if env_value is not None:
-        return env_value
-    if config_name is not None:
-        config_value = config.load().get(config_name)
-        if config_value is not None:
-            return config_value
-    return default
-
-
-def _get_project(argument: str | None) -> str:
-    project = _get_option(argument, ("COFLUX_PROJECT", str), "project")
-    if not project:
-        raise click.ClickException("No project ID specified.")
-    return project
-
-
-def _get_environment(argument: str | None) -> str:
-    return _get_option(
-        argument, ("COFLUX_ENVIRONMENT", str), "environment", "development"
+def _encode_provides(
+    provides: dict[str, list[str] | str | bool] | None
+) -> tuple[str, ...] | None:
+    if not provides:
+        return None
+    return tuple(
+        f"{k}:{str(v).lower() if isinstance(v, bool) else v}"
+        for k, vs in provides.items()
+        for v in (vs if isinstance(vs, list) else [vs])
     )
 
 
-def _get_host(argument: str | None) -> str:
-    return _get_option(argument, ("COFLUX_HOST", str), "host", "localhost:7777")
-
-
-def _get_provides(argument: tuple[str] | None) -> dict[str, list[str]]:
-    value = _get_option(argument, ("COFLUX_PROVIDES", lambda x: [x]))
+def _parse_provides(argument: tuple[str] | None) -> dict[str, list[str]]:
+    if not argument:
+        return {}
     result: dict[str, list[str]] = {}
-    if value:
-        for part in (p for a in value for p in a.split(" ") if p):
-            key, value = part.split(":", 1)
-            result.setdefault(key, []).append(value)
-        return result
-    return {
-        key: [
-            (str(v).lower() if isinstance(v, bool) else v)
-            for v in (value if isinstance(value, list) else [value])
-        ]
-        for key, value in config.load().get("provides", {}).items()
-    }
+    for part in (p for a in argument for p in a.split(" ") if p):
+        key, value = part.split(":", 1)
+        result.setdefault(key, []).append(value)
+    return result
 
 
 def _load_repository(
@@ -213,8 +156,11 @@ def _init(
     *modules: types.ModuleType | str,
     project: str,
     environment: str,
-    provides: dict[str, list[str]],
     host: str,
+    provides: dict[str, list[str]],
+    serialiser_configs: list[config.SerialiserConfig],
+    blob_threshold: int,
+    blob_store_configs: list[config.BlobStoreConfig],
     concurrency: int,
     launch_id: str | None,
     register: bool,
@@ -225,7 +171,16 @@ def _init(
             _register_manifests(project, environment, host, targets)
 
         with Agent(
-            project, environment, provides, host, targets, concurrency, launch_id
+            project,
+            environment,
+            host,
+            provides,
+            serialiser_configs,
+            blob_threshold,
+            blob_store_configs,
+            concurrency,
+            launch_id,
+            targets,
         ) as agent:
             asyncio.run(agent.run())
     except KeyboardInterrupt:
@@ -278,28 +233,59 @@ def server(port: int, data_dir: Path, image: str):
     sys.exit(process.returncode)
 
 
+def _config_path():
+    return Path.cwd().joinpath("coflux.toml")
+
+
+def _read_config(path: Path) -> tomlkit.TOMLDocument:
+    if path.exists():
+        with path.open("r") as f:
+            return tomlkit.load(f)
+    else:
+        # TODO: add instructions?
+        return tomlkit.document()
+
+
+def _write_config(path: Path, data: tomlkit.TOMLDocument):
+    with path.open("w") as f:
+        tomlkit.dump(data, f)
+
+
+@functools.cache
+def _load_config() -> config.Config:
+    path = _config_path()
+    return config.Config.model_validate(_read_config(path).unwrap())
+
+
+def _load_pools_config(file: t.TextIO) -> config.PoolsConfig:
+    return config.PoolsConfig.model_validate(tomlkit.load(file).unwrap())
+
+
 @cli.command("configure")
-@click.option(
-    "-h",
-    "--host",
-    prompt=True,
-    default=lambda: config.load().get("host") or "localhost:7777",
-    help="Host to connect to",
-)
 @click.option(
     "-p",
     "--project",
-    prompt=True,
-    default=lambda: config.load().get("project"),
     help="Project ID",
+    default=_load_config().project,
+    show_default=True,
+    prompt=True,
 )
 @click.option(
     "environment",
     "-e",
     "--environment",
-    prompt=True,
-    default=lambda: config.load().get("environment") or "",
     help="Environment name",
+    default=_load_config().environment,
+    show_default=True,
+    prompt=True,
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+    default=_load_config().server.host,
+    show_default=True,
+    prompt=True,
 )
 def configure(
     host: str | None,
@@ -312,14 +298,20 @@ def configure(
     # TODO: connect to server to check details?
     click.secho("Writing configuration...", fg="black")
 
-    config.write(
+    path = _config_path()
+    data = _read_config(path)
+    data.update(
         {
             "project": project,
-            "host": host,
-            "environment": environment or None,
+            "server": {"host": host},
+            "environment": environment,
         }
     )
-    click.secho(f"Configuration written to '{config.path}'.", fg="green")
+    _write_config(path, data)
+
+    click.secho(
+        f"Configuration written to '{path.relative_to(Path.cwd())}'.", fg="green"
+    )
 
 
 @cli.group()
@@ -335,11 +327,19 @@ def env():
     "-p",
     "--project",
     help="Project ID",
+    envvar="COFLUX_PROJECT",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "-h",
     "--host",
     help="Host to connect to",
+    envvar="COFLUX_HOST",
+    default=_load_config().server.host,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "--base",
@@ -352,8 +352,8 @@ def env():
 )
 @click.argument("name")
 def env_create(
-    project: str | None,
-    host: str | None,
+    project: str,
+    host: str,
     base: str | None,
     pools_config: t.TextIO,
     name: str,
@@ -361,13 +361,10 @@ def env_create(
     """
     Creates an environment within the project.
     """
-    project_ = _get_project(project)
-    host_ = _get_host(host)
-
     base_id = None
     if base:
         environments = _api_request(
-            "GET", host_, "get_environments", params={"project": project_}
+            "GET", host, "get_environments", params={"project": project}
         )
         environment_ids_by_name = {e["name"]: id for id, e in environments.items()}
         base_id = environment_ids_by_name.get(base)
@@ -381,13 +378,13 @@ def env_create(
     # TODO: handle response
     _api_request(
         "POST",
-        host_,
+        host,
         "create_environment",
         json={
-            "projectId": project_,
+            "projectId": project,
             "name": name,
             "baseId": base_id,
-            "pools": pools,
+            "pools": pools.model_dump() if pools else None,
         },
     )
     click.secho(f"Created environment '{name}'.", fg="green")
@@ -398,16 +395,28 @@ def env_create(
     "-p",
     "--project",
     help="Project ID",
-)
-@click.option(
-    "-h",
-    "--host",
-    help="Host to connect to",
+    envvar="COFLUX_PROJECT",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "-e",
     "--environment",
     help="The (current) name of the environment",
+    envvar="COFLUX_ENVIRONMENT",
+    default=_load_config().environment,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+    envvar="COFLUX_HOST",
+    default=_load_config().server.host,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "--name",
@@ -433,9 +442,9 @@ def env_create(
     help="Clear all pools from the environment",
 )
 def env_update(
-    project: str | None,
-    host: str | None,
-    environment: str | None,
+    project: str,
+    environment: str,
+    host: str,
     name: str | None,
     base: str | None,
     no_base: bool,
@@ -445,15 +454,11 @@ def env_update(
     """
     Creates an environment within the project.
     """
-    project_ = _get_project(project)
-    host_ = _get_host(host)
-    environment_ = _get_environment(environment)
-
     environments = _api_request(
-        "GET", host_, "get_environments", params={"project": project_}
+        "GET", host, "get_environments", params={"project": project}
     )
     environment_ids_by_name = {e["name"]: id for id, e in environments.items()}
-    environment_id = environment_ids_by_name.get(environment_)
+    environment_id = environment_ids_by_name.get(environment)
     if not environment_id:
         raise click.BadOptionUsage("environment", "Not recognised")
 
@@ -468,7 +473,7 @@ def env_update(
         pools = _load_pools_config(pools_config)
 
     payload = {
-        "projectId": project_,
+        "projectId": project,
         "environmentId": environment_id,
     }
     if name is not None:
@@ -480,14 +485,14 @@ def env_update(
         payload["baseId"] = None
 
     if pools is not None:
-        payload["pools"] = pools
+        payload["pools"] = pools.model_dump()
     elif no_pools is True:
         payload["pools"] = None
 
     # TODO: handle response
-    _api_request("POST", host_, "update_environment", json=payload)
+    _api_request("POST", host, "update_environment", json=payload)
 
-    click.secho(f"Updated environment '{name or environment_}'.", fg="green")
+    click.secho(f"Updated environment '{name or environment}'.", fg="green")
 
 
 @env.command("archive")
@@ -495,47 +500,55 @@ def env_update(
     "-p",
     "--project",
     help="Project ID",
+    envvar="COFLUX_PROJECT",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "-e",
     "--environment",
     help="Environment name",
+    envvar="COFLUX_ENVIRONMENT",
+    default=_load_config().environment,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "-h",
     "--host",
     help="Host to connect to",
+    envvar="COFLUX_HOST",
+    default=_load_config().server.host,
+    show_default=True,
+    required=True,
 )
 def env_archive(
-    project: str | None,
-    environment: str | None,
-    host: str | None,
+    project: str,
+    environment: str,
+    host: str,
 ):
     """
     Archive an environment on the server (but retain the configuration file locally).
     """
-    project_ = _get_project(project)
-    environment_ = _get_environment(environment)
-    host_ = _get_host(host)
-
     environments = _api_request(
-        "GET", host_, "get_environments", params={"project": project_}
+        "GET", host, "get_environments", params={"project": project}
     )
     environment_ids_by_name = {e["name"]: id for id, e in environments.items()}
-    environment_id = environment_ids_by_name.get(environment_)
+    environment_id = environment_ids_by_name.get(environment)
     if not environment_id:
         raise click.BadOptionUsage("environment", "Not recognised")
 
     _api_request(
         "POST",
-        host_,
+        host,
         "archive_environment",
         json={
-            "projectId": project_,
+            "projectId": project,
             "environmentId": environment_id,
         },
     )
-    click.secho(f"Archived environment '{environment_}'.", fg="green")
+    click.secho(f"Archived environment '{environment}'.", fg="green")
 
 
 @cli.command("register")
@@ -543,22 +556,34 @@ def env_archive(
     "-p",
     "--project",
     help="Project ID",
-)
-@click.option(
-    "-h",
-    "--host",
-    help="Host to connect to",
+    envvar="COFLUX_PROJECT",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "-e",
     "--environment",
     help="Environment name",
+    envvar="COFLUX_ENVIRONMENT",
+    default=_load_config().environment,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+    envvar="COFLUX_HOST",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
 )
 @click.argument("module_name", nargs=-1)
 def register(
-    project: str | None,
-    environment: str | None,
-    host: str | None,
+    project: str,
+    environment: str,
+    host: str,
     module_name: tuple[str],
 ) -> None:
     """
@@ -570,11 +595,8 @@ def register(
     """
     if not module_name:
         raise click.ClickException("No module(s) specified.")
-    project_ = _get_project(project)
-    environment_ = _get_environment(environment)
-    host_ = _get_host(host)
     targets = _load_repositories(list(module_name))
-    _register_manifests(project_, environment_, host_, targets)
+    _register_manifests(project, environment, host, targets)
     click.secho("Repository manifests registered.", fg="green")
 
 
@@ -583,30 +605,48 @@ def register(
     "-p",
     "--project",
     help="Project ID",
-)
-@click.option(
-    "-h",
-    "--host",
-    help="Host to connect to",
+    envvar="COFLUX_PROJECT",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "-e",
     "--environment",
     help="Environment name",
+    envvar="COFLUX_ENVIRONMENT",
+    default=_load_config().environment,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+    envvar="COFLUX_HOST",
+    default=_load_config().server.host,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "--provides",
     help="Features that this agent provides (to be matched with features that tasks require)",
     multiple=True,
+    envvar="COFLUX_PROVIDES",
+    default=_encode_provides(_load_config().provides),
+    show_default=True,
 )
 @click.option(
     "--launch",
     help="The launch ID",
+    envvar="COFLUX_LAUNCH",
 )
 @click.option(
     "--concurrency",
     type=int,
     help="Limit on number of executions to process at once",
+    default=_load_config().concurrency,
+    show_default=True,
 )
 @click.option(
     "--watch",
@@ -628,12 +668,12 @@ def register(
 )
 @click.argument("module_name", nargs=-1)
 def agent(
-    project: str | None,
-    environment: str | None,
-    provides: tuple[str],
-    host: str | None,
+    project: str,
+    environment: str,
+    host: str,
+    provides: tuple[str] | None,
     launch: str | None,
-    concurrency: int | None,
+    concurrency: int,
     watch: bool,
     register: bool,
     dev: bool,
@@ -648,25 +688,19 @@ def agent(
     """
     if not module_name:
         raise click.ClickException("No module(s) specified.")
-    project_ = _get_project(project)
-    environment_ = _get_environment(environment)
-    host_ = _get_host(host)
-    provides_ = _get_provides(provides or None)
-    launch_ = _get_option(launch, ("COFLUX_LAUNCH", str))
-    concurrency_ = _get_option(
-        concurrency,
-        ("COFLUX_CONCURRENCY", int),
-        "concurrency",
-        min(32, (os.cpu_count() or 4) + 4),
-    )
+    provides_ = _parse_provides(provides)
+    config = _load_config()
     args = (*module_name,)
     kwargs = {
-        "project": project_,
-        "environment": environment_,
+        "project": project,
+        "environment": environment,
+        "host": host,
         "provides": provides_,
-        "host": host_,
-        "concurrency": concurrency_,
-        "launch_id": launch_,
+        "serialiser_configs": config and config.serialisers,
+        "blob_threshold": config and config.blobs and config.blobs.threshold,
+        "blob_store_configs": config and config.blobs and config.blobs.stores,
+        "concurrency": concurrency,
+        "launch_id": launch,
         "register": register or dev,
     }
     if watch or dev:
@@ -688,16 +722,25 @@ def agent(
     "-p",
     "--project",
     help="Project ID",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "-e",
     "--environment",
     help="Environment name",
+    default=_load_config().environment,
+    show_default=True,
+    required=True,
 )
 @click.option(
     "-h",
     "--host",
     help="Host to connect to",
+    default=_load_config().server.host,
+    show_default=True,
+    required=True,
 )
 @click.argument("repository")
 @click.argument("target")
@@ -713,17 +756,14 @@ def submit(
     """
     Submit a workflow to be run.
     """
-    project_ = _get_project(project)
-    environment_ = _get_environment(environment)
-    host_ = _get_host(host)
     # TODO: support overriding options?
     workflow = _api_request(
         "GET",
-        host_,
+        host,
         "get_workflow",
         params={
-            "project": project_,
-            "environment": environment_,
+            "project": project,
+            "environment": environment,
             "repository": repository,
             "target": target,
         },
@@ -734,11 +774,11 @@ def submit(
     # TODO: handle response
     _api_request(
         "POST",
-        host_,
+        host,
         "submit_workflow",
         json={
-            "projectId": project_,
-            "environmentName": environment_,
+            "projectId": project,
+            "environmentName": environment,
             "repository": repository,
             "target": target,
             "arguments": [["json", a] for a in argument],
