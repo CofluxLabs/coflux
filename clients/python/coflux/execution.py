@@ -19,7 +19,7 @@ from pathlib import Path
 from contextvars import ContextVar
 from contextlib import contextmanager
 
-from . import server, blobs, models, serialisation, decorators, loader
+from . import server, blobs, models, serialisation, decorators, loader, config
 
 
 _EXECUTION_THRESHOLD_S = 1.0
@@ -204,20 +204,26 @@ def counter():
 
 
 class Channel:
-    def __init__(self, execution_id: str, blob_url_format: str, connection):
+    def __init__(
+        self,
+        execution_id: str,
+        serialiser_configs: list[config.SerialiserConfig],
+        blob_threshold: int,
+        blob_store_configs: list[config.BlobStoreConfig],
+        server_host: str,
+        connection,
+    ):
         self._execution_id = execution_id
-        self._blob_url_format = blob_url_format
         self._connection = connection
         self._request_id = counter()
         self._requests: dict[int, Future[t.Any]] = {}
         self._cache: dict[t.Any, Future[t.Any]] = {}
         self._running = True
         self._exit_stack = contextlib.ExitStack()
-        # TODO: configure this somehow?
-        self._serialisers: list[serialisation.Serialiser] = [
-            serialisation.PandasSerialiser(),
-            serialisation.PickleSerialiser(),
-        ]
+        self._blob_manager = blobs.Manager(blob_store_configs, server_host)
+        self._serialisation_manager = serialisation.Manager(
+            serialiser_configs, blob_threshold, self._blob_manager
+        )
 
     def __enter__(self):
         self._exit_stack.enter_context(
@@ -227,9 +233,7 @@ class Channel:
             )
         )
         self._directory = self._exit_stack.enter_context(working_directory())
-        self._blob_store = self._exit_stack.enter_context(
-            blobs.Store(self._blob_url_format)
-        )
+        self._exit_stack.enter_context(self._blob_manager)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -265,7 +269,7 @@ class Channel:
         self._send("notify", notification)
 
     def _record_result(self, data: t.Any):
-        value = serialisation.serialise(data, self._serialisers, self._blob_store)
+        value = self._serialisation_manager.serialise(data)
         self._notify(RecordResultRequest(value))
         # TODO: wait for confirmation?
         self._running = False
@@ -300,8 +304,7 @@ class Channel:
             execute_after = (execute_after or dt.datetime.now()) + delay
         # TODO: parallelise?
         serialised_arguments = [
-            serialisation.serialise(a, self._serialisers, self._blob_store)
-            for a in arguments
+            self._serialisation_manager.serialise(a) for a in arguments
         ]
         execution_id = self._request(
             SubmitExecutionRequest(
@@ -347,10 +350,8 @@ class Channel:
     ) -> list[t.Any]:
         # TODO: parallelise
         return [
-            serialisation.deserialise(
+            self._serialisation_manager.deserialise(
                 value,
-                self._serialisers,
-                self._blob_store,
                 self._resolve_reference,
                 self._restore_asset,
             )
@@ -362,21 +363,18 @@ class Channel:
         self._notify(ExecutingNotification())
         try:
             value = target.fn(*resolved_arguments)
+            self._record_result(value)
         except KeyboardInterrupt:
             # TODO: record?
             pass
         except Exception as e:
             self._record_error(e)
-        else:
-            self._record_result(value)
 
     def _deserialise_result(self, result: models.Result):
         match result:
             case ["value", value]:
-                return serialisation.deserialise(
+                return self._serialisation_manager.deserialise(
                     value,
-                    self._serialisers,
-                    self._blob_store,
                     self._resolve_reference,
                     self._restore_asset,
                 )
@@ -404,8 +402,7 @@ class Channel:
 
     def record_checkpoint(self, arguments):
         serialised_arguments = [
-            serialisation.serialise(a, self._serialisers, self._blob_store)
-            for a in arguments
+            self._serialisation_manager.serialise(a) for a in arguments
         ]
         self._notify(RecordCheckpointRequest(serialised_arguments))
 
@@ -426,7 +423,7 @@ class Channel:
             if match:
                 raise Exception("match cannot be specified for file")
             asset_type = 0
-            blob_key = self._blob_store.upload(path)
+            blob_key = self._blob_manager.upload(path)
             (mime_type, _) = mimetypes.guess_type(path)
             size = path.stat().st_size
             metadata = {"type": mime_type}
@@ -445,7 +442,7 @@ class Channel:
                                     file_path, arcname=file_path.relative_to(path)
                                 )
                                 sizes.append(file_path.stat().st_size)
-                blob_key = self._blob_store.upload(zip_path)
+                blob_key = self._blob_manager.upload(zip_path)
             size = sum(sizes)
             metadata = {"count": len(sizes)}
         else:
@@ -470,12 +467,12 @@ class Channel:
         target = to or self._directory.joinpath(path_str)
         target.parent.mkdir(parents=True, exist_ok=True)
         if asset_type == 0:
-            self._blob_store.download(blob_key, target)
+            self._blob_manager.download(blob_key, target)
         elif asset_type == 1:
             target.mkdir()
             with tempfile.NamedTemporaryFile() as zip_file:
                 zip_path = Path(zip_file.name)
-                self._blob_store.download(blob_key, zip_path)
+                self._blob_manager.download(blob_key, zip_path)
                 with zipfile.ZipFile(zip_path, "r") as zip:
                     zip.extractall(target)
         else:
@@ -508,12 +505,22 @@ def _execute(
     target_name: str,
     arguments: list[models.Value],
     execution_id: str,
-    blob_url_format: str,
+    serialiser_configs: list[config.SerialiserConfig],
+    blob_threshold: int,
+    blob_store_configs: list[config.BlobStoreConfig],
+    server_host: str,
     conn,
 ):
     global _channel_context
     module = loader.load_module(module_name)
-    with Channel(execution_id, blob_url_format, conn) as channel:
+    with Channel(
+        execution_id,
+        serialiser_configs,
+        blob_threshold,
+        blob_store_configs,
+        server_host,
+        conn,
+    ) as channel:
         threading.Thread(target=channel.run).start()
         _channel_context = channel
         try:
@@ -601,7 +608,10 @@ class Execution:
         module: str,
         target: str,
         arguments: list[t.Any],
-        blob_url_format: str,
+        serialiser_configs: list[config.SerialiserConfig],
+        blob_threshold: int,
+        blob_store_configs: list[config.BlobStoreConfig],
+        server_host: str,
         server_connection: server.Connection,
         loop: asyncio.AbstractEventLoop,
     ):
@@ -615,7 +625,17 @@ class Execution:
         self._connection = parent_conn
         self._process = mp_context.Process(
             target=_execute,
-            args=(module, target, arguments, execution_id, blob_url_format, child_conn),
+            args=(
+                module,
+                target,
+                arguments,
+                execution_id,
+                serialiser_configs,
+                blob_threshold,
+                blob_store_configs,
+                server_host,
+                child_conn,
+            ),
             name=f"Execution-{execution_id}",
         )
 
@@ -801,9 +821,17 @@ def _wait_processes(sentinels: t.Iterable[int], until: float) -> set[int]:
 
 
 class Manager:
-    def __init__(self, connection: server.Connection, blob_url_format: str):
+    def __init__(
+        self,
+        connection: server.Connection,
+        serialiser_configs: list[config.SerialiserConfig],
+        blob_threshold: int,
+        blob_store_configs: list[config.BlobStoreConfig],
+    ):
         self._connection = connection
-        self._blob_url_format = blob_url_format
+        self._serialiser_configs = serialiser_configs
+        self._blob_threshold = blob_threshold
+        self._blob_store_configs = blob_store_configs
         self._executions: dict[str, Execution] = {}
         self._last_heartbeat_sent = None
 
@@ -845,6 +873,7 @@ class Manager:
         module: str,
         target: str,
         arguments: list[models.Value],
+        server_host: str,
         loop: asyncio.AbstractEventLoop,
     ) -> None:
         if execution_id in self._executions:
@@ -854,7 +883,10 @@ class Manager:
             module,
             target,
             arguments,
-            self._blob_url_format,
+            self._serialiser_configs,
+            self._blob_threshold,
+            self._blob_store_configs,
+            server_host,
             self._connection,
             loop,
         )

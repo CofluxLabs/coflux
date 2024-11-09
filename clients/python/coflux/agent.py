@@ -5,7 +5,7 @@ import urllib.parse
 import websockets
 import traceback
 
-from . import server, execution, models
+from . import server, execution, models, config
 
 
 def _parse_reference(reference: t.Any) -> models.Reference:
@@ -43,24 +43,28 @@ class Agent:
         self,
         project_id: str,
         environment_name: str,
-        provides: dict[str, list[str]],
         server_host: str,
-        targets: dict[str, dict[str, tuple[models.Target, t.Callable]]],
+        provides: dict[str, list[str]],
+        serialiser_configs: list[config.SerialiserConfig],
+        blob_threshold: int,
+        blob_store_configs: list[config.BlobStoreConfig],
         concurrency: int,
         launch_id: str | None,
+        targets: dict[str, dict[str, tuple[models.Target, t.Callable]]],
     ):
         self._project_id = project_id
         self._environment_name = environment_name
         self._launch_id = launch_id
-        self._provides = provides
         self._server_host = server_host
+        self._provides = provides
         self._concurrency = concurrency
         self._targets = targets
         self._connection = server.Connection(
             {"execute": self._handle_execute, "abort": self._handle_abort}
         )
-        blob_url_format = f"http://{server_host}/blobs/{{key}}"
-        self._execution_manager = execution.Manager(self._connection, blob_url_format)
+        self._execution_manager = execution.Manager(
+            self._connection, serialiser_configs, blob_threshold, blob_store_configs
+        )
 
     def __enter__(self):
         return self
@@ -75,7 +79,7 @@ class Agent:
         arguments = [_parse_value(a) for a in arguments]
         loop = asyncio.get_running_loop()
         self._execution_manager.execute(
-            execution_id, repository, target, arguments, loop
+            execution_id, repository, target, arguments, self._server_host, loop
         )
 
     async def _handle_abort(self, *args) -> None:

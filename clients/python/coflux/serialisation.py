@@ -10,11 +10,9 @@ try:
 except ImportError:
     pandas = None
 
-from . import blobs, models
+from . import blobs, models, config
 
 T = t.TypeVar("T")
-
-_BLOB_THRESHOLD = 200
 
 
 def _json_dumps(obj: t.Any) -> str:
@@ -75,124 +73,137 @@ class PandasSerialiser(Serialiser):
         return pandas.read_parquet(buffer)
 
 
-def serialise(
-    value: t.Any,
-    serialisers: list[Serialiser],
-    blob_store: blobs.Store,
-) -> models.Value:
-    references: list[models.Reference] = []
-
-    def _serialise(value: t.Any) -> t.Any:
-        if value is None or isinstance(value, (str, bool, int, float)):
-            return value
-        elif isinstance(value, list):
-            return [_serialise(v) for v in value]
-        elif isinstance(value, dict):
-            # TODO: sort?
-            return {
-                "type": "dict",
-                "items": [_serialise(x) for kv in value.items() for x in kv],
-            }
-        elif isinstance(value, set):
-            # TODO: sort?
-            return {
-                "type": "set",
-                "items": [_serialise(x) for x in value],
-            }
-        elif isinstance(value, models.Execution):
-            # TODO: better handle id being none
-            assert value.id is not None
-            references.append(("execution", value.id))
-            return {"type": "ref", "index": len(references) - 1}
-        elif isinstance(value, models.Asset):
-            references.append(("asset", value.id))
-            return {"type": "ref", "index": len(references) - 1}
-        elif isinstance(value, tuple):
-            # TODO: include name
-            return {"type": "tuple", "items": [_serialise(x) for x in value]}
-        else:
-            for serialiser in serialisers:
-                result = serialiser.serialise(value)
-                if result is not None:
-                    buffer, metadata = result
-                    blob_key = blob_store.put(buffer)
-                    size = buffer.getbuffer().nbytes
-                    references.append(
-                        ("block", serialiser.type, blob_key, size, metadata)
-                    )
-                    return {"type": "ref", "index": len(references) - 1}
-            raise Exception(f"no serialiser for type '{type(value)}'")
-
-    data = _serialise(value)
-    encoded_data = _json_dumps(data).encode()
-    size = len(encoded_data)
-    if size > _BLOB_THRESHOLD:
-        buffer = io.BytesIO(encoded_data)
-        blob_key = blob_store.put(buffer)
-        return ("blob", blob_key, size, references)
+def _create(config_: config.SerialiserConfig):
+    if config_.type == "pickle":
+        return PickleSerialiser()
+    elif config_.type == "pandas":
+        return PandasSerialiser()
     else:
-        return ("raw", data, references)
+        raise ValueError("unrecognised serialiser config")
 
 
-def _find_serialiser(serialisers: list[Serialiser], type: str) -> Serialiser:
-    serialiser = next((s for s in serialisers if s.type == type), None)
-    if not serialiser:
-        raise Exception(f"unrecognised serialiser ({type})")
-    return serialiser
+class Manager:
+    def __init__(
+        self,
+        serialiser_configs: list[config.SerialiserConfig],
+        blob_threshold: int,
+        blob_manager: blobs.Manager,
+    ):
+        self._serialisers = [_create(c) for c in serialiser_configs]
+        self._blob_threshold = blob_threshold
+        self._blob_manager = blob_manager
 
+    def serialise(self, value: t.Any) -> models.Value:
+        references: list[models.Reference] = []
 
-def _get_value_data(
-    value: models.Value, blob_store: blobs.Store
-) -> tuple[t.Any, list[models.Reference]]:
-    match value:
-        case ("blob", key, _, references):
-            return json.load(blob_store.get(key)), references
-        case ("raw", data, references):
-            return data, references
+        def _serialise(value: t.Any) -> t.Any:
+            if value is None or isinstance(value, (str, bool, int, float)):
+                return value
+            elif isinstance(value, list):
+                return [_serialise(v) for v in value]
+            elif isinstance(value, dict):
+                # TODO: sort?
+                return {
+                    "type": "dict",
+                    "items": [_serialise(x) for kv in value.items() for x in kv],
+                }
+            elif isinstance(value, set):
+                # TODO: sort?
+                return {
+                    "type": "set",
+                    "items": [_serialise(x) for x in value],
+                }
+            elif isinstance(value, models.Execution):
+                # TODO: better handle id being none
+                assert value.id is not None
+                references.append(("execution", value.id))
+                return {"type": "ref", "index": len(references) - 1}
+            elif isinstance(value, models.Asset):
+                references.append(("asset", value.id))
+                return {"type": "ref", "index": len(references) - 1}
+            elif isinstance(value, tuple):
+                # TODO: include name
+                return {"type": "tuple", "items": [_serialise(x) for x in value]}
+            else:
+                for serialiser in self._serialisers:
+                    result = serialiser.serialise(value)
+                    if result is not None:
+                        buffer, metadata = result
+                        blob_key = self._blob_manager.put(buffer)
+                        size = buffer.getbuffer().nbytes
+                        references.append(
+                            ("block", serialiser.type, blob_key, size, metadata)
+                        )
+                        return {"type": "ref", "index": len(references) - 1}
+                raise Exception(f"no serialiser for type '{type(value)}'")
 
-
-def deserialise(
-    value: models.Value,
-    serialisers: list[Serialiser],
-    blob_store: blobs.Store,
-    resolve_fn: t.Callable[[int], t.Any],
-    restore_fn: t.Callable[[int, Path | str | None], Path],
-) -> t.Any:
-    data, references = _get_value_data(value, blob_store)
-
-    def _deserialise(data: t.Any):
-        if data is None or isinstance(data, (str, bool, int, float)):
-            return data
-        elif isinstance(data, list):
-            return [_deserialise(v) for v in data]
-        elif isinstance(data, dict):
-            match data["type"]:
-                case "dict":
-                    pairs = zip(data["items"][::2], data["items"][1::2])
-                    return {_deserialise(k): _deserialise(v) for k, v in pairs}
-                case "set":
-                    return {_deserialise(x) for x in data["items"]}
-                case "tuple":
-                    return tuple(_deserialise(x) for x in data["items"])
-                case "ref":
-                    reference = references[data["index"]]
-                    match reference:
-                        case ("execution", execution_id):
-                            return models.Execution(
-                                lambda: resolve_fn(execution_id),
-                                execution_id,
-                            )
-                        case ("asset", asset_id):
-                            return models.Asset(
-                                lambda to: restore_fn(asset_id, to), asset_id
-                            )
-                        case ("block", serialiser, blob_key, _size, metadata):
-                            serialiser_ = _find_serialiser(serialisers, serialiser)
-                            data = blob_store.get(blob_key)
-                            return serialiser_.deserialise(data, metadata)
-                case other:
-                    raise Exception(f"unhandled data type ({other})")
+        data = _serialise(value)
+        encoded_data = _json_dumps(data).encode()
+        size = len(encoded_data)
+        if size > self._blob_threshold:
+            buffer = io.BytesIO(encoded_data)
+            blob_key = self._blob_manager.put(buffer)
+            return ("blob", blob_key, size, references)
         else:
-            raise Exception(f"unhandled data type ({type(data)})")
+            return ("raw", data, references)
 
-    return _deserialise(data)
+    def _find_serialiser(self, type: str) -> Serialiser:
+        serialiser = next((s for s in self._serialisers if s.type == type), None)
+        if not serialiser:
+            raise Exception(f"unrecognised serialiser ({type})")
+        return serialiser
+
+    def _get_value_data(
+        self, value: models.Value
+    ) -> tuple[t.Any, list[models.Reference]]:
+        match value:
+            case ("blob", key, _, references):
+                result = self._blob_manager.get(key)
+                return json.load(result), references
+            case ("raw", data, references):
+                return data, references
+
+    def deserialise(
+        self,
+        value: models.Value,
+        resolve_fn: t.Callable[[int], t.Any],
+        restore_fn: t.Callable[[int, Path | str | None], Path],
+    ) -> t.Any:
+        data, references = self._get_value_data(value)
+
+        def _deserialise(data: t.Any):
+            if data is None or isinstance(data, (str, bool, int, float)):
+                return data
+            elif isinstance(data, list):
+                return [_deserialise(v) for v in data]
+            elif isinstance(data, dict):
+                match data["type"]:
+                    case "dict":
+                        pairs = zip(data["items"][::2], data["items"][1::2])
+                        return {_deserialise(k): _deserialise(v) for k, v in pairs}
+                    case "set":
+                        return {_deserialise(x) for x in data["items"]}
+                    case "tuple":
+                        return tuple(_deserialise(x) for x in data["items"])
+                    case "ref":
+                        reference = references[data["index"]]
+                        match reference:
+                            case ("execution", execution_id):
+                                return models.Execution(
+                                    lambda: resolve_fn(execution_id),
+                                    execution_id,
+                                )
+                            case ("asset", asset_id):
+                                return models.Asset(
+                                    lambda to: restore_fn(asset_id, to), asset_id
+                                )
+                            case ("block", serialiser, blob_key, _size, metadata):
+                                serialiser_ = self._find_serialiser(serialiser)
+                                data = self._blob_manager.get(blob_key)
+                                return serialiser_.deserialise(data, metadata)
+                    case other:
+                        raise Exception(f"unhandled data type ({other})")
+            else:
+                raise Exception(f"unhandled data type ({type(data)})")
+
+        return _deserialise(data)
