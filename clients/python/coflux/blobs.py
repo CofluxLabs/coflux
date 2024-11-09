@@ -68,7 +68,8 @@ class HttpStore(Store):
 
     def get(self, key: str) -> io.BytesIO | None:
         response = self._client.get(self._url(key))
-        # TODO: handle not found
+        if response.status_code == 404:
+            return None
         response.raise_for_status()
         return io.BytesIO(response.content)
 
@@ -82,7 +83,8 @@ class HttpStore(Store):
 
     def download(self, key: str, path: Path) -> bool:
         with self._client.stream("GET", self._url(key)) as response:
-            # TODO: handle not found (return False)
+            if response.status_code == 404:
+                return False
             response.raise_for_status()
             with path.open("wb") as file:
                 for chunk in response.iter_bytes():
@@ -125,9 +127,12 @@ class S3Store(Store):
                 raise
 
     def get(self, key: str) -> io.BytesIO | None:
-        # TODO: handle not found
-        response = self._s3.get_object(Bucket=self._bucket_name, Key=self._key(key))
-        return io.BytesIO(response["Body"].read())
+        assert botocore
+        try:
+            response = self._s3.get_object(Bucket=self._bucket_name, Key=self._key(key))
+            return io.BytesIO(response["Body"].read())
+        except botocore.exceptions.NoSuchKey:
+            return None
 
     def put(self, buffer: t.BinaryIO) -> str:
         assert buffer.seekable()
@@ -142,10 +147,13 @@ class S3Store(Store):
         return key
 
     def download(self, key: str, path: Path) -> bool:
-        # TODO: handle not found
-        with open(path, "wb") as file:
-            self._s3.download_fileobj(self._bucket_name, self._key(key), file)
-            return True
+        assert botocore
+        try:
+            with open(path, "wb") as file:
+                self._s3.download_fileobj(self._bucket_name, self._key(key), file)
+                return True
+        except botocore.exceptions.NoSuchKey:
+            return False
 
     def upload(self, path: Path) -> str:
         with open(path, "rb") as file:
