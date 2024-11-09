@@ -50,8 +50,9 @@ class Store(abc.ABC):
 
 
 class HttpStore(Store):
-    def __init__(self, base_url: str):
-        self._base_url = base_url
+    def __init__(self, protocol: t.Literal["http", "https"], host: str):
+        self._protocol = protocol
+        self._host = host
 
     def __enter__(self):
         self._client = httpx.Client(timeout=10)
@@ -61,7 +62,7 @@ class HttpStore(Store):
         self._client.close()
 
     def _url(self, key: str) -> str:
-        return f"{self._base_url}/{key}"
+        return f"{self._protocol}://{self._host}/blobs/{key}"
 
     def _exists(self, key: str) -> bool:
         return self._client.head(self._url(key)).status_code == 200
@@ -162,7 +163,7 @@ class S3Store(Store):
 
 def _create(config_: config.BlobStoreConfig, server_host: str):
     if config_.type == "http":
-        return HttpStore(f"{config_.protocol}://{config_.host or server_host}")
+        return HttpStore(config_.protocol, config_.host or server_host)
     elif config_.type == "s3":
         return S3Store(config_.bucket, config_.prefix, config_.region)
     else:
