@@ -3,7 +3,7 @@ import { ButtonHTMLAttributes, ReactNode, forwardRef } from "react";
 import { Size, Variant } from "./types";
 
 const outlineStyles = {
-  true: "border bg-white",
+  true: "border",
   false: "text-white shadow-sm",
 };
 

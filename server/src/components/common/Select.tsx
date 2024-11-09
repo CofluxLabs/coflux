@@ -1,10 +1,9 @@
-import { Fragment, ReactNode } from "react";
+import { ReactNode } from "react";
 import {
   Listbox,
   ListboxButton,
   ListboxOption,
   ListboxOptions,
-  Transition,
 } from "@headlessui/react";
 import { IconSelector } from "@tabler/icons-react";
 import classNames from "classnames";
@@ -72,36 +71,25 @@ export default function Select<T extends string>({
             <IconSelector className="size-5 text-gray-400" aria-hidden="true" />
           </span>
         </ListboxButton>
-        <Transition
-          as={Fragment}
-          enter="transition ease-in duration-100"
-          enterFrom="opacity-0 scale-95"
-          enterTo="opacity-100 scale-100"
-          leave="transition ease-in duration-100"
-          leaveFrom="opacity-100 scale-100"
-          leaveTo="opacity-0 scale-95"
+        <ListboxOptions
+          anchor="bottom"
+          transition
+          className="absolute mt-1 p-1 overflow-auto bg-white rounded-md shadow-lg max-h-60 w-[var(--button-width)] focus:outline-none border transition duration-100 ease-in data-[leave]:data-[closed]:opacity-0"
         >
-          <ListboxOptions className="absolute mt-1 p-1 overflow-auto bg-white rounded-md shadow-lg max-h-60 w-full focus:outline-none border">
-            {keys.map((key) => (
-              <ListboxOption key={key} value={key}>
-                {({ selected }) => (
-                  <div
-                    className={classNames(
-                      "px-2 py-1 cursor-default rounded text-sm data-[active]:bg-slate-100",
-                      selected && "font-bold",
-                    )}
-                  >
-                    {key === null
-                      ? empty
-                      : Array.isArray(options)
-                        ? key
-                        : options[key]}
-                  </div>
-                )}
-              </ListboxOption>
-            ))}
-          </ListboxOptions>
-        </Transition>
+          {keys.map((key) => (
+            <ListboxOption
+              key={key}
+              value={key}
+              className="flex items-center gap-2 cursor-default rounded text-sm p-1 data-[active]:bg-slate-100 data-[selected]:font-bold"
+            >
+              {key === null
+                ? empty
+                : Array.isArray(options)
+                  ? key
+                  : options[key]}
+            </ListboxOption>
+          ))}
+        </ListboxOptions>
       </div>
     </Listbox>
   );

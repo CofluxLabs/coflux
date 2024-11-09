@@ -20,14 +20,15 @@ export function Tab({ className, children }: TabProps) {
 }
 
 type Props = ComponentProps<typeof TabGroup> & {
-  children: ReactElement<TabProps>[];
+  children: ReactElement<TabProps> | ReactElement<TabProps>[];
 };
 
 export default function Tabs({ children, ...props }: Props) {
+  const tabs = Array.isArray(children) ? children : [children];
   return (
     <TabGroup {...props}>
       <TabList className="border-b border-slate-200 px-4">
-        {children.map((c, i) => (
+        {tabs.map((c, i) => (
           <HeadlessTab
             key={i}
             disabled={c.props.disabled}

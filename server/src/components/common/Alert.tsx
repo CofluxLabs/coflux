@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
-import { Variant } from "./types";
+import { Size, Variant } from "./types";
 import classNames from "classnames";
+import { TablerIcon } from "@tabler/icons-react";
 
 const variantStyles: Record<Variant, string> = {
   primary: "bg-cyan-50 text-cyan-700 border-cyan-600/10",
@@ -10,20 +11,38 @@ const variantStyles: Record<Variant, string> = {
   danger: "bg-red-50 text-red-700 border-red-600/10",
 };
 
-type Props = {
-  children: ReactNode;
-  variant: Variant;
+const sizeStyles: Record<Size, string> = {
+  sm: "text-xs p-1",
+  md: "text-sm p-2",
+  lg: "text-base p-3",
 };
 
-export default function Alert({ variant, children }: Props) {
+type Props = {
+  variant?: Variant;
+  size?: Size;
+  icon?: TablerIcon;
+  className?: string;
+  children: ReactNode;
+};
+
+export default function Alert({
+  variant = "secondary",
+  size = "md",
+  icon: Icon,
+  className,
+  children,
+}: Props) {
   return (
     <div
       className={classNames(
-        "border p-2 rounded text-sm",
+        "border rounded flex gap-1",
         variantStyles[variant],
+        sizeStyles[size],
+        className,
       )}
     >
-      {children}
+      {Icon && <Icon size={16} />}
+      <div>{children}</div>
     </div>
   );
 }

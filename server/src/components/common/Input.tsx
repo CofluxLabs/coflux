@@ -68,7 +68,7 @@ export default function Input({
       {left}
       <input
         className={classNames(
-          "flex-1 p-0 border-none text-inherit bg-transparent focus:ring-0",
+          "flex-1 p-0 border-none text-inherit bg-transparent focus:ring-0 w-full",
           inputSizeStyles[size],
         )}
         id={fieldId}

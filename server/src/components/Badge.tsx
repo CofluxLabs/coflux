@@ -1,4 +1,5 @@
 import classNames from "classnames";
+import { Size } from "./common/types";
 
 type Intent = "success" | "danger" | "warning" | "info" | "none";
 
@@ -17,17 +18,30 @@ function classNameForIntent(intent: Intent) {
   }
 }
 
+function classNameForSize(size: Size) {
+  switch (size) {
+    case "sm":
+      return "text-[10px]/[14px] font-normal";
+    case "md":
+      return "text-xs font-semibold";
+    case "lg":
+      return "text-semibold";
+  }
+}
+
 type Props = {
   label: string;
-  intent: Intent;
+  intent?: Intent;
+  size?: Size;
 };
 
-export default function Badge({ label, intent }: Props) {
+export default function Badge({ label, intent = "none", size = "md" }: Props) {
   return (
     <span
       className={classNames(
-        "rounded-md px-1 py-px text-xs uppercase font-semibold",
+        "rounded-md px-1 py-px uppercase",
         classNameForIntent(intent),
+        classNameForSize(size),
       )}
     >
       {label}
