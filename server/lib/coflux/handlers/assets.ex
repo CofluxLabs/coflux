@@ -41,40 +41,53 @@ defmodule Coflux.Handlers.Assets do
   end
 
   defp file_asset(blob_key, metadata, req) do
-    content_type = Map.get(metadata, "type") || @default_mime_type
-    stream = blob_key |> blob_path() |> File.stream!(2048)
-    stream_response(req, %{"content-type" => content_type}, stream)
+    path = blob_path(blob_key)
+
+    if File.exists?(path) do
+      stream = File.stream!(2048)
+      content_type = Map.get(metadata, "type") || @default_mime_type
+      stream_response(req, %{"content-type" => content_type}, stream)
+    else
+      not_found(req)
+    end
   end
 
   defp directory_asset(blob_key, path, req) do
-    {:ok, unzip, paths} = load_zip(blob_key)
-    path = Enum.join(path, "/")
+    case load_zip(blob_key) do
+      {:ok, unzip, paths} ->
+        path = Enum.join(path, "/")
 
-    cond do
-      path == "" ->
-        directory_index(paths, req)
+        cond do
+          path == "" ->
+            directory_index(paths, req)
 
-      Map.has_key?(paths, path) ->
-        directory_file(unzip, path, req)
+          Map.has_key?(paths, path) ->
+            directory_file(unzip, path, req)
 
-      true ->
+          true ->
+            not_found(req)
+        end
+
+      {:error, :not_found} ->
         not_found(req)
     end
   end
 
   defp load_zip(blob_key) do
-    {:ok, unzip} =
-      blob_key
-      |> blob_path()
-      |> Unzip.LocalFile.open()
-      |> Unzip.new()
+    path = blob_path(blob_key)
 
-    paths =
-      unzip
-      |> Unzip.list_entries()
-      |> Map.new(&{&1.file_name, &1.uncompressed_size})
+    if File.exists?(path) do
+      {:ok, unzip} = path |> Unzip.LocalFile.open() |> Unzip.new()
 
-    {:ok, unzip, paths}
+      paths =
+        unzip
+        |> Unzip.list_entries()
+        |> Map.new(&{&1.file_name, &1.uncompressed_size})
+
+      {:ok, unzip, paths}
+    else
+      {:error, :not_found}
+    end
   end
 
   defp directory_index(paths, req) do

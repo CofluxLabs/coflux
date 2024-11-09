@@ -23,6 +23,10 @@ defmodule Coflux.Handlers.Blobs do
       {:ok, content} ->
         req = :cowboy_req.reply(200, %{}, content, req)
         {:ok, req, opts}
+
+      {:error, :enoent} ->
+        req = :cowboy_req.reply(404, %{}, "Not found", req)
+        {:ok, req, opts}
     end
   end
 

@@ -505,14 +505,19 @@ defmodule Coflux.Handlers.Api do
   end
 
   defp parse_launcher(value) do
-    if is_map(value) do
-      case Map.fetch(value, "type") do
-        {:ok, "docker"} -> parse_docker_launcher(value)
-        {:ok, _other} -> {:error, :invalid}
-        :error -> {:error, :invalid}
-      end
-    else
-      {:error, :invalid}
+    cond do
+      is_map(value) ->
+        case Map.fetch(value, "type") do
+          {:ok, "docker"} -> parse_docker_launcher(value)
+          {:ok, _other} -> {:error, :invalid}
+          :error -> {:error, :invalid}
+        end
+
+      is_nil(value) ->
+        {:ok, nil}
+
+      true ->
+        {:error, :invalid}
     end
   end
 
