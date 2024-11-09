@@ -21,6 +21,9 @@ import { uniq } from "lodash";
 import usePrevious from "../hooks/usePrevious";
 import { useHoverContext } from "./HoverContext";
 import classNames from "classnames";
+import { createBlobStore } from "../blobs";
+import { useSetting } from "./SettingsProvider";
+import Alert from "./common/Alert";
 
 type Entry = { path: string; size: number; type: string };
 
@@ -190,18 +193,23 @@ function DirectoryBrowser({
   const [entries, setEntries] = useState<Entry[]>();
   const [directory, setDirectory] = useState("");
   const [entry, setEntry] = useState<Entry>();
+  const [error, setError] = useState<any>();
   const previousEntry = usePrevious(entry);
   useEffect(() => {
     if (open) {
+      setError(undefined);
       fetch(`/assets/${projectId}/${assetId}`)
-        .then((resp) => resp.json())
-        .then((entries) => {
-          setEntries(entries);
+        .then((resp) => {
+          if (resp.ok) {
+            return resp.json();
+          } else if (resp.status == 404) {
+            throw new Error("Not found");
+          } else {
+            throw new Error(`Unexpected status code: ${resp.status}`);
+          }
         })
-        .catch((error) => {
-          // TODO
-          console.log("*e", error);
-        });
+        .then(setEntries)
+        .catch(setError);
     }
   }, [projectId, assetId, open || !!entries]);
   const handleSelect = useCallback(
@@ -231,7 +239,9 @@ function DirectoryBrowser({
         onClose={onClose}
       >
         <div className="flex flex-col">
-          {entries ? (
+          {error ? (
+            <Alert variant="danger">{error.toString()}</Alert>
+          ) : entries ? (
             <div className="">
               <EntriesTable
                 entries={entries}
@@ -290,6 +300,8 @@ export default function AssetLink({
     [setHovered, assetId],
   );
   const handleMouseOut = useCallback(() => setHovered(undefined), []);
+  const blobStoresSetting = useSetting("blobStores");
+  const primaryBlobStore = createBlobStore(blobStoresSetting[0]);
   return (
     <Fragment>
       {asset.type == 0 ? (
@@ -311,7 +323,7 @@ export default function AssetLink({
         />
       ) : null}
       <a
-        href={`/blobs/${asset.blobKey}`}
+        href={primaryBlobStore.url(asset.blobKey)}
         title={`${asset.path}\n${getAssetMetadata(asset).join("; ")}`}
         className={classNames(
           className,

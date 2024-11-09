@@ -34,6 +34,7 @@ import {
   IconWindowMinimize,
   IconX,
 } from "@tabler/icons-react";
+import * as settings from "../settings";
 
 import * as models from "../models";
 import Badge from "./Badge";
@@ -50,6 +51,8 @@ import { useEnvironments, useLogs } from "../topics";
 import Tabs, { Tab } from "./common/Tabs";
 import Select from "./common/Select";
 import Alert from "./common/Alert";
+import { useSetting, useSettings } from "./SettingsProvider";
+import { createBlobStore } from "../blobs";
 
 function getRunEnvironmentId(run: models.Run) {
   const initialStepId = minBy(
@@ -555,6 +558,7 @@ type DataProps = {
 };
 
 function Data({ data, references, projectId }: DataProps) {
+  const blobStoresSetting = useSetting("blobStores");
   if (Array.isArray(data)) {
     return (
       <Fragment>
@@ -641,6 +645,7 @@ function Data({ data, references, projectId }: DataProps) {
         const reference = references[data.index];
         switch (reference.type) {
           case "block":
+            const primaryBlobStore = createBlobStore(blobStoresSetting[0]);
             return (
               <Menu>
                 <MenuButton className="bg-slate-100 rounded px-1.5 py-0.5 text-xs font-sans inline-flex gap-1">
@@ -674,7 +679,7 @@ function Data({ data, references, projectId }: DataProps) {
                   <MenuSeparator className="my-1 h-px bg-slate-100" />
                   <MenuItem>
                     <a
-                      href={`/blobs/${reference.blobKey}`}
+                      href={primaryBlobStore.url(reference.blobKey)}
                       download
                       className="text-sm m-1 p-1 rounded-md data-[active]:bg-slate-100 flex items-center gap-1"
                     >
@@ -731,6 +736,56 @@ function Data({ data, references, projectId }: DataProps) {
   }
 }
 
+async function loadBlob(
+  blobStoresSetting: settings.BlobStoreSettings[],
+  blobKey: string,
+) {
+  for (const settings of blobStoresSetting) {
+    const store = createBlobStore(settings);
+    const result = await store.load(blobKey);
+    if (result !== undefined) {
+      return result;
+    }
+  }
+  return undefined;
+}
+
+type LoadBlobLinkProps = {
+  value: Extract<models.Value, { type: "blob" }>;
+  onLoad: () => void;
+};
+
+function LoadBlobLink({ value, onLoad }: LoadBlobLinkProps) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<any>();
+  const blobStoresSetting = useSetting("blobStores");
+  const handleLoadClick = useCallback(() => {
+    setError(undefined);
+    setLoading(true);
+    loadBlob(blobStoresSetting, value.key)
+      .then((data) => {
+        if (data !== undefined) {
+          sessionStorage.setItem(`blobs.${value.key}`, data);
+          onLoad();
+        } else {
+          setError("Not found");
+        }
+      })
+      .catch(setError)
+      .finally(() => setLoading(false));
+  }, [value.key, onLoad]);
+  return loading ? (
+    <span className="italic text-slate-500 text-sm">Loading...</span>
+  ) : error ? (
+    // TODO: prompt to configure settings
+    <Alert variant="danger">{error.toString()}</Alert>
+  ) : (
+    <Button size="sm" outline={true} onClick={handleLoadClick}>
+      Load ({humanSize(value.size)})
+    </Button>
+  );
+}
+
 function getValueData(value: models.Value) {
   if (value.type == "raw") {
     return value.data;
@@ -753,28 +808,9 @@ type ValueProps = {
 
 function Value({ value, projectId, className, block }: ValueProps) {
   const [_, setCount] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>();
-  const handleLoadClick = useCallback(() => {
-    if (value.type == "blob") {
-      setError(undefined);
-      setLoading(true);
-      fetch(`/blobs/${value.key}`)
-        .then((resp) => {
-          if (resp.ok) {
-            return resp.text();
-          } else {
-            throw new Error(`unexpected response code (${resp.status})`);
-          }
-        })
-        .then((data) => {
-          sessionStorage.setItem(`blobs.${value.key}`, data);
-          setCount((c) => c + 1);
-        })
-        .catch(setError)
-        .finally(() => setLoading(false));
-    }
-  }, [value]);
+  const handleLoaded = useCallback(() => {
+    setCount((c) => c + 1);
+  }, []);
   const handleUnloadClick = useCallback(() => {
     if (value.type == "blob") {
       sessionStorage.removeItem(`blobs.${value.key}`);
@@ -804,14 +840,8 @@ function Value({ value, projectId, className, block }: ValueProps) {
             </Button>
           )}
         </Fragment>
-      ) : loading ? (
-        <span className="italic text-slate-500 text-sm">Loading...</span>
-      ) : error ? (
-        <Alert variant="danger">{error.toString()}</Alert>
       ) : value.type == "blob" ? (
-        <Button size="sm" outline={true} onClick={handleLoadClick}>
-          Load ({humanSize(value.size)})
-        </Button>
+        <LoadBlobLink value={value} onLoad={handleLoaded} />
       ) : null}
     </span>
   );

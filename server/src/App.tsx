@@ -1,3 +1,4 @@
+import { ComponentType, ReactNode } from "react";
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 
 import {
@@ -27,9 +28,23 @@ function NotFound() {
   return <p>Not found</p>;
 }
 
+type Provider<P = {}> = [ComponentType<P>, P];
+
+type ProvidersProps = {
+  providers: Provider<any>[];
+  children: ReactNode;
+};
+
+function Providers({ providers, children }: ProvidersProps) {
+  return providers.reduceRight(
+    (acc, [Provider, props]) => <Provider {...props}>{acc}</Provider>,
+    children,
+  );
+}
+
 export default function App() {
   return (
-    <TitleContext appName="Coflux">
+    <Providers providers={[[TitleContext, { appName: "Coflux" }]]}>
       <Router>
         <Routes>
           <Route element={<ExternalLayout />}>
@@ -69,6 +84,6 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>
-    </TitleContext>
+    </Providers>
   );
 }
