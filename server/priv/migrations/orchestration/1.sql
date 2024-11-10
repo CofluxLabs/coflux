@@ -397,6 +397,7 @@ CREATE TABLE messages (
   timestamp INTEGER NOT NULL,
   level INTEGER NOT NULL,
   template_id INTEGER,
+  created_at INTEGER NOT NULL,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (template_id) REFERENCES message_templates ON DELETE CASCADE
 );

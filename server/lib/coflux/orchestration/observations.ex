@@ -5,6 +5,8 @@ defmodule Coflux.Orchestration.Observations do
 
   def record_logs(db, execution_id, messages) do
     with_transaction(db, fn ->
+      now = current_timestamp()
+
       Enum.each(messages, fn {timestamp, level, template, values} ->
         {:ok, template_id} =
           if template do
@@ -18,7 +20,8 @@ defmodule Coflux.Orchestration.Observations do
             execution_id: execution_id,
             timestamp: timestamp,
             level: encode_level(level),
-            template_id: template_id
+            template_id: template_id,
+            created_at: now
           })
 
         {:ok, _} =
@@ -138,5 +141,9 @@ defmodule Coflux.Orchestration.Observations do
       4 -> :warning
       5 -> :error
     end
+  end
+
+  defp current_timestamp() do
+    System.os_time(:millisecond)
   end
 end
