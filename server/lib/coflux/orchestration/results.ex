@@ -24,7 +24,7 @@ defmodule Coflux.Orchestration.Results do
       arguments
       |> Enum.with_index()
       |> Enum.each(fn {value, position} ->
-        {:ok, value_id} = get_or_create_value(db, value, now)
+        {:ok, value_id} = get_or_create_value(db, value)
         {:ok, _} = insert_checkpoint_argument(db, checkpoint_id, position, value_id)
       end)
 
@@ -81,7 +81,7 @@ defmodule Coflux.Orchestration.Results do
             {0, error_id, nil, retry_id}
 
           {:value, value} ->
-            {:ok, value_id} = get_or_create_value(db, value, now)
+            {:ok, value_id} = get_or_create_value(db, value)
             {1, nil, value_id, nil}
 
           {:abandoned, retry_id} ->
@@ -288,7 +288,7 @@ defmodule Coflux.Orchestration.Results do
     :crypto.hash(:sha256, data)
   end
 
-  def get_or_create_value(db, value, now) do
+  def get_or_create_value(db, value) do
     {data, blob_id, references} =
       case value do
         {:raw, data, references} ->
@@ -324,7 +324,7 @@ defmodule Coflux.Orchestration.Results do
               case reference do
                 {:block, serialiser, blob_key, size, metadata} ->
                   {:ok, block_id} =
-                    get_or_create_block(db, serialiser, blob_key, size, metadata, now)
+                    get_or_create_block(db, serialiser, blob_key, size, metadata)
 
                   {value_id, position, block_id, nil, nil}
 
@@ -472,7 +472,7 @@ defmodule Coflux.Orchestration.Results do
     :crypto.hash(:sha256, data)
   end
 
-  defp get_or_create_block(db, serialiser, blob_key, size, metadata, now) do
+  defp get_or_create_block(db, serialiser, blob_key, size, metadata) do
     hash = hash_block(serialiser, blob_key, metadata)
 
     case query_one(db, "SELECT id FROM blocks WHERE hash = ?1", {hash}) do
@@ -487,8 +487,7 @@ defmodule Coflux.Orchestration.Results do
           insert_one(db, :blocks, %{
             hash: hash,
             serialiser_id: serialiser_id,
-            blob_id: blob_id,
-            created_at: now
+            blob_id: blob_id
           })
 
         {:ok, _} =

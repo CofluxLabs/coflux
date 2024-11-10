@@ -278,7 +278,7 @@ defmodule Coflux.Orchestration.Runs do
               arguments
               |> Enum.with_index()
               |> Enum.map(fn {value, position} ->
-                {:ok, value_id} = Results.get_or_create_value(db, value, now)
+                {:ok, value_id} = Results.get_or_create_value(db, value)
                 {step_id, position, value_id}
               end)
             )

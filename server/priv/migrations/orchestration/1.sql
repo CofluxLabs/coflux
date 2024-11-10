@@ -308,7 +308,6 @@ CREATE TABLE blocks (
   hash BLOB NOT NULL,
   serialiser_id INTEGER NOT NULL,
   blob_id INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
   FOREIGN KEY (serialiser_id) REFERENCES serialisers ON DELETE RESTRICT,
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
 );

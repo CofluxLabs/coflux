@@ -5,8 +5,6 @@ defmodule Coflux.Orchestration.Observations do
 
   def record_logs(db, execution_id, messages) do
     with_transaction(db, fn ->
-      now = current_timestamp()
-
       Enum.each(messages, fn {timestamp, level, template, values} ->
         {:ok, template_id} =
           if template do
@@ -30,7 +28,7 @@ defmodule Coflux.Orchestration.Observations do
             {:message_id, :label_id, :value_id},
             Enum.map(values, fn {label, value} ->
               {:ok, label_id} = get_or_create_label(db, label)
-              {:ok, value_id} = Results.get_or_create_value(db, value, now)
+              {:ok, value_id} = Results.get_or_create_value(db, value)
               {message_id, label_id, value_id}
             end)
           )
@@ -140,9 +138,5 @@ defmodule Coflux.Orchestration.Observations do
       4 -> :warning
       5 -> :error
     end
-  end
-
-  defp current_timestamp() do
-    System.os_time(:millisecond)
   end
 end
