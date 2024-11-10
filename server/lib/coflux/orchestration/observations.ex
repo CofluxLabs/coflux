@@ -1,7 +1,7 @@
 defmodule Coflux.Orchestration.Observations do
   import Coflux.Store
 
-  alias Coflux.Orchestration.Results
+  alias Coflux.Orchestration.Values
 
   def record_logs(db, execution_id, messages) do
     with_transaction(db, fn ->
@@ -31,7 +31,7 @@ defmodule Coflux.Orchestration.Observations do
             {:message_id, :label_id, :value_id},
             Enum.map(values, fn {label, value} ->
               {:ok, label_id} = get_or_create_label(db, label)
-              {:ok, value_id} = Results.get_or_create_value(db, value)
+              {:ok, value_id} = Values.get_or_create_value(db, value)
               {message_id, label_id, value_id}
             end)
           )
@@ -91,7 +91,7 @@ defmodule Coflux.Orchestration.Observations do
       {:ok, rows} ->
         {:ok,
          Map.new(rows, fn {label, value_id} ->
-           {:ok, value} = Results.get_value_by_id(db, value_id)
+           {:ok, value} = Values.get_value_by_id(db, value_id)
            {label, value}
          end)}
     end
