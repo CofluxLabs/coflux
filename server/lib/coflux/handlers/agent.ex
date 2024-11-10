@@ -23,12 +23,12 @@ defmodule Coflux.Handlers.Agent do
         # TODO: authenticate
         # TODO: monitor server?
         case connect(project_id, session_id, environment_name, launch_id, provides, concurrency) do
-          {:ok, session_id, executions} ->
+          {:ok, session_id, execution_ids} ->
             {[session_message(session_id)],
              %{
                project_id: project_id,
                session_id: session_id,
-               executions: executions
+               execution_ids: execution_ids
              }}
 
           {:error, :environment_invalid} ->
@@ -168,7 +168,8 @@ defmodule Coflux.Handlers.Agent do
           :ok =
             Orchestration.notify_terminated(state.project_id, execution_ids)
 
-          state = Map.update!(state, :executions, &Map.drop(&1, execution_ids))
+          state =
+            Map.update!(state, :execution_ids, &MapSet.difference(&1, MapSet.new(execution_ids)))
 
           {[], state}
         else
@@ -319,9 +320,9 @@ defmodule Coflux.Handlers.Agent do
     {[], state}
   end
 
-  def websocket_info({:execute, execution_id, repository, target, arguments, run_id}, state) do
+  def websocket_info({:execute, execution_id, repository, target, arguments}, state) do
     arguments = Enum.map(arguments, &compose_value/1)
-    state = put_in(state.executions[execution_id], run_id)
+    state = Map.update!(state, :execution_ids, &MapSet.put(&1, execution_id))
     {[command_message("execute", [execution_id, repository, target, arguments])], state}
   end
 
@@ -339,8 +340,8 @@ defmodule Coflux.Handlers.Agent do
 
   defp connect(project_id, session_id, environment_name, launch_id, provides, concurrency) do
     if session_id do
-      with {:ok, executions} <- Orchestration.resume_session(project_id, session_id, self()) do
-        {:ok, session_id, executions}
+      with {:ok, execution_ids} <- Orchestration.resume_session(project_id, session_id, self()) do
+        {:ok, session_id, execution_ids}
       end
     else
       with {:ok, session_id} <-
@@ -352,13 +353,13 @@ defmodule Coflux.Handlers.Agent do
                concurrency,
                self()
              ) do
-        {:ok, session_id, %{}}
+        {:ok, session_id, MapSet.new()}
       end
     end
   end
 
   defp is_recognised_execution?(execution_id, state) do
-    Map.has_key?(state.executions, execution_id)
+    MapSet.member?(state.execution_ids, execution_id)
   end
 
   defp session_message(session_id) do

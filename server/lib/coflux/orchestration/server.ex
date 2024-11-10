@@ -373,16 +373,7 @@ defmodule Coflux.Orchestration.Server do
           )
           |> notify_agent(session_id)
 
-        executions =
-          session.executing
-          |> MapSet.union(session.starting)
-          |> Map.new(fn execution_id ->
-            # TODO: more efficient way to load run IDs?
-            {:ok, external_run_id} =
-              Runs.get_external_run_id_for_execution(state.db, execution_id)
-
-            {execution_id, external_run_id}
-          end)
+        executions = MapSet.union(session.executing, session.starting)
 
         send(self(), :execute)
 
@@ -1288,7 +1279,7 @@ defmodule Coflux.Orchestration.Server do
                     |> send_session(
                       session_id,
                       {:execute, execution.execution_id, execution.repository, execution.target,
-                       arguments, execution.run_external_id}
+                       arguments}
                     )
 
                   {state, [{execution, assigned_at} | assigned], unassigned}
