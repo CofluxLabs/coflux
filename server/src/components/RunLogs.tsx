@@ -1,94 +1,89 @@
 import { Fragment, ReactNode } from "react";
-import { sortBy } from "lodash";
+import { omit, sortBy } from "lodash";
 import { DateTime } from "luxon";
 import classNames from "classnames";
-import {
-  IconAlertHexagon,
-  IconAlertTriangle,
-  IconInfoCircle,
-} from "@tabler/icons-react";
 
 import * as models from "../models";
+import Value from "./Value";
 
 function classForLevel(level: models.LogMessageLevel) {
   switch (level) {
+    case 0:
+      return "border-slate-200/30";
     case 1:
-      return "text-slate-600 font-mono text-sm";
-    case 3:
-      return "text-red-800 font-mono text-sm";
-    default:
-      return null;
-  }
-}
-
-function iconForLevel(
-  level: models.LogMessageLevel,
-  className: string,
-  size = 16,
-) {
-  switch (level) {
+      return "border-slate-300/30 text-slate-600 font-mono text-sm";
     case 2:
-      return (
-        <IconInfoCircle
-          size={size}
-          className={classNames(className, "text-blue-400")}
-        />
-      );
+      return "border-blue-400/30";
+    case 3:
+      return "border-red-300/30 text-red-800 font-mono text-sm";
     case 4:
-      return (
-        <IconAlertTriangle
-          size={size}
-          className={classNames(className, "text-yellow-600")}
-        />
-      );
+      return "border-yellow-500/30";
     case 5:
-      return (
-        <IconAlertHexagon
-          size={size}
-          className={classNames(className, "text-red-600")}
-        />
-      );
-    default:
-      return null;
+      return "border-red-600/30";
   }
 }
 
-function substituteLabels(template: string, labels: Record<string, any>) {
-  return Object.entries(labels).reduce(
-    ([message, extra], [key, value]) => {
-      const placeholder = `{${key}}`;
-      if (message.includes(placeholder)) {
-        return [message.replaceAll(placeholder, value), extra];
-      } else {
-        return [message, { ...extra, [key]: value }];
-      }
-    },
-    [template, {}],
-  );
+function substituteValues(
+  template: string | null,
+  values: Record<string, models.Value>,
+  projectId: string,
+): [ReactNode[] | null, Record<string, models.Value>] {
+  if (template) {
+    const parts = template.split(/\{(\w+)\}/g);
+    const used = parts.filter((_, i) => i % 2 == 1);
+    const extra = omit(values, used);
+    return [
+      parts.map((part, index) =>
+        index % 2 == 0 ? (
+          part
+        ) : !(part in values) ? (
+          `{${part}}`
+        ) : (
+          <Value key={index} value={values[part]} projectId={projectId} />
+        ),
+      ),
+      extra,
+    ];
+  } else {
+    return [null, values];
+  }
 }
 
 type LogMessageProps = {
   level: models.LogMessageLevel;
-  template: string;
-  labels: Record<string, any>;
+  template: string | null;
+  values: Record<string, models.Value>;
+  projectId: string;
   className?: string;
 };
 
-function LogMessage({ level, template, labels, className }: LogMessageProps) {
-  const [message, extra] = substituteLabels(template, labels);
+function LogMessage({
+  level,
+  template,
+  values,
+  projectId,
+  className,
+}: LogMessageProps) {
+  const [message, extra] = substituteValues(template, values, projectId);
   return (
-    <div className={classNames(className, classForLevel(level))}>
-      {iconForLevel(level, "inline-block mr-1 mt-[-2px]")}
-      <span className="whitespace-pre-wrap">{message}</span>
-      {Object.entries(extra).map(([key, value]) => (
-        <Fragment key={key}>
-          {" "}
-          <span className="bg-slate-200/50 rounded text-slate-400 text-xs px-1 whitespace-nowrap">
-            {key}:{" "}
-            <span className="text-slate-500">{JSON.stringify(value)}</span>
-          </span>
-        </Fragment>
-      ))}
+    <div
+      className={classNames(className, "border-l-4 pl-2", classForLevel(level))}
+    >
+      {message && (
+        <span className="whitespace-pre-wrap text-sm">{message}</span>
+      )}
+      {Object.keys(extra).length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-1">
+          {Object.entries(extra).map(([label, value]) => (
+            <div key={label} className="flex items-start gap-1">
+              <span className="bg-slate-400/20 rounded text-slate-400 text-xs px-1 whitespace-nowrap my-0.5">
+                <span className="text-slate-900">{label}</span>:
+              </span>
+              <Value value={value} projectId={projectId} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -98,6 +93,7 @@ type Props = {
   logs: models.LogMessage[];
   darkerTimestampRule?: boolean;
   stepIdentifier?: (executionId: string) => ReactNode;
+  projectId: string;
 };
 
 export default function RunLogs({
@@ -105,14 +101,16 @@ export default function RunLogs({
   logs,
   darkerTimestampRule,
   stepIdentifier,
+  projectId,
 }: Props) {
   let lastTimestamp = startTime;
+  let lastExecutionId: string | undefined;
   if (logs.length) {
     return (
-      <table className="w-full">
+      <table className="w-full border-collapse">
         <tbody>
           {sortBy(logs, (l) => l[1]).map((message, index) => {
-            const [executionId, timestamp, level, template, labels] = message;
+            const [executionId, timestamp, level, template, values] = message;
             const createdAt = DateTime.fromMillis(timestamp);
             const diff = createdAt.diff(lastTimestamp, [
               "days",
@@ -125,6 +123,11 @@ export default function RunLogs({
             if (showTimestamp) {
               lastTimestamp = createdAt;
             }
+            const showExecution =
+              !lastExecutionId ||
+              lastExecutionId != executionId ||
+              showTimestamp;
+            lastExecutionId = executionId;
             return (
               <Fragment key={index}>
                 {showTimestamp && (
@@ -159,14 +162,15 @@ export default function RunLogs({
                 <tr>
                   {stepIdentifier && (
                     <td className="w-0 align-top px-1 select-none">
-                      {stepIdentifier(executionId)}
+                      {showExecution && stepIdentifier(executionId)}
                     </td>
                   )}
-                  <td className="align-top px-1">
+                  <td className="align-top p-1">
                     <LogMessage
                       level={level}
                       template={template}
-                      labels={labels}
+                      values={values}
+                      projectId={projectId}
                     />
                   </td>
                 </tr>

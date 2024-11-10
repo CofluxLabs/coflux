@@ -3,6 +3,8 @@ defmodule Coflux.Topics.Run do
 
   alias Coflux.Orchestration
 
+  import Coflux.TopicUtils
+
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
     external_run_id = Keyword.fetch!(params, :run_id)
@@ -258,77 +260,10 @@ defmodule Coflux.Topics.Run do
     end)
   end
 
-  defp build_execution(execution) do
-    %{
-      runId: execution.run_id,
-      stepId: execution.step_id,
-      attempt: execution.attempt,
-      repository: execution.repository,
-      target: execution.target
-    }
-  end
-
   defp build_dependency(execution) do
     execution
     |> build_execution()
     |> Map.put(:assets, %{})
-  end
-
-  defp build_asset(asset) do
-    %{
-      type: asset.type,
-      path: asset.path,
-      metadata: asset.metadata,
-      blobKey: asset.blob_key,
-      size: asset.size,
-      createdAt: asset.created_at
-    }
-  end
-
-  defp build_value(value) do
-    case value do
-      {:raw, data, references} ->
-        %{
-          type: "raw",
-          data: data,
-          references: build_references(references)
-        }
-
-      {:blob, key, size, references} ->
-        %{
-          type: "blob",
-          key: key,
-          size: size,
-          references: build_references(references)
-        }
-    end
-  end
-
-  defp build_references(references) do
-    Enum.map(references, fn
-      {:block, serialiser, blob_key, size, metadata} ->
-        %{
-          type: "block",
-          serialiser: serialiser,
-          blobKey: blob_key,
-          size: size,
-          metadata: metadata
-        }
-
-      {:execution, execution_id, execution} ->
-        %{
-          type: "execution",
-          executionId: Integer.to_string(execution_id),
-          execution: build_execution(execution)
-        }
-
-      {:asset, asset_id, asset} ->
-        %{
-          type: "asset",
-          assetId: Integer.to_string(asset_id),
-          asset: build_asset(asset)
-        }
-    end)
   end
 
   defp build_frames(frames) do

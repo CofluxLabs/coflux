@@ -102,6 +102,10 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:get_asset, asset_id, opts})
   end
 
+  def record_logs(project_id, execution_id, messages) do
+    call_server(project_id, {:record_logs, execution_id, messages})
+  end
+
   def subscribe_environments(project_id, pid) do
     call_server(project_id, {:subscribe_environments, pid})
   end
@@ -128,6 +132,10 @@ defmodule Coflux.Orchestration do
 
   def subscribe_run(project_id, run_id, pid) do
     call_server(project_id, {:subscribe_run, run_id, pid})
+  end
+
+  def subscribe_logs(project_id, run_id, pid) do
+    call_server(project_id, {:subscribe_logs, run_id, pid})
   end
 
   def unsubscribe(project_id, ref) do

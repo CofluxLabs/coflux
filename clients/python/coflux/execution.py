@@ -128,7 +128,7 @@ class RecordCheckpointRequest(t.NamedTuple):
 
 class LogMessageRequest(t.NamedTuple):
     level: int
-    template: str
+    template: str | None
     labels: dict[str, t.Any]
     timestamp: int
 
@@ -479,9 +479,21 @@ class Channel:
             raise Exception(f"unrecognised asset type ({asset_type})")
         return target
 
-    def log_message(self, level, template, **kwargs):
+    def log_message(self, level, template: str | None, **kwargs):
         timestamp = time.time() * 1000
-        self._notify(LogMessageRequest(level, str(template), kwargs, int(timestamp)))
+
+        labels = {
+            key: self._serialisation_manager.serialise(value)
+            for key, value in kwargs.items()
+        }
+        self._notify(
+            LogMessageRequest(
+                level,
+                str(template) if template is not None else None,
+                labels,
+                int(timestamp),
+            )
+        )
 
 
 def get_channel() -> Channel | None:

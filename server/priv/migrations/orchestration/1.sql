@@ -387,3 +387,32 @@ CREATE TABLE results (
   )
 );
 
+CREATE TABLE message_templates (
+  id INTEGER PRIMARY KEY,
+  template TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE messages (
+  id INTEGER PRIMARY KEY,
+  execution_id INTEGER NOT NULL,
+  timestamp INTEGER NOT NULL,
+  level INTEGER NOT NULL,
+  template_id INTEGER,
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (template_id) REFERENCES message_templates ON DELETE CASCADE
+);
+
+CREATE TABLE message_labels(
+  id INTEGER PRIMARY KEY,
+  label TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE message_values(
+  message_id INTEGER NOT NULL,
+  label_id INTEGER NOT NULL,
+  value_id INTEGER NOT NULL,
+  PRIMARY KEY (message_id, label_id),
+  FOREIGN KEY (message_id) REFERENCES messages ON DELETE CASCADE,
+  FOREIGN KEY (label_id) REFERENCES message_labels ON DELETE CASCADE,
+  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE
+);

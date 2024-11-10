@@ -1,7 +1,7 @@
 defmodule Coflux.Handlers.Agent do
   import Coflux.Handlers.Utils
 
-  alias Coflux.{Orchestration, Observation, Projects}
+  alias Coflux.{Orchestration, Projects}
 
   def init(req, _opts) do
     qs = :cowboy_req.parse_qs(req)
@@ -290,18 +290,22 @@ defmodule Coflux.Handlers.Agent do
 
       "log_messages" ->
         messages =
-          Enum.map(message["params"], fn [execution_id, timestamp, level, template, labels] ->
-            {execution_id, timestamp, parse_level(level), template, labels}
-          end)
+          Enum.reduce(
+            message["params"],
+            %{},
+            fn [execution_id, timestamp, level, template, values], acc ->
+              values = Map.new(values, fn {k, v} -> {k, parse_value(v)} end)
+              message = {timestamp, parse_level(level), template, values}
 
-        execution_ids = Enum.map(messages, &elem(&1, 0))
+              acc
+              |> Map.put_new(execution_id, [])
+              |> Map.update!(execution_id, &[message | &1])
+            end
+          )
 
-        if Enum.all?(execution_ids, &is_recognised_execution?(&1, state)) do
-          messages
-          |> Enum.group_by(&Map.fetch!(state.executions, elem(&1, 0)))
-          |> Enum.each(fn {run_id, messages} ->
-            # TODO: include environment?
-            Observation.write(state.project_id, run_id, messages)
+        if Enum.all?(Map.keys(messages), &is_recognised_execution?(&1, state)) do
+          Enum.each(messages, fn {execution_id, messages} ->
+            Orchestration.record_logs(state.project_id, execution_id, Enum.reverse(messages))
           end)
 
           {[], state}
@@ -495,10 +499,10 @@ defmodule Coflux.Handlers.Agent do
 
   defp parse_level(level) do
     case level do
-      0 -> :stdout
-      1 -> :stderr
-      2 -> :debug
-      3 -> :info
+      0 -> :debug
+      1 -> :stdout
+      2 -> :info
+      3 -> :stderr
       4 -> :warning
       5 -> :error
     end

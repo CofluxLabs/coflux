@@ -200,6 +200,6 @@ export type LogMessage = [
   string,
   number,
   LogMessageLevel,
-  string,
-  Record<string, any>,
+  string | null,
+  Record<string, Value>,
 ];

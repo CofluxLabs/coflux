@@ -65,6 +65,7 @@ export default function LogsPage() {
           stepIdentifier={(executionId: string) => (
             <StepIdentifier runId={runId} run={run} executionId={executionId} />
           )}
+          projectId={projectId!}
         />
       </div>
     );

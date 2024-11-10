@@ -279,7 +279,7 @@ defmodule Coflux.Orchestration.Results do
 
     data =
       [
-        if(data, do: Jason.encode!(data), else: 0),
+        if(!is_nil(data), do: Jason.encode!(data), else: 0),
         if(blob_id, do: Integer.to_string(blob_id), else: 0)
       ]
       |> Enum.concat(reference_parts)
