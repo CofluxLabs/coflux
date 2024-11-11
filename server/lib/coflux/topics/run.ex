@@ -71,7 +71,7 @@ defmodule Coflux.Topics.Run do
             dependencies: %{},
             children: [],
             result: nil,
-            reference: nil
+            logCount: 0
           }
         }
       })
@@ -99,7 +99,7 @@ defmodule Coflux.Topics.Run do
           dependencies: %{},
           children: [],
           result: nil,
-          reference: nil
+          logCount: 0
         }
       )
     else
@@ -189,6 +189,14 @@ defmodule Coflux.Topics.Run do
     end)
   end
 
+  defp process_notification(topic, {:log_counts, execution_id, delta}) do
+    update_execution(topic, execution_id, fn topic, base_path ->
+      path = base_path ++ [:logCount]
+      count = get_in(topic.value, path) + delta
+      Topic.set(topic, base_path ++ [:logCount], count)
+    end)
+  end
+
   defp build_run(run, parent, steps, environment_ids) do
     %{
       createdAt: run.created_at,
@@ -235,7 +243,8 @@ defmodule Coflux.Topics.Run do
                         execution.asset_dependencies
                       ),
                     children: Enum.map(execution.children, &build_child(&1, run.external_id)),
-                    result: build_result(execution.result)
+                    result: build_result(execution.result),
+                    logCount: execution.log_count
                   }}
                end)
            }}

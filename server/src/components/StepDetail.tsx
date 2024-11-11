@@ -1150,6 +1150,33 @@ export default function StepDetail({
             <AssetsSection execution={execution} projectId={projectId} />
           )}
         </StepDetailTab>
+        <StepDetailTab
+          label={
+            <span className="flex gap-1 items-center">
+              Logs
+              {execution?.logCount ? (
+                <Badge
+                  title={execution.logCount.toString()}
+                  label={
+                    execution.logCount > 9
+                      ? "9+"
+                      : execution.logCount.toString()
+                  }
+                />
+              ) : null}
+            </span>
+          }
+          disabled={!execution?.assignedAt}
+        >
+          {execution?.assignedAt && (
+            <LogsSection
+              projectId={projectId}
+              runId={runId}
+              execution={execution}
+              activeEnvironmentId={activeEnvironmentId}
+            />
+          )}
+        </StepDetailTab>
         <StepDetailTab label="Timing">
           {execution && <ExecutionSection execution={execution} />}
         </StepDetailTab>
@@ -1164,16 +1191,6 @@ export default function StepDetail({
               />
               <DependenciesSection execution={execution} />
             </Fragment>
-          )}
-        </StepDetailTab>
-        <StepDetailTab label="Logs" disabled={!execution?.assignedAt}>
-          {execution?.assignedAt && (
-            <LogsSection
-              projectId={projectId}
-              runId={runId}
-              execution={execution}
-              activeEnvironmentId={activeEnvironmentId}
-            />
           )}
         </StepDetailTab>
       </Tabs>

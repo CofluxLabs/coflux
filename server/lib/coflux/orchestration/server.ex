@@ -925,6 +925,7 @@ defmodule Coflux.Orchestration.Server do
         state =
           state
           |> notify_listeners({:logs, step.run_id}, {:messages, messages})
+          |> notify_listeners({:run, step.run_id}, {:log_counts, execution_id, length(messages)})
           |> flush_notifications()
 
         {:reply, :ok, state}
@@ -1064,6 +1065,7 @@ defmodule Coflux.Orchestration.Server do
           end
 
         {:ok, steps} = Runs.get_run_steps(state.db, run.id)
+        {:ok, log_counts} = Observations.get_counts_for_run(state.db, run.id)
 
         steps =
           Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, memo_key,
@@ -1139,7 +1141,8 @@ defmodule Coflux.Orchestration.Server do
                       result_dependencies: result_dependencies,
                       asset_dependencies: asset_dependencies,
                       result: result,
-                      children: children
+                      children: children,
+                      log_count: Map.get(log_counts, execution_id, 0)
                     }}
                  end)
              }}

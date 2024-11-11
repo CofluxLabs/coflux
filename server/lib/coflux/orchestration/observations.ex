@@ -71,6 +71,23 @@ defmodule Coflux.Orchestration.Observations do
     end
   end
 
+  def get_counts_for_run(db, run_id) do
+    case query(
+           db,
+           """
+           SELECT m.execution_id, COUNT(*)
+           FROM messages AS m
+           INNER JOIN executions AS e ON e.id = m.execution_id
+           INNER JOIN steps AS s ON s.id = e.step_id
+           WHERE s.run_id = ?1
+           GROUP BY m.execution_id
+           """,
+           {run_id}
+         ) do
+      {:ok, rows} -> {:ok, Map.new(rows)}
+    end
+  end
+
   defp get_template_by_id(db, template_id) do
     case query_one(db, "SELECT template FROM message_templates WHERE id = ?1", {template_id}) do
       {:ok, {template}} -> {:ok, template}
