@@ -1,8 +1,7 @@
 import classNames from "classnames";
-import { Fragment, useCallback, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import * as models from "../models";
 import * as settings from "../settings";
-import { useSetting } from "./SettingsProvider";
 import { chunk } from "lodash";
 import {
   IconArrowRightBar,
@@ -24,6 +23,7 @@ import AssetLink from "./AssetLink";
 import AssetIcon from "./AssetIcon";
 import Alert from "./common/Alert";
 import Button from "./common/Button";
+import { useSetting } from "../settings";
 
 type DataProps = {
   data: models.Data;
@@ -32,7 +32,7 @@ type DataProps = {
 };
 
 function Data({ data, references, projectId }: DataProps) {
-  const blobStoresSetting = useSetting("blobStores");
+  const blobStoresSetting = useSetting(projectId, "blobStores");
   if (Array.isArray(data)) {
     return (
       <Fragment>
@@ -226,13 +226,13 @@ async function loadBlob(
 
 type LoadBlobLinkProps = {
   value: Extract<models.Value, { type: "blob" }>;
-  onLoad: () => void;
+  projectId: string;
 };
 
-function LoadBlobLink({ value, onLoad }: LoadBlobLinkProps) {
+function LoadBlobLink({ value, projectId }: LoadBlobLinkProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>();
-  const blobStoresSetting = useSetting("blobStores");
+  const blobStoresSetting = useSetting(projectId, "blobStores");
   const handleLoadClick = useCallback(() => {
     setError(undefined);
     setLoading(true);
@@ -240,14 +240,14 @@ function LoadBlobLink({ value, onLoad }: LoadBlobLinkProps) {
       .then((data) => {
         if (data !== undefined) {
           sessionStorage.setItem(`blobs.${value.key}`, data);
-          onLoad();
+          window.dispatchEvent(new Event("storage"));
         } else {
           setError("Not found");
         }
       })
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [value.key, onLoad]);
+  }, [value.key]);
   return loading ? (
     <span className="italic text-slate-500 text-sm">Loading...</span>
   ) : error ? (
@@ -287,16 +287,18 @@ export default function Value({
   block,
 }: ValueProps) {
   const [_, setCount] = useState(0);
-  const handleLoaded = useCallback(() => {
-    setCount((c) => c + 1);
-  }, []);
   const handleUnloadClick = useCallback(() => {
     if (value.type == "blob") {
       sessionStorage.removeItem(`blobs.${value.key}`);
-      setCount((c) => c + 1);
+      window.dispatchEvent(new Event("storage"));
     }
   }, [value]);
   const data = getValueData(value);
+  const handleStorageEvent = useCallback(() => setCount((c) => c + 1), []);
+  useEffect(() => {
+    window.addEventListener("storage", handleStorageEvent);
+    return () => window.removeEventListener("storage", handleStorageEvent);
+  }, []);
   return (
     <span className={classNames(className, block ? "block" : "inline-block")}>
       {data !== undefined ? (
@@ -325,7 +327,7 @@ export default function Value({
           )}
         </Fragment>
       ) : value.type == "blob" ? (
-        <LoadBlobLink value={value} onLoad={handleLoaded} />
+        <LoadBlobLink value={value} projectId={projectId} />
       ) : null}
     </span>
   );

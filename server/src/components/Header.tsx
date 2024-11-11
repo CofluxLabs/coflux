@@ -45,6 +45,7 @@ export default function Header({ projectId, activeEnvironmentName }: Props) {
         {projectId && (
           <Fragment>
             <ProjectSettingsDialog
+              projectId={projectId}
               open={settingsOpen}
               onClose={handleSettingsClose}
             />

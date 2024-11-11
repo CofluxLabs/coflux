@@ -30,7 +30,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import Badge from "./Badge";
-import { useSettings } from "./SettingsProvider";
+import { useSettings } from "../settings";
 import { isEqual } from "lodash";
 import Select from "./common/Select";
 import * as settings from "../settings";
@@ -405,12 +405,13 @@ function SettingsTab({ className, ...props }: ComponentProps<typeof Tab>) {
 }
 
 type Props = {
+  projectId: string;
   open: boolean;
   onClose: () => void;
 };
 
-export default function SettingsDialog({ open, onClose }: Props) {
-  const [savedSettings, saveSettings] = useSettings();
+export default function SettingsDialog({ projectId, open, onClose }: Props) {
+  const [savedSettings, saveSettings] = useSettings(projectId);
   const [state, setState] = useState<settings.Settings>();
   const settings = state || savedSettings;
   const handleBlobStoresChange = useCallback(
