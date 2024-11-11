@@ -51,7 +51,7 @@ Metadata = dict[str, t.Any]
 Reference = (
     tuple[t.Literal["execution"], int]
     | tuple[t.Literal["asset"], int]
-    | tuple[t.Literal["block"], str, str, int, dict[str, t.Any]]
+    | tuple[t.Literal["fragment"], str, str, int, dict[str, t.Any]]
 )
 
 Value = t.Union[

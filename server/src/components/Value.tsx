@@ -118,7 +118,7 @@ function Data({ data, references, projectId }: DataProps) {
       case "ref":
         const reference = references[data.index];
         switch (reference.type) {
-          case "block":
+          case "fragment":
             const primaryBlobStore = createBlobStore(blobStoresSetting[0]);
             return (
               <Menu>

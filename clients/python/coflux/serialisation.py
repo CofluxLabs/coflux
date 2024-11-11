@@ -132,7 +132,7 @@ class Manager:
                         blob_key = self._blob_manager.put(buffer)
                         size = buffer.getbuffer().nbytes
                         references.append(
-                            ("block", serialiser.type, blob_key, size, metadata)
+                            ("fragment", serialiser.type, blob_key, size, metadata)
                         )
                         return {"type": "ref", "index": len(references) - 1}
                 raise Exception(f"no serialiser for type '{type(value)}'")
@@ -197,7 +197,7 @@ class Manager:
                                 return models.Asset(
                                     lambda to: restore_fn(asset_id, to), asset_id
                                 )
-                            case ("block", serialiser, blob_key, _size, metadata):
+                            case ("fragment", serialiser, blob_key, _size, metadata):
                                 serialiser_ = self._find_serialiser(serialiser)
                                 data = self._blob_manager.get(blob_key)
                                 return serialiser_.deserialise(data, metadata)

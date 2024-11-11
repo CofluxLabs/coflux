@@ -31,7 +31,7 @@ defmodule Coflux.Orchestration.Values do
           case query(
                  db,
                  """
-                 SELECT block_id, execution_id, asset_id
+                 SELECT fragment_id, execution_id, asset_id
                  FROM value_references
                  WHERE value_id = ?1
                  ORDER BY position
@@ -40,7 +40,7 @@ defmodule Coflux.Orchestration.Values do
                ) do
             {:ok, rows} ->
               Enum.map(rows, fn
-                {block_id, nil, nil} -> load_block(db, block_id)
+                {fragment_id, nil, nil} -> load_fragment(db, fragment_id)
                 {nil, execution_id, nil} -> {:execution, execution_id}
                 {nil, nil, asset_id} -> {:asset, asset_id}
               end)
@@ -59,30 +59,30 @@ defmodule Coflux.Orchestration.Values do
     end
   end
 
-  defp load_block(db, block_id) do
+  defp load_fragment(db, fragment_id) do
     case query_one(
            db,
            """
            SELECT s.name, b.key, b.size
-           FROM blocks AS k
+           FROM fragments AS k
            INNER JOIN serialisers AS s ON s.id = k.serialiser_id
            INNER JOIN blobs AS b ON b.id = k.blob_id
            WHERE k.id = ?1
            """,
-           {block_id}
+           {fragment_id}
          ) do
       {:ok, {serialiser, blob_key, size}} ->
         metadata =
           case query(
                  db,
-                 "SELECT key, value FROM block_metadata WHERE block_id = ?1",
-                 {block_id}
+                 "SELECT key, value FROM fragment_metadata WHERE fragment_id = ?1",
+                 {fragment_id}
                ) do
             {:ok, rows} ->
               Map.new(rows, fn {key, value} -> {key, Jason.decode!(value)} end)
           end
 
-        {:block, serialiser, blob_key, size, metadata}
+        {:fragment, serialiser, blob_key, size, metadata}
     end
   end
 
@@ -90,7 +90,7 @@ defmodule Coflux.Orchestration.Values do
     reference_parts =
       Enum.flat_map(references, fn reference ->
         case reference do
-          {:block, serialiser, blob_key, _size, metadata} ->
+          {:fragment, serialiser, blob_key, _size, metadata} ->
             Enum.concat(
               [1, serialiser, blob_key],
               Enum.flat_map(metadata, fn {key, value} -> [key, Jason.encode!(value)] end)
@@ -144,16 +144,16 @@ defmodule Coflux.Orchestration.Values do
           insert_many(
             db,
             :value_references,
-            {:value_id, :position, :block_id, :execution_id, :asset_id},
+            {:value_id, :position, :fragment_id, :execution_id, :asset_id},
             references
             |> Enum.with_index()
             |> Enum.map(fn {reference, position} ->
               case reference do
-                {:block, serialiser, blob_key, size, metadata} ->
-                  {:ok, block_id} =
-                    get_or_create_block(db, serialiser, blob_key, size, metadata)
+                {:fragment, serialiser, blob_key, size, metadata} ->
+                  {:ok, fragment_id} =
+                    get_or_create_fragment(db, serialiser, blob_key, size, metadata)
 
-                  {value_id, position, block_id, nil, nil}
+                  {value_id, position, fragment_id, nil, nil}
 
                 {:execution, execution_id} ->
                   {value_id, position, nil, execution_id, nil}
@@ -175,7 +175,7 @@ defmodule Coflux.Orchestration.Values do
     end
   end
 
-  defp hash_block(serialiser, blob_key, metadata) do
+  defp hash_fragment(serialiser, blob_key, metadata) do
     metadata_parts =
       Enum.flat_map(metadata, fn {key, value} -> [key, Jason.encode!(value)] end)
 
@@ -187,10 +187,10 @@ defmodule Coflux.Orchestration.Values do
     :crypto.hash(:sha256, data)
   end
 
-  defp get_or_create_block(db, serialiser, blob_key, size, metadata) do
-    hash = hash_block(serialiser, blob_key, metadata)
+  defp get_or_create_fragment(db, serialiser, blob_key, size, metadata) do
+    hash = hash_fragment(serialiser, blob_key, metadata)
 
-    case query_one(db, "SELECT id FROM blocks WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM fragments WHERE hash = ?1", {hash}) do
       {:ok, {id}} ->
         {:ok, id}
 
@@ -198,8 +198,8 @@ defmodule Coflux.Orchestration.Values do
         {:ok, serialiser_id} = get_or_create_serialiser(db, serialiser)
         {:ok, blob_id} = get_or_create_blob(db, blob_key, size)
 
-        {:ok, block_id} =
-          insert_one(db, :blocks, %{
+        {:ok, fragment_id} =
+          insert_one(db, :fragments, %{
             hash: hash,
             serialiser_id: serialiser_id,
             blob_id: blob_id
@@ -208,14 +208,14 @@ defmodule Coflux.Orchestration.Values do
         {:ok, _} =
           insert_many(
             db,
-            :block_metadata,
-            {:block_id, :key, :value},
+            :fragment_metadata,
+            {:fragment_id, :key, :value},
             Enum.map(metadata, fn {key, value} ->
-              {block_id, key, Jason.encode!(value)}
+              {fragment_id, key, Jason.encode!(value)}
             end)
           )
 
-        {:ok, block_id}
+        {:ok, fragment_id}
     end
   end
 end

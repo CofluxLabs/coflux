@@ -303,7 +303,7 @@ CREATE TABLE serialisers (
   name TEXT NOT NULL UNIQUE
 );
 
-CREATE TABLE blocks (
+CREATE TABLE fragments (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL,
   serialiser_id INTEGER NOT NULL,
@@ -312,12 +312,12 @@ CREATE TABLE blocks (
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
 );
 
-CREATE TABLE block_metadata (
-  block_id INTEGER NOT NULL,
+CREATE TABLE fragment_metadata (
+  fragment_id INTEGER NOT NULL,
   key TEXT NOT NULL,
   value TEXT NOT NULL,
-  PRIMARY KEY (block_id, key),
-  FOREIGN KEY (block_id) REFERENCES blocks ON DELETE CASCADE
+  PRIMARY KEY (fragment_id, key),
+  FOREIGN KEY (fragment_id) REFERENCES fragments ON DELETE CASCADE
 );
 
 CREATE TABLE values_ (
@@ -332,15 +332,15 @@ CREATE TABLE values_ (
 CREATE TABLE value_references (
   value_id INTEGER NOT NULL,
   position INTEGER NOT NULL,
-  block_id INTEGER,
+  fragment_id INTEGER,
   execution_id INTEGER,
   asset_id INTEGER,
   PRIMARY KEY (value_id, position),
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE,
-  FOREIGN KEY (block_id) REFERENCES blocks ON DELETE RESTRICT,
+  FOREIGN KEY (fragment_id) REFERENCES fragments ON DELETE RESTRICT,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE RESTRICT,
   FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT,
-  CHECK ((block_id IS NOT NULL) + (execution_id IS NOT NULL) + (asset_id IS NOT NULL) = 1)
+  CHECK ((fragment_id IS NOT NULL) + (execution_id IS NOT NULL) + (asset_id IS NOT NULL) = 1)
 );
 
 CREATE TABLE errors (
