@@ -119,7 +119,7 @@ export default function RunLogs({
               "seconds",
               "milliseconds",
             ]);
-            const showTimestamp = index == 0 || diff.toMillis() > 1000;
+            const showTimestamp = index == 0 || diff.toMillis() > 950;
             if (showTimestamp) {
               lastTimestamp = createdAt;
             }
