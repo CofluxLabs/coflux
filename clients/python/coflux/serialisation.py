@@ -4,6 +4,8 @@ import pickle
 import abc
 import io
 from pathlib import Path
+import pydantic
+import importlib
 
 try:
     import pandas
@@ -51,6 +53,37 @@ class PickleSerialiser(Serialiser):
         return pickle.loads(buffer.getbuffer())
 
 
+class PydanticSerialiser(Serialiser):
+    @property
+    def type(self) -> str:
+        return "pydantic"
+
+    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
+        if not isinstance(value, pydantic.BaseModel):
+            return None
+        buffer = io.BytesIO()
+        json_data = value.model_dump_json().encode()
+        buffer.write(json_data)
+        model_class = value.__class__
+        return buffer, {
+            "content_type": "application/json",
+            "model": f"{model_class.__module__}.{model_class.__name__}",
+        }
+
+    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
+        json_data = buffer.read().decode()
+        model = metadata["model"]
+        module_name, class_name = model.rsplit(".", 1)
+        # TODO: support configuring which modules can be loaded?
+        module = importlib.import_module(module_name)
+        model_class = getattr(module, class_name)
+        if not model_class:
+            raise ValueError(f"Model '{model}' not found")
+        if not issubclass(model_class, pydantic.BaseModel):
+            raise ValueError(f"Model '{model}' isn't a subclass of BaseModel")
+        return model_class.model_validate_json(json_data)
+
+
 class PandasSerialiser(Serialiser):
     @property
     def type(self) -> str:
@@ -76,6 +109,8 @@ class PandasSerialiser(Serialiser):
 def _create(config_: config.SerialiserConfig):
     if config_.type == "pickle":
         return PickleSerialiser()
+    elif config_.type == "pydantic":
+        return PydanticSerialiser()
     elif config_.type == "pandas":
         return PandasSerialiser()
     else:

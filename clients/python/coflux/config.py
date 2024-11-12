@@ -40,12 +40,16 @@ class PandasSerialiserConfig(pydantic.BaseModel):
     format: str | None = None
 
 
+class PydanticSerialiserConfig(pydantic.BaseModel):
+    type: t.Literal["pydantic"] = "pydantic"
+
+
 class PickleSerialiserConfig(pydantic.BaseModel):
     type: t.Literal["pickle"] = "pickle"
 
 
 SerialiserConfig = t.Annotated[
-    PandasSerialiserConfig | PickleSerialiserConfig,
+    PandasSerialiserConfig | PydanticSerialiserConfig | PickleSerialiserConfig,
     pydantic.Field(discriminator="type"),
 ]
 
@@ -55,7 +59,11 @@ def _default_concurrency():
 
 
 def _default_serialisers():
-    return [PandasSerialiserConfig(), PickleSerialiserConfig()]
+    return [
+        PandasSerialiserConfig(),
+        PydanticSerialiserConfig(),
+        PickleSerialiserConfig(),
+    ]
 
 
 class Config(pydantic.BaseModel):
