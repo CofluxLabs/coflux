@@ -14,8 +14,8 @@ def _parse_reference(reference: t.Any) -> models.Reference:
             return ("execution", execution_id)
         case ["asset", asset_id]:
             return ("asset", asset_id)
-        case ["block", serialiser, blob_key, size, metadata]:
-            return ("block", serialiser, blob_key, size, metadata)
+        case ["fragment", serialiser, blob_key, size, metadata]:
+            return ("fragment", serialiser, blob_key, size, metadata)
         case other:
             raise Exception(f"unexpected reference: {other}")
 

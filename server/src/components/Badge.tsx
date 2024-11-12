@@ -14,7 +14,7 @@ function classNameForIntent(intent: Intent) {
     case "info":
       return "bg-blue-100 text-blue-500";
     case "none":
-      return "bg-slate-100 text-slate-500";
+      return "bg-slate-200 text-slate-500";
   }
 }
 
@@ -33,9 +33,15 @@ type Props = {
   label: string;
   intent?: Intent;
   size?: Size;
+  title?: string;
 };
 
-export default function Badge({ label, intent = "none", size = "md" }: Props) {
+export default function Badge({
+  label,
+  intent = "none",
+  size = "md",
+  title,
+}: Props) {
   return (
     <span
       className={classNames(
@@ -43,6 +49,7 @@ export default function Badge({ label, intent = "none", size = "md" }: Props) {
         classNameForIntent(intent),
         classNameForSize(size),
       )}
+      title={title}
     >
       {label}
     </span>

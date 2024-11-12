@@ -303,22 +303,21 @@ CREATE TABLE serialisers (
   name TEXT NOT NULL UNIQUE
 );
 
-CREATE TABLE blocks (
+CREATE TABLE fragments (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL,
   serialiser_id INTEGER NOT NULL,
   blob_id INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
   FOREIGN KEY (serialiser_id) REFERENCES serialisers ON DELETE RESTRICT,
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
 );
 
-CREATE TABLE block_metadata (
-  block_id INTEGER NOT NULL,
+CREATE TABLE fragment_metadata (
+  fragment_id INTEGER NOT NULL,
   key TEXT NOT NULL,
   value TEXT NOT NULL,
-  PRIMARY KEY (block_id, key),
-  FOREIGN KEY (block_id) REFERENCES blocks ON DELETE CASCADE
+  PRIMARY KEY (fragment_id, key),
+  FOREIGN KEY (fragment_id) REFERENCES fragments ON DELETE CASCADE
 );
 
 CREATE TABLE values_ (
@@ -333,15 +332,15 @@ CREATE TABLE values_ (
 CREATE TABLE value_references (
   value_id INTEGER NOT NULL,
   position INTEGER NOT NULL,
-  block_id INTEGER,
+  fragment_id INTEGER,
   execution_id INTEGER,
   asset_id INTEGER,
   PRIMARY KEY (value_id, position),
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE,
-  FOREIGN KEY (block_id) REFERENCES blocks ON DELETE RESTRICT,
+  FOREIGN KEY (fragment_id) REFERENCES fragments ON DELETE RESTRICT,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE RESTRICT,
   FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT,
-  CHECK ((block_id IS NOT NULL) + (execution_id IS NOT NULL) + (asset_id IS NOT NULL) = 1)
+  CHECK ((fragment_id IS NOT NULL) + (execution_id IS NOT NULL) + (asset_id IS NOT NULL) = 1)
 );
 
 CREATE TABLE errors (
@@ -387,3 +386,33 @@ CREATE TABLE results (
   )
 );
 
+CREATE TABLE message_templates (
+  id INTEGER PRIMARY KEY,
+  template TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE messages (
+  id INTEGER PRIMARY KEY,
+  execution_id INTEGER NOT NULL,
+  timestamp INTEGER NOT NULL,
+  level INTEGER NOT NULL,
+  template_id INTEGER,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (template_id) REFERENCES message_templates ON DELETE CASCADE
+);
+
+CREATE TABLE message_labels(
+  id INTEGER PRIMARY KEY,
+  label TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE message_values(
+  message_id INTEGER NOT NULL,
+  label_id INTEGER NOT NULL,
+  value_id INTEGER NOT NULL,
+  PRIMARY KEY (message_id, label_id),
+  FOREIGN KEY (message_id) REFERENCES messages ON DELETE CASCADE,
+  FOREIGN KEY (label_id) REFERENCES message_labels ON DELETE CASCADE,
+  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE
+);

@@ -3,7 +3,17 @@ defmodule Coflux.Orchestration.Server do
 
   alias Coflux.Store
   alias Coflux.MapUtils
-  alias Coflux.Orchestration.{Environments, Sessions, Runs, Results, TagSets, Launches, Manifests}
+
+  alias Coflux.Orchestration.{
+    Environments,
+    Sessions,
+    Runs,
+    Results,
+    TagSets,
+    Launches,
+    Manifests,
+    Observations
+  }
 
   @session_timeout_ms 5_000
   @recurrent_rate_limit_ms 5_000
@@ -363,16 +373,7 @@ defmodule Coflux.Orchestration.Server do
           )
           |> notify_agent(session_id)
 
-        executions =
-          session.executing
-          |> MapSet.union(session.starting)
-          |> Map.new(fn execution_id ->
-            # TODO: more efficient way to load run IDs?
-            {:ok, external_run_id} =
-              Runs.get_external_run_id_for_execution(state.db, execution_id)
-
-            {execution_id, external_run_id}
-          end)
+        executions = MapSet.union(session.executing, session.starting)
 
         send(self(), :execute)
 
@@ -519,7 +520,7 @@ defmodule Coflux.Orchestration.Server do
         state =
           if !memo_hit do
             is_memoised = !!Keyword.get(opts, :memo)
-            arguments = Enum.map(arguments, &build_value(&1, state))
+            arguments = Enum.map(arguments, &build_value(&1, state.db))
 
             notify_listeners(
               state,
@@ -910,6 +911,27 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
+  def handle_call({:record_logs, execution_id, messages}, _from, state) do
+    {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
+
+    case Observations.record_logs(state.db, execution_id, messages) do
+      :ok ->
+        messages =
+          Enum.map(messages, fn {timestamp, level, template, values} ->
+            {execution_id, timestamp, level, template,
+             Map.new(values, fn {k, v} -> {k, build_value(v, state.db)} end)}
+          end)
+
+        state =
+          state
+          |> notify_listeners({:logs, step.run_id}, {:messages, messages})
+          |> notify_listeners({:run, step.run_id}, {:log_counts, execution_id, length(messages)})
+          |> flush_notifications()
+
+        {:reply, :ok, state}
+    end
+  end
+
   def handle_call({:subscribe_environments, pid}, _from, state) do
     {:ok, ref, state} = add_listener(state, :environments, pid)
     {:reply, {:ok, state.environments, ref}, state}
@@ -1043,6 +1065,7 @@ defmodule Coflux.Orchestration.Server do
           end
 
         {:ok, steps} = Runs.get_run_steps(state.db, run.id)
+        {:ok, log_counts} = Observations.get_counts_for_run(state.db, run.id)
 
         steps =
           Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, memo_key,
@@ -1059,7 +1082,7 @@ defmodule Coflux.Orchestration.Server do
                 %{}
               end
 
-            arguments = Enum.map(arguments, &build_value(&1, state))
+            arguments = Enum.map(arguments, &build_value(&1, state.db))
 
             {step_external_id,
              %{
@@ -1118,7 +1141,8 @@ defmodule Coflux.Orchestration.Server do
                       result_dependencies: result_dependencies,
                       asset_dependencies: asset_dependencies,
                       result: result,
-                      children: children
+                      children: children,
+                      log_count: Map.get(log_counts, execution_id, 0)
                     }}
                  end)
              }}
@@ -1126,6 +1150,23 @@ defmodule Coflux.Orchestration.Server do
 
         {:ok, ref, state} = add_listener(state, {:run, run.id}, pid)
         {:reply, {:ok, run, parent, steps, ref}, state}
+    end
+  end
+
+  def handle_call({:subscribe_logs, external_run_id, pid}, _from, state) do
+    case Runs.get_run_by_external_id(state.db, external_run_id) do
+      {:ok, run} ->
+        case Observations.get_messages_for_run(state.db, run.id) do
+          {:ok, messages} ->
+            messages =
+              Enum.map(messages, fn {execution_id, timestamp, level, template, values} ->
+                {execution_id, timestamp, level, template,
+                 Map.new(values, fn {k, v} -> {k, build_value(v, state.db)} end)}
+              end)
+
+            {:ok, ref, state} = add_listener(state, {:logs, run.id}, pid)
+            {:reply, {:ok, ref, messages}, state}
+        end
     end
   end
 
@@ -1241,7 +1282,7 @@ defmodule Coflux.Orchestration.Server do
                     |> send_session(
                       session_id,
                       {:execute, execution.execution_id, execution.repository, execution.target,
-                       arguments, execution.run_external_id}
+                       arguments}
                     )
 
                   {state, [{execution, assigned_at} | assigned], unassigned}
@@ -1684,8 +1725,8 @@ defmodule Coflux.Orchestration.Server do
 
   defp resolve_references(db, references) do
     Enum.map(references, fn
-      {:block, serialiser, blob_key, size, metadata} ->
-        {:block, serialiser, blob_key, size, metadata}
+      {:fragment, serialiser, blob_key, size, metadata} ->
+        {:fragment, serialiser, blob_key, size, metadata}
 
       {:execution, execution_id} ->
         {:execution, execution_id, resolve_execution(db, execution_id)}
@@ -1695,20 +1736,20 @@ defmodule Coflux.Orchestration.Server do
     end)
   end
 
-  defp build_value(value, state) do
+  defp build_value(value, db) do
     case value do
       {:raw, data, references} ->
-        {:raw, data, resolve_references(state.db, references)}
+        {:raw, data, resolve_references(db, references)}
 
       {:blob, key, size, references} ->
-        {:blob, key, size, resolve_references(state.db, references)}
+        {:blob, key, size, resolve_references(db, references)}
     end
   end
 
   defp build_result(result, state) do
     case result do
       {:value, value} ->
-        {:value, build_value(value, state)}
+        {:value, build_value(value, state.db)}
 
       {:deferred, execution_id} ->
         {:deferred, execution_id, resolve_execution(state.db, execution_id)}
@@ -2008,7 +2049,7 @@ defmodule Coflux.Orchestration.Server do
             {:pending, _} -> false
           end
 
-        {:block, _serialiser, _blob_key, _size, _metadata} ->
+        {:fragment, _serialiser, _blob_key, _size, _metadata} ->
           true
 
         {:asset, _asset_id} ->

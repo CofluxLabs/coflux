@@ -128,7 +128,7 @@ class RecordCheckpointRequest(t.NamedTuple):
 
 class LogMessageRequest(t.NamedTuple):
     level: int
-    template: str
+    template: str | None
     labels: dict[str, t.Any]
     timestamp: int
 
@@ -226,12 +226,6 @@ class Channel:
         )
 
     def __enter__(self):
-        self._exit_stack.enter_context(
-            capture_streams(
-                stdout=lambda m: self.log_message(1, m),
-                stderr=lambda m: self.log_message(3, m),
-            )
-        )
         self._directory = self._exit_stack.enter_context(working_directory())
         self._exit_stack.enter_context(self._blob_manager)
         return self
@@ -362,13 +356,17 @@ class Channel:
         resolved_arguments = self._resolve_arguments(arguments)
         self._notify(ExecutingNotification())
         try:
-            value = target.fn(*resolved_arguments)
-            self._record_result(value)
+            with capture_streams(
+                stdout=lambda m: self.log_message(1, m),
+                stderr=lambda m: self.log_message(3, m),
+            ):
+                value = target.fn(*resolved_arguments)
         except KeyboardInterrupt:
-            # TODO: record?
             pass
         except Exception as e:
             self._record_error(e)
+        else:
+            self._record_result(value)
 
     def _deserialise_result(self, result: models.Result):
         match result:
@@ -479,9 +477,21 @@ class Channel:
             raise Exception(f"unrecognised asset type ({asset_type})")
         return target
 
-    def log_message(self, level, template, **kwargs):
+    def log_message(self, level, template: str | None, **kwargs):
         timestamp = time.time() * 1000
-        self._notify(LogMessageRequest(level, str(template), kwargs, int(timestamp)))
+
+        labels = {
+            key: self._serialisation_manager.serialise(value)
+            for key, value in kwargs.items()
+        }
+        self._notify(
+            LogMessageRequest(
+                level,
+                str(template) if template is not None else None,
+                labels,
+                int(timestamp),
+            )
+        )
 
 
 def get_channel() -> Channel | None:
@@ -538,8 +548,8 @@ def _json_safe_reference(reference: models.Reference) -> t.Any:
             return ["execution", execution_id]
         case ("asset", asset_id):
             return ["asset", asset_id]
-        case ("block", serialiser, blob_key, size, metadata):
-            return ["block", serialiser, blob_key, size, metadata]
+        case ("fragment", serialiser, blob_key, size, metadata):
+            return ["fragment", serialiser, blob_key, size, metadata]
         case other:
             raise Exception(f"unhandled reference type ({other})")
 
@@ -567,8 +577,8 @@ def _parse_reference(reference) -> models.Reference:
             return ("execution", execution_id)
         case ["asset", asset_id]:
             return ("asset", asset_id)
-        case ["block", serialiser, blob_key, size, metadata]:
-            return ("block", serialiser, blob_key, size, metadata)
+        case ["fragment", serialiser, blob_key, size, metadata]:
+            return ("fragment", serialiser, blob_key, size, metadata)
         case other:
             raise Exception(f"unrecognised reference: {other}")
 

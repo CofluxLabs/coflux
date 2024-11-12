@@ -1,17 +1,19 @@
 defmodule Coflux.Topics.Logs do
   use Topical.Topic, route: ["projects", :project_id, "runs", :run_id, "logs", :environment_id]
 
-  alias Coflux.{Observation, Orchestration}
+  alias Coflux.Orchestration
+
+  import Coflux.TopicUtils
 
   def init(params) do
     project_id = Keyword.fetch!(params, :project_id)
     run_id = Keyword.fetch!(params, :run_id)
     environment_id = String.to_integer(Keyword.fetch!(params, :environment_id))
 
-    case Observation.subscribe(project_id, run_id, self()) do
-      {:ok, _ref, messages} ->
-        case Orchestration.subscribe_run(project_id, run_id, self()) do
-          {:ok, _run, _parent, steps, _ref} ->
+    case Orchestration.subscribe_run(project_id, run_id, self()) do
+      {:ok, _run, _parent, steps, _ref} ->
+        case Orchestration.subscribe_logs(project_id, run_id, self()) do
+          {:ok, _ref, messages} ->
             run_environment_id =
               steps
               |> Map.values()
@@ -38,7 +40,7 @@ defmodule Coflux.Topics.Logs do
             topic =
               messages
               |> Enum.filter(&(elem(&1, 0) in execution_ids))
-              |> Enum.map(&encode_message/1)
+              |> Enum.map(&build_message/1)
               |> Topic.new(%{
                 environment_ids: environment_ids,
                 execution_ids: execution_ids
@@ -50,53 +52,62 @@ defmodule Coflux.Topics.Logs do
   end
 
   def handle_info({:topic, _ref, notifications}, topic) do
-    execution_ids =
-      Enum.reduce(notifications, topic.state.execution_ids, fn notification, execution_ids ->
-        case notification do
-          {:step, _, _, _, _, _, _, _, _, execution_id, environment_id, _} ->
-            if environment_id in topic.state.environment_ids do
-              MapSet.put(execution_ids, execution_id)
-            else
-              execution_ids
-            end
-
-          {:execution, _, _, execution_id, environment_id, _, _} ->
-            if environment_id in topic.state.environment_ids do
-              MapSet.put(execution_ids, execution_id)
-            else
-              execution_ids
-            end
-
-          _other ->
-            execution_ids
-        end
-      end)
-
-    topic = put_in(topic.state.execution_ids, execution_ids)
-
+    topic = Enum.reduce(notifications, topic, &process_notification(&2, &1))
     {:ok, topic}
   end
 
-  def handle_info({:messages, _ref, messages}, topic) do
-    encoded =
+  defp process_notification(
+         topic,
+         {:step, _, _, _, _, _, _, _, _, _, execution_id, environment_id, _}
+       ) do
+    if environment_id in topic.state.environment_ids do
+      update_in(topic.state.execution_ids, &MapSet.put(&1, execution_id))
+    else
+      topic
+    end
+  end
+
+  defp process_notification(topic, {:execution, _, _, execution_id, environment_id, _, _}) do
+    if environment_id in topic.state.environment_ids do
+      update_in(topic.state.execution_ids, &MapSet.put(&1, execution_id))
+    else
+      topic
+    end
+  end
+
+  defp process_notification(topic, {:asset, _, _, _}), do: topic
+  defp process_notification(topic, {:assigned, _}), do: topic
+  defp process_notification(topic, {:result_dependency, _, _, _}), do: topic
+  defp process_notification(topic, {:asset_dependency, _, _, _, _, _}), do: topic
+  defp process_notification(topic, {:child, _, _}), do: topic
+  defp process_notification(topic, {:result, _, _, _}), do: topic
+  defp process_notification(topic, {:log_counts, _, _}), do: topic
+
+  defp process_notification(topic, {:messages, messages}) do
+    messages =
       messages
       |> Enum.filter(&(elem(&1, 0) in topic.state.execution_ids))
-      |> Enum.map(&encode_message/1)
+      |> Enum.map(&build_message/1)
 
-    topic = Topic.insert(topic, [], encoded)
-    {:ok, topic}
+    Topic.insert(topic, [], messages)
   end
 
-  defp encode_message({execution_id, timestamp, level, template, labels}) do
-    [execution_id, timestamp, encode_level(level), template, labels]
+  defp build_message({execution_id, timestamp, level, template, values}) do
+    [
+      execution_id,
+      timestamp,
+      encode_level(level),
+      template,
+      Map.new(values, fn {k, v} -> {k, build_value(v)} end)
+    ]
   end
 
   defp encode_level(level) do
     case level do
-      :stdout -> 0
-      :stderr -> 1
-      :debug -> 2
-      :info -> 3
+      :debug -> 0
+      :stdout -> 1
+      :info -> 2
+      :stderr -> 3
       :warning -> 4
       :error -> 5
     end

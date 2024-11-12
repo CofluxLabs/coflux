@@ -22,7 +22,7 @@ import usePrevious from "../hooks/usePrevious";
 import { useHoverContext } from "./HoverContext";
 import classNames from "classnames";
 import { createBlobStore } from "../blobs";
-import { useSetting } from "./SettingsProvider";
+import { useSetting } from "../settings";
 import Alert from "./common/Alert";
 
 type Entry = { path: string; size: number; type: string };
@@ -300,7 +300,7 @@ export default function AssetLink({
     [setHovered, assetId],
   );
   const handleMouseOut = useCallback(() => setHovered(undefined), []);
-  const blobStoresSetting = useSetting("blobStores");
+  const blobStoresSetting = useSetting(projectId, "blobStores");
   const primaryBlobStore = createBlobStore(blobStoresSetting[0]);
   return (
     <Fragment>

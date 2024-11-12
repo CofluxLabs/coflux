@@ -1,7 +1,7 @@
 defmodule Coflux.Handlers.Agent do
   import Coflux.Handlers.Utils
 
-  alias Coflux.{Orchestration, Observation, Projects}
+  alias Coflux.{Orchestration, Projects}
 
   def init(req, _opts) do
     qs = :cowboy_req.parse_qs(req)
@@ -23,12 +23,12 @@ defmodule Coflux.Handlers.Agent do
         # TODO: authenticate
         # TODO: monitor server?
         case connect(project_id, session_id, environment_name, launch_id, provides, concurrency) do
-          {:ok, session_id, executions} ->
+          {:ok, session_id, execution_ids} ->
             {[session_message(session_id)],
              %{
                project_id: project_id,
                session_id: session_id,
-               executions: executions
+               execution_ids: execution_ids
              }}
 
           {:error, :environment_invalid} ->
@@ -168,7 +168,8 @@ defmodule Coflux.Handlers.Agent do
           :ok =
             Orchestration.notify_terminated(state.project_id, execution_ids)
 
-          state = Map.update!(state, :executions, &Map.drop(&1, execution_ids))
+          state =
+            Map.update!(state, :execution_ids, &MapSet.difference(&1, MapSet.new(execution_ids)))
 
           {[], state}
         else
@@ -290,18 +291,22 @@ defmodule Coflux.Handlers.Agent do
 
       "log_messages" ->
         messages =
-          Enum.map(message["params"], fn [execution_id, timestamp, level, template, labels] ->
-            {execution_id, timestamp, parse_level(level), template, labels}
-          end)
+          Enum.reduce(
+            message["params"],
+            %{},
+            fn [execution_id, timestamp, level, template, values], acc ->
+              values = Map.new(values, fn {k, v} -> {k, parse_value(v)} end)
+              message = {timestamp, parse_level(level), template, values}
 
-        execution_ids = Enum.map(messages, &elem(&1, 0))
+              acc
+              |> Map.put_new(execution_id, [])
+              |> Map.update!(execution_id, &[message | &1])
+            end
+          )
 
-        if Enum.all?(execution_ids, &is_recognised_execution?(&1, state)) do
-          messages
-          |> Enum.group_by(&Map.fetch!(state.executions, elem(&1, 0)))
-          |> Enum.each(fn {run_id, messages} ->
-            # TODO: include environment?
-            Observation.write(state.project_id, run_id, messages)
+        if Enum.all?(Map.keys(messages), &is_recognised_execution?(&1, state)) do
+          Enum.each(messages, fn {execution_id, messages} ->
+            Orchestration.record_logs(state.project_id, execution_id, Enum.reverse(messages))
           end)
 
           {[], state}
@@ -315,9 +320,9 @@ defmodule Coflux.Handlers.Agent do
     {[], state}
   end
 
-  def websocket_info({:execute, execution_id, repository, target, arguments, run_id}, state) do
+  def websocket_info({:execute, execution_id, repository, target, arguments}, state) do
     arguments = Enum.map(arguments, &compose_value/1)
-    state = put_in(state.executions[execution_id], run_id)
+    state = Map.update!(state, :execution_ids, &MapSet.put(&1, execution_id))
     {[command_message("execute", [execution_id, repository, target, arguments])], state}
   end
 
@@ -335,8 +340,8 @@ defmodule Coflux.Handlers.Agent do
 
   defp connect(project_id, session_id, environment_name, launch_id, provides, concurrency) do
     if session_id do
-      with {:ok, executions} <- Orchestration.resume_session(project_id, session_id, self()) do
-        {:ok, session_id, executions}
+      with {:ok, execution_ids} <- Orchestration.resume_session(project_id, session_id, self()) do
+        {:ok, session_id, execution_ids}
       end
     else
       with {:ok, session_id} <-
@@ -348,13 +353,13 @@ defmodule Coflux.Handlers.Agent do
                concurrency,
                self()
              ) do
-        {:ok, session_id, %{}}
+        {:ok, session_id, MapSet.new()}
       end
     end
   end
 
   defp is_recognised_execution?(execution_id, state) do
-    Map.has_key?(state.executions, execution_id)
+    MapSet.member?(state.execution_ids, execution_id)
   end
 
   defp session_message(session_id) do
@@ -399,8 +404,8 @@ defmodule Coflux.Handlers.Agent do
 
   defp parse_references(references) do
     Enum.map(references, fn
-      ["block", serialiser, blob_key, size, metadata] ->
-        {:block, serialiser, blob_key, size, metadata}
+      ["fragment", serialiser, blob_key, size, metadata] ->
+        {:fragment, serialiser, blob_key, size, metadata}
 
       ["execution", execution_id] ->
         {:execution, execution_id}
@@ -461,8 +466,8 @@ defmodule Coflux.Handlers.Agent do
 
   defp compose_references(references) do
     Enum.map(references, fn
-      {:block, serialiser, blob_key, size, metadata} ->
-        ["block", serialiser, blob_key, size, metadata]
+      {:fragment, serialiser, blob_key, size, metadata} ->
+        ["fragment", serialiser, blob_key, size, metadata]
 
       {:execution, execution_id} ->
         ["execution", execution_id]
@@ -495,10 +500,10 @@ defmodule Coflux.Handlers.Agent do
 
   defp parse_level(level) do
     case level do
-      0 -> :stdout
-      1 -> :stderr
-      2 -> :debug
-      3 -> :info
+      0 -> :debug
+      1 -> :stdout
+      2 -> :info
+      3 -> :stderr
       4 -> :warning
       5 -> :error
     end

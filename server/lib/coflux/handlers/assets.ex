@@ -44,7 +44,7 @@ defmodule Coflux.Handlers.Assets do
     path = blob_path(blob_key)
 
     if File.exists?(path) do
-      stream = File.stream!(2048)
+      stream = File.stream!(path, 2048)
       content_type = Map.get(metadata, "type") || @default_mime_type
       stream_response(req, %{"content-type" => content_type}, stream)
     else

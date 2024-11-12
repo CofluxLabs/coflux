@@ -7,14 +7,13 @@ import {
   useState,
 } from "react";
 import classNames from "classnames";
-import { chunk, minBy, sortBy } from "lodash";
+import { minBy, sortBy } from "lodash";
 import { DateTime } from "luxon";
 import {
   Menu,
   MenuButton,
   MenuItem,
   MenuItems,
-  MenuSeparator,
   Popover,
   PopoverBackdrop,
   PopoverButton,
@@ -22,23 +21,19 @@ import {
 } from "@headlessui/react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  IconArrowRightBar,
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
-  IconDownload,
-  IconFunction,
   IconPinned,
   IconReload,
   IconWindowMaximize,
   IconWindowMinimize,
   IconX,
 } from "@tabler/icons-react";
-import * as settings from "../settings";
 
 import * as models from "../models";
 import Badge from "./Badge";
-import { buildUrl, humanSize, truncatePath } from "../utils";
+import { buildUrl, truncatePath } from "../utils";
 import Loading from "./Loading";
 import Button from "./common/Button";
 import RunLogs from "./RunLogs";
@@ -50,9 +45,7 @@ import EnvironmentLabel from "./EnvironmentLabel";
 import { useEnvironments, useLogs } from "../topics";
 import Tabs, { Tab } from "./common/Tabs";
 import Select from "./common/Select";
-import Alert from "./common/Alert";
-import { useSetting, useSettings } from "./SettingsProvider";
-import { createBlobStore } from "../blobs";
+import Value from "./Value";
 
 function getRunEnvironmentId(run: models.Run) {
   const initialStepId = minBy(
@@ -548,302 +541,6 @@ function Header({
         </div>
       </div>
     </div>
-  );
-}
-
-type DataProps = {
-  data: models.Data;
-  references: models.Reference[];
-  projectId: string;
-};
-
-function Data({ data, references, projectId }: DataProps) {
-  const blobStoresSetting = useSetting("blobStores");
-  if (Array.isArray(data)) {
-    return (
-      <Fragment>
-        [
-        {data.map((item, index) => (
-          <Fragment key={index}>
-            <Data data={item} references={references} projectId={projectId} />
-            {index < data.length - 1 && ",\u00a0"}
-          </Fragment>
-        ))}
-        ]
-      </Fragment>
-    );
-  } else if (data && typeof data == "object" && "type" in data) {
-    switch (data.type) {
-      case "set":
-        if (!data.items.length) {
-          return "∅";
-        } else {
-          return (
-            <Fragment>
-              {"{"}
-              {data.items.map((item, index) => (
-                <Fragment key={index}>
-                  <Data
-                    data={item}
-                    references={references}
-                    projectId={projectId}
-                  />
-                  {index < data.items.length - 1 && ",\u00a0"}
-                </Fragment>
-              ))}
-              {"}"}
-            </Fragment>
-          );
-        }
-      case "tuple":
-        return (
-          <Fragment>
-            (
-            {data.items.map((item, index) => (
-              <Fragment key={index}>
-                <Data
-                  data={item}
-                  references={references}
-                  projectId={projectId}
-                />
-                {index < data.items.length - 1 && ",\u00a0"}
-              </Fragment>
-            ))}
-            )
-          </Fragment>
-        );
-      case "dict":
-        return (
-          <Fragment>
-            {"{"}
-            {chunk(data.items, 2).map(([key, value], index) => (
-              <div
-                key={index}
-                className="pl-4 border-l border-slate-100 ml-1 whitespace-nowrap"
-              >
-                <Data
-                  data={key}
-                  references={references}
-                  projectId={projectId}
-                />
-                <IconArrowRightBar
-                  size={20}
-                  strokeWidth={1}
-                  className="text-slate-400 mx-1 inline-block"
-                />
-                <Data
-                  data={value}
-                  references={references}
-                  projectId={projectId}
-                />
-              </div>
-            ))}
-            {"}"}
-          </Fragment>
-        );
-      case "ref":
-        const reference = references[data.index];
-        switch (reference.type) {
-          case "block":
-            const primaryBlobStore = createBlobStore(blobStoresSetting[0]);
-            return (
-              <Menu>
-                <MenuButton className="bg-slate-100 rounded px-1.5 py-0.5 text-xs font-sans inline-flex gap-1">
-                  {reference.serialiser}
-                  <span className="text-slate-500">
-                    ({humanSize(reference.size)})
-                  </span>
-                  <IconChevronDown
-                    size={16}
-                    className="text-slate-600"
-                    strokeWidth={1.5}
-                  />
-                </MenuButton>
-                <MenuItems
-                  transition
-                  anchor="bottom"
-                  className="bg-white shadow-xl rounded-md origin-top transition duration-200 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
-                >
-                  <dl className="flex flex-col gap-1 p-2">
-                    {Object.entries(reference.metadata).map(([key, value]) => (
-                      <div key={key}>
-                        <dt className="text-xs text-slate-500">{key}</dt>
-                        <dd className="text-sm text-slate-900">
-                          {typeof value == "string"
-                            ? value
-                            : JSON.stringify(value)}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <MenuSeparator className="my-1 h-px bg-slate-100" />
-                  <MenuItem>
-                    <a
-                      href={primaryBlobStore.url(reference.blobKey)}
-                      download
-                      className="text-sm m-1 p-1 rounded-md data-[active]:bg-slate-100 flex items-center gap-1"
-                    >
-                      <IconDownload size={16} />
-                      Download
-                    </a>
-                  </MenuItem>
-                </MenuItems>
-              </Menu>
-            );
-          case "execution":
-            const execution = reference.execution;
-            return (
-              <StepLink
-                runId={execution.runId}
-                stepId={execution.stepId}
-                attempt={execution.attempt}
-                className="bg-slate-100 rounded px-0.5 hover:bg-slate-200 ring-offset-1 ring-slate-400"
-                hoveredClassName="ring-2"
-              >
-                <IconFunction size={16} className="inline-block" />
-              </StepLink>
-            );
-          case "asset":
-            return (
-              <AssetLink
-                projectId={projectId}
-                assetId={reference.assetId}
-                asset={reference.asset}
-                className="bg-slate-100 rounded px-0.5 ring-offset-1 ring-slate-400"
-                hoveredClassName="ring-2"
-              >
-                <AssetIcon asset={reference.asset} className="inline-block" />
-              </AssetLink>
-            );
-        }
-    }
-  } else if (typeof data == "string") {
-    return (
-      <span className="text-slate-400 whitespace-nowrap">
-        "<span className="text-green-700">{data}</span>"
-      </span>
-    );
-  } else if (typeof data == "number") {
-    return <span className="text-purple-700">{data}</span>;
-  } else if (data === true) {
-    return <span className="text-orange-700">True</span>;
-  } else if (data === false) {
-    return <span className="text-orange-700">False</span>;
-  } else if (data === null) {
-    return <span className="text-orange-700 italic">None</span>;
-  } else {
-    throw new Error(`Unexpected data type: ${data}`);
-  }
-}
-
-async function loadBlob(
-  blobStoresSetting: settings.BlobStoreSettings[],
-  blobKey: string,
-) {
-  for (const settings of blobStoresSetting) {
-    const store = createBlobStore(settings);
-    const result = await store.load(blobKey);
-    if (result !== undefined) {
-      return result;
-    }
-  }
-  return undefined;
-}
-
-type LoadBlobLinkProps = {
-  value: Extract<models.Value, { type: "blob" }>;
-  onLoad: () => void;
-};
-
-function LoadBlobLink({ value, onLoad }: LoadBlobLinkProps) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>();
-  const blobStoresSetting = useSetting("blobStores");
-  const handleLoadClick = useCallback(() => {
-    setError(undefined);
-    setLoading(true);
-    loadBlob(blobStoresSetting, value.key)
-      .then((data) => {
-        if (data !== undefined) {
-          sessionStorage.setItem(`blobs.${value.key}`, data);
-          onLoad();
-        } else {
-          setError("Not found");
-        }
-      })
-      .catch(setError)
-      .finally(() => setLoading(false));
-  }, [value.key, onLoad]);
-  return loading ? (
-    <span className="italic text-slate-500 text-sm">Loading...</span>
-  ) : error ? (
-    // TODO: prompt to configure settings
-    <Alert variant="danger">{error.toString()}</Alert>
-  ) : (
-    <Button size="sm" outline={true} onClick={handleLoadClick}>
-      Load ({humanSize(value.size)})
-    </Button>
-  );
-}
-
-function getValueData(value: models.Value) {
-  if (value.type == "raw") {
-    return value.data;
-  } else {
-    const json = sessionStorage.getItem(`blobs.${value.key}`);
-    if (json) {
-      return JSON.parse(json);
-    } else {
-      return undefined;
-    }
-  }
-}
-
-type ValueProps = {
-  value: models.Value;
-  projectId: string;
-  className?: string;
-  block?: boolean;
-};
-
-function Value({ value, projectId, className, block }: ValueProps) {
-  const [_, setCount] = useState(0);
-  const handleLoaded = useCallback(() => {
-    setCount((c) => c + 1);
-  }, []);
-  const handleUnloadClick = useCallback(() => {
-    if (value.type == "blob") {
-      sessionStorage.removeItem(`blobs.${value.key}`);
-      setCount((c) => c + 1);
-    }
-  }, [value]);
-  const data = getValueData(value);
-  return (
-    <span className={classNames(className, block ? "block" : "inline-block")}>
-      {data !== undefined ? (
-        <Fragment>
-          <div className="bg-white rounded p-1 border border-slate-300 font-mono text-sm overflow-auto">
-            <Data
-              data={data}
-              references={value.references}
-              projectId={projectId}
-            />
-          </div>
-          {value.type == "blob" && (
-            <Button
-              size="sm"
-              outline={true}
-              onClick={handleUnloadClick}
-              className="mt-1"
-            >
-              Unload
-            </Button>
-          )}
-        </Fragment>
-      ) : value.type == "blob" ? (
-        <LoadBlobLink value={value} onLoad={handleLoaded} />
-      ) : null}
-    </span>
   );
 }
 
@@ -1347,6 +1044,7 @@ function LogsSection({
             startTime={scheduledAt}
             logs={executionLogs}
             darkerTimestampRule={true}
+            projectId={projectId}
           />
         </div>
       )}
@@ -1452,6 +1150,33 @@ export default function StepDetail({
             <AssetsSection execution={execution} projectId={projectId} />
           )}
         </StepDetailTab>
+        <StepDetailTab
+          label={
+            <span className="flex gap-1 items-center">
+              Logs
+              {execution?.logCount ? (
+                <Badge
+                  title={execution.logCount.toString()}
+                  label={
+                    execution.logCount > 9
+                      ? "9+"
+                      : execution.logCount.toString()
+                  }
+                />
+              ) : null}
+            </span>
+          }
+          disabled={!execution?.assignedAt}
+        >
+          {execution?.assignedAt && (
+            <LogsSection
+              projectId={projectId}
+              runId={runId}
+              execution={execution}
+              activeEnvironmentId={activeEnvironmentId}
+            />
+          )}
+        </StepDetailTab>
         <StepDetailTab label="Timing">
           {execution && <ExecutionSection execution={execution} />}
         </StepDetailTab>
@@ -1466,16 +1191,6 @@ export default function StepDetail({
               />
               <DependenciesSection execution={execution} />
             </Fragment>
-          )}
-        </StepDetailTab>
-        <StepDetailTab label="Logs" disabled={!execution?.assignedAt}>
-          {execution?.assignedAt && (
-            <LogsSection
-              projectId={projectId}
-              runId={runId}
-              execution={execution}
-              activeEnvironmentId={activeEnvironmentId}
-            />
           )}
         </StepDetailTab>
       </Tabs>

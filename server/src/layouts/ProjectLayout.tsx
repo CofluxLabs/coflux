@@ -29,7 +29,6 @@ import {
   useProjects,
   useRepositories,
 } from "../topics";
-import SettingsProvider from "../components/SettingsProvider";
 import Header from "../components/Header";
 
 type PlayPauseButtonProps = {
@@ -163,7 +162,7 @@ export default function ProjectLayout() {
     project && environmentName && `${project.name} (${environmentName})`,
   );
   return (
-    <SettingsProvider projectId={projectId}>
+    <Fragment>
       <Header projectId={projectId!} activeEnvironmentName={environmentName} />
       <div className="flex-1 flex min-h-0">
         {repositories && (
@@ -203,7 +202,7 @@ export default function ProjectLayout() {
           <Outlet context={{ setActive }} />
         </div>
       </div>
-    </SettingsProvider>
+    </Fragment>
   );
 }
 

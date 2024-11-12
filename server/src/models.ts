@@ -173,6 +173,7 @@ export type Execution = {
   children: (string | Child)[];
   result: Result | null;
   assets: Record<string, Asset>;
+  logCount: number;
 };
 
 export type Step = {
@@ -200,6 +201,6 @@ export type LogMessage = [
   string,
   number,
   LogMessageLevel,
-  string,
-  Record<string, any>,
+  string | null,
+  Record<string, Value>,
 ];

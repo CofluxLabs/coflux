@@ -65,17 +65,17 @@ def checkpoint(*arguments: t.Any) -> None:
     return _get_channel().record_checkpoint(arguments)
 
 
-def log_debug(template: str, **kwargs) -> None:
+def log_debug(template: str | None = None, **kwargs) -> None:
     _get_channel().log_message(0, template, **kwargs)
 
 
-def log_info(template: str, **kwargs) -> None:
+def log_info(template: str | None = None, **kwargs) -> None:
     _get_channel().log_message(2, template, **kwargs)
 
 
-def log_warning(template: str, **kwargs) -> None:
+def log_warning(template: str | None = None, **kwargs) -> None:
     _get_channel().log_message(4, template, **kwargs)
 
 
-def log_error(template: str, **kwargs) -> None:
+def log_error(template: str | None = None, **kwargs) -> None:
     _get_channel().log_message(5, template, **kwargs)

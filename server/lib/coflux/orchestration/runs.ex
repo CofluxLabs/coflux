@@ -1,5 +1,5 @@
 defmodule Coflux.Orchestration.Runs do
-  alias Coflux.Orchestration.{Models, Results, TagSets}
+  alias Coflux.Orchestration.{Models, Results, Values, TagSets}
 
   import Coflux.Store
 
@@ -143,7 +143,7 @@ defmodule Coflux.Orchestration.Runs do
       [
         length(references)
         | Enum.flat_map(references, fn
-            {:block, serialiser, blob_key, _size, metadata} ->
+            {:fragment, serialiser, blob_key, _size, metadata} ->
               Enum.concat(
                 [1, serialiser, blob_key],
                 Enum.flat_map(metadata, fn {key, value} -> [key, Jason.encode!(value)] end)
@@ -278,7 +278,7 @@ defmodule Coflux.Orchestration.Runs do
               arguments
               |> Enum.with_index()
               |> Enum.map(fn {value, position} ->
-                {:ok, value_id} = Results.get_or_create_value(db, value, now)
+                {:ok, value_id} = Values.get_or_create_value(db, value)
                 {step_id, position, value_id}
               end)
             )
@@ -629,7 +629,7 @@ defmodule Coflux.Orchestration.Runs do
       {:ok, rows} ->
         values =
           Enum.map(rows, fn {value_id} ->
-            case Results.get_value_by_id(db, value_id) do
+            case Values.get_value_by_id(db, value_id) do
               {:ok, value} -> value
             end
           end)
