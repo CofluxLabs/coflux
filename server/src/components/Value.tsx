@@ -300,7 +300,12 @@ export default function Value({
     return () => window.removeEventListener("storage", handleStorageEvent);
   }, []);
   return (
-    <span className={classNames(className, block ? "block" : "inline-block")}>
+    <span
+      className={classNames(
+        className,
+        block ? "block" : "inline-block align-middle",
+      )}
+    >
       {data !== undefined ? (
         <Fragment>
           <div
