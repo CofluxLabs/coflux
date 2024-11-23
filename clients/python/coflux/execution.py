@@ -745,7 +745,7 @@ class Execution:
                 )
             case LogMessageRequest(level, template, values, timestamp):
                 self._server_notify(
-                    "log_messages", ([self._id, timestamp, level, template, values])
+                    "log_messages", ([self._id, timestamp, level, template, values],)
                 )
             case other:
                 raise Exception(f"Received unhandled notify: {other!r}")
