@@ -300,13 +300,9 @@ def configure(
 
     path = _config_path()
     data = _read_config(path)
-    data.update(
-        {
-            "project": project,
-            "server": {"host": host},
-            "environment": environment,
-        }
-    )
+    data["project"] = project
+    data["environment"] = environment
+    data.setdefault("server", {})["host"] = host
     _write_config(path, data)
 
     click.secho(

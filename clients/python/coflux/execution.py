@@ -129,7 +129,7 @@ class RecordCheckpointRequest(t.NamedTuple):
 class LogMessageRequest(t.NamedTuple):
     level: int
     template: str | None
-    labels: dict[str, t.Any]
+    values: dict[str, t.Any]
     timestamp: int
 
 
@@ -480,7 +480,7 @@ class Channel:
     def log_message(self, level, template: str | None, **kwargs):
         timestamp = time.time() * 1000
 
-        labels = {
+        values = {
             key: self._serialisation_manager.serialise(value)
             for key, value in kwargs.items()
         }
@@ -488,7 +488,7 @@ class Channel:
             LogMessageRequest(
                 level,
                 str(template) if template is not None else None,
-                labels,
+                values,
                 int(timestamp),
             )
         )
@@ -743,9 +743,9 @@ class Execution:
                     "record_checkpoint",
                     (self._id, _json_safe_arguments(arguments)),
                 )
-            case LogMessageRequest(level, template, labels, timestamp):
+            case LogMessageRequest(level, template, values, timestamp):
                 self._server_notify(
-                    "log_messages", ([self._id, timestamp, level, template, labels],)
+                    "log_messages", ([self._id, timestamp, level, template, values],)
                 )
             case other:
                 raise Exception(f"Received unhandled notify: {other!r}")

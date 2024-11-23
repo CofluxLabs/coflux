@@ -8,7 +8,7 @@ Each task is started in a dedicated temporary directory. Assets must be persiste
 
 ## Persisting assets
 
-'Persist' an assets by passing a path (either a `pathlib.Path`, or a string) to `coflux.persist_asset(...)`. This function returns a `coflux.Asset`, which can then be shared between tasks (i.e., as an argument or a result).
+'Persist' an assets by passing a path (either a `pathlib.Path`, or a string) to `cf.persist_asset(...)`. This function returns a `cf.Asset`, which can then be shared between tasks (i.e., as an argument or a result).
 
 ```python
 import coflux as cf
@@ -24,20 +24,20 @@ def my_task():
 
 ## Restoring assets
 
-An asset persisted by one task can be 'restored' by another, using `coflux.restore_asset(...)`. This returns the path where the asset has been restored:
+An asset persisted by one task can be 'restored' by another, using `asset.restore(...)`. This returns the path where the asset has been restored:
 
 ```python
 @cf.workflow()
 def my_workflow():
     asset = my_task()
-    path = cf.restore_asset(asset)
+    path = asset.restore()
     print(path.read_text())
 ```
 
 By default an asset is restored to the same path that it was persisted from. To change this, the `to` argument can be specified (as a `pathlib.Path`, or string):
 
 ```python
-cf.restore_asset(asset, to="other/dir")
+asset.restore(to="other/dir")
 ```
 
 ## Directories

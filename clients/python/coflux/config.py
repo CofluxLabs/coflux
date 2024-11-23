@@ -31,7 +31,7 @@ def _default_blob_stores():
 
 
 class BlobsConfig(pydantic.BaseModel):
-    threshold: int | None = None
+    threshold: int = 200
     stores: list[BlobStoreConfig] = pydantic.Field(default_factory=_default_blob_stores)
 
 
