@@ -1,3 +1,12 @@
+## 0.5.0
+
+Enhancements:
+
+- Displays assets as nodes in the graph view of the UI.
+- Handles updated serialisation approach.
+- Adds project settings dialog to UI (supports configuring blob stores).
+- Supports fetching blobs from S3 blob store in UI.
+
 ## 0.4.0
 
 Enhancements:

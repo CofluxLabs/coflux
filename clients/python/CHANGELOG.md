@@ -1,3 +1,18 @@
+## 0.5.0
+
+Enhancements:
+
+- Updates CLI configuration to use TOML (instead of YAML).
+- Uses new serialisation format, and adds serialisers for Pandas, Pydantic and pickle.
+- Supports using S3 as blob store.
+- Replaces `cf.restore_asset(asset)` with `asset.restore()` (for consistency with `execution.result()`).
+- More types can be passed to log functions (including executions and assets), and specifying a log 'template' is now optional.
+
+Fixes:
+
+- Fixes submitting a workflow run through the CLI uses the workflow configuration registered with the server, matching the behaviour of the UI.
+- Fixes flushing stdout/stderr at end of execution.
+
 ## 0.4.0
 
 Enhancements:
