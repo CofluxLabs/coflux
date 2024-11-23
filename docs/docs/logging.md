@@ -1,6 +1,6 @@
 # Logging
 
-Log messages can be recorded from tasks using `log_debug`, `log_info`, `log_warning` and `log_error`. In each case the function accepts a 'template' and a set of labels. Labels will be substituted into the template, or shown alongside if they aren't present in the template. For example:
+Log messages can be recorded from tasks using `log_debug`, `log_info`, `log_warning` and `log_error`. In each case the function accepts a 'template' and a set of values. Values will be substituted into the template, or shown alongside if a placeholder isn't present in the template. For example:
 
 ```python
 import coflux as cf
