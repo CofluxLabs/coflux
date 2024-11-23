@@ -1,3 +1,5 @@
+import { toPairs } from "lodash";
+
 export class RequestError extends Error {
   readonly code: string;
   readonly details: Record<string, string>;
@@ -9,12 +11,7 @@ export class RequestError extends Error {
   }
 }
 
-async function request(name: string, data: Record<string, any>) {
-  const res = await fetch(`/api/${name}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
+async function handleResponse(res: Response) {
   if (res.status == 200) {
     return await res.json();
   } else if (res.status == 204) {
@@ -27,8 +24,29 @@ async function request(name: string, data: Record<string, any>) {
   }
 }
 
+async function post(name: string, data: Record<string, any>) {
+  const res = await fetch(`/api/${name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return await handleResponse(res);
+}
+
+async function get(name: string, params?: Record<string, any>) {
+  const queryString =
+    params &&
+    toPairs(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join("&");
+  const res = await fetch(
+    `/api/${name}${queryString ? `?${queryString}` : ""}`,
+  );
+  return await handleResponse(res);
+}
+
 export function createProject(projectName: string) {
-  return request("create_project", { projectName });
+  return post("create_project", { projectName });
 }
 
 export function createEnvironment(
@@ -36,15 +54,15 @@ export function createEnvironment(
   name: string,
   baseId: string | null,
 ) {
-  return request("create_environment", { projectId, name, baseId });
+  return post("create_environment", { projectId, name, baseId });
 }
 
 export function pauseEnvironment(projectId: string, environmentId: string) {
-  return request("pause_environment", { projectId, environmentId });
+  return post("pause_environment", { projectId, environmentId });
 }
 
 export function resumeEnvironment(projectId: string, environmentId: string) {
-  return request("resume_environment", { projectId, environmentId });
+  return post("resume_environment", { projectId, environmentId });
 }
 
 export function submitWorkflow(
@@ -73,7 +91,7 @@ export function submitWorkflow(
     requires: Record<string, string[]>;
   }>,
 ) {
-  return request("submit_workflow", {
+  return post("submit_workflow", {
     ...options,
     projectId,
     repository,
@@ -93,7 +111,7 @@ export function startSensor(
     requires: Record<string, string[]>;
   }>,
 ) {
-  return request("start_sensor", {
+  return post("start_sensor", {
     ...options,
     projectId,
     repository,
@@ -108,9 +126,17 @@ export function rerunStep(
   stepId: string,
   environmentName: string,
 ) {
-  return request("rerun_step", { projectId, stepId, environmentName });
+  return post("rerun_step", { projectId, stepId, environmentName });
 }
 
 export function cancelRun(projectId: string, runId: string) {
-  return request("cancel_run", { projectId, runId });
+  return post("cancel_run", { projectId, runId });
+}
+
+export function search(
+  projectId: string,
+  environmentId: string,
+  query: string,
+) {
+  return get("search", { projectId, environmentId, query });
 }

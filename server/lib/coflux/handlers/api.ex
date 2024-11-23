@@ -383,6 +383,24 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
+  defp handle(req, "GET", ["search"]) do
+    qs = :cowboy_req.parse_qs(req)
+    project_id = get_query_param(qs, "projectId")
+    # TODO: handle parse error
+    {:ok, environment_id} = parse_environment_id(get_query_param(qs, "environmentId"))
+    query = get_query_param(qs, "query")
+
+    case Topical.execute(
+           Coflux.TopicalRegistry,
+           ["projects", project_id, "search", environment_id],
+           "query",
+           {query}
+         ) do
+      {:ok, matches} ->
+        json_response(req, %{"matches" => matches})
+    end
+  end
+
   defp handle(req, _method, _path) do
     json_error_response(req, "not_found", status: 404)
   end

@@ -2,10 +2,15 @@ import { Fragment, useCallback, useState } from "react";
 import { useEnvironments, useProjects } from "../topics";
 import { findKey } from "lodash";
 import Logo from "./Logo";
-import { IconChevronCompactRight, IconSettings } from "@tabler/icons-react";
+import {
+  IconChevronCompactRight,
+  IconMinusVertical,
+  IconSettings,
+} from "@tabler/icons-react";
 import ProjectSelector from "./ProjectSelector";
 import EnvironmentSelector from "./EnvironmentSelector";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
+import SearchInput from "./SearchInput";
 
 type Props = {
   projectId?: string;
@@ -41,9 +46,18 @@ export default function Header({ projectId, activeEnvironmentName }: Props) {
             </div>
           </Fragment>
         )}
-        <span className="flex-1"></span>
+        <div className="flex-1"></div>
         {projectId && (
           <Fragment>
+            {activeEnvironmentId && (
+              <Fragment>
+                <SearchInput
+                  projectId={projectId}
+                  environmentId={activeEnvironmentId}
+                />
+                <IconMinusVertical size={16} className="text-white/40" />
+              </Fragment>
+            )}
             <ProjectSettingsDialog
               projectId={projectId}
               open={settingsOpen}
