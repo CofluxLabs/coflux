@@ -17,7 +17,7 @@ export default function RunPage() {
   const run = useRun(projectId, runId, activeEnvironmentId);
   useEffect(() => {
     if (run) {
-      const page = run.recurrent ? "runs" : "graph";
+      const page = run.recurrent ? "children" : "graph";
       navigate(
         buildUrl(
           `/projects/${projectId}/runs/${runId}/${page}`,

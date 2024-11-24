@@ -186,7 +186,7 @@ export default function RunLayout() {
           )}
           <div className="grow flex flex-col">
             <div className="border-b px-4">
-              {run.recurrent && <Tab page="runs">Runs</Tab>}
+              {run.recurrent && <Tab page="children">Children</Tab>}
               {!run.recurrent && <Tab page="graph">Graph</Tab>}
               {!run.recurrent && <Tab page="timeline">Timeline</Tab>}
               <Tab page="logs">Logs</Tab>

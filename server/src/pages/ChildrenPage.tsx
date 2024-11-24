@@ -7,8 +7,7 @@ import { useContext } from "../layouts/RunLayout";
 import { buildUrl } from "../utils";
 import StepLink from "../components/StepLink";
 
-// TODO: better name for page
-export default function RunsPage() {
+export default function ChildrenPage() {
   const { run } = useContext();
   const { project: projectId, run: runId } = useParams();
   const [searchParams] = useSearchParams();
