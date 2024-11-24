@@ -19,10 +19,18 @@ defmodule Coflux.Orchestration.Manifests do
                     insert_many(
                       db,
                       :workflows,
-                      {:manifest_id, :name, :parameter_set_id, :wait_for, :cache_params,
-                       :cache_max_age, :cache_namespace, :cache_version, :defer_params, :delay,
-                       :retry_limit, :retry_delay_min, :retry_delay_max, :requires_tag_set_id},
+                      {:manifest_id, :name, :instruction_id, :parameter_set_id, :wait_for,
+                       :cache_params, :cache_max_age, :cache_namespace, :cache_version,
+                       :defer_params, :delay, :retry_limit, :retry_delay_min, :retry_delay_max,
+                       :requires_tag_set_id},
                       Enum.map(manifest.workflows, fn {name, workflow} ->
+                        {:ok, instruction_id} =
+                          if workflow.instruction do
+                            get_or_create_instruction_id(db, workflow.instruction)
+                          else
+                            {:ok, nil}
+                          end
+
                         {:ok, requires_tag_set_id} =
                           if workflow.requires do
                             TagSets.get_or_create_tag_set_id(db, workflow.requires)
@@ -35,6 +43,7 @@ defmodule Coflux.Orchestration.Manifests do
                             {
                               manifest_id,
                               name,
+                              instruction_id,
                               parameter_set_id,
                               encode_params_set(workflow.wait_for),
                               if(workflow.cache, do: encode_params_list(workflow.cache.params)),
@@ -56,8 +65,16 @@ defmodule Coflux.Orchestration.Manifests do
                     insert_many(
                       db,
                       :sensors,
-                      {:manifest_id, :name, :parameter_set_id, :requires_tag_set_id},
+                      {:manifest_id, :name, :instruction_id, :parameter_set_id,
+                       :requires_tag_set_id},
                       Enum.map(manifest.sensors, fn {name, sensor} ->
+                        {:ok, instruction_id} =
+                          if sensor.instruction do
+                            get_or_create_instruction_id(db, sensor.instruction)
+                          else
+                            {:ok, nil}
+                          end
+
                         {:ok, requires_tag_set_id} =
                           if sensor.requires do
                             TagSets.get_or_create_tag_set_id(db, sensor.requires)
@@ -67,7 +84,8 @@ defmodule Coflux.Orchestration.Manifests do
 
                         case get_or_create_parameter_set_id(db, sensor.parameters) do
                           {:ok, parameter_set_id} ->
-                            {manifest_id, name, parameter_set_id, requires_tag_set_id}
+                            {manifest_id, name, instruction_id, parameter_set_id,
+                             requires_tag_set_id}
                         end
                       end)
                     )
@@ -166,7 +184,7 @@ defmodule Coflux.Orchestration.Manifests do
     case query_one(
            db,
            """
-           SELECT w.parameter_set_id, w.wait_for, w.cache_params, w.cache_max_age, w.cache_namespace, w.cache_version, w.defer_params, w.delay, w.retry_limit, w.retry_delay_min, w.retry_delay_max, w.requires_tag_set_id
+           SELECT w.parameter_set_id, w.instruction_id, w.wait_for, w.cache_params, w.cache_max_age, w.cache_namespace, w.cache_version, w.defer_params, w.delay, w.retry_limit, w.retry_delay_min, w.retry_delay_max, w.requires_tag_set_id
            FROM environment_manifests AS em
            LEFT JOIN workflows AS w ON w.manifest_id = em.manifest_id
            WHERE em.environment_id = ?1 AND em.repository = ?2 AND w.name = ?3
@@ -179,12 +197,13 @@ defmodule Coflux.Orchestration.Manifests do
         {:ok, nil}
 
       {:ok,
-       {parameter_set_id, wait_for, cache_params, cache_max_age, cache_namespace, cache_version,
-        defer_params, delay, retry_limit, retry_delay_min, retry_delay_max,
+       {parameter_set_id, instruction_id, wait_for, cache_params, cache_max_age, cache_namespace,
+        cache_version, defer_params, delay, retry_limit, retry_delay_min, retry_delay_max,
         requires_tag_set_id}} ->
         build_workflow(
           db,
           parameter_set_id,
+          instruction_id,
           wait_for,
           cache_params,
           cache_max_age,
@@ -204,7 +223,7 @@ defmodule Coflux.Orchestration.Manifests do
     case query_one(
            db,
            """
-           SELECT s.parameter_set_id, s.requires_tag_set_id
+           SELECT s.parameter_set_id, s.instruction_id, s.requires_tag_set_id
            FROM environment_manifests AS em
            LEFT JOIN sensors AS s ON s.manifest_id = em.manifest_id
            WHERE em.environment_id = ?1 AND em.repository = ?2 AND s.name = ?3
@@ -216,8 +235,8 @@ defmodule Coflux.Orchestration.Manifests do
       {:ok, nil} ->
         {:ok, nil}
 
-      {:ok, {parameter_set_id, requires_tag_set_id}} ->
-        build_sensor(db, parameter_set_id, requires_tag_set_id)
+      {:ok, {parameter_set_id, instruction_id, requires_tag_set_id}} ->
+        build_sensor(db, parameter_set_id, instruction_id, requires_tag_set_id)
     end
   end
 
@@ -225,7 +244,7 @@ defmodule Coflux.Orchestration.Manifests do
     case query(
            db,
            """
-           SELECT name, parameter_set_id, wait_for, cache_params, cache_max_age, cache_namespace, cache_version, defer_params, delay, retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id
+           SELECT name, instruction_id, parameter_set_id, wait_for, cache_params, cache_max_age, cache_namespace, cache_version, defer_params, delay, retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id
            FROM workflows
            WHERE manifest_id = ?1
            """,
@@ -233,13 +252,14 @@ defmodule Coflux.Orchestration.Manifests do
          ) do
       {:ok, rows} ->
         workflows =
-          Map.new(rows, fn {name, parameter_set_id, wait_for, cache_params, cache_max_age,
-                            cache_namespace, cache_version, defer_params, delay, retry_limit,
-                            retry_delay_min, retry_delay_max, requires_tag_set_id} ->
+          Map.new(rows, fn {name, instruction_id, parameter_set_id, wait_for, cache_params,
+                            cache_max_age, cache_namespace, cache_version, defer_params, delay,
+                            retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id} ->
             {:ok, workflow} =
               build_workflow(
                 db,
                 parameter_set_id,
+                instruction_id,
                 wait_for,
                 cache_params,
                 cache_max_age,
@@ -264,7 +284,7 @@ defmodule Coflux.Orchestration.Manifests do
     case query(
            db,
            """
-           SELECT name, parameter_set_id, requires_tag_set_id
+           SELECT name, parameter_set_id, instruction_id, requires_tag_set_id
            FROM sensors
            WHERE manifest_id = ?1
            """,
@@ -272,8 +292,10 @@ defmodule Coflux.Orchestration.Manifests do
          ) do
       {:ok, rows} ->
         sensors =
-          Map.new(rows, fn {name, parameter_set_id, requires_tag_set_id} ->
-            {:ok, sensor} = build_sensor(db, parameter_set_id, requires_tag_set_id)
+          Map.new(rows, fn {name, parameter_set_id, instruction_id, requires_tag_set_id} ->
+            {:ok, sensor} =
+              build_sensor(db, parameter_set_id, instruction_id, requires_tag_set_id)
+
             {name, sensor}
           end)
 
@@ -397,11 +419,8 @@ defmodule Coflux.Orchestration.Manifests do
           if(workflow.retries, do: Integer.to_string(workflow.retries.limit), else: ""),
           if(workflow.retries, do: Integer.to_string(workflow.retries.delay_min), else: ""),
           if(workflow.retries, do: Integer.to_string(workflow.retries.delay_max), else: ""),
-          workflow.requires
-          |> Enum.sort()
-          |> Enum.map_join(";", fn {key, values} ->
-            "#{key}=#{values |> Enum.sort() |> Enum.join(",")}"
-          end)
+          hash_requires(workflow.requires),
+          workflow.instruction || ""
         ]
       end)
 
@@ -411,7 +430,12 @@ defmodule Coflux.Orchestration.Manifests do
   defp hash_manifest_sensors(sensors) do
     data =
       Enum.map(sensors, fn {name, sensor} ->
-        [name, hash_parameter_set(sensor.parameters)]
+        [
+          name,
+          hash_parameter_set(sensor.parameters),
+          hash_requires(sensor.requires),
+          sensor.instruction || ""
+        ]
       end)
 
     :crypto.hash(:sha256, Enum.intersperse(data, 0))
@@ -420,6 +444,7 @@ defmodule Coflux.Orchestration.Manifests do
   defp build_workflow(
          db,
          parameter_set_id,
+         instruction_id,
          wait_for,
          cache_params,
          cache_max_age,
@@ -470,6 +495,7 @@ defmodule Coflux.Orchestration.Manifests do
     {:ok,
      %{
        parameters: parameters,
+       instruction_id: instruction_id,
        wait_for: decode_params_set(wait_for),
        cache: cache,
        defer: defer,
@@ -479,7 +505,7 @@ defmodule Coflux.Orchestration.Manifests do
      }}
   end
 
-  defp build_sensor(db, parameter_set_id, requires_tag_set_id) do
+  defp build_sensor(db, parameter_set_id, instruction_id, requires_tag_set_id) do
     {:ok, parameters} = get_parameter_set(db, parameter_set_id)
 
     {:ok, requires} =
@@ -492,8 +518,27 @@ defmodule Coflux.Orchestration.Manifests do
     {:ok,
      %{
        parameters: parameters,
+       instruction_id: instruction_id,
        requires: requires
      }}
+  end
+
+  defp get_or_create_instruction_id(db, content) do
+    hash = :crypto.hash(:sha256, content)
+
+    case query_one(db, "SELECT id FROM instructions WHERE hash = ?1", {hash}) do
+      {:ok, {id}} ->
+        {:ok, id}
+
+      {:ok, nil} ->
+        insert_one(db, :instructions, %{hash: hash, content: content})
+    end
+  end
+
+  def get_instruction(db, instruction_id) do
+    case query_one(db, "SELECT content FROM instructions WHERE id = ?1", {instruction_id}) do
+      {:ok, {content}} -> {:ok, content}
+    end
   end
 
   defp get_or_create_parameter_set_id(db, parameters) do
@@ -548,6 +593,14 @@ defmodule Coflux.Orchestration.Manifests do
       |> Enum.intersperse(0)
 
     :crypto.hash(:sha256, data)
+  end
+
+  defp hash_requires(requires) do
+    requires
+    |> Enum.sort()
+    |> Enum.map_join(";", fn {key, values} ->
+      "#{key}=#{values |> Enum.sort() |> Enum.join(",")}"
+    end)
   end
 
   defp encode_params_list(params) do

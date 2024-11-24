@@ -43,6 +43,7 @@ class Target(t.NamedTuple):
     retries: Retries | None
     memo: list[int] | bool
     requires: Requires | None
+    instruction: str | None
     is_stub: bool
 
 

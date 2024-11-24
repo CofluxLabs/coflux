@@ -17,10 +17,11 @@ defmodule Coflux.Topics.Workflow do
            environment_id,
            self()
          ) do
-      {:ok, workflow, runs, ref} ->
+      {:ok, workflow, instruction, runs, ref} ->
         value =
           %{
             parameters: if(workflow, do: build_parameters(workflow.parameters)),
+            instruction: instruction,
             configuration: build_configuration(workflow),
             runs: build_runs(runs)
           }
@@ -40,6 +41,7 @@ defmodule Coflux.Topics.Workflow do
   defp process_notification({:target, target}, topic) do
     topic
     |> Topic.set([:parameters], build_parameters(target.parameters))
+    |> Topic.set([:instruction], target.instruction)
     |> Topic.set([:configuration], build_configuration(target))
   end
 

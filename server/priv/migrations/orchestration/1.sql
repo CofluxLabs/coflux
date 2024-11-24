@@ -30,11 +30,18 @@ CREATE TABLE manifests (
   hash BLOB NOT NULL UNIQUE
 );
 
+CREATE TABLE instructions (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL UNIQUE,
+  content TEXT NOT NULL
+);
+
 CREATE TABLE workflows (
   id INTEGER PRIMARY KEY,
   manifest_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   parameter_set_id INTEGER NOT NULL,
+  instruction_id INTEGER,
   wait_for INTEGER NOT NULL,
   cache_params TEXT,
   cache_max_age INTEGER,
@@ -48,6 +55,7 @@ CREATE TABLE workflows (
   requires_tag_set_id INTEGER,
   UNIQUE (manifest_id, name),
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE,
+  FOREIGN KEY (instruction_id) REFERENCES instructions ON DELETE RESTRICT,
   FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE RESTRICT,
   FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
@@ -57,6 +65,7 @@ CREATE TABLE sensors (
   manifest_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   parameter_set_id INTEGER NOT NULL,
+  instruction_id INTEGER,
   requires_tag_set_id INTEGER,
   UNIQUE (manifest_id, name),
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE,

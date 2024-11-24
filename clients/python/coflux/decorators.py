@@ -143,6 +143,7 @@ def _build_definition(
         _parse_retries(retries),
         _parse_memo(memo, parameters_),
         _parse_requires(requires),
+        inspect.getdoc(fn),
         is_stub,
     )
 
