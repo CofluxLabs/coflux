@@ -107,7 +107,7 @@ function DetailPanel({
             maximised ? "rounded-lg" : "rounded-md",
           )}
         >
-          {stepIdOrPrevious && (
+          {stepIdOrPrevious && run.steps[stepIdOrPrevious] && (
             <StepDetail
               runId={runId}
               stepId={stepIdOrPrevious}
