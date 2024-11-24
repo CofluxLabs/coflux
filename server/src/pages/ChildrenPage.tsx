@@ -1,17 +1,14 @@
 import { Fragment } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { DateTime } from "luxon";
 
 import * as models from "../models";
 import { useContext } from "../layouts/RunLayout";
-import { buildUrl } from "../utils";
 import StepLink from "../components/StepLink";
 
 export default function ChildrenPage() {
   const { run } = useContext();
-  const { project: projectId, run: runId } = useParams();
-  const [searchParams] = useSearchParams();
-  const environmentName = searchParams.get("environment") || undefined;
+  const { run: runId } = useParams();
   const initialStepId = Object.keys(run.steps).find(
     (stepId) => !run.steps[stepId].parentId,
   )!;
@@ -59,21 +56,20 @@ export default function ChildrenPage() {
                               </span>
                             </td>
                             <td>
-                              <Link
-                                to={buildUrl(
-                                  `/projects/${projectId}/runs/${child.runId}`,
-                                  {
-                                    environment: environmentName,
-                                  },
-                                )}
+                              <StepLink
+                                runId={child.runId}
+                                stepId={child.stepId}
+                                attempt={1}
+                                className="rounded text-sm ring-offset-1 px-1"
+                                hoveredClassName="ring-2 ring-slate-300"
                               >
                                 <span className="font-mono">
                                   {child.target}
                                 </span>{" "}
-                                <span className="text-slate-500 text-sm">
+                                <span className="text-slate-500 text-xs">
                                   ({child.repository})
                                 </span>
-                              </Link>
+                              </StepLink>
                             </td>
                           </tr>
                         );
