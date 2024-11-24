@@ -138,6 +138,10 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:subscribe_logs, run_id, pid})
   end
 
+  def subscribe_targets(project_id, environment_id, pid) do
+    call_server(project_id, {:subscribe_targets, environment_id, pid})
+  end
+
   def unsubscribe(project_id, ref) do
     cast_server(project_id, {:unsubscribe, ref})
   end

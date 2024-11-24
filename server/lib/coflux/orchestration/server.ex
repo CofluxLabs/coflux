@@ -267,8 +267,19 @@ defmodule Coflux.Orchestration.Server do
                 state
               end)
               |> notify_listeners(
-                {{:repositories, environment_id}, environment_id},
+                {:repositories, environment_id},
                 {:manifests, manifests}
+              )
+              |> notify_listeners(
+                {:targets, environment_id},
+                {:manifests,
+                 Map.new(manifests, fn {repository_name, targets} ->
+                   {repository_name,
+                    %{
+                      workflows: MapSet.new(Map.keys(targets.workflows)),
+                      sensors: MapSet.new(Map.keys(targets.sensors))
+                    }}
+                 end)}
               )
               |> flush_notifications()
 
@@ -482,7 +493,13 @@ defmodule Coflux.Orchestration.Server do
               state
             end
 
-          state = flush_notifications(state)
+          state =
+            state
+            |> notify_listeners(
+              {:targets, environment_id},
+              {:step, repository, target_name, external_run_id, external_step_id, attempt}
+            )
+            |> flush_notifications()
 
           {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
       end
@@ -580,7 +597,13 @@ defmodule Coflux.Orchestration.Server do
             state
           end
 
-        state = flush_notifications(state)
+        state =
+          state
+          |> notify_listeners(
+            {:targets, environment_id},
+            {:step, repository, target_name, run.external_id, external_step_id, attempt}
+          )
+          |> flush_notifications()
 
         {:reply, {:ok, run.external_id, external_step_id, execution_id}, state}
     end
@@ -974,7 +997,7 @@ defmodule Coflux.Orchestration.Server do
           end)
 
         {:ok, ref, state} =
-          add_listener(state, {{:repositories, environment_id}, environment_id}, pid)
+          add_listener(state, {:repositories, environment_id}, pid)
 
         {:reply, {:ok, manifests, executions, ref}, state}
     end
@@ -1168,6 +1191,13 @@ defmodule Coflux.Orchestration.Server do
             {:reply, {:ok, ref, messages}, state}
         end
     end
+  end
+
+  def handle_call({:subscribe_targets, environment_id, pid}, _from, state) do
+    # TODO: indicate which are archived (only workflows/sensors)
+    {:ok, targets} = Manifests.get_all_targets_for_environment(state.db, environment_id)
+    {:ok, ref, state} = add_listener(state, {:targets, environment_id}, pid)
+    {:reply, {:ok, targets, ref}, state}
   end
 
   def handle_cast({:unsubscribe, ref}, state) do
@@ -1674,6 +1704,10 @@ defmodule Coflux.Orchestration.Server do
               else: {:workflow, run_repository, run_target, environment_id}
             ),
             {:run, run.external_id, run.created_at}
+          )
+          |> notify_listeners(
+            {:targets, environment_id},
+            {:step, step.repository, step.target, run.external_id, step.external_id, attempt}
           )
 
         send(self(), :execute)
