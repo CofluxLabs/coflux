@@ -48,8 +48,8 @@ CREATE TABLE workflows (
   requires_tag_set_id INTEGER,
   UNIQUE (manifest_id, name),
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE,
-  FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE CASCADE,
-  FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
+  FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE RESTRICT,
+  FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
 
 CREATE TABLE sensors (
@@ -60,7 +60,7 @@ CREATE TABLE sensors (
   requires_tag_set_id INTEGER,
   UNIQUE (manifest_id, name),
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE,
-  FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE CASCADE
+  FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE RESTRICT
 );
 
 CREATE TABLE environments (
@@ -102,7 +102,7 @@ CREATE TABLE pool_definitions (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE,
   provides_tag_set_id INTEGER,
-  FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
+  FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
 
 CREATE TABLE pool_definition_repositories (
@@ -125,7 +125,7 @@ CREATE TABLE pools (
   pool_definition_id INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
-  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
+  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE RESTRICT
 );
 
 CREATE TABLE launches (
@@ -152,8 +152,8 @@ CREATE TABLE sessions (
   provides_tag_set_id INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
-  FOREIGN KEY (launch_id) REFERENCES launches ON DELETE CASCADE,
-  FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
+  FOREIGN KEY (launch_id) REFERENCES launches ON DELETE RESTRICT,
+  FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
 
 CREATE TABLE runs (
@@ -163,7 +163,7 @@ CREATE TABLE runs (
   idempotency_key TEXT UNIQUE,
   recurrent INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (parent_id) REFERENCES executions ON DELETE SET NULL
 );
 
 CREATE TABLE steps (
@@ -185,7 +185,7 @@ CREATE TABLE steps (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE,
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
+  FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
 
 CREATE UNIQUE INDEX steps_initial_step ON steps (run_id) WHERE parent_id IS NULL;
@@ -399,7 +399,7 @@ CREATE TABLE messages (
   template_id INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (template_id) REFERENCES message_templates ON DELETE CASCADE
+  FOREIGN KEY (template_id) REFERENCES message_templates ON DELETE RESTRICT
 );
 
 CREATE TABLE message_labels(
@@ -413,6 +413,6 @@ CREATE TABLE message_values(
   value_id INTEGER NOT NULL,
   PRIMARY KEY (message_id, label_id),
   FOREIGN KEY (message_id) REFERENCES messages ON DELETE CASCADE,
-  FOREIGN KEY (label_id) REFERENCES message_labels ON DELETE CASCADE,
-  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE CASCADE
+  FOREIGN KEY (label_id) REFERENCES message_labels ON DELETE RESTRICT,
+  FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
 );
