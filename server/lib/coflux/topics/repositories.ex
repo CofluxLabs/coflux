@@ -47,10 +47,12 @@ defmodule Coflux.Topics.Repositories do
 
   defp process_notification(topic, {:manifests, manifests}) do
     Enum.reduce(manifests, topic, fn {repository, manifest}, topic ->
-      topic
-      |> Topic.set([repository, :workflows], Map.keys(manifest.workflows))
-      |> Topic.set([repository, :sensors], Map.keys(manifest.sensors))
+      update_manifest(topic, repository, manifest)
     end)
+  end
+
+  defp process_notification(topic, {:manifest, repository, manifest}) do
+    update_manifest(topic, repository, manifest)
   end
 
   defp process_notification(topic, {:scheduled, repository, execution_id, execute_at}) do
@@ -95,5 +97,15 @@ defmodule Coflux.Topics.Repositories do
     |> Topic.set([repository, :executing], MapSet.size(executing))
     |> Topic.set([repository, :scheduled], map_size(scheduled))
     |> Topic.set([repository, :nextDueAt], next_due_at)
+  end
+
+  defp update_manifest(topic, repository, manifest) do
+    if manifest do
+      topic
+      |> Topic.set([repository, :workflows], Map.keys(manifest.workflows))
+      |> Topic.set([repository, :sensors], Map.keys(manifest.sensors))
+    else
+      Topic.unset(topic, [], repository)
+    end
   end
 end

@@ -65,6 +65,18 @@ export function resumeEnvironment(projectId: string, environmentId: string) {
   return post("resume_environment", { projectId, environmentId });
 }
 
+export function archiveRepository(
+  projectId: string,
+  environmentName: string,
+  repositoryName: string,
+) {
+  return post("archive_repository", {
+    projectId,
+    environmentName,
+    repositoryName,
+  });
+}
+
 export function submitWorkflow(
   projectId: string,
   repository: string,

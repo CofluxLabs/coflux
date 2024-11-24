@@ -106,6 +106,22 @@ defmodule Coflux.Orchestration.Manifests do
     end)
   end
 
+  def archive_repository(db, environment_id, repository_name) do
+    with_transaction(db, fn ->
+      now = current_timestamp()
+
+      {:ok, _} =
+        insert_one(db, :environment_manifests, %{
+          environment_id: environment_id,
+          repository: repository_name,
+          manifest_id: nil,
+          created_at: now
+        })
+
+      :ok
+    end)
+  end
+
   defp get_latest_manifest_ids(db, environment_id) do
     case query(
            db,
@@ -151,8 +167,8 @@ defmodule Coflux.Orchestration.Manifests do
            db,
            """
            SELECT w.parameter_set_id, w.wait_for, w.cache_params, w.cache_max_age, w.cache_namespace, w.cache_version, w.defer_params, w.delay, w.retry_limit, w.retry_delay_min, w.retry_delay_max, w.requires_tag_set_id
-           FROM workflows AS w
-           INNER JOIN environment_manifests AS em ON em.manifest_id = w.manifest_id
+           FROM environment_manifests AS em
+           LEFT JOIN workflows AS w ON w.manifest_id = em.manifest_id
            WHERE em.environment_id = ?1 AND em.repository = ?2 AND w.name = ?3
            ORDER BY em.created_at DESC
            LIMIT 1
@@ -189,8 +205,8 @@ defmodule Coflux.Orchestration.Manifests do
            db,
            """
            SELECT s.parameter_set_id, s.requires_tag_set_id
-           FROM sensors AS s
-           INNER JOIN environment_manifests AS em ON em.manifest_id = s.manifest_id
+           FROM environment_manifests AS em
+           LEFT JOIN sensors AS s ON s.manifest_id = em.manifest_id
            WHERE em.environment_id = ?1 AND em.repository = ?2 AND s.name = ?3
            ORDER BY em.created_at DESC
            LIMIT 1

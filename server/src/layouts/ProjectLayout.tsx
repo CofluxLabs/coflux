@@ -170,8 +170,8 @@ export default function ProjectLayout() {
             {Object.keys(repositories).length ? (
               <div className="flex-1 overflow-auto min-h-0">
                 <TargetsList
-                  projectId={projectId}
-                  environmentName={environmentName}
+                  projectId={projectId!}
+                  environmentName={environmentName!}
                   activeRepository={active?.[0]}
                   activeTarget={active?.[1]}
                   repositories={repositories}
@@ -214,5 +214,5 @@ export function useSetActiveTarget(
   useEffect(() => {
     setActive(repository ? [repository, target] : undefined);
     return () => setActive(undefined);
-  }, [setActive, target]);
+  }, [setActive, repository, target]);
 }
