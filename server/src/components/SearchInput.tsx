@@ -137,7 +137,7 @@ export default function SearchInput({ projectId, environmentId }: Props) {
       setLoading(true);
       debounceTimeoutRef.current = setTimeout(() => {
         performSearch(projectId, environmentId, query);
-      }, 300);
+      }, 200);
     } else {
       abortControllerRef.current?.abort();
       setLoading(false);
