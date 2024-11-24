@@ -270,7 +270,17 @@ defmodule Coflux.Orchestration.Server do
                 {:repositories, environment_id},
                 {:manifests, manifests}
               )
-              # TODO: notify {:targets, environment_id}
+              |> notify_listeners(
+                {:targets, environment_id},
+                {:manifests,
+                 Map.new(manifests, fn {repository_name, targets} ->
+                   {repository_name,
+                    %{
+                      workflows: MapSet.new(Map.keys(targets.workflows)),
+                      sensors: MapSet.new(Map.keys(targets.sensors))
+                    }}
+                 end)}
+              )
               |> flush_notifications()
 
             {:reply, :ok, state}
@@ -483,9 +493,13 @@ defmodule Coflux.Orchestration.Server do
               state
             end
 
-          # TODO: notify {:targets, environment_id}
-
-          state = flush_notifications(state)
+          state =
+            state
+            |> notify_listeners(
+              {:targets, environment_id},
+              {:step, repository, target_name, external_run_id, external_step_id, attempt}
+            )
+            |> flush_notifications()
 
           {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
       end
@@ -583,9 +597,13 @@ defmodule Coflux.Orchestration.Server do
             state
           end
 
-        # TODO: notify {:targets, environment_id}
-
-        state = flush_notifications(state)
+        state =
+          state
+          |> notify_listeners(
+            {:targets, environment_id},
+            {:step, repository, target_name, run.external_id, external_step_id, attempt}
+          )
+          |> flush_notifications()
 
         {:reply, {:ok, run.external_id, external_step_id, execution_id}, state}
     end
@@ -1686,6 +1704,10 @@ defmodule Coflux.Orchestration.Server do
               else: {:workflow, run_repository, run_target, environment_id}
             ),
             {:run, run.external_id, run.created_at}
+          )
+          |> notify_listeners(
+            {:targets, environment_id},
+            {:step, step.repository, step.target, run.external_id, step.external_id, attempt}
           )
 
         send(self(), :execute)

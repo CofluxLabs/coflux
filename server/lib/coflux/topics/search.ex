@@ -14,8 +14,30 @@ defmodule Coflux.Topics.Search do
   end
 
   def handle_info({:topic, _ref, notifications}, topic) do
-    # TODO: update index
+    topic = Enum.reduce(notifications, topic, &process_notification(&2, &1))
     {:ok, topic}
+  end
+
+  defp process_notification(topic, {:manifests, targets}) do
+    update_in(topic.state.targets, fn existing ->
+      Enum.reduce(targets, existing, fn {repository, repository_targets}, existing ->
+        updated = existing |> Map.get(repository, %{}) |> Map.merge(repository_targets)
+        Map.put(existing, repository, updated)
+      end)
+    end)
+  end
+
+  defp process_notification(
+         topic,
+         {:step, repository, target_name, external_run_id, external_step_id, attempt}
+       ) do
+    update_in(topic.state.targets, fn targets ->
+      put_in(
+        targets,
+        [Access.key(repository, %{}), Access.key(:steps, %{}), target_name],
+        {external_run_id, external_step_id, attempt}
+      )
+    end)
   end
 
   def handle_execute("query", {query}, topic, _context) do
@@ -49,7 +71,7 @@ defmodule Coflux.Topics.Search do
         [{{:repository, repository_name}, [repository_name]}],
         Enum.flat_map(%{workflows: :workflow, sensors: :sensor}, fn {key, type} ->
           repository
-          |> Map.fetch!(key)
+          |> Map.get(key, MapSet.new())
           |> Enum.map(fn target_name ->
             target_name_parts = [target_name | String.split(target_name, "_")]
             target_parts = Enum.concat(repository_name_parts, target_name_parts)
