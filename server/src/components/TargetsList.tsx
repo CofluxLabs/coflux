@@ -1,5 +1,5 @@
 import classNames from "classnames";
-import { ComponentType } from "react";
+import { ComponentType, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   IconSubtask,
@@ -8,12 +8,16 @@ import {
   IconInnerShadowTopLeft,
   IconAlertCircle,
   IconClock,
+  IconTrash,
+  IconDotsVertical,
 } from "@tabler/icons-react";
 import { DateTime } from "luxon";
 
 import * as models from "../models";
 import { buildUrl, pluralise } from "../utils";
 import useNow from "../hooks/useNow";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import * as api from "../api";
 
 function isTargetOnline(
   agents: Record<string, Record<string, string[]>> | undefined,
@@ -54,9 +58,55 @@ function Target({ url, icon: Icon, name, isActive, isOnline }: TargetProps) {
   );
 }
 
+type RepositoryMenuProps = {
+  projectId: string;
+  environmentName: string;
+  repository: string;
+};
+
+function RepositoryMenu({
+  projectId,
+  environmentName,
+  repository,
+}: RepositoryMenuProps) {
+  const handleArchiveClick = useCallback(() => {
+    if (
+      confirm(
+        `Are you sure you want to archive '${repository}'? It will be hidden until it's re-registered.`,
+      )
+    ) {
+      api.archiveRepository(projectId, environmentName, repository);
+    }
+  }, [projectId, environmentName, repository]);
+  return (
+    <Menu>
+      <MenuButton className="text-slate-600 p-1 hover:bg-slate-200 rounded">
+        <IconDotsVertical size={16} />
+      </MenuButton>
+      <MenuItems
+        transition
+        className="p-1 bg-white shadow-xl rounded-md origin-top transition duration-200 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
+        anchor={{ to: "bottom end" }}
+      >
+        <MenuItem>
+          <button
+            className="text-sm p-1 rounded data-[active]:bg-slate-100 flex items-center gap-1"
+            onClick={handleArchiveClick}
+          >
+            <span className="shrink-0 text-slate-400">
+              <IconTrash size={16} strokeWidth={1.5} />
+            </span>
+            <span className="flex-1">Archive repository</span>
+          </button>
+        </MenuItem>
+      </MenuItems>
+    </Menu>
+  );
+}
+
 type Props = {
-  projectId: string | undefined;
-  environmentName: string | undefined;
+  projectId: string;
+  environmentName: string;
   activeRepository: string | undefined;
   activeTarget: string | undefined;
   repositories: Record<string, models.Repository>;
@@ -90,61 +140,68 @@ export default function TargetsList({
           const isActive = activeRepository == repository && !activeTarget;
           return (
             <div key={repository} className="py-2">
-              <Link
-                to={buildUrl(
-                  `/projects/${projectId}/repositories/${encodeURIComponent(
-                    repository,
-                  )}`,
-                  { environment: environmentName },
-                )}
-                className={classNames(
-                  "block rounded-md",
-                  isActive ? "bg-slate-200" : "hover:bg-slate-200/50",
-                )}
-              >
-                <div className="flex items-center py-1 px-1 gap-2">
-                  <h2 className="font-bold uppercase text-slate-400 text-sm">
-                    {repository}
-                  </h2>
-                  {nextDueDiff && nextDueDiff.toMillis() < -1000 ? (
-                    <span
-                      title={`Executions overdue (${nextDueDiff
-                        .rescale()
-                        .toHuman({
-                          unitDisplay: "short",
-                        })})`}
-                    >
-                      <IconAlertCircle
-                        size={16}
-                        className={
-                          nextDueDiff.toMillis() < -5000
-                            ? "text-red-700"
-                            : "text-yellow-600"
-                        }
-                      />
-                    </span>
-                  ) : executing ? (
-                    <span
-                      title={`${pluralise(executing, "execution")} running`}
-                    >
-                      <IconInnerShadowTopLeft
-                        size={16}
-                        className="text-cyan-400 animate-spin"
-                      />
-                    </span>
-                  ) : scheduled ? (
-                    <span
-                      title={`${pluralise(scheduled, "execution")} scheduled${
-                        nextDueDiff
-                          ? ` (${nextDueDiff.rescale().toHuman({ unitDisplay: "narrow" })})`
-                          : ""
-                      }`}
-                    >
-                      <IconClock size={16} className="text-slate-400" />
-                    </span>
-                  ) : undefined}
-                </div>
-              </Link>
+              <div className="flex gap-1">
+                <Link
+                  to={buildUrl(
+                    `/projects/${projectId}/repositories/${encodeURIComponent(
+                      repository,
+                    )}`,
+                    { environment: environmentName },
+                  )}
+                  className={classNames(
+                    "flex-1 rounded-md",
+                    isActive ? "bg-slate-200" : "hover:bg-slate-200/50",
+                  )}
+                >
+                  <div className="flex items-center py-1 px-1 gap-2">
+                    <h2 className="font-bold uppercase text-slate-400 text-sm">
+                      {repository}
+                    </h2>
+                    {nextDueDiff && nextDueDiff.toMillis() < -1000 ? (
+                      <span
+                        title={`Executions overdue (${nextDueDiff
+                          .rescale()
+                          .toHuman({
+                            unitDisplay: "short",
+                          })})`}
+                      >
+                        <IconAlertCircle
+                          size={16}
+                          className={
+                            nextDueDiff.toMillis() < -5000
+                              ? "text-red-700"
+                              : "text-yellow-600"
+                          }
+                        />
+                      </span>
+                    ) : executing ? (
+                      <span
+                        title={`${pluralise(executing, "execution")} running`}
+                      >
+                        <IconInnerShadowTopLeft
+                          size={16}
+                          className="text-cyan-400 animate-spin"
+                        />
+                      </span>
+                    ) : scheduled ? (
+                      <span
+                        title={`${pluralise(scheduled, "execution")} scheduled${
+                          nextDueDiff
+                            ? ` (${nextDueDiff.rescale().toHuman({ unitDisplay: "narrow" })})`
+                            : ""
+                        }`}
+                      >
+                        <IconClock size={16} className="text-slate-400" />
+                      </span>
+                    ) : undefined}
+                  </div>
+                </Link>
+                <RepositoryMenu
+                  projectId={projectId}
+                  environmentName={environmentName}
+                  repository={repository}
+                />
+              </div>
               {workflows.length || sensors.length ? (
                 <ul>
                   {workflows.map((name) => {

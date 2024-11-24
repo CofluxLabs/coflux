@@ -237,6 +237,28 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
+  defp handle(req, "POST", ["archive_repository"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(req, %{
+        project_id: "projectId",
+        environment_name: "environmentName",
+        repository_name: "repositoryName"
+      })
+
+    if Enum.empty?(errors) do
+      case Orchestration.archive_repository(
+             arguments.project_id,
+             arguments.environment_name,
+             arguments.repository_name
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
   defp handle(req, "GET", ["get_workflow"]) do
     qs = :cowboy_req.parse_qs(req)
     project_id = get_query_param(qs, "project")

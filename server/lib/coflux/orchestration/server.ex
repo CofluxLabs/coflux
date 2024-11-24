@@ -288,6 +288,27 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
+  def handle_call({:archive_repository, environment_name, repository_name}, _from, state) do
+    case lookup_environment_by_name(state, environment_name) do
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+
+      {:ok, environment_id, _} ->
+        case Manifests.archive_repository(state.db, environment_id, repository_name) do
+          :ok ->
+            state =
+              state
+              |> notify_listeners(
+                {:repositories, environment_id},
+                {:manifest, repository_name, nil}
+              )
+              |> flush_notifications()
+
+            {:reply, :ok, state}
+        end
+    end
+  end
+
   def handle_call({:get_workflow, environment_name, repository, target_name}, _from, state) do
     with {:ok, environment_id, _} <- lookup_environment_by_name(state, environment_name),
          {:ok, workflow} <-

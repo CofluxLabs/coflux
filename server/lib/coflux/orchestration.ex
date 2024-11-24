@@ -29,6 +29,10 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:register_manifests, environment_name, manifests})
   end
 
+  def archive_repository(project_id, environment_name, repository_name) do
+    call_server(project_id, {:archive_repository, environment_name, repository_name})
+  end
+
   def get_workflow(project_id, environment_name, repository, target_name) do
     call_server(project_id, {:get_workflow, environment_name, repository, target_name})
   end
