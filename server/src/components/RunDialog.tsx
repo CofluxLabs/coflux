@@ -8,6 +8,7 @@ import Button from "./common/Button";
 import { RequestError } from "../api";
 import Alert from "./common/Alert";
 import EnvironmentLabel from "./EnvironmentLabel";
+import { micromark } from "micromark";
 
 function translateArgumentError(error: string | undefined) {
   switch (error) {
@@ -49,6 +50,7 @@ type Props = {
   repository: string | undefined;
   target: string | undefined;
   parameters: models.Parameter[];
+  instruction: string | null;
   activeEnvironmentId: string;
   open: boolean;
   onRun: (arguments_: ["json", string][]) => Promise<void>;
@@ -60,6 +62,7 @@ export default function RunDialog({
   repository,
   target,
   parameters,
+  instruction,
   activeEnvironmentId,
   open,
   onRun,
@@ -96,7 +99,7 @@ export default function RunDialog({
   return (
     <Dialog
       title={
-        <div className="flex justify-between items-start font-normal text-base">
+        <div className="flex justify-between items-start font-normal text-base px-6 pt-6">
           <div className="flex flex-col">
             <span className="text-slate-400 text-sm">{repository} /</span>
             <span className="font-mono font-bold text-xl leading-tight">
@@ -109,18 +112,24 @@ export default function RunDialog({
           />
         </div>
       }
-      className="p-6 max-w-xl"
+      className="max-w-2xl"
       open={open}
       onClose={onClose}
     >
-      <form onSubmit={handleSubmit}>
+      {instruction && (
+        <div
+          className="bg-slate-50 border-slate-100 border-y px-6 py-4 shadow-inner prose prose-slate prose-sm max-h-64 max-w-none overflow-auto"
+          dangerouslySetInnerHTML={{ __html: micromark(instruction) }}
+        />
+      )}
+      <form onSubmit={handleSubmit} className="p-6">
         {errors && (
           <Alert variant="warning">
             <p>Failed to start run. Please check errors below.</p>
           </Alert>
         )}
         {parameters.length > 0 && (
-          <div>
+          <div className="pb-4">
             {parameters.map((parameter, index) => (
               <Argument
                 key={parameter.name}
@@ -132,7 +141,7 @@ export default function RunDialog({
             ))}
           </div>
         )}
-        <div className="mt-4 flex gap-2">
+        <div className="flex gap-2">
           <Button type="submit" disabled={starting}>
             Run
           </Button>

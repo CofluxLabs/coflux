@@ -164,6 +164,7 @@ export default function WorkflowHeader({
                 repository={repository}
                 target={target}
                 parameters={workflow.parameters}
+                instruction={workflow.instruction}
                 activeEnvironmentId={activeEnvironmentId}
                 open={runDialogOpen}
                 onRun={handleRunSubmit}

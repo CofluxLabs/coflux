@@ -16,6 +16,7 @@ export type Parameter = {
 
 export type Workflow = {
   parameters: Parameter[] | null;
+  instruction: string | null;
   configuration: {
     waitFor: number[];
     cache: {
@@ -40,6 +41,7 @@ export type Workflow = {
 
 export type Sensor = {
   parameters: Parameter[] | null;
+  instruction: string | null;
   configuration: {
     requires: Record<string, string[]>;
   } | null;
