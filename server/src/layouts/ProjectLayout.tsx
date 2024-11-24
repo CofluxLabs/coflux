@@ -214,5 +214,5 @@ export function useSetActiveTarget(
   useEffect(() => {
     setActive(repository ? [repository, target] : undefined);
     return () => setActive(undefined);
-  }, [setActive, target]);
+  }, [setActive, repository, target]);
 }
