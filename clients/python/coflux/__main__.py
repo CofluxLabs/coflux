@@ -117,6 +117,7 @@ def _register_manifests(
                         }
                     ),
                     "requires": definition.requires,
+                    "instruction": definition.instruction,
                 }
                 for workflow_name, (definition, _) in target.items()
                 if definition.type == "workflow"
@@ -132,6 +133,7 @@ def _register_manifests(
                         for p in definition.parameters
                     ],
                     "requires": definition.requires,
+                    "instruction": definition.instruction,
                 }
                 for sensor_name, (definition, _) in target.items()
                 if definition.type == "sensor"

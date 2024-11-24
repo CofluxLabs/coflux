@@ -446,17 +446,18 @@ export default function SettingsDialog({ projectId, open, onClose }: Props) {
             />
           </SettingsTab>
         </Tabs>
-        <div className="p-4 flex gap-2 justify-end">
+        <div className="p-4 flex gap-2">
+          <Button type="submit" disabled={!changed}>
+            Save
+          </Button>
           <Button
             type="button"
+            variant="secondary"
             outline={true}
             disabled={!changed}
             onClick={handleResetClick}
           >
             Reset
-          </Button>
-          <Button type="submit" disabled={!changed}>
-            Save
           </Button>
         </div>
       </form>

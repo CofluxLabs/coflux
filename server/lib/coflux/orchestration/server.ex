@@ -1067,11 +1067,16 @@ defmodule Coflux.Orchestration.Server do
     with {:ok, _} <- lookup_environment_by_id(state, environment_id),
          {:ok, workflow} <-
            Manifests.get_latest_workflow(state.db, environment_id, repository, target_name),
+         {:ok, instruction} <-
+           if(workflow.instruction_id,
+             do: Manifests.get_instruction(state.db, workflow.instruction_id),
+             else: {:ok, nil}
+           ),
          {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id) do
       {:ok, ref, state} =
         add_listener(state, {:workflow, repository, target_name, environment_id}, pid)
 
-      {:reply, {:ok, workflow, runs, ref}, state}
+      {:reply, {:ok, workflow, instruction, runs, ref}, state}
     else
       {:error, error} ->
         {:reply, {:error, error}, state}
@@ -1086,11 +1091,16 @@ defmodule Coflux.Orchestration.Server do
     with {:ok, _} <- lookup_environment_by_id(state, environment_id),
          {:ok, sensor} <-
            Manifests.get_latest_sensor(state.db, environment_id, repository, target_name),
+         {:ok, instruction} <-
+           if(sensor.instruction_id,
+             do: Manifests.get_instruction(state.db, sensor.instruction_id),
+             else: {:ok, nil}
+           ),
          {:ok, runs} = Runs.get_target_runs(state.db, repository, target_name, environment_id) do
       {:ok, ref, state} =
         add_listener(state, {:sensor, repository, target_name, environment_id}, pid)
 
-      {:reply, {:ok, sensor, runs, ref}, state}
+      {:reply, {:ok, sensor, instruction, runs, ref}, state}
     else
       {:error, error} ->
         {:reply, {:error, error}, state}

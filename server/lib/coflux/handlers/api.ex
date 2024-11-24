@@ -756,9 +756,11 @@ defmodule Coflux.Handlers.Api do
         with {:ok, params} <- parse_indexes(Map.get(value, "params"), allow_boolean: true),
              {:ok, max_age} <- parse_integer(Map.get(value, "maxAge"), optional: true),
              # TODO: regex
-             {:ok, namespace} <- parse_string(Map.get(value, "namespace"), optional: true),
+             {:ok, namespace} <-
+               parse_string(Map.get(value, "namespace"), optional: true, max_length: 200),
              # TODO: regex
-             {:ok, version} <- parse_string(Map.get(value, "version"), optional: true) do
+             {:ok, version} <-
+               parse_string(Map.get(value, "version"), optional: true, max_length: 200) do
           {:ok,
            %{
              params: params,
@@ -813,7 +815,13 @@ defmodule Coflux.Handlers.Api do
            {:ok, defer} <- parse_defer(Map.get(value, "defer")),
            {:ok, delay} <- parse_integer(Map.get(value, "delay")),
            {:ok, retries} <- parse_retries(Map.get(value, "retries")),
-           {:ok, requires} <- parse_tag_set(Map.get(value, "requires")) do
+           {:ok, requires} <- parse_tag_set(Map.get(value, "requires")),
+           {:ok, instruction} <-
+             parse_string(
+               Map.get(value, "instruction"),
+               optional: true,
+               max_length: 5000
+             ) do
         {:ok,
          %{
            parameters: parameters,
@@ -822,7 +830,8 @@ defmodule Coflux.Handlers.Api do
            defer: defer,
            delay: delay,
            retries: retries,
-           requires: requires
+           requires: requires,
+           instruction: instruction
          }}
       else
         {:error, error} ->
@@ -836,11 +845,18 @@ defmodule Coflux.Handlers.Api do
   defp parse_sensor(value) do
     if is_map(value) do
       with {:ok, parameters} <- parse_parameters(Map.get(value, "parameters")),
-           {:ok, requires} <- parse_tag_set(Map.get(value, "requires")) do
+           {:ok, requires} <- parse_tag_set(Map.get(value, "requires")),
+           {:ok, instruction} <-
+             parse_string(
+               Map.get(value, "instruction"),
+               optional: true,
+               max_length: 5000
+             ) do
         {:ok,
          %{
            parameters: parameters,
-           requires: requires
+           requires: requires,
+           instruction: instruction
          }}
       end
     else

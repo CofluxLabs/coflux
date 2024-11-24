@@ -152,6 +152,7 @@ export default function SensorHeader({
                 repository={repository}
                 target={target}
                 parameters={sensor.parameters}
+                instruction={sensor.instruction}
                 activeEnvironmentId={activeEnvironmentId}
                 open={runDialogOpen}
                 onRun={handleRunSubmit}

@@ -17,9 +17,10 @@ defmodule Coflux.Topics.Sensor do
            environment_id,
            self()
          ) do
-      {:ok, sensor, runs, ref} ->
+      {:ok, sensor, instruction, runs, ref} ->
         value = %{
           parameters: if(sensor, do: build_parameters(sensor.parameters)),
+          instruction: instruction,
           configuration: build_configuration(sensor),
           runs: build_runs(runs)
         }
@@ -39,6 +40,7 @@ defmodule Coflux.Topics.Sensor do
   defp process_notification({:target, target}, topic) do
     topic
     |> Topic.set([:parameters], build_parameters(target.parameters))
+    |> Topic.set([:instruction], target.instruction)
     |> Topic.set([:configuration], build_configuration(target))
   end
 
