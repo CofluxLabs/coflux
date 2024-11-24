@@ -132,7 +132,7 @@ export default function EnvironmentSelector({
       <AddEnvironmentDialog
         environments={environments}
         open={noEnvironments || addEnvironmentDialogOpen}
-        hideCancel={true}
+        hideCancel={noEnvironments}
         onClose={handleAddEnvironmentDialogClose}
       />
     </Fragment>
