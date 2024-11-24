@@ -8,5 +8,5 @@ export { default as TimelinePage } from "./TimelinePage";
 export { default as WorkflowPage } from "./WorkflowPage";
 export { default as SensorPage } from "./SensorPage";
 export { default as LogsPage } from "./LogsPage";
-export { default as RunsPage } from "./RunsPage";
+export { default as ChildrenPage } from "./ChildrenPage";
 export { default as RepositoryPage } from "./RepositoryPage";

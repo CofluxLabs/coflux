@@ -15,7 +15,7 @@ import {
   GraphPage,
   TimelinePage,
   AssetsPage,
-  RunsPage,
+  ChildrenPage,
   LogsPage,
   WorkflowPage,
   SensorPage,
@@ -75,7 +75,7 @@ export default function App() {
                   <Route path="graph" element={<GraphPage />} />
                   <Route path="timeline" element={<TimelinePage />} />
                   <Route path="assets" element={<AssetsPage />} />
-                  <Route path="runs" element={<RunsPage />} />
+                  <Route path="children" element={<ChildrenPage />} />
                   <Route path="logs" element={<LogsPage />} />
                 </Route>
               </Route>
