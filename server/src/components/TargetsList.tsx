@@ -12,21 +12,21 @@ import {
   IconDotsVertical,
 } from "@tabler/icons-react";
 import { DateTime } from "luxon";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 
 import * as models from "../models";
 import { buildUrl, pluralise } from "../utils";
 import useNow from "../hooks/useNow";
-import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import * as api from "../api";
 
 function isTargetOnline(
   agents: Record<string, Record<string, string[]>> | undefined,
-  repository: string,
+  repositoryName: string,
   target: string,
 ) {
   return (
     agents !== undefined &&
-    Object.values(agents).some((a) => a[repository]?.includes(target))
+    Object.values(agents).some((a) => a[repositoryName]?.includes(target))
   );
 }
 
@@ -58,26 +58,106 @@ function Target({ url, icon: Icon, name, isActive, isOnline }: TargetProps) {
   );
 }
 
+type RepositoryHeaderProps = {
+  repositoryName: string;
+  repository: models.Repository;
+  isActive: boolean;
+  projectId: string;
+  environmentName: string;
+  now: DateTime<true>;
+};
+
+function RepositoryHeader({
+  repositoryName,
+  repository,
+  isActive,
+  projectId,
+  environmentName,
+  now,
+}: RepositoryHeaderProps) {
+  const nextDueDiff = repository.nextDueAt
+    ? DateTime.fromMillis(repository.nextDueAt).diff(now, [
+        "days",
+        "hours",
+        "minutes",
+        "seconds",
+      ])
+    : undefined;
+  return (
+    <Link
+      to={buildUrl(
+        `/projects/${projectId}/repositories/${encodeURIComponent(repositoryName)}`,
+        { environment: environmentName },
+      )}
+      className={classNames(
+        "flex-1 rounded-md",
+        isActive ? "bg-slate-200" : "hover:bg-slate-200/50",
+      )}
+    >
+      <div className="flex items-center py-1 px-1 gap-2">
+        <h2 className="font-bold uppercase text-slate-400 text-sm">
+          {repositoryName}
+        </h2>
+        {nextDueDiff && nextDueDiff.toMillis() < -1000 ? (
+          <span
+            title={`Executions overdue (${nextDueDiff.rescale().toHuman({
+              unitDisplay: "short",
+            })})`}
+          >
+            <IconAlertCircle
+              size={16}
+              className={
+                nextDueDiff.toMillis() < -5000
+                  ? "text-red-700"
+                  : "text-yellow-600"
+              }
+            />
+          </span>
+        ) : repository.executing ? (
+          <span
+            title={`${pluralise(repository.executing, "execution")} running`}
+          >
+            <IconInnerShadowTopLeft
+              size={16}
+              className="text-cyan-400 animate-spin"
+            />
+          </span>
+        ) : repository.scheduled ? (
+          <span
+            title={`${pluralise(repository.scheduled, "execution")} scheduled${
+              nextDueDiff
+                ? ` (${nextDueDiff.rescale().toHuman({ unitDisplay: "narrow" })})`
+                : ""
+            }`}
+          >
+            <IconClock size={16} className="text-slate-400" />
+          </span>
+        ) : undefined}
+      </div>
+    </Link>
+  );
+}
+
 type RepositoryMenuProps = {
   projectId: string;
   environmentName: string;
-  repository: string;
+  repositoryName: string;
 };
 
 function RepositoryMenu({
   projectId,
   environmentName,
-  repository,
+  repositoryName,
 }: RepositoryMenuProps) {
   const handleArchiveClick = useCallback(() => {
     if (
       confirm(
-        `Are you sure you want to archive '${repository}'? It will be hidden until it's re-registered.`,
+        `Are you sure you want to archive '${repositoryName}'? It will be hidden until it's re-registered.`,
       )
     ) {
-      api.archiveRepository(projectId, environmentName, repository);
+      api.archiveRepository(projectId, environmentName, repositoryName);
     }
-  }, [projectId, environmentName, repository]);
+  }, [projectId, environmentName, repositoryName]);
   return (
     <Menu>
       <MenuButton className="text-slate-600 p-1 hover:bg-slate-200 rounded">
@@ -124,132 +204,69 @@ export default function TargetsList({
   const now = useNow(500);
   return (
     <div className="p-2">
-      {Object.entries(repositories).map(
-        ([
-          repository,
-          { workflows, sensors, executing, nextDueAt, scheduled },
-        ]) => {
-          const nextDueDiff = nextDueAt
-            ? DateTime.fromMillis(nextDueAt).diff(now, [
-                "days",
-                "hours",
-                "minutes",
-                "seconds",
-              ])
-            : undefined;
-          const isActive = activeRepository == repository && !activeTarget;
-          return (
-            <div key={repository} className="py-2">
-              <div className="flex gap-1">
-                <Link
-                  to={buildUrl(
-                    `/projects/${projectId}/repositories/${encodeURIComponent(
-                      repository,
-                    )}`,
-                    { environment: environmentName },
-                  )}
-                  className={classNames(
-                    "flex-1 rounded-md",
-                    isActive ? "bg-slate-200" : "hover:bg-slate-200/50",
-                  )}
-                >
-                  <div className="flex items-center py-1 px-1 gap-2">
-                    <h2 className="font-bold uppercase text-slate-400 text-sm">
-                      {repository}
-                    </h2>
-                    {nextDueDiff && nextDueDiff.toMillis() < -1000 ? (
-                      <span
-                        title={`Executions overdue (${nextDueDiff
-                          .rescale()
-                          .toHuman({
-                            unitDisplay: "short",
-                          })})`}
-                      >
-                        <IconAlertCircle
-                          size={16}
-                          className={
-                            nextDueDiff.toMillis() < -5000
-                              ? "text-red-700"
-                              : "text-yellow-600"
-                          }
-                        />
-                      </span>
-                    ) : executing ? (
-                      <span
-                        title={`${pluralise(executing, "execution")} running`}
-                      >
-                        <IconInnerShadowTopLeft
-                          size={16}
-                          className="text-cyan-400 animate-spin"
-                        />
-                      </span>
-                    ) : scheduled ? (
-                      <span
-                        title={`${pluralise(scheduled, "execution")} scheduled${
-                          nextDueDiff
-                            ? ` (${nextDueDiff.rescale().toHuman({ unitDisplay: "narrow" })})`
-                            : ""
-                        }`}
-                      >
-                        <IconClock size={16} className="text-slate-400" />
-                      </span>
-                    ) : undefined}
-                  </div>
-                </Link>
-                <RepositoryMenu
-                  projectId={projectId}
-                  environmentName={environmentName}
-                  repository={repository}
-                />
-              </div>
-              {workflows.length || sensors.length ? (
-                <ul>
-                  {workflows.map((name) => {
-                    const isActive =
-                      activeRepository == repository && activeTarget == name;
-                    return (
-                      <Target
-                        key={name}
-                        name={name}
-                        icon={IconSubtask}
-                        url={buildUrl(
-                          `/projects/${projectId}/workflows/${encodeURIComponent(
-                            repository,
-                          )}/${name}`,
-                          { environment: environmentName },
-                        )}
-                        isActive={isActive}
-                        isOnline={isTargetOnline(agents, repository, name)}
-                      />
-                    );
-                  })}
-                  {sensors.map((name) => {
-                    const isActive =
-                      activeRepository == repository && activeTarget == name;
-                    return (
-                      <Target
-                        key={name}
-                        name={name}
-                        icon={IconCpu}
-                        url={buildUrl(
-                          `/projects/${projectId}/sensors/${encodeURIComponent(
-                            repository,
-                          )}/${name}`,
-                          { environment: environmentName },
-                        )}
-                        isActive={isActive}
-                        isOnline={isTargetOnline(agents, repository, name)}
-                      />
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="text-slate-300 italic px-2 text-sm">No targets</p>
-              )}
-            </div>
-          );
-        },
-      )}
+      {Object.entries(repositories).map(([repositoryName, repository]) => (
+        <div key={repositoryName} className="py-2">
+          <div className="flex gap-1">
+            <RepositoryHeader
+              repositoryName={repositoryName}
+              repository={repository}
+              isActive={activeRepository == repositoryName && !activeTarget}
+              projectId={projectId}
+              environmentName={environmentName}
+              now={now}
+            />
+            <RepositoryMenu
+              projectId={projectId}
+              environmentName={environmentName}
+              repositoryName={repositoryName}
+            />
+          </div>
+          {repository.workflows.length || repository.sensors.length ? (
+            <ul>
+              {repository.workflows.map((name) => {
+                const isActive =
+                  activeRepository == repositoryName && activeTarget == name;
+                return (
+                  <Target
+                    key={name}
+                    name={name}
+                    icon={IconSubtask}
+                    url={buildUrl(
+                      `/projects/${projectId}/workflows/${encodeURIComponent(
+                        repositoryName,
+                      )}/${name}`,
+                      { environment: environmentName },
+                    )}
+                    isActive={isActive}
+                    isOnline={isTargetOnline(agents, repositoryName, name)}
+                  />
+                );
+              })}
+              {repository.sensors.map((name) => {
+                const isActive =
+                  activeRepository == repositoryName && activeTarget == name;
+                return (
+                  <Target
+                    key={name}
+                    name={name}
+                    icon={IconCpu}
+                    url={buildUrl(
+                      `/projects/${projectId}/sensors/${encodeURIComponent(
+                        repositoryName,
+                      )}/${name}`,
+                      { environment: environmentName },
+                    )}
+                    isActive={isActive}
+                    isOnline={isTargetOnline(agents, repositoryName, name)}
+                  />
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-slate-300 italic px-2 text-sm">No targets</p>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
