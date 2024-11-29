@@ -185,6 +185,7 @@ CREATE TABLE steps (
   priority INTEGER NOT NULL, -- TODO: move to executions?
   wait_for INTEGER NOT NULL,
   cache_key TEXT,
+  cache_max_age INTEGER,
   defer_key TEXT,
   memo_key TEXT,
   retry_limit INTEGER NOT NULL,

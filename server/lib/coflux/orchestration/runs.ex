@@ -1,5 +1,5 @@
 defmodule Coflux.Orchestration.Runs do
-  alias Coflux.Orchestration.{Models, Results, Values, TagSets}
+  alias Coflux.Orchestration.{Models, Values, TagSets}
 
   import Coflux.Store
 
@@ -20,7 +20,7 @@ defmodule Coflux.Orchestration.Runs do
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
 
-      {:ok, external_step_id, execution_id, attempt, now, false, result, child_added} =
+      {:ok, external_step_id, execution_id, attempt, now, false, child_added} =
         do_schedule_step(
           db,
           run_id,
@@ -35,7 +35,7 @@ defmodule Coflux.Orchestration.Runs do
           opts
         )
 
-      {:ok, external_run_id, external_step_id, execution_id, attempt, result, now, child_added}
+      {:ok, external_run_id, external_step_id, execution_id, attempt, now, child_added}
     end)
   end
 
@@ -53,6 +53,7 @@ defmodule Coflux.Orchestration.Runs do
         priority,
         wait_for,
         cache_key,
+        cache_max_age,
         retry_limit,
         retry_delay_min,
         retry_delay_max,
@@ -79,6 +80,7 @@ defmodule Coflux.Orchestration.Runs do
         s.priority,
         s.wait_for,
         s.cache_key,
+        s.cache_max_age,
         s.retry_limit,
         s.retry_delay_min,
         s.retry_delay_max,
@@ -212,7 +214,7 @@ defmodule Coflux.Orchestration.Runs do
         end
       end
 
-    {step_id, external_step_id, execution_id, attempt, now, memo_hit, result} =
+    {step_id, external_step_id, execution_id, attempt, now, memo_hit} =
       case memoised_execution do
         {step_id, external_step_id, execution_id, attempt, now} ->
           {step_id, external_step_id, execution_id, attempt, now, true, false}
@@ -227,16 +229,6 @@ defmodule Coflux.Orchestration.Runs do
                   cache.namespace || "#{repository}:#{target}",
                   cache.version
                 )
-
-          cached_execution_id =
-            if cache_key do
-              recorded_after = if cache.max_age, do: now - cache.max_age * 1000, else: 0
-
-              case find_cached_execution(db, cache_environment_ids, cache_key, recorded_after) do
-                {:ok, cached_execution_id} ->
-                  cached_execution_id
-              end
-            end
 
           requires_tag_set_id =
             if requires do
@@ -261,6 +253,7 @@ defmodule Coflux.Orchestration.Runs do
               priority,
               wait_for,
               cache_key,
+              if(cache, do: cache.max_age),
               defer_key,
               memo_key,
               if(retries, do: retries.limit, else: 0),
@@ -288,16 +281,7 @@ defmodule Coflux.Orchestration.Runs do
           {:ok, execution_id} =
             insert_execution(db, step_id, attempt, environment_id, execute_after, now)
 
-          result =
-            if cached_execution_id do
-              # TODO: delay if execute_after is set?
-              {:ok, _} =
-                Results.insert_result(db, execution_id, 5, nil, nil, cached_execution_id, now)
-
-              {:cached, cached_execution_id}
-            end
-
-          {step_id, external_step_id, execution_id, attempt, now, false, result}
+          {step_id, external_step_id, execution_id, attempt, now, false}
       end
 
     child_added =
@@ -308,7 +292,7 @@ defmodule Coflux.Orchestration.Runs do
         false
       end
 
-    {:ok, external_step_id, execution_id, attempt, now, memo_hit, result, child_added}
+    {:ok, external_step_id, execution_id, attempt, now, memo_hit, child_added}
   end
 
   def rerun_step(db, step_id, environment_id, execute_after, dependency_ids) do
@@ -408,6 +392,8 @@ defmodule Coflux.Orchestration.Runs do
         s.repository,
         s.target,
         s.wait_for,
+        s.cache_key,
+        s.cache_max_age,
         s.defer_key,
         s.parent_id,
         s.requires_tag_set_id,
@@ -709,7 +695,7 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  defp find_cached_execution(db, environment_ids, cache_key, recorded_after) do
+  def find_cached_execution(db, environment_ids, step_id, cache_key, recorded_after) do
     case query(
            db,
            """
@@ -721,10 +707,11 @@ defmodule Coflux.Orchestration.Runs do
              e.environment_id IN (#{build_placeholders(length(environment_ids))})
              AND s.cache_key = ?#{length(environment_ids) + 1}
              AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?#{length(environment_ids) + 2}))
+             AND s.id <> ?#{length(environment_ids) + 3}
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           List.to_tuple(environment_ids ++ [cache_key, recorded_after])
+           List.to_tuple(environment_ids ++ [cache_key, recorded_after, step_id])
          ) do
       {:ok, [{execution_id}]} ->
         {:ok, execution_id}
@@ -763,6 +750,7 @@ defmodule Coflux.Orchestration.Runs do
          priority,
          wait_for,
          cache_key,
+         cache_max_age,
          defer_key,
          memo_key,
          retry_limit,
@@ -782,6 +770,7 @@ defmodule Coflux.Orchestration.Runs do
                priority: priority,
                wait_for: encode_wait_for(wait_for || []),
                cache_key: cache_key,
+               cache_max_age: cache_max_age,
                defer_key: defer_key,
                memo_key: memo_key,
                retry_limit: retry_limit,
