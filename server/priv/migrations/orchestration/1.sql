@@ -206,7 +206,7 @@ CREATE TABLE step_arguments (
   position INTEGER NOT NULL,
   value_id INTEGER NOT NULL,
   PRIMARY KEY (step_id, position),
-  FOREIGN KEY (step_id) REFERENCES steps ON DELETE RESTRICT,
+  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE,
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
 );
 
