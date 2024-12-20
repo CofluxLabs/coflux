@@ -9,11 +9,11 @@ import {
 } from "react";
 import classNames from "classnames";
 import {
-  IconArrowForward,
   IconArrowUpRight,
   IconBolt,
   IconClock,
   IconPinned,
+  IconArrowDownRight,
 } from "@tabler/icons-react";
 
 import * as models from "../models";
@@ -202,13 +202,11 @@ function ParentNode({ parent }: ParentNodeProps) {
         runId={parent.runId}
         stepId={parent.stepId}
         attempt={parent.attempt}
-        className="flex-1 w-full h-full flex gap-2 items-center px-2 py-1 border border-slate-300 rounded-full bg-white ring-offset-2"
+        className="flex-1 w-full h-full flex items-center px-2 py-1 border border-slate-300 rounded-full bg-white ring-offset-2"
         hoveredClassName="ring ring-slate-400"
       >
-        <div className="flex-1 flex flex-col overflow-hidden text-center">
-          <span className="text-slate-500 font-bold">{parent.runId}</span>
-        </div>
-        <IconArrowForward size={20} className="text-slate-400" />
+        <span className="text-slate-500 font-bold flex-1">{parent.runId}</span>
+        <IconArrowDownRight size={20} className="text-slate-400" />
       </StepLink>
     );
   } else {
@@ -234,18 +232,11 @@ function ChildNode({ runId, child }: ChildNodeProps) {
       runId={runId}
       stepId={child.stepId}
       attempt={1}
-      className="flex-1 flex w-full h-full gap-2 items-center border border-slate-300 rounded px-2 py-1 bg-white ring-offset-2"
+      className="flex-1 w-full h-full flex items-center px-2 py-1 border border-slate-300 rounded-full bg-white ring-offset-2"
       hoveredClassName="ring ring-slate-400"
     >
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <span className="text-slate-400 truncate text-xs">
-          {child.repository} /
-        </span>
-        <span className="truncate text-slate-700 text-sm font-mono">
-          {child.target}
-        </span>
-      </div>
       <IconArrowUpRight size={20} className="text-slate-400" />
+      <span className="text-slate-500 font-bold flex-1 text-end">{runId}</span>
     </StepLink>
   );
 }

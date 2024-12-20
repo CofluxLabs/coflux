@@ -17,7 +17,7 @@ def _get_channel() -> execution.Channel:
 
 
 def submit(
-    type: t.Literal["workflow", "task"],
+    type: models.TargetType,
     repository: str,
     target: str,
     arguments: tuple[t.Any, ...],

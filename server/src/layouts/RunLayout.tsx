@@ -165,7 +165,7 @@ export default function RunLayout() {
           className={classNames("flex-1 flex flex-col relative")}
           style={{ paddingRight: activeStepId && !maximised ? detailWidth : 0 }}
         >
-          {run.recurrent ? (
+          {initialStep.type == "sensor" ? (
             <SensorHeader
               repository={initialStep.repository}
               target={initialStep.target}
@@ -174,7 +174,7 @@ export default function RunLayout() {
               activeEnvironmentId={activeEnvironmentId}
               activeEnvironmentName={activeEnvironmentName}
             />
-          ) : (
+          ) : initialStep.type == "workflow" ? (
             <WorkflowHeader
               repository={initialStep.repository}
               target={initialStep.target}
@@ -183,14 +183,20 @@ export default function RunLayout() {
               activeEnvironmentId={activeEnvironmentId}
               activeEnvironmentName={activeEnvironmentName}
             />
-          )}
+          ) : null}
           <div className="grow flex flex-col">
             <div className="border-b px-4">
-              {run.recurrent && <Tab page="children">Children</Tab>}
-              {!run.recurrent && <Tab page="graph">Graph</Tab>}
-              {!run.recurrent && <Tab page="timeline">Timeline</Tab>}
+              {initialStep.type == "sensor" && (
+                <Tab page="children">Children</Tab>
+              )}
+              {initialStep.type == "workflow" && <Tab page="graph">Graph</Tab>}
+              {initialStep.type == "workflow" && (
+                <Tab page="timeline">Timeline</Tab>
+              )}
               <Tab page="logs">Logs</Tab>
-              {!run.recurrent && <Tab page="assets">Assets</Tab>}
+              {initialStep.type == "workflow" && (
+                <Tab page="assets">Assets</Tab>
+              )}
             </div>
             <div className="flex-1 basis-0 overflow-auto" ref={ref}>
               <Outlet

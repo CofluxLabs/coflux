@@ -1,7 +1,7 @@
 defmodule Coflux.Orchestration.Manifests do
   import Coflux.Store
 
-  alias Coflux.Orchestration.TagSets
+  alias Coflux.Orchestration.{TagSets, Utils}
 
   def register_manifests(db, environment_id, manifests) do
     with_transaction(db, fn ->
@@ -45,12 +45,16 @@ defmodule Coflux.Orchestration.Manifests do
                               name,
                               instruction_id,
                               parameter_set_id,
-                              encode_params_set(workflow.wait_for),
-                              if(workflow.cache, do: encode_params_list(workflow.cache.params)),
+                              Utils.encode_params_set(workflow.wait_for),
+                              if(workflow.cache,
+                                do: Utils.encode_params_list(workflow.cache.params)
+                              ),
                               if(workflow.cache, do: workflow.cache.max_age),
                               if(workflow.cache, do: workflow.cache.namespace),
                               if(workflow.cache, do: workflow.cache.version),
-                              if(workflow.defer, do: encode_params_list(workflow.defer.params)),
+                              if(workflow.defer,
+                                do: Utils.encode_params_list(workflow.defer.params)
+                              ),
                               workflow.delay,
                               if(workflow.retries, do: workflow.retries.limit, else: 0),
                               if(workflow.retries, do: workflow.retries.delay_min, else: 0),
@@ -409,12 +413,12 @@ defmodule Coflux.Orchestration.Manifests do
         [
           name,
           hash_parameter_set(workflow.parameters),
-          Integer.to_string(encode_params_set(workflow.wait_for)),
-          if(workflow.cache, do: encode_params_list(workflow.cache.params), else: ""),
+          Integer.to_string(Utils.encode_params_set(workflow.wait_for)),
+          if(workflow.cache, do: Utils.encode_params_list(workflow.cache.params), else: ""),
           if(workflow.cache[:max_age], do: Integer.to_string(workflow.cache.max_age), else: ""),
           if(workflow.cache[:namespace], do: workflow.cache.namespace, else: ""),
           if(workflow.cache[:version], do: workflow.cache.version, else: ""),
-          if(workflow.defer, do: encode_params_list(workflow.defer.params), else: ""),
+          if(workflow.defer, do: Utils.encode_params_list(workflow.defer.params), else: ""),
           Integer.to_string(workflow.delay),
           if(workflow.retries, do: Integer.to_string(workflow.retries.limit), else: ""),
           if(workflow.retries, do: Integer.to_string(workflow.retries.delay_min), else: ""),
@@ -469,7 +473,7 @@ defmodule Coflux.Orchestration.Manifests do
     cache =
       if cache_params do
         %{
-          params: decode_params_list(cache_params),
+          params: Utils.decode_params_list(cache_params),
           max_age: cache_max_age,
           namespace: cache_namespace,
           version: cache_version
@@ -479,7 +483,7 @@ defmodule Coflux.Orchestration.Manifests do
     defer =
       if defer_params do
         %{
-          params: decode_params_list(defer_params)
+          params: Utils.decode_params_list(defer_params)
         }
       end
 
@@ -496,7 +500,7 @@ defmodule Coflux.Orchestration.Manifests do
      %{
        parameters: parameters,
        instruction_id: instruction_id,
-       wait_for: decode_params_set(wait_for),
+       wait_for: Utils.decode_params_set(wait_for),
        cache: cache,
        defer: defer,
        delay: delay,
@@ -601,36 +605,6 @@ defmodule Coflux.Orchestration.Manifests do
     |> Enum.map_join(";", fn {key, values} ->
       "#{key}=#{values |> Enum.sort() |> Enum.join(",")}"
     end)
-  end
-
-  defp encode_params_list(params) do
-    case params do
-      true -> ""
-      false -> nil
-      nil -> nil
-      params -> Enum.map_join(params, ",", &Integer.to_string/1)
-    end
-  end
-
-  defp decode_params_list(value) do
-    case value do
-      nil -> false
-      "" -> true
-      value -> value |> String.split(",") |> Enum.map(&String.to_integer/1)
-    end
-  end
-
-  defp encode_params_set(indexes) do
-    Enum.reduce(indexes, 0, &Bitwise.bor(&2, Bitwise.bsl(1, &1)))
-  end
-
-  defp decode_params_set(value) do
-    value
-    |> Integer.digits(2)
-    |> Enum.reverse()
-    |> Enum.with_index()
-    |> Enum.filter(fn {v, _} -> v == 1 end)
-    |> Enum.map(fn {_, i} -> i end)
   end
 
   defp current_timestamp() do

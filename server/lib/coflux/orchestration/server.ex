@@ -16,7 +16,7 @@ defmodule Coflux.Orchestration.Server do
   }
 
   @session_timeout_ms 5_000
-  @recurrent_rate_limit_ms 5_000
+  @sensor_rate_limit_ms 5_000
 
   defmodule State do
     defstruct project_id: nil,
@@ -430,7 +430,7 @@ defmodule Coflux.Orchestration.Server do
     {:reply, :ok, state}
   end
 
-  def handle_call({:submit_workflow, repository, target_name, arguments, opts}, _from, state) do
+  def handle_call({:start_run, repository, target_name, type, arguments, opts}, _from, state) do
     {:ok, parent} =
       case Keyword.get(opts, :parent_id) do
         nil ->
@@ -456,81 +456,20 @@ defmodule Coflux.Orchestration.Server do
       end
 
     if environment_id do
-      cache_environment_ids = get_cache_environment_ids(state, environment_id)
+      {:ok, external_run_id, external_step_id, execution_id, state} =
+        schedule_run(state, repository, target_name, type, arguments, environment_id, opts)
 
-      case Runs.schedule_run(
-             state.db,
-             repository,
-             target_name,
-             arguments,
-             environment_id,
-             cache_environment_ids,
-             opts
-           ) do
-        {:ok, external_run_id, external_step_id, execution_id, attempt, result, created_at,
-         child_added} ->
-          state =
-            if child_added do
-              {parent_run_id, parent_id} = parent
+      send(self(), :execute)
+      state = flush_notifications(state)
 
-              child =
-                {external_run_id, external_step_id, execution_id, repository, target_name,
-                 created_at}
-
-              notify_listeners(state, {:run, parent_run_id}, {:child, parent_id, child})
-            else
-              state
-            end
-
-          state =
-            notify_listeners(
-              state,
-              {:workflow, repository, target_name, environment_id},
-              {:run, external_run_id, created_at}
-            )
-
-          state =
-            if !result do
-              # TODO: neater way to get execute_after?
-              execute_after = Keyword.get(opts, :execute_after)
-              execute_at = execute_after || created_at
-
-              state =
-                state
-                |> notify_listeners(
-                  {:repositories, environment_id},
-                  {:scheduled, repository, execution_id, execute_at}
-                )
-                |> notify_listeners(
-                  {:repository, repository, environment_id},
-                  {:scheduled, execution_id, target_name, external_run_id, external_step_id,
-                   attempt, execute_after, created_at}
-                )
-
-              send(self(), :execute)
-
-              state
-            else
-              state
-            end
-
-          state =
-            state
-            |> notify_listeners(
-              {:targets, environment_id},
-              {:step, repository, target_name, external_run_id, external_step_id, attempt}
-            )
-            |> flush_notifications()
-
-          {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
-      end
+      {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
     else
       {:reply, {:error, :environment_invalid}, state}
     end
   end
 
   def handle_call(
-        {:submit_task, parent_id, repository, target_name, arguments, opts},
+        {:schedule_step, parent_id, repository, target_name, type, arguments, opts},
         _from,
         state
       ) do
@@ -546,12 +485,13 @@ defmodule Coflux.Orchestration.Server do
            parent_id,
            repository,
            target_name,
+           type,
            arguments,
            environment_id,
            cache_environment_ids,
            opts
          ) do
-      {:ok, external_step_id, execution_id, attempt, created_at, memo_hit, result, child_added} ->
+      {:ok, external_step_id, execution_id, attempt, created_at, memo_hit, child_added} ->
         execute_after = Keyword.get(opts, :execute_after)
         requires = Keyword.get(opts, :requires) || %{}
 
@@ -563,7 +503,7 @@ defmodule Coflux.Orchestration.Server do
             notify_listeners(
               state,
               {:run, run.id},
-              {:step, external_step_id, repository, target_name, is_memoised, parent_id,
+              {:step, external_step_id, repository, target_name, type, is_memoised, parent_id,
                created_at, arguments, requires, attempt, execution_id, environment_id,
                execute_after}
             )
@@ -573,30 +513,18 @@ defmodule Coflux.Orchestration.Server do
 
         state =
           if child_added do
-            child =
-              {run.external_id, external_step_id, execution_id, repository, target_name,
-               created_at}
-
-            notify_listeners(state, {:run, run.id}, {:child, parent_id, child})
-          else
-            state
-          end
-
-        state =
-          if result do
-            result = build_result(result, state)
-
             notify_listeners(
               state,
               {:run, run.id},
-              {:result, execution_id, result, created_at}
+              {:child, parent_id,
+               {run.external_id, external_step_id, repository, target_name, type}}
             )
           else
             state
           end
 
         state =
-          if !memo_hit && !result do
+          if !memo_hit do
             execute_at = execute_after || created_at
 
             state =
@@ -627,67 +555,6 @@ defmodule Coflux.Orchestration.Server do
           |> flush_notifications()
 
         {:reply, {:ok, run.external_id, external_step_id, execution_id}, state}
-    end
-  end
-
-  def handle_call({:start_sensor, repository, target_name, arguments, opts}, _from, state) do
-    environment_name = Keyword.fetch!(opts, :environment)
-
-    case lookup_environment_by_name(state, environment_name) do
-      {:error, error} ->
-        {:reply, {:error, error}, state}
-
-      {:ok, environment_id, _} ->
-        cache_environment_ids = get_cache_environment_ids(state, environment_id)
-        opts = Keyword.put(opts, :recurrent, true)
-
-        case Runs.schedule_run(
-               state.db,
-               repository,
-               target_name,
-               arguments,
-               environment_id,
-               cache_environment_ids,
-               opts
-             ) do
-          {:ok, external_run_id, external_step_id, execution_id, attempt, result, created_at,
-           _child_added} ->
-            state =
-              notify_listeners(
-                state,
-                {:sensor, repository, target_name, environment_id},
-                {:run, external_run_id, created_at}
-              )
-
-            state =
-              if !result do
-                # TODO: neater way to get execute_after?
-                execute_after = Keyword.get(opts, :execute_after)
-                execute_at = execute_after || created_at
-
-                state =
-                  state
-                  |> notify_listeners(
-                    {:repositories, environment_id},
-                    {:scheduled, repository, execution_id, execute_at}
-                  )
-                  |> notify_listeners(
-                    {:repository, repository, environment_id},
-                    {:scheduled, execution_id, target_name, external_run_id, external_step_id,
-                     attempt, execute_after, created_at}
-                  )
-
-                send(self(), :execute)
-
-                state
-              else
-                state
-              end
-
-            state = flush_notifications(state)
-
-            {:reply, {:ok, external_run_id, external_step_id, execution_id}, state}
-        end
     end
   end
 
@@ -1068,7 +935,7 @@ defmodule Coflux.Orchestration.Server do
          {:ok, workflow} <-
            Manifests.get_latest_workflow(state.db, environment_id, repository, target_name),
          {:ok, instruction} <-
-           if(workflow.instruction_id,
+           if(workflow && workflow.instruction_id,
              do: Manifests.get_instruction(state.db, workflow.instruction_id),
              else: {:ok, nil}
            ),
@@ -1122,8 +989,8 @@ defmodule Coflux.Orchestration.Server do
         {:ok, log_counts} = Observations.get_counts_for_run(state.db, run.id)
 
         steps =
-          Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, memo_key,
-                             requires_tag_set_id, created_at} ->
+          Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, type,
+                             memo_key, requires_tag_set_id, created_at} ->
             {:ok, executions} = Runs.get_step_executions(state.db, step_id)
             {:ok, arguments} = Runs.get_step_arguments(state.db, step_id)
 
@@ -1142,6 +1009,7 @@ defmodule Coflux.Orchestration.Server do
              %{
                repository: repository,
                target: target,
+               type: type,
                parent_id: parent_id,
                memo_key: memo_key,
                created_at: created_at,
@@ -1309,47 +1177,109 @@ defmodule Coflux.Orchestration.Server do
         {state, [], []},
         fn
           execution, {state, assigned, unassigned} ->
-            # TODO: choose session before resolving arguments?
-            {:ok, arguments} =
-              case Results.get_latest_checkpoint(state.db, execution.step_id) do
-                {:ok, nil} ->
-                  Runs.get_step_arguments(state.db, execution.step_id)
+            # TODO: support caching for other attempts?
+            cached_execution_id =
+              if execution.attempt == 1 && execution.cache_key do
+                cache_environment_ids = get_cache_environment_ids(state, execution.environment_id)
 
-                {:ok, {checkpoint_id, _, _, _}} ->
-                  Results.get_checkpoint_arguments(state.db, checkpoint_id)
+                recorded_after =
+                  if execution.cache_max_age, do: now - execution.cache_max_age, else: 0
+
+                case Runs.find_cached_execution(
+                       state.db,
+                       cache_environment_ids,
+                       execution.step_id,
+                       execution.cache_key,
+                       recorded_after
+                     ) do
+                  {:ok, cached_execution_id} ->
+                    cached_execution_id
+                end
               end
 
-            if arguments_ready?(state.db, execution.wait_for, arguments) &&
-                 dependencies_ready?(state.db, execution.execution_id) do
-              requires =
-                if execution.requires_tag_set_id,
-                  do: Map.fetch!(tag_sets, execution.requires_tag_set_id),
-                  else: %{}
+            if cached_execution_id do
+              {:ok, state} =
+                record_result(state, execution.execution_id, {:cached, cached_execution_id})
 
-              case choose_session(state, execution, requires) do
-                nil ->
-                  {state, assigned, [execution | unassigned]}
-
-                session_id ->
-                  {:ok, assigned_at} =
-                    Runs.assign_execution(state.db, execution.execution_id, session_id)
-
-                  state =
-                    state
-                    |> update_in(
-                      [Access.key(:sessions), session_id, :starting],
-                      &MapSet.put(&1, execution.execution_id)
-                    )
-                    |> send_session(
-                      session_id,
-                      {:execute, execution.execution_id, execution.repository, execution.target,
-                       arguments}
-                    )
-
-                  {state, [{execution, assigned_at} | assigned], unassigned}
-              end
-            else
               {state, assigned, unassigned}
+            else
+              # TODO: choose session before resolving arguments?
+              {:ok, arguments} =
+                case Results.get_latest_checkpoint(state.db, execution.step_id) do
+                  {:ok, nil} ->
+                    Runs.get_step_arguments(state.db, execution.step_id)
+
+                  {:ok, {checkpoint_id, _, _, _}} ->
+                    Results.get_checkpoint_arguments(state.db, checkpoint_id)
+                end
+
+              if arguments_ready?(state.db, execution.wait_for, arguments) &&
+                   dependencies_ready?(state.db, execution.execution_id) do
+                requires =
+                  if execution.requires_tag_set_id,
+                    do: Map.fetch!(tag_sets, execution.requires_tag_set_id),
+                    else: %{}
+
+                if execution.type == :task || !execution.parent_id do
+                  case choose_session(state, execution, requires) do
+                    nil ->
+                      {state, assigned, [execution | unassigned]}
+
+                    session_id ->
+                      {:ok, assigned_at} =
+                        Runs.assign_execution(state.db, execution.execution_id, session_id)
+
+                      state =
+                        state
+                        |> update_in(
+                          [Access.key(:sessions), session_id, :starting],
+                          &MapSet.put(&1, execution.execution_id)
+                        )
+                        |> send_session(
+                          session_id,
+                          {:execute, execution.execution_id, execution.repository,
+                           execution.target, arguments}
+                        )
+
+                      {state, [{execution, assigned_at} | assigned], unassigned}
+                  end
+                else
+                  state =
+                    case schedule_run(
+                           state,
+                           execution.repository,
+                           execution.target,
+                           execution.type,
+                           arguments,
+                           execution.environment_id,
+                           parent_id: execution.execution_id,
+                           cache: execution.cache_key,
+                           retries:
+                             if(execution.retry_limit > 0,
+                               do: %{
+                                 limit: execution.retry_limit,
+                                 delay_min: execution.retry_delay_min,
+                                 delay_max: execution.retry_delay_max
+                               }
+                             ),
+                           requires: requires
+                         ) do
+                      {:ok, _external_run_id, _external_step_id, spawned_execution_id, state} ->
+                        {:ok, state} =
+                          record_result(
+                            state,
+                            execution.execution_id,
+                            {:spawned, spawned_execution_id}
+                          )
+
+                        state
+                    end
+
+                  {state, assigned, unassigned}
+                end
+              else
+                {state, assigned, unassigned}
+              end
             end
         end
       )
@@ -1700,6 +1630,67 @@ defmodule Coflux.Orchestration.Server do
     {executions_due, executions_future, executions_defer}
   end
 
+  defp schedule_run(state, repository, target_name, type, arguments, environment_id, opts) do
+    cache_environment_ids = get_cache_environment_ids(state, environment_id)
+
+    case Runs.schedule_run(
+           state.db,
+           repository,
+           target_name,
+           type,
+           arguments,
+           environment_id,
+           cache_environment_ids,
+           opts
+         ) do
+      {:ok, external_run_id, external_step_id, execution_id, attempt, created_at, child_added} ->
+        state =
+          if child_added do
+            parent_id = Keyword.fetch!(opts, :parent_id)
+            # TODO: avoid looking this up again?
+            {:ok, parent_step} = Runs.get_step_for_execution(state.db, parent_id)
+
+            notify_listeners(
+              state,
+              {:run, parent_step.run_id},
+              {:child, parent_id,
+               {external_run_id, external_step_id, repository, target_name, type}}
+            )
+          else
+            state
+          end
+
+        # TODO: neater way to get execute_after?
+        execute_after = Keyword.get(opts, :execute_after)
+        execute_at = execute_after || created_at
+
+        state =
+          notify_listeners(
+            state,
+            case type do
+              :workflow -> {:workflow, repository, target_name, environment_id}
+              :sensor -> {:sensor, repository, target_name, environment_id}
+            end,
+            {:run, external_run_id, created_at}
+          )
+          |> notify_listeners(
+            {:repositories, environment_id},
+            {:scheduled, repository, execution_id, execute_at}
+          )
+          |> notify_listeners(
+            {:repository, repository, environment_id},
+            {:scheduled, execution_id, target_name, external_run_id, external_step_id, attempt,
+             execute_after, created_at}
+          )
+          |> notify_listeners(
+            {:targets, environment_id},
+            {:step, repository, target_name, external_run_id, external_step_id, attempt}
+          )
+
+        {:ok, external_run_id, external_step_id, execution_id, state}
+    end
+  end
+
   defp rerun_step(state, step, environment_id, opts \\ []) do
     execute_after = Keyword.get(opts, :execute_after, nil)
     dependency_ids = Keyword.get(opts, :dependency_ids, [])
@@ -1730,10 +1721,10 @@ defmodule Coflux.Orchestration.Server do
              execute_after, created_at}
           )
           |> notify_listeners(
-            if(run.recurrent,
-              do: {:sensor, run_repository, run_target, environment_id},
-              else: {:workflow, run_repository, run_target, environment_id}
-            ),
+            case step.type do
+              :workflow -> {:workflow, run_repository, run_target, environment_id}
+              :sensor -> {:sensor, run_repository, run_target, environment_id}
+            end,
             {:run, run.external_id, run.created_at}
           )
           |> notify_listeners(
@@ -1816,11 +1807,8 @@ defmodule Coflux.Orchestration.Server do
       {:value, value} ->
         {:value, build_value(value, state.db)}
 
-      {:deferred, execution_id} ->
-        {:deferred, execution_id, resolve_execution(state.db, execution_id)}
-
-      {:cached, execution_id} ->
-        {:cached, execution_id, resolve_execution(state.db, execution_id)}
+      {type, execution_id} when type in [:deferred, :cached, :spawned] ->
+        {type, execution_id, resolve_execution(state.db, execution_id)}
 
       other ->
         other
@@ -1908,33 +1896,30 @@ defmodule Coflux.Orchestration.Server do
                 {nil, state}
               end
 
-            true ->
-              {:ok, run} = Runs.get_run_by_id(state.db, step.run_id)
+            step.type == :sensor ->
+              {:ok, executions} = Runs.get_step_executions(state.db, step.id)
 
-              if run.recurrent do
-                {:ok, executions} = Runs.get_step_executions(state.db, step.id)
+              if Enum.all?(executions, &elem(&1, 5)) do
+                now = System.os_time(:millisecond)
 
-                if Enum.all?(executions, &elem(&1, 5)) do
-                  now = System.os_time(:millisecond)
+                last_assigned_at =
+                  executions |> Enum.map(&elem(&1, 6)) |> Enum.max(&>=/2, fn -> nil end)
 
-                  last_assigned_at =
-                    executions |> Enum.map(&elem(&1, 6)) |> Enum.max(&>=/2, fn -> nil end)
+                execute_after =
+                  if last_assigned_at && now - last_assigned_at < @sensor_rate_limit_ms do
+                    last_assigned_at + @sensor_rate_limit_ms
+                  end
 
-                  execute_after =
-                    if last_assigned_at && now - last_assigned_at < @recurrent_rate_limit_ms do
-                      last_assigned_at + @recurrent_rate_limit_ms
-                    end
+                {:ok, _, _, state} =
+                  rerun_step(state, step, environment_id, execute_after: execute_after)
 
-                  {:ok, _, _, state} =
-                    rerun_step(state, step, environment_id, execute_after: execute_after)
-
-                  {nil, state}
-                else
-                  {nil, state}
-                end
+                {nil, state}
               else
                 {nil, state}
               end
+
+            true ->
+              {nil, state}
           end
 
         result =
@@ -1984,6 +1969,9 @@ defmodule Coflux.Orchestration.Server do
             resolve_result(execution_id, db)
 
           {:suspended, execution_id} when not is_nil(execution_id) ->
+            resolve_result(execution_id, db)
+
+          {:spawned, execution_id} when not is_nil(execution_id) ->
             resolve_result(execution_id, db)
 
           other ->
@@ -2137,19 +2125,12 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp choose_session(state, execution, requires) do
-    target_type =
-      cond do
-        execution.parent_id -> :task
-        execution.run_recurrent -> :sensor
-        true -> :workflow
-      end
-
     target =
       state.targets
       |> Map.get(execution.repository, %{})
       |> Map.get(execution.target)
 
-    if target && target.type == target_type do
+    if target && target.type == execution.type do
       session_ids =
         Enum.filter(target.session_ids, fn session_id ->
           session = Map.fetch!(state.sessions, session_id)

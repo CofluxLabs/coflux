@@ -138,15 +138,15 @@ export type Result =
   | { type: "cancelled" }
   | { type: "deferred"; executionId: string; execution: ExecutionReference }
   | { type: "cached"; executionId: string; execution: ExecutionReference }
-  | { type: "suspended"; successorId: string };
+  | { type: "suspended"; successorId: string }
+  | { type: "spawned"; executionId: string; execution: ExecutionReference };
 
 export type Child = {
   repository: string;
   target: string;
+  type: "workflow" | "sensor";
   runId: string;
   stepId: string;
-  createdAt: number;
-  executionId: string | null;
 };
 
 // TODO: combine with `Execution`?
@@ -181,6 +181,7 @@ export type Execution = {
 export type Step = {
   repository: string;
   target: string;
+  type: "task" | "workflow" | "sensor";
   parentId: string | null;
   isMemoised: boolean;
   createdAt: number;
@@ -192,7 +193,6 @@ export type Step = {
 
 export type Run = {
   createdAt: number;
-  recurrent: boolean;
   parent: ExecutionReference | null;
   steps: Record<string, Step>;
 };

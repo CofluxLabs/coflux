@@ -1,43 +1,7 @@
 defmodule Coflux.Orchestration.Runs do
-  alias Coflux.Orchestration.{Models, Results, Values, TagSets}
+  alias Coflux.Orchestration.{Models, Values, TagSets, Utils}
 
   import Coflux.Store
-
-  def schedule_run(
-        db,
-        repository,
-        target,
-        arguments,
-        environment_id,
-        cache_environment_ids,
-        opts \\ []
-      ) do
-    idempotency_key = Keyword.get(opts, :idempotency_key)
-    parent_id = Keyword.get(opts, :parent_id)
-    recurrent = Keyword.get(opts, :recurrent)
-    now = current_timestamp()
-
-    with_transaction(db, fn ->
-      {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, recurrent, now)
-
-      {:ok, external_step_id, execution_id, attempt, now, false, result, child_added} =
-        do_schedule_step(
-          db,
-          run_id,
-          parent_id,
-          repository,
-          target,
-          arguments,
-          true,
-          environment_id,
-          cache_environment_ids,
-          now,
-          opts
-        )
-
-      {:ok, external_run_id, external_step_id, execution_id, attempt, result, now, child_added}
-    end)
-  end
 
   def get_step_by_external_id(db, external_id) do
     query_one(
@@ -50,9 +14,11 @@ defmodule Coflux.Orchestration.Runs do
         parent_id,
         repository,
         target,
+        type,
         priority,
         wait_for,
         cache_key,
+        cache_max_age,
         retry_limit,
         retry_delay_min,
         retry_delay_max,
@@ -75,10 +41,12 @@ defmodule Coflux.Orchestration.Runs do
         s.run_id,
         s.parent_id,
         s.repository,
+        s.type,
         s.target,
         s.priority,
         s.wait_for,
         s.cache_key,
+        s.cache_max_age,
         s.retry_limit,
         s.retry_delay_min,
         s.retry_delay_max,
@@ -102,12 +70,52 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
+  def schedule_run(
+        db,
+        repository,
+        target,
+        type,
+        arguments,
+        environment_id,
+        cache_environment_ids,
+        opts \\ []
+      ) do
+    idempotency_key = Keyword.get(opts, :idempotency_key)
+    parent_id = Keyword.get(opts, :parent_id)
+    now = current_timestamp()
+
+    # TODO: check that 'type' is :workflow or :sensor?
+
+    with_transaction(db, fn ->
+      {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, now)
+
+      {:ok, external_step_id, execution_id, attempt, now, false, child_added} =
+        do_schedule_step(
+          db,
+          run_id,
+          parent_id,
+          repository,
+          target,
+          type,
+          arguments,
+          true,
+          environment_id,
+          cache_environment_ids,
+          now,
+          opts
+        )
+
+      {:ok, external_run_id, external_step_id, execution_id, attempt, now, child_added}
+    end)
+  end
+
   def schedule_step(
         db,
         run_id,
         parent_id,
         repository,
         target,
+        type,
         arguments,
         environment_id,
         cache_environment_ids,
@@ -122,6 +130,7 @@ defmodule Coflux.Orchestration.Runs do
         parent_id,
         repository,
         target,
+        type,
         arguments,
         false,
         environment_id,
@@ -187,6 +196,7 @@ defmodule Coflux.Orchestration.Runs do
          parent_id,
          repository,
          target,
+         type,
          arguments,
          is_initial,
          environment_id,
@@ -212,34 +222,31 @@ defmodule Coflux.Orchestration.Runs do
         end
       end
 
-    {step_id, external_step_id, execution_id, attempt, now, memo_hit, result} =
+    {step_id, external_step_id, execution_id, attempt, now, memo_hit} =
       case memoised_execution do
         {step_id, external_step_id, execution_id, attempt, now} ->
           {step_id, external_step_id, execution_id, attempt, now, true, false}
 
         nil ->
-          cache_key =
-            if cache,
-              do:
-                build_key(
-                  cache.params,
-                  arguments,
-                  cache.namespace || "#{repository}:#{target}",
-                  cache.version
-                )
+          {cache_key, cache_max_age} =
+            cond do
+              is_binary(cache) ->
+                {cache, 0}
 
-          cached_execution_id =
-            if cache_key do
-              recorded_after = if cache.max_age, do: now - cache.max_age * 1000, else: 0
+              cache ->
+                {build_key(
+                   cache.params,
+                   arguments,
+                   cache.namespace || "#{repository}:#{target}",
+                   cache.version
+                 ), cache.max_age}
 
-              case find_cached_execution(db, cache_environment_ids, cache_key, recorded_after) do
-                {:ok, cached_execution_id} ->
-                  cached_execution_id
-              end
+              true ->
+                {nil, nil}
             end
 
           requires_tag_set_id =
-            if requires do
+            if Enum.any?(requires) do
               case TagSets.get_or_create_tag_set_id(db, requires) do
                 {:ok, tag_set_id} ->
                   tag_set_id
@@ -258,9 +265,11 @@ defmodule Coflux.Orchestration.Runs do
               if(!is_initial, do: parent_id),
               repository,
               target,
+              type,
               priority,
               wait_for,
               cache_key,
+              cache_max_age,
               defer_key,
               memo_key,
               if(retries, do: retries.limit, else: 0),
@@ -288,16 +297,7 @@ defmodule Coflux.Orchestration.Runs do
           {:ok, execution_id} =
             insert_execution(db, step_id, attempt, environment_id, execute_after, now)
 
-          result =
-            if cached_execution_id do
-              # TODO: delay if execute_after is set?
-              {:ok, _} =
-                Results.insert_result(db, execution_id, 5, nil, nil, cached_execution_id, now)
-
-              {:cached, cached_execution_id}
-            end
-
-          {step_id, external_step_id, execution_id, attempt, now, false, result}
+          {step_id, external_step_id, execution_id, attempt, now, false}
       end
 
     child_added =
@@ -308,7 +308,7 @@ defmodule Coflux.Orchestration.Runs do
         false
       end
 
-    {:ok, external_step_id, execution_id, attempt, now, memo_hit, result, child_added}
+    {:ok, external_step_id, execution_id, attempt, now, memo_hit, child_added}
   end
 
   def rerun_step(db, step_id, environment_id, execute_after, dependency_ids) do
@@ -404,15 +404,21 @@ defmodule Coflux.Orchestration.Runs do
         s.id AS step_id,
         s.run_id,
         run.external_id AS run_external_id,
-        run.recurrent AS run_recurrent,
         s.repository,
         s.target,
+        s.type,
         s.wait_for,
+        s.cache_key,
+        s.cache_max_age,
         s.defer_key,
         s.parent_id,
         s.requires_tag_set_id,
+        s.retry_limit,
+        s.retry_delay_min,
+        s.retry_delay_max,
         e.environment_id,
         e.execute_after,
+        e.attempt,
         e.created_at
       FROM executions AS e
       INNER JOIN steps AS s ON s.id = e.step_id
@@ -512,7 +518,7 @@ defmodule Coflux.Orchestration.Runs do
     query_one(
       db,
       """
-      SELECT id, external_id, parent_id, idempotency_key, recurrent, created_at
+      SELECT id, external_id, parent_id, idempotency_key, created_at
       FROM runs
       WHERE id = ?1
       """,
@@ -525,7 +531,7 @@ defmodule Coflux.Orchestration.Runs do
     query_one(
       db,
       """
-      SELECT id, external_id, parent_id, idempotency_key, recurrent, created_at
+      SELECT id, external_id, parent_id, idempotency_key, created_at
       FROM runs
       WHERE external_id = ?1
       """,
@@ -574,16 +580,25 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
+  # TODO: use Step model?
   def get_run_steps(db, run_id) do
-    query(
-      db,
-      """
-      SELECT id, external_id, parent_id, repository, target, memo_key, requires_tag_set_id, created_at
-      FROM steps
-      WHERE run_id = ?1
-      """,
-      {run_id}
-    )
+    case query(
+           db,
+           """
+           SELECT id, external_id, parent_id, repository, target, type, memo_key, requires_tag_set_id, created_at
+           FROM steps
+           WHERE run_id = ?1
+           """,
+           {run_id}
+         ) do
+      {:ok, rows} ->
+        {:ok,
+         Enum.map(rows, fn {id, external_id, parent_id, repository, target, type, memo_key,
+                            requires_tag_set_id, created_at} ->
+           {id, external_id, parent_id, repository, target, Utils.decode_step_type(type),
+            memo_key, requires_tag_set_id, created_at}
+         end)}
+    end
   end
 
   def get_step_executions(db, step_id) do
@@ -639,17 +654,23 @@ defmodule Coflux.Orchestration.Runs do
   end
 
   def get_execution_children(db, execution_id) do
-    query(
-      db,
-      """
-      SELECT r.external_id, s.external_id, c.child_id, s.repository, s.target, c.created_at
-      FROM children AS c
-      INNER JOIN steps AS s ON s.id = c.child_id
-      INNER JOIN runs AS r ON r.id = s.run_id
-      WHERE c.parent_id = ?1
-      """,
-      {execution_id}
-    )
+    case query(
+           db,
+           """
+           SELECT r.external_id, s.external_id, s.repository, s.target, s.type
+           FROM children AS c
+           INNER JOIN steps AS s ON s.id = c.child_id
+           INNER JOIN runs AS r ON r.id = s.run_id
+           WHERE c.parent_id = ?1
+           """,
+           {execution_id}
+         ) do
+      {:ok, rows} ->
+        {:ok,
+         Enum.map(rows, fn {run_external_id, step_external_id, repository, target, type} ->
+           {run_external_id, step_external_id, repository, target, Utils.decode_step_type(type)}
+         end)}
+    end
   end
 
   def get_result_dependencies(db, execution_id) do
@@ -709,7 +730,7 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  defp find_cached_execution(db, environment_ids, cache_key, recorded_after) do
+  def find_cached_execution(db, environment_ids, step_id, cache_key, recorded_after) do
     case query(
            db,
            """
@@ -721,10 +742,11 @@ defmodule Coflux.Orchestration.Runs do
              e.environment_id IN (#{build_placeholders(length(environment_ids))})
              AND s.cache_key = ?#{length(environment_ids) + 1}
              AND (r.type IS NULL OR (r.type = 1 AND r.created_at >= ?#{length(environment_ids) + 2}))
+             AND s.id <> ?#{length(environment_ids) + 3}
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           List.to_tuple(environment_ids ++ [cache_key, recorded_after])
+           List.to_tuple(environment_ids ++ [cache_key, recorded_after, step_id])
          ) do
       {:ok, [{execution_id}]} ->
         {:ok, execution_id}
@@ -734,14 +756,13 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  defp insert_run(db, parent_id, idempotency_key, recurrent, created_at) do
+  defp insert_run(db, parent_id, idempotency_key, created_at) do
     case generate_external_id(db, :runs, 2, "R") do
       {:ok, external_id} ->
         case insert_one(db, :runs, %{
                external_id: external_id,
                parent_id: parent_id,
                idempotency_key: idempotency_key,
-               recurrent: if(recurrent, do: 1, else: 0),
                created_at: created_at
              }) do
           {:ok, run_id} ->
@@ -750,19 +771,17 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  defp encode_wait_for(indexes) do
-    Enum.reduce(indexes, 0, &Bitwise.bor(&2, Bitwise.bsl(1, &1)))
-  end
-
   defp insert_step(
          db,
          run_id,
          parent_id,
          repository,
          target,
+         type,
          priority,
          wait_for,
          cache_key,
+         cache_max_age,
          defer_key,
          memo_key,
          retry_limit,
@@ -779,9 +798,11 @@ defmodule Coflux.Orchestration.Runs do
                parent_id: parent_id,
                repository: repository,
                target: target,
+               type: Utils.encode_step_type(type),
                priority: priority,
-               wait_for: encode_wait_for(wait_for || []),
+               wait_for: Utils.encode_params_set(wait_for || []),
                cache_key: cache_key,
+               cache_max_age: cache_max_age,
                defer_key: defer_key,
                memo_key: memo_key,
                retry_limit: retry_limit,

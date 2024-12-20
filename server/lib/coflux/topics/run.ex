@@ -47,13 +47,14 @@ defmodule Coflux.Topics.Run do
 
   defp process_notification(
          topic,
-         {:step, step_id, repository, target, is_memoised, parent_id, created_at, arguments,
+         {:step, step_id, repository, target, type, is_memoised, parent_id, created_at, arguments,
           requires, attempt, execution_id, environment_id, execute_after}
        ) do
     if environment_id in topic.state.environment_ids do
       Topic.set(topic, [:steps, step_id], %{
         repository: repository,
         target: target,
+        type: type,
         parentId: if(parent_id, do: Integer.to_string(parent_id)),
         isMemoised: is_memoised,
         createdAt: created_at,
@@ -200,7 +201,6 @@ defmodule Coflux.Topics.Run do
   defp build_run(run, parent, steps, environment_ids) do
     %{
       createdAt: run.created_at,
-      recurrent: run.recurrent,
       parent: if(parent, do: build_execution(parent)),
       steps:
         steps
@@ -214,6 +214,7 @@ defmodule Coflux.Topics.Run do
            %{
              repository: step.repository,
              target: step.target,
+             type: step.type,
              parentId: if(step.parent_id, do: Integer.to_string(step.parent_id)),
              isMemoised: !is_nil(step.memo_key),
              createdAt: step.created_at,
@@ -317,25 +318,24 @@ defmodule Coflux.Topics.Run do
       {:suspended, successor_id} ->
         %{type: "suspended", successorId: successor_id}
 
+      {:spawned, execution_id, execution} ->
+        %{type: "spawned", executionId: execution_id, execution: build_execution(execution)}
+
       nil ->
         nil
     end
   end
 
-  defp build_child(
-         {external_run_id, external_step_id, execution_id, repository, target, created_at},
-         run_external_id
-       ) do
+  defp build_child({external_run_id, external_step_id, repository, target, type}, run_external_id) do
     if external_run_id == run_external_id do
       external_step_id
     else
       %{
         runId: external_run_id,
         stepId: external_step_id,
-        executionId: if(execution_id, do: Integer.to_string(execution_id)),
         repository: repository,
         target: target,
-        createdAt: created_at
+        type: type
       }
     end
   end

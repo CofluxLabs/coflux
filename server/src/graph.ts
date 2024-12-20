@@ -313,8 +313,8 @@ export default function buildGraph(
             type: "child",
             child,
             runId: child.runId,
-            width: 160,
-            height: 50,
+            width: 100,
+            height: 30,
           };
           if (
             Object.values(execution.dependencies).some(

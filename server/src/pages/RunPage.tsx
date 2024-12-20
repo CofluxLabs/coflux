@@ -15,9 +15,11 @@ export default function RunPage() {
     (e) => e.name == activeEnvironmentName && e.status != "archived",
   );
   const run = useRun(projectId, runId, activeEnvironmentId);
+  const initialStep = run && Object.values(run.steps).find((s) => !s.parentId)!;
+  const type = initialStep?.type;
   useEffect(() => {
-    if (run) {
-      const page = run.recurrent ? "children" : "graph";
+    if (type) {
+      const page = type == "sensor" ? "children" : "graph";
       navigate(
         buildUrl(
           `/projects/${projectId}/runs/${runId}/${page}`,
@@ -26,6 +28,6 @@ export default function RunPage() {
         { replace: true },
       );
     }
-  }, [run, navigate]);
+  }, [projectId, runId, searchParams, type, navigate]);
   return <div></div>;
 }

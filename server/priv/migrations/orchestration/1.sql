@@ -170,7 +170,6 @@ CREATE TABLE runs (
   external_id TEXT NOT NULL UNIQUE,
   parent_id INTEGER,
   idempotency_key TEXT UNIQUE,
-  recurrent INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE SET NULL
 );
@@ -182,9 +181,11 @@ CREATE TABLE steps (
   parent_id INTEGER, -- TODO: remove?
   repository TEXT NOT NULL,
   target TEXT NOT NULL,
+  type INTEGER NOT NULL,
   priority INTEGER NOT NULL, -- TODO: move to executions?
   wait_for INTEGER NOT NULL,
   cache_key TEXT,
+  cache_max_age INTEGER,
   defer_key TEXT,
   memo_key TEXT,
   retry_limit INTEGER NOT NULL,
@@ -205,7 +206,7 @@ CREATE TABLE step_arguments (
   position INTEGER NOT NULL,
   value_id INTEGER NOT NULL,
   PRIMARY KEY (step_id, position),
-  FOREIGN KEY (step_id) REFERENCES steps ON DELETE RESTRICT,
+  FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE,
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
 );
 
@@ -390,6 +391,7 @@ CREATE TABLE results (
       WHEN 4 THEN successor_id AND NOT (error_id OR value_id)
       WHEN 5 THEN successor_id AND NOT (error_id OR value_id)
       WHEN 6 THEN successor_id AND NOT (error_id OR value_id)
+      WHEN 7 THEN successor_id AND NOT (error_id OR value_id)
       ELSE FALSE
     END
   )

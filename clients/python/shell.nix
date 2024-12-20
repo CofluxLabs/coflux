@@ -4,7 +4,7 @@ pkgs.mkShell {
   buildInputs = [
     pkgs.python311
     pkgs.poetry
-    pkgs.nodePackages.pyright
+    pkgs.pyright
     pkgs.ruff-lsp
     pkgs.black
   ];

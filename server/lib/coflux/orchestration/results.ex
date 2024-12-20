@@ -95,8 +95,14 @@ defmodule Coflux.Orchestration.Results do
           {:deferred, defer_id} ->
             {4, nil, nil, defer_id}
 
+          {:cached, cached_id} ->
+            {5, nil, nil, cached_id}
+
           {:suspended, successor_id} ->
             {6, nil, nil, successor_id}
+
+          {:spawned, execution_id} ->
+            {7, nil, nil, execution_id}
         end
 
       case insert_result(db, execution_id, type, error_id, value_id, successor_id, now) do
@@ -154,6 +160,9 @@ defmodule Coflux.Orchestration.Results do
 
             {6, nil, nil, successor_id} ->
               {:suspended, successor_id}
+
+            {7, nil, nil, execution_id} ->
+              {:spawned, execution_id}
           end
 
         {:ok, {result, created_at}}
@@ -289,16 +298,15 @@ defmodule Coflux.Orchestration.Results do
     end
   end
 
-  # TODO: make this private?
-  def insert_result(
-        db,
-        execution_id,
-        type,
-        error_id,
-        value_id,
-        successor_id,
-        created_at
-      ) do
+  defp insert_result(
+         db,
+         execution_id,
+         type,
+         error_id,
+         value_id,
+         successor_id,
+         created_at
+       ) do
     insert_one(db, :results, %{
       execution_id: execution_id,
       type: type,

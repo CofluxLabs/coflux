@@ -61,9 +61,9 @@ defmodule Coflux.Handlers.Agent do
 
       "submit" ->
         [
-          type,
           repository,
           target,
+          type,
           arguments,
           parent_id,
           wait_for,
@@ -76,50 +76,26 @@ defmodule Coflux.Handlers.Agent do
         ] = message["params"]
 
         if is_recognised_execution?(parent_id, state) do
-          case type do
-            "workflow" ->
-              case Orchestration.submit_workflow(
-                     state.project_id,
-                     repository,
-                     target,
-                     Enum.map(arguments, &parse_value/1),
-                     parent_id: parent_id,
-                     execute_after: execute_after,
-                     wait_for: wait_for,
-                     cache: parse_cache(cache),
-                     defer: parse_defer(defer),
-                     memo: memo,
-                     retries: parse_retries(retries),
-                     requires: requires
-                   ) do
-                {:ok, _run_id, _step_id, execution_id} ->
-                  {[success_message(message["id"], execution_id)], state}
+          case Orchestration.schedule_step(
+                 state.project_id,
+                 parent_id,
+                 repository,
+                 target,
+                 parse_type(type),
+                 Enum.map(arguments, &parse_value/1),
+                 execute_after: execute_after,
+                 wait_for: wait_for,
+                 cache: parse_cache(cache),
+                 defer: parse_defer(defer),
+                 memo: memo,
+                 retries: parse_retries(retries),
+                 requires: requires
+               ) do
+            {:ok, _run_id, _step_id, execution_id} ->
+              {[success_message(message["id"], execution_id)], state}
 
-                {:error, error} ->
-                  {[error_message(message["id"], error)], state}
-              end
-
-            "task" ->
-              case Orchestration.submit_task(
-                     state.project_id,
-                     parent_id,
-                     repository,
-                     target,
-                     Enum.map(arguments, &parse_value/1),
-                     execute_after: execute_after,
-                     wait_for: wait_for,
-                     cache: parse_cache(cache),
-                     defer: parse_defer(defer),
-                     memo: memo,
-                     retries: parse_retries(retries),
-                     requires: requires
-                   ) do
-                {:ok, _run_id, _step_id, execution_id} ->
-                  {[success_message(message["id"], execution_id)], state}
-
-                {:error, error} ->
-                  {[error_message(message["id"], error)], state}
-              end
+            {:error, error} ->
+              {[error_message(message["id"], error)], state}
           end
         else
           {[{:close, 4000, "execution_invalid"}], nil}
