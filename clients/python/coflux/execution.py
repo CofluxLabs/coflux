@@ -88,9 +88,9 @@ class RecordErrorRequest(t.NamedTuple):
 
 
 class SubmitExecutionRequest(t.NamedTuple):
-    type: t.Literal["workflow", "task"]
     repository: str
     target: str
+    type: models.TargetType
     arguments: list[models.Value]
     wait_for: set[int]
     cache: models.Cache | None
@@ -275,7 +275,7 @@ class Channel:
 
     def submit_execution(
         self,
-        type: t.Literal["workflow", "task"],
+        type: models.TargetType,
         repository: str,
         target: str,
         arguments: tuple[t.Any, ...],
@@ -302,9 +302,9 @@ class Channel:
         ]
         execution_id = self._request(
             SubmitExecutionRequest(
-                type,
                 repository,
                 target,
+                type,
                 serialised_arguments,
                 wait_for or set(),
                 cache,
@@ -753,9 +753,9 @@ class Execution:
     def _handle_request(self, request_id, request):
         match request:
             case SubmitExecutionRequest(
-                type,
                 repository,
                 target,
+                type,
                 arguments,
                 wait_for,
                 cache,
@@ -771,9 +771,9 @@ class Execution:
                 self._server_request(
                     "submit",
                     (
-                        type,
                         repository,
                         target,
+                        type,
                         _json_safe_arguments(arguments),
                         self._id,
                         list(wait_for),

@@ -297,10 +297,11 @@ defmodule Coflux.Handlers.Api do
       )
 
     if Enum.empty?(errors) do
-      case Orchestration.submit_workflow(
+      case Orchestration.start_run(
              arguments.project_id,
              arguments.repository,
              arguments.target,
+             :workflow,
              arguments.arguments,
              environment: arguments.environment_name,
              execute_after: arguments[:execute_after],
@@ -340,10 +341,11 @@ defmodule Coflux.Handlers.Api do
       )
 
     if Enum.empty?(errors) do
-      case Orchestration.start_sensor(
+      case Orchestration.start_run(
              arguments.project_id,
              arguments.repository,
              arguments.target,
+             :sensor,
              arguments.arguments,
              environment: arguments.environment_name,
              requires: arguments[:requires]

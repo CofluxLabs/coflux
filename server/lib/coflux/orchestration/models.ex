@@ -1,14 +1,5 @@
 defmodule Coflux.Orchestration.Models do
-  defmodule Utils do
-    def decode_wait_for(value) do
-      value
-      |> Integer.digits(2)
-      |> Enum.reverse()
-      |> Enum.with_index()
-      |> Enum.filter(fn {v, _} -> v == 1 end)
-      |> Enum.map(fn {_, i} -> i end)
-    end
-  end
+  alias Coflux.Orchestration.Utils
 
   defmodule Run do
     defstruct [
@@ -16,13 +7,8 @@ defmodule Coflux.Orchestration.Models do
       :external_id,
       :parent_id,
       :idempotency_key,
-      :recurrent,
       :created_at
     ]
-
-    def prepare(fields) do
-      Keyword.update!(fields, :recurrent, &(&1 > 0))
-    end
   end
 
   defmodule Step do
@@ -35,6 +21,7 @@ defmodule Coflux.Orchestration.Models do
       :parent_id,
       :repository,
       :target,
+      :type,
       :priority,
       :wait_for,
       :cache_key,
@@ -46,7 +33,9 @@ defmodule Coflux.Orchestration.Models do
     ]
 
     def prepare(fields) do
-      Keyword.update!(fields, :wait_for, &Utils.decode_wait_for/1)
+      fields
+      |> Keyword.update!(:type, &Utils.decode_step_type/1)
+      |> Keyword.update!(:wait_for, &Utils.decode_params_set/1)
     end
   end
 
@@ -56,24 +45,28 @@ defmodule Coflux.Orchestration.Models do
       :step_id,
       :run_id,
       :run_external_id,
-      :run_recurrent,
       :repository,
       :target,
+      :type,
       :wait_for,
       :cache_key,
       :cache_max_age,
       :defer_key,
       :parent_id,
       :requires_tag_set_id,
+      :retry_limit,
+      :retry_delay_min,
+      :retry_delay_max,
       :environment_id,
       :execute_after,
+      :attempt,
       :created_at
     ]
 
     def prepare(fields) do
       fields
-      |> Keyword.update!(:wait_for, &Utils.decode_wait_for/1)
-      |> Keyword.update!(:run_recurrent, &(&1 > 0))
+      |> Keyword.update!(:type, &Utils.decode_step_type/1)
+      |> Keyword.update!(:wait_for, &Utils.decode_params_set/1)
     end
   end
 end

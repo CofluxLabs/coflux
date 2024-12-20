@@ -57,11 +57,14 @@ function getRunEnvironmentId(run: models.Run) {
 
 type ExecutionStatusProps = {
   execution: models.Execution;
+  step: models.Step;
 };
 
-function ExecutionStatus({ execution }: ExecutionStatusProps) {
+function ExecutionStatus({ execution, step }: ExecutionStatusProps) {
   return execution.result?.type == "cached" ? (
     <Badge intent="none" label="Cached" />
+  ) : execution.result?.type == "spawned" ? (
+    <Badge intent="none" label="Spawned" />
   ) : execution.result?.type == "deferred" ? (
     <Badge intent="none" label="Deferred" />
   ) : execution.result?.type == "value" ? (
@@ -73,7 +76,10 @@ function ExecutionStatus({ execution }: ExecutionStatusProps) {
   ) : execution.result?.type == "suspended" ? (
     <Badge intent="none" label="Suspended" />
   ) : execution.result?.type == "cancelled" ? (
-    <Badge intent="warning" label="Cancelled" />
+    <Badge
+      intent="warning"
+      label={step.type == "sensor" ? "Stoppped" : "Cancelled"}
+    />
   ) : !execution.assignedAt ? (
     <Badge intent="info" label="Assigning" />
   ) : !execution.result ? (
@@ -158,17 +164,19 @@ function NextPreviousButton({
 
 type AttemptSelectorOptionProps = {
   attempt: number;
+  step: models.Step;
   execution: models.Execution;
 };
 
 function AttemptSelectorOption({
   attempt,
+  step,
   execution,
 }: AttemptSelectorOptionProps) {
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-sm">#{attempt}</span>
-      <ExecutionStatus execution={execution} />
+      <ExecutionStatus execution={execution} step={step} />
     </div>
   );
 }
@@ -177,20 +185,20 @@ type AttemptSelectorProps = {
   selected: number;
   activeEnvironmentName: string | undefined;
   stepId: string;
+  step: models.Step;
   activeTab: number;
   maximised: boolean;
-  executions: Record<number, models.Execution>;
 };
 
 function AttemptSelector({
   selected,
   activeEnvironmentName,
   stepId,
+  step,
   activeTab,
   maximised,
-  executions,
 }: AttemptSelectorProps) {
-  const selectedExecution = executions[selected];
+  const selectedExecution = step.executions[selected];
   return (
     <div className="flex shadow-sm">
       <NextPreviousButton
@@ -198,7 +206,7 @@ function AttemptSelector({
         activeEnvironmentName={activeEnvironmentName}
         stepId={stepId}
         currentAttempt={selected}
-        executions={executions}
+        executions={step.executions}
         activeTab={activeTab}
         maximised={maximised}
       />
@@ -207,6 +215,7 @@ function AttemptSelector({
           {selectedExecution && (
             <AttemptSelectorOption
               attempt={selected}
+              step={step}
               execution={selectedExecution}
             />
           )}
@@ -217,7 +226,7 @@ function AttemptSelector({
           className="p-1 overflow-auto bg-white shadow-xl rounded-md origin-top transition duration-200 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
           anchor={{ to: "bottom start", gap: 2, padding: 20 }}
         >
-          {sortBy(Object.entries(executions), "attempt").map(
+          {sortBy(Object.entries(step.executions), "attempt").map(
             ([attempt_, execution]) => {
               const attempt = parseInt(attempt_, 10);
               return (
@@ -237,6 +246,7 @@ function AttemptSelector({
                   >
                     <AttemptSelectorOption
                       attempt={attempt}
+                      step={step}
                       execution={execution}
                     />
                   </Link>
@@ -251,7 +261,7 @@ function AttemptSelector({
         activeEnvironmentName={activeEnvironmentName}
         stepId={stepId}
         currentAttempt={selected}
-        executions={executions}
+        executions={step.executions}
         activeTab={activeTab}
         maximised={maximised}
       />
@@ -529,7 +539,7 @@ function Header({
             stepId={stepId}
             activeTab={activeTab}
             maximised={maximised}
-            executions={step.executions}
+            step={step}
           />
           {executionEnvironmentId != runEnvironmentId && (
             <EnvironmentLabel
@@ -773,6 +783,17 @@ function RelationsSection({
             <span className="font-mono">{step.target}</span>{" "}
             <span className="text-slate-500">({step.repository})</span>
           </StepLink>
+        ) : run.parent ? (
+          <StepLink
+            runId={run.parent.runId}
+            stepId={run.parent.stepId}
+            attempt={run.parent.attempt}
+            className="rounded text-sm ring-offset-1 px-1"
+            hoveredClassName="ring-2 ring-slate-300"
+          >
+            <span className="font-mono">{run.parent.target}</span>{" "}
+            <span className="text-slate-500">({run.parent.repository})</span>
+          </StepLink>
         ) : (
           <p className="italic">None</p>
         )}
@@ -957,6 +978,33 @@ function CachedSection({ result }: CachedSectionProps) {
   );
 }
 
+type SpawnedSectionProps = {
+  result: Extract<models.Result, { type: "spawned" }>;
+};
+
+function SpawnedSection({ result }: SpawnedSectionProps) {
+  return (
+    <div>
+      <h3 className="uppercase text-sm font-bold text-slate-400">Spawned</h3>
+      <p>
+        To:{" "}
+        <StepLink
+          runId={result.execution.runId}
+          stepId={result.execution.stepId}
+          attempt={result.execution.attempt}
+          className="rounded text-sm ring-offset-1 px-1 ring-slate-300"
+          hoveredClassName="ring-2"
+        >
+          <span className="font-mono">{result.execution.target}</span>{" "}
+          <span className="text-slate-500">
+            ({result.execution.repository})
+          </span>
+        </StepLink>
+      </p>
+    </div>
+  );
+}
+
 type AssetItemProps = {
   asset: models.Asset;
   projectId: string;
@@ -965,7 +1013,7 @@ type AssetItemProps = {
 
 function AssetItem({ asset, projectId, assetId }: AssetItemProps) {
   return (
-    <li className="block my-1 flex items-center gap-1">
+    <li className="my-1 flex items-center gap-1">
       <AssetLink
         projectId={projectId}
         assetId={assetId}
@@ -1145,6 +1193,8 @@ export default function StepDetail({
             <DeferredSection execution={execution} />
           ) : execution?.result?.type == "cached" ? (
             <CachedSection result={execution.result} />
+          ) : execution?.result?.type == "spawned" ? (
+            <SpawnedSection result={execution.result} />
           ) : undefined}
           {execution && Object.keys(execution.assets).length > 0 && (
             <AssetsSection execution={execution} projectId={projectId} />
