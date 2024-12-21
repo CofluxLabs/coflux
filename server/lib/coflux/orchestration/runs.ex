@@ -255,7 +255,7 @@ defmodule Coflux.Orchestration.Runs do
     {step_id, external_step_id, execution_id, attempt, now, memo_hit} =
       case memoised_execution do
         {step_id, external_step_id, execution_id, attempt, now} ->
-          {step_id, external_step_id, execution_id, attempt, now, true, false}
+          {step_id, external_step_id, execution_id, attempt, now, true}
 
         nil ->
           {cache_key, cache_max_age} =
