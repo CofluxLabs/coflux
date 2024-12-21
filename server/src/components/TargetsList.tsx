@@ -18,6 +18,7 @@ import * as models from "../models";
 import { buildUrl, pluralise } from "../utils";
 import useNow from "../hooks/useNow";
 import * as api from "../api";
+import { sortBy } from "lodash";
 
 function isTargetOnline(
   agents: Record<string, Record<string, string[]>> | undefined,
@@ -44,7 +45,7 @@ function Target({ url, icon: Icon, name, isActive, isOnline }: TargetProps) {
       <Link
         to={url}
         className={classNames(
-          "block px-1 py-0.5 my-0.5 rounded-md flex gap-1 items-center",
+          "px-1 py-0.5 my-0.5 rounded-md flex gap-1 items-center",
           isOnline ? "text-slate-900" : "text-slate-400",
           isActive ? "bg-slate-200" : "hover:bg-slate-200/50",
         )}
@@ -204,69 +205,71 @@ export default function TargetsList({
   const now = useNow(500);
   return (
     <div className="p-2">
-      {Object.entries(repositories).map(([repositoryName, repository]) => (
-        <div key={repositoryName} className="py-2">
-          <div className="flex gap-1">
-            <RepositoryHeader
-              repositoryName={repositoryName}
-              repository={repository}
-              isActive={activeRepository == repositoryName && !activeTarget}
-              projectId={projectId}
-              environmentName={environmentName}
-              now={now}
-            />
-            <RepositoryMenu
-              projectId={projectId}
-              environmentName={environmentName}
-              repositoryName={repositoryName}
-            />
+      {sortBy(Object.entries(repositories), ([name, _]) => name).map(
+        ([repositoryName, repository]) => (
+          <div key={repositoryName} className="py-2">
+            <div className="flex gap-1">
+              <RepositoryHeader
+                repositoryName={repositoryName}
+                repository={repository}
+                isActive={activeRepository == repositoryName && !activeTarget}
+                projectId={projectId}
+                environmentName={environmentName}
+                now={now}
+              />
+              <RepositoryMenu
+                projectId={projectId}
+                environmentName={environmentName}
+                repositoryName={repositoryName}
+              />
+            </div>
+            {repository.workflows.length || repository.sensors.length ? (
+              <ul>
+                {repository.workflows.toSorted().map((name) => {
+                  const isActive =
+                    activeRepository == repositoryName && activeTarget == name;
+                  return (
+                    <Target
+                      key={name}
+                      name={name}
+                      icon={IconSubtask}
+                      url={buildUrl(
+                        `/projects/${projectId}/workflows/${encodeURIComponent(
+                          repositoryName,
+                        )}/${name}`,
+                        { environment: environmentName },
+                      )}
+                      isActive={isActive}
+                      isOnline={isTargetOnline(agents, repositoryName, name)}
+                    />
+                  );
+                })}
+                {repository.sensors.map((name) => {
+                  const isActive =
+                    activeRepository == repositoryName && activeTarget == name;
+                  return (
+                    <Target
+                      key={name}
+                      name={name}
+                      icon={IconCpu}
+                      url={buildUrl(
+                        `/projects/${projectId}/sensors/${encodeURIComponent(
+                          repositoryName,
+                        )}/${name}`,
+                        { environment: environmentName },
+                      )}
+                      isActive={isActive}
+                      isOnline={isTargetOnline(agents, repositoryName, name)}
+                    />
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-slate-300 italic px-2 text-sm">No targets</p>
+            )}
           </div>
-          {repository.workflows.length || repository.sensors.length ? (
-            <ul>
-              {repository.workflows.map((name) => {
-                const isActive =
-                  activeRepository == repositoryName && activeTarget == name;
-                return (
-                  <Target
-                    key={name}
-                    name={name}
-                    icon={IconSubtask}
-                    url={buildUrl(
-                      `/projects/${projectId}/workflows/${encodeURIComponent(
-                        repositoryName,
-                      )}/${name}`,
-                      { environment: environmentName },
-                    )}
-                    isActive={isActive}
-                    isOnline={isTargetOnline(agents, repositoryName, name)}
-                  />
-                );
-              })}
-              {repository.sensors.map((name) => {
-                const isActive =
-                  activeRepository == repositoryName && activeTarget == name;
-                return (
-                  <Target
-                    key={name}
-                    name={name}
-                    icon={IconCpu}
-                    url={buildUrl(
-                      `/projects/${projectId}/sensors/${encodeURIComponent(
-                        repositoryName,
-                      )}/${name}`,
-                      { environment: environmentName },
-                    )}
-                    isActive={isActive}
-                    isOnline={isTargetOnline(agents, repositoryName, name)}
-                  />
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="text-slate-300 italic px-2 text-sm">No targets</p>
-          )}
-        </div>
-      ))}
+        ),
+      )}
     </div>
   );
 }
