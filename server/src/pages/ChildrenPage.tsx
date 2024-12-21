@@ -45,24 +45,24 @@ export default function ChildrenPage() {
                 const spawned = findSpawned(run, executions[attempt]);
                 return (
                   <Fragment key={attempt}>
+                    <tr>
+                      <td colSpan={3}>
+                        <h3 className="text-xs text-slate-400 uppercase font-semibold mt-3 mb-1">
+                          <StepLink
+                            runId={runId!}
+                            stepId={initialStepId}
+                            attempt={attempt}
+                            className="rounded ring-offset-1 px-1"
+                            activeClassName="ring-2 ring-cyan-400"
+                            hoveredClassName="ring-2 ring-slate-300"
+                          >
+                            Iteration #{attempt}
+                          </StepLink>
+                        </h3>
+                      </td>
+                    </tr>
                     {spawned.length ? (
                       <Fragment>
-                        <tr>
-                          <td colSpan={3}>
-                            <h3 className="text-xs text-slate-400 uppercase font-semibold mt-3 mb-1">
-                              <StepLink
-                                runId={runId!}
-                                stepId={initialStepId}
-                                attempt={attempt}
-                                className="rounded ring-offset-1 px-1"
-                                activeClassName="ring-2 ring-cyan-400"
-                                hoveredClassName="ring-2 ring-slate-300"
-                              >
-                                Iteration #{attempt}
-                              </StepLink>
-                            </h3>
-                          </td>
-                        </tr>
                         {sortBy(
                           spawned,
                           ([stepId, attempt]) =>
