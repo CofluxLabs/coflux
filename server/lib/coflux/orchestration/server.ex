@@ -1756,18 +1756,32 @@ defmodule Coflux.Orchestration.Server do
              execute_after, created_at}
           )
           |> notify_listeners(
-            case step.type do
-              :workflow -> {:workflow, run_repository, run_target, environment_id}
-              :sensor -> {:sensor, run_repository, run_target, environment_id}
-            end,
-            {:run, run.external_id, run.created_at}
-          )
-          |> notify_listeners(
             {:targets, environment_id},
             {:step, step.repository, step.target, run.external_id, step.external_id, attempt}
           )
 
+        state =
+          case step.type do
+            :workflow ->
+              notify_listeners(
+                state,
+                {:workflow, run_repository, run_target, environment_id},
+                {:run, run.external_id, run.created_at}
+              )
+
+            :sensor ->
+              notify_listeners(
+                state,
+                {:sensor, run_repository, run_target, environment_id},
+                {:run, run.external_id, run.created_at}
+              )
+
+            _other ->
+              state
+          end
+
         send(self(), :execute)
+
         {:ok, execution_id, attempt, state}
     end
   end
