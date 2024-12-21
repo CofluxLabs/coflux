@@ -550,7 +550,7 @@ defmodule Coflux.Orchestration.Server do
           state
           |> notify_listeners(
             {:targets, environment_id},
-            {:step, repository, target_name, run.external_id, external_step_id, attempt}
+            {:step, repository, target_name, type, run.external_id, external_step_id, attempt}
           )
           |> flush_notifications()
 
@@ -1094,9 +1094,44 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_call({:subscribe_targets, environment_id, pid}, _from, state) do
     # TODO: indicate which are archived (only workflows/sensors)
-    {:ok, targets} = Manifests.get_all_targets_for_environment(state.db, environment_id)
+    {:ok, workflows, sensors} =
+      Manifests.get_all_targets_for_environment(state.db, environment_id)
+
+    {:ok, steps} = Runs.get_steps_for_environment(state.db, environment_id)
+
+    result =
+      Enum.reduce(
+        %{workflow: workflows, sensor: sensors},
+        %{},
+        fn {target_type, targets}, result ->
+          Enum.reduce(targets, result, fn {repository_name, target_names}, result ->
+            Enum.reduce(target_names, result, fn target_name, result ->
+              put_in(
+                result,
+                [Access.key(repository_name, %{}), target_name],
+                {target_type, nil}
+              )
+            end)
+          end)
+        end
+      )
+
+    result =
+      Enum.reduce(
+        steps,
+        result,
+        fn {repository_name, target_name, target_type, run_external_id, step_external_id, attempt},
+           result ->
+          put_in(
+            result,
+            [Access.key(repository_name, %{}), target_name],
+            {target_type, {run_external_id, step_external_id, attempt}}
+          )
+        end
+      )
+
     {:ok, ref, state} = add_listener(state, {:targets, environment_id}, pid)
-    {:reply, {:ok, targets, ref}, state}
+    {:reply, {:ok, result, ref}, state}
   end
 
   def handle_cast({:unsubscribe, ref}, state) do
@@ -1684,7 +1719,7 @@ defmodule Coflux.Orchestration.Server do
           )
           |> notify_listeners(
             {:targets, environment_id},
-            {:step, repository, target_name, external_run_id, external_step_id, attempt}
+            {:step, repository, target_name, type, external_run_id, external_step_id, attempt}
           )
 
         {:ok, external_run_id, external_step_id, execution_id, state}
@@ -1721,18 +1756,32 @@ defmodule Coflux.Orchestration.Server do
              execute_after, created_at}
           )
           |> notify_listeners(
-            case step.type do
-              :workflow -> {:workflow, run_repository, run_target, environment_id}
-              :sensor -> {:sensor, run_repository, run_target, environment_id}
-            end,
-            {:run, run.external_id, run.created_at}
-          )
-          |> notify_listeners(
             {:targets, environment_id},
             {:step, step.repository, step.target, run.external_id, step.external_id, attempt}
           )
 
+        state =
+          case step.type do
+            :workflow ->
+              notify_listeners(
+                state,
+                {:workflow, run_repository, run_target, environment_id},
+                {:run, run.external_id, run.created_at}
+              )
+
+            :sensor ->
+              notify_listeners(
+                state,
+                {:sensor, run_repository, run_target, environment_id},
+                {:run, run.external_id, run.created_at}
+              )
+
+            _other ->
+              state
+          end
+
         send(self(), :execute)
+
         {:ok, execution_id, attempt, state}
     end
   end

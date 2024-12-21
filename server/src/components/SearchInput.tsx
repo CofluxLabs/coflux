@@ -26,28 +26,22 @@ import * as api from "../api";
 import { useEnvironments } from "../topics";
 import { Link, useNavigate } from "react-router-dom";
 
+type Run = {
+  runId: string;
+  stepId: string;
+  attempt: number;
+};
+
 type Match = (
   | {
       type: "repository";
       name: string;
     }
   | {
-      type: "workflow";
+      type: "workflow" | "sensor" | "task";
       repository: string;
       name: string;
-    }
-  | {
-      type: "sensor";
-      repository: string;
-      name: string;
-    }
-  | {
-      type: "step";
-      repository: string;
-      name: string;
-      runId: string;
-      stepId: string;
-      attempt: number;
+      run: Run | null;
     }
 ) & { score: number };
 
@@ -73,6 +67,10 @@ function MatchOption({ icon: Icon, name, hint, href }: MatchOptionProps) {
       </div>
     </ComboboxOption>
   );
+}
+
+function buildRunUrl(projectId: string, environmentName: string, run: Run) {
+  return `/projects/${projectId}/runs/${run.runId}/graph?environment=${environmentName}&step=${run.stepId}&attempt=${run.attempt}`;
 }
 
 type Props = {
@@ -188,21 +186,29 @@ export default function SearchInput({ projectId, environmentId }: Props) {
                     icon={IconSubtask}
                     name={match.name}
                     hint={match.repository}
-                    href={`/projects/${projectId}/workflows/${match.repository}/${match.name}?environment=${environmentName}`}
+                    href={
+                      match.run
+                        ? buildRunUrl(projectId, environmentName!, match.run)
+                        : `/projects/${projectId}/workflows/${match.repository}/${match.name}?environment=${environmentName}`
+                    }
                   />
                 ) : match.type == "sensor" ? (
                   <MatchOption
                     icon={IconCpu}
                     name={match.name}
                     hint={match.repository}
-                    href={`/projects/${projectId}/sensors/${match.repository}/${match.name}?environment=${environmentName}`}
+                    href={
+                      match.run
+                        ? buildRunUrl(projectId, environmentName!, match.run)
+                        : `/projects/${projectId}/sensors/${match.repository}/${match.name}?environment=${environmentName}`
+                    }
                   />
-                ) : match.type == "step" ? (
+                ) : match.type == "task" && match.run ? (
                   <MatchOption
                     icon={IconPoint}
                     name={match.name}
                     hint={match.repository}
-                    href={`/projects/${projectId}/runs/${match.runId}/graph?environment=${environmentName}&step=${match.stepId}&attempt=${match.attempt}`}
+                    href={buildRunUrl(projectId, environmentName!, match.run)}
                   />
                 ) : null}
               </Fragment>
