@@ -2016,16 +2016,16 @@ defmodule Coflux.Orchestration.Server do
           {:abandoned, execution_id} when not is_nil(execution_id) ->
             resolve_result(execution_id, db)
 
-          {:deferred, execution_id} when not is_nil(execution_id) ->
+          {:deferred, execution_id} ->
             resolve_result(execution_id, db)
 
-          {:cached, execution_id} when not is_nil(execution_id) ->
+          {:cached, execution_id} ->
             resolve_result(execution_id, db)
 
-          {:suspended, execution_id} when not is_nil(execution_id) ->
+          {:suspended, execution_id} ->
             resolve_result(execution_id, db)
 
-          {:spawned, execution_id} when not is_nil(execution_id) ->
+          {:spawned, execution_id} ->
             resolve_result(execution_id, db)
 
           other ->
