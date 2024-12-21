@@ -45,7 +45,7 @@ function Target({ url, icon: Icon, name, isActive, isOnline }: TargetProps) {
       <Link
         to={url}
         className={classNames(
-          "block px-1 py-0.5 my-0.5 rounded-md flex gap-1 items-center",
+          "px-1 py-0.5 my-0.5 rounded-md flex gap-1 items-center",
           isOnline ? "text-slate-900" : "text-slate-400",
           isActive ? "bg-slate-200" : "hover:bg-slate-200/50",
         )}
