@@ -202,6 +202,7 @@ class Manager:
         self,
         value: models.Value,
         resolve_fn: t.Callable[[int], t.Any],
+        cancel_fn: t.Callable[[int], None],
         restore_fn: t.Callable[[int, Path | str | None], Path],
     ) -> t.Any:
         data, references = self._get_value_data(value)
@@ -226,6 +227,7 @@ class Manager:
                             case ("execution", execution_id):
                                 return models.Execution(
                                     lambda: resolve_fn(execution_id),
+                                    lambda: cancel_fn(execution_id),
                                     execution_id,
                                 )
                             case ("asset", asset_id):

@@ -362,17 +362,20 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp handle(req, "POST", ["cancel_run"]) do
+  defp handle(req, "POST", ["cancel_execution"]) do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        run_id: "runId"
+        execution_id: "executionId"
       })
 
+    # TODO: handle error? (or don't parse here?)
+    execution_id = String.to_integer(arguments.execution_id)
+
     if Enum.empty?(errors) do
-      case Orchestration.cancel_run(
+      case Orchestration.cancel_execution(
              arguments.project_id,
-             arguments.run_id
+             execution_id
            ) do
         :ok ->
           json_response(req, %{})

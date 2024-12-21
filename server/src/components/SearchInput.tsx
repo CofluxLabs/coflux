@@ -70,7 +70,7 @@ function MatchOption({ icon: Icon, name, hint, href }: MatchOptionProps) {
 }
 
 function buildRunUrl(projectId: string, environmentName: string, run: Run) {
-  return `/projects/${projectId}/runs/${run.runId}/graph?environment=${environmentName}&step=${run.stepId}&attempt=${run.attempt}`;
+  return `/projects/${projectId}/runs/${run.runId}?environment=${environmentName}&step=${run.stepId}&attempt=${run.attempt}`;
 }
 
 type Props = {

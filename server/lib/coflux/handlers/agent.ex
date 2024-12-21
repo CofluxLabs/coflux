@@ -186,6 +186,13 @@ defmodule Coflux.Handlers.Agent do
           {[{:close, 4000, "execution_invalid"}], nil}
         end
 
+      "cancel" ->
+        [execution_id] = message["params"]
+
+        # TODO: restrict which executions can be cancelled?
+        :ok = Orchestration.cancel_execution(state.project_id, execution_id)
+        {[], state}
+
       "suspend" ->
         # TODO: also support specifying asset dependencies?
         [execution_id, execute_after, dependency_ids] = message["params"]

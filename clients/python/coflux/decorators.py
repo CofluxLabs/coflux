@@ -220,7 +220,7 @@ class Target(t.Generic[P, T]):
         except context.NotInContextException:
             result = self._fn(*args, **kwargs)
             return (
-                models.Execution(lambda: result, None)
+                models.Execution(lambda: result, lambda: None, None)
                 if not isinstance(result, models.Execution)
                 else result
             )
