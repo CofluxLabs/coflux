@@ -95,11 +95,19 @@ defmodule Coflux.Topics.Search do
     end)
   end
 
+  defp score_part(candidate, query) do
+    if String.starts_with?(candidate, query) do
+      String.length(query) / String.length(candidate)
+    else
+      0
+    end
+  end
+
   defp score_candidate(candidate_parts, query_parts) do
     query_parts
     |> Enum.map(fn query_part ->
       candidate_parts
-      |> Enum.map(&String.jaro_distance(&1, query_part))
+      |> Enum.map(&score_part(&1, query_part))
       |> Enum.max()
     end)
     |> Enum.product()
