@@ -28,7 +28,7 @@ defmodule Coflux.Topics.Search do
             repository_targets
             |> Map.fetch!(key)
             |> Enum.reduce(existing, fn target_name, existing ->
-              existing_target = get_in(existing[repository_name][target_name])
+              existing_target = get_in(existing, [repository_name, target_name])
 
               if !existing_target || elem(existing_target, 0) != target_type do
                 put_in(
