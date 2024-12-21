@@ -308,96 +308,53 @@ defmodule Coflux.Orchestration.Manifests do
   end
 
   defp get_all_workflows_for_environment(db, environment_id) do
-    query(
-      db,
-      """
-      SELECT DISTINCT em.repository, w.name
-      FROM environment_manifests AS em
-      INNER JOIN manifests AS m on m.id = em.manifest_id
-      INNER JOIN workflows AS w ON w.manifest_id = m.id
-      WHERE em.environment_id = ?1
-      """,
-      {environment_id}
-    )
+    case query(
+           db,
+           """
+           SELECT DISTINCT em.repository, w.name
+           FROM environment_manifests AS em
+           INNER JOIN manifests AS m on m.id = em.manifest_id
+           INNER JOIN workflows AS w ON w.manifest_id = m.id
+           WHERE em.environment_id = ?1
+           """,
+           {environment_id}
+         ) do
+      {:ok, rows} ->
+        {:ok,
+         Enum.reduce(rows, %{}, fn {repository, target_name}, result ->
+           result
+           |> Map.put_new(repository, MapSet.new())
+           |> Map.update!(repository, &MapSet.put(&1, target_name))
+         end)}
+    end
   end
 
   defp get_all_sensors_for_environment(db, environment_id) do
-    query(
-      db,
-      """
-      SELECT DISTINCT em.repository, s.name
-      FROM environment_manifests AS em
-      INNER JOIN manifests AS m on m.id = em.manifest_id
-      INNER JOIN sensors AS s ON s.manifest_id = m.id
-      WHERE em.environment_id = ?1
-      """,
-      {environment_id}
-    )
-  end
-
-  defp get_all_steps_for_environment(db, environment_id) do
-    query(
-      db,
-      """
-      WITH latest_executions AS (
-        SELECT s.repository, s.target, MAX(e.created_at) AS max_created_at
-        FROM executions AS e
-        INNER JOIN steps AS s ON s.id = e.step_id
-        WHERE e.environment_id = ?1
-        GROUP BY s.repository, s.target
-      )
-      SELECT s.repository, s.target, r.external_id, s.external_id, e.attempt
-      FROM executions AS e
-      INNER JOIN steps AS s ON s.id = e.step_id
-      INNER JOIN latest_executions AS le ON s.repository = le.repository AND s.target = le.target AND e.created_at = le.max_created_at
-      INNER JOIN runs AS r ON r.id = s.run_id
-      WHERE e.environment_id = ?1
-      """,
-      {environment_id}
-    )
+    case query(
+           db,
+           """
+           SELECT DISTINCT em.repository, s.name
+           FROM environment_manifests AS em
+           INNER JOIN manifests AS m on m.id = em.manifest_id
+           INNER JOIN sensors AS s ON s.manifest_id = m.id
+           WHERE em.environment_id = ?1
+           """,
+           {environment_id}
+         ) do
+      {:ok, rows} ->
+        {:ok,
+         Enum.reduce(rows, %{}, fn {repository, target_name}, result ->
+           result
+           |> Map.put_new(repository, MapSet.new())
+           |> Map.update!(repository, &MapSet.put(&1, target_name))
+         end)}
+    end
   end
 
   def get_all_targets_for_environment(db, environment_id) do
-    with {:ok, workflow_rows} <- get_all_workflows_for_environment(db, environment_id),
-         {:ok, sensor_rows} <- get_all_sensors_for_environment(db, environment_id),
-         {:ok, step_rows} <- get_all_steps_for_environment(db, environment_id) do
-      result =
-        Enum.reduce(
-          %{workflows: workflow_rows, sensors: sensor_rows},
-          %{},
-          fn {type, rows}, result ->
-            Enum.reduce(rows, result, fn {repository, name}, result ->
-              update_in(
-                result,
-                [
-                  Access.key(repository, %{}),
-                  Access.key(type, MapSet.new())
-                ],
-                &MapSet.put(&1, name)
-              )
-            end)
-          end
-        )
-
-      result =
-        Enum.reduce(
-          step_rows,
-          result,
-          fn {step_repository, step_target, run_external_id, step_external_id, step_attempt},
-             result ->
-            put_in(
-              result,
-              [
-                Access.key(step_repository, %{}),
-                Access.key(:steps, %{}),
-                step_target
-              ],
-              {run_external_id, step_external_id, step_attempt}
-            )
-          end
-        )
-
-      {:ok, result}
+    with {:ok, workflows} <- get_all_workflows_for_environment(db, environment_id),
+         {:ok, sensors} <- get_all_sensors_for_environment(db, environment_id) do
+      {:ok, workflows, sensors}
     end
   end
 

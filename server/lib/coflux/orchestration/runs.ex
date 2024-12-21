@@ -70,6 +70,36 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
+  def get_steps_for_environment(db, environment_id) do
+    case query(
+           db,
+           """
+           WITH latest_executions AS (
+             SELECT s.repository, s.target, MAX(e.created_at) AS max_created_at
+             FROM executions AS e
+             INNER JOIN steps AS s ON s.id = e.step_id
+             WHERE e.environment_id = ?1
+             GROUP BY s.repository, s.target
+           )
+           SELECT s.repository, s.target, s.type, r.external_id, s.external_id, e.attempt
+           FROM executions AS e
+           INNER JOIN steps AS s ON s.id = e.step_id
+           INNER JOIN latest_executions AS le ON s.repository = le.repository AND s.target = le.target AND e.created_at = le.max_created_at
+           INNER JOIN runs AS r ON r.id = s.run_id
+           WHERE e.environment_id = ?1
+           """,
+           {environment_id}
+         ) do
+      {:ok, rows} ->
+        {:ok,
+         Enum.map(rows, fn {repository_name, target_name, target_type, run_external_id,
+                            step_external_id, attempt} ->
+           {repository_name, target_name, Utils.decode_step_type(target_type), run_external_id,
+            step_external_id, attempt}
+         end)}
+    end
+  end
+
   def schedule_run(
         db,
         repository,
