@@ -10,15 +10,7 @@ import { buildUrl } from "../utils";
 import RunDialog from "./RunDialog";
 import EnvironmentLabel from "./EnvironmentLabel";
 import { useRun, useWorkflow } from "../topics";
-import { minBy } from "lodash";
-
-function getRunEnvironmentId(run: models.Run) {
-  const initialStepId = minBy(
-    Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
-    (stepId) => run.steps[stepId].createdAt,
-  )!;
-  return run.steps[initialStepId].executions[1].environmentId;
-}
+import { maxBy, minBy } from "lodash";
 
 type CancelButtonProps = {
   onCancel: () => void;
@@ -101,14 +93,30 @@ export default function WorkflowHeader({
     },
     [navigate, projectId, repository, target, activeEnvironmentName, workflow],
   );
+  const initialStepId =
+    run &&
+    minBy(
+      Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
+      (stepId) => run.steps[stepId].createdAt,
+    )!;
+  const latestAttempt =
+    run &&
+    maxBy(Object.keys(run.steps[initialStepId!].executions), (attempt) =>
+      parseInt(attempt, 10),
+    );
+  const latestExecutionId =
+    run && run.steps[initialStepId!].executions[latestAttempt!].executionId;
   const handleCancel = useCallback(() => {
-    return api.cancelRun(projectId, runId!);
-  }, [projectId, runId]);
+    if (latestExecutionId) {
+      return api.cancelExecution(projectId, latestExecutionId);
+    }
+  }, [projectId, latestExecutionId]);
   const handleRunClick = useCallback(() => {
     setRunDialogOpen(true);
   }, []);
   const handleRunDialogClose = useCallback(() => setRunDialogOpen(false), []);
-  const runEnvironmentId = run && getRunEnvironmentId(run);
+  const runEnvironmentId =
+    run?.steps[initialStepId!].executions[1].environmentId;
   const isRunning =
     run &&
     Object.values(run.steps).some((s) =>

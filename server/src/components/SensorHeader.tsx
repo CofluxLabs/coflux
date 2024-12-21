@@ -8,6 +8,7 @@ import Button from "./common/Button";
 import { buildUrl } from "../utils";
 import RunDialog from "./RunDialog";
 import { useRun, useSensor } from "../topics";
+import { maxBy } from "lodash";
 
 type StopResumeButtonProps = {
   isRunning?: boolean;
@@ -87,11 +88,21 @@ export default function SensorHeader({
     },
     [navigate, projectId, repository, target, activeEnvironmentName, sensor],
   );
-  const handleStop = useCallback(() => {
-    return api.cancelRun(projectId, runId!);
-  }, [projectId, runId]);
   const initialStepId =
     run && Object.keys(run.steps).find((stepId) => !run.steps[stepId].parentId);
+  const latestAttempt =
+    run &&
+    maxBy(Object.keys(run.steps[initialStepId!].executions), (attempt) =>
+      parseInt(attempt, 10),
+    );
+  const latestExecutionId =
+    run && run.steps[initialStepId!].executions[latestAttempt!].executionId;
+  console.log("*b", initialStepId, latestAttempt, latestExecutionId);
+  const handleStop = useCallback(() => {
+    if (latestExecutionId) {
+      return api.cancelExecution(projectId, latestExecutionId);
+    }
+  }, [projectId, latestExecutionId]);
   const handleResume = useCallback(() => {
     api.rerunStep(projectId, initialStepId!, activeEnvironmentName!);
   }, [projectId, initialStepId, activeEnvironmentName]);

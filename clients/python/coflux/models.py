@@ -72,9 +72,11 @@ class Execution(t.Generic[T]):
     def __init__(
         self,
         resolve_fn: t.Callable[[], T],
+        cancel_fn: t.Callable[[], None],
         id: int | None,
     ):
         self._resolve_fn = resolve_fn
+        self._cancel_fn = cancel_fn
         self._id = id
 
     @property
@@ -83,6 +85,9 @@ class Execution(t.Generic[T]):
 
     def result(self) -> T:
         return self._resolve_fn()
+
+    def cancel(self) -> None:
+        self._cancel_fn()
 
 
 class Asset:

@@ -517,7 +517,7 @@ defmodule Coflux.Orchestration.Runs do
     query(
       db,
       """
-      SELECT e.id, s.repository, a.created_at, r.created_at
+      SELECT e.id, s.parent_id, s.repository, a.created_at, r.created_at
       FROM executions AS e
       INNER JOIN steps AS s ON s.id = e.step_id
       LEFT JOIN assignments AS a ON a.execution_id = e.id

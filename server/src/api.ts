@@ -141,8 +141,8 @@ export function rerunStep(
   return post("rerun_step", { projectId, stepId, environmentName });
 }
 
-export function cancelRun(projectId: string, runId: string) {
-  return post("cancel_run", { projectId, runId });
+export function cancelExecution(projectId: string, executionId: string) {
+  return post("cancel_execution", { projectId, executionId });
 }
 
 export function search(

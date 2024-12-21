@@ -558,47 +558,6 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:cancel_run, external_run_id}, _from, state) do
-    # TODO: use one query to get all execution ids?
-    case Runs.get_run_by_external_id(state.db, external_run_id) do
-      {:ok, nil} ->
-        {:reply, {:error, :not_found}, state}
-
-      {:ok, run} ->
-        {:ok, executions} = Runs.get_run_executions(state.db, run.id)
-
-        state =
-          Enum.reduce(executions, state, fn {execution_id, repository, assigned_at, completed_at},
-                                            state ->
-            if !completed_at do
-              state =
-                case record_and_notify_result(
-                       state,
-                       execution_id,
-                       :cancelled,
-                       run.id,
-                       repository
-                     ) do
-                  {:ok, state} -> state
-                  {:error, :already_recorded} -> state
-                end
-
-              if assigned_at do
-                abort_execution(state, execution_id)
-              else
-                state
-              end
-            else
-              state
-            end
-          end)
-
-        state = flush_notifications(state)
-
-        {:reply, :ok, state}
-    end
-  end
-
   def handle_call({:rerun_step, external_step_id, environment_name}, _from, state) do
     # TODO: abort/cancel any running/scheduled retry? (for the same environment) (and reference this retry?)
     case lookup_environment_by_name(state, environment_name) do
@@ -629,6 +588,52 @@ defmodule Coflux.Orchestration.Server do
           {:reply, {:error, :environment_invalid}, state}
         end
     end
+  end
+
+  def handle_call({:cancel_execution, execution_id}, _from, state) do
+    execution_id =
+      case Results.get_result(state.db, execution_id) do
+        {:ok, {{:spawned, spawned_execution_id}, _created_at}} -> spawned_execution_id
+        {:ok, _other} -> execution_id
+      end
+
+    {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
+    {:ok, executions} = Runs.get_run_executions(state.db, step.run_id)
+
+    executions = filter_execution_children(execution_id, executions)
+
+    state =
+      Enum.reduce(
+        executions,
+        state,
+        fn {execution_id, _parent_id, repository, assigned_at, completed_at}, state ->
+          if !completed_at do
+            state =
+              case record_and_notify_result(
+                     state,
+                     execution_id,
+                     :cancelled,
+                     step.run_id,
+                     repository
+                   ) do
+                {:ok, state} -> state
+                {:error, :already_recorded} -> state
+              end
+
+            if assigned_at do
+              abort_execution(state, execution_id)
+            else
+              state
+            end
+          else
+            state
+          end
+        end
+      )
+
+    state = flush_notifications(state)
+
+    {:reply, :ok, state}
   end
 
   def handle_call({:record_heartbeats, executions, external_session_id}, _from, state) do
@@ -2258,5 +2263,17 @@ defmodule Coflux.Orchestration.Server do
         IO.puts("Couldn't locate session for execution #{execution_id}. Ignoring.")
         state
     end
+  end
+
+  defp filter_execution_children(execution_id, executions) do
+    execution = Enum.find(executions, &(elem(&1, 0) == execution_id))
+    # TODO: handle execution not found?
+
+    children =
+      executions
+      |> Enum.filter(&(elem(&1, 1) == execution_id))
+      |> Enum.flat_map(&filter_execution_children(elem(&1, 0), executions))
+
+    [execution | children]
   end
 end

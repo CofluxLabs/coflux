@@ -122,6 +122,10 @@ class SuspendRequest(t.NamedTuple):
     execution_ids: list[int]
 
 
+class CancelExecutionRequest(t.NamedTuple):
+    execution_id: int
+
+
 class RecordCheckpointRequest(t.NamedTuple):
     arguments: list[models.Value]
 
@@ -317,6 +321,7 @@ class Channel:
         )
         return models.Execution(
             lambda: self._resolve_reference(execution_id),
+            lambda: self._cancel_execution(execution_id),
             execution_id,
         )
 
@@ -347,6 +352,7 @@ class Channel:
             self._serialisation_manager.deserialise(
                 value,
                 self._resolve_reference,
+                self._cancel_execution,
                 self._restore_asset,
             )
             for value in arguments
@@ -374,6 +380,7 @@ class Channel:
                 return self._serialisation_manager.deserialise(
                     value,
                     self._resolve_reference,
+                    self._cancel_execution,
                     self._restore_asset,
                 )
             case ["error", type_, message]:
@@ -397,6 +404,10 @@ class Channel:
             return self._deserialise_result(result)
         except Timeout:
             self._notify(SuspendRequest(None, [execution_id]))
+
+    def _cancel_execution(self, execution_id: int) -> None:
+        # TODO: wait for confirmation?
+        self._notify(CancelExecutionRequest(execution_id))
 
     def record_checkpoint(self, arguments):
         serialised_arguments = [
@@ -738,6 +749,9 @@ class Execution:
                     "suspend", (self._id, execute_after_ms, execution_ids)
                 )
                 self._process.join()
+            case CancelExecutionRequest(execution_id):
+                # TODO: pass reference to self?
+                self._server_notify("cancel", (execution_id,))
             case RecordCheckpointRequest(arguments):
                 self._server_notify(
                     "record_checkpoint",
