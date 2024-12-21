@@ -97,7 +97,6 @@ export default function SensorHeader({
     );
   const latestExecutionId =
     run && run.steps[initialStepId!].executions[latestAttempt!].executionId;
-  console.log("*b", initialStepId, latestAttempt, latestExecutionId);
   const handleStop = useCallback(() => {
     if (latestExecutionId) {
       return api.cancelExecution(projectId, latestExecutionId);
