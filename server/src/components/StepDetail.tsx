@@ -24,7 +24,7 @@ import {
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
-  IconPinned,
+  IconPin,
   IconReload,
   IconWindowMaximize,
   IconWindowMinimize,
@@ -493,7 +493,7 @@ function Header({
                     className="text-slate-500 self-center"
                     title="This execution has been memoised"
                   >
-                    <IconPinned size={16} />
+                    <IconPin size={16} />
                   </span>
                 )}
               </span>
