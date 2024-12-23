@@ -93,7 +93,7 @@ defmodule Coflux.Orchestration.Server do
 
     state =
       Enum.reduce(pending, state, fn {execution_id}, state ->
-        {:ok, state} = record_result(state, execution_id, :abandoned)
+        {:ok, state} = process_result(state, execution_id, :abandoned)
         state
       end)
 
@@ -204,12 +204,11 @@ defmodule Coflux.Orchestration.Server do
         state =
           case Runs.get_pending_executions_for_environment(state.db, environment_id) do
             {:ok, executions} ->
-              Enum.reduce(executions, state, fn {execution_id, run_id, repository}, state ->
+              Enum.reduce(executions, state, fn {execution_id, _run_id, repository}, state ->
                 case record_and_notify_result(
                        state,
                        execution_id,
                        :cancelled,
-                       run_id,
                        repository
                      ) do
                   {:ok, state} -> state
@@ -613,7 +612,6 @@ defmodule Coflux.Orchestration.Server do
                      state,
                      execution_id,
                      :cancelled,
-                     step.run_id,
                      repository
                    ) do
                 {:ok, state} -> state
@@ -657,7 +655,7 @@ defmodule Coflux.Orchestration.Server do
           |> Enum.reduce(state, fn execution_id, state ->
             case Results.has_result?(state.db, execution_id) do
               {:ok, false} ->
-                {:ok, state} = record_result(state, execution_id, :abandoned)
+                {:ok, state} = process_result(state, execution_id, :abandoned)
                 state
 
               {:ok, true} ->
@@ -722,7 +720,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:record_result, execution_id, result}, _from, state) do
-    case record_result(state, execution_id, result) do
+    case process_result(state, execution_id, result) do
       {:ok, state} ->
         state = flush_notifications(state)
         {:reply, :ok, state}
@@ -759,7 +757,7 @@ defmodule Coflux.Orchestration.Server do
       end
 
     {result, state} =
-      case resolve_result(execution_id, state.db) do
+      case resolve_result(state.db, execution_id) do
         {:pending, execution_id} ->
           session_id = Map.fetch!(state.session_ids, external_session_id)
 
@@ -1051,7 +1049,7 @@ defmodule Coflux.Orchestration.Server do
                          {nil, nil}
                      end
 
-                   result = build_result(result, state)
+                   result = build_result(result, state.db)
 
                    {:ok, children} =
                      Runs.get_execution_children(state.db, execution_id)
@@ -1183,12 +1181,11 @@ defmodule Coflux.Orchestration.Server do
     state =
       executions_defer
       |> Enum.reverse()
-      |> Enum.reduce(state, fn {execution_id, defer_id, run_id, repository}, state ->
+      |> Enum.reduce(state, fn {execution_id, defer_id, _run_id, repository}, state ->
         case record_and_notify_result(
                state,
                execution_id,
                {:deferred, defer_id},
-               run_id,
                repository
              ) do
           {:ok, state} -> state
@@ -1239,7 +1236,7 @@ defmodule Coflux.Orchestration.Server do
 
             if cached_execution_id do
               {:ok, state} =
-                record_result(state, execution.execution_id, {:cached, cached_execution_id})
+                process_result(state, execution.execution_id, {:cached, cached_execution_id})
 
               {state, assigned, unassigned}
             else
@@ -1306,7 +1303,7 @@ defmodule Coflux.Orchestration.Server do
                          ) do
                       {:ok, _external_run_id, _external_step_id, spawned_execution_id, state} ->
                         {:ok, state} =
-                          record_result(
+                          process_result(
                             state,
                             execution.execution_id,
                             {:spawned, spawned_execution_id}
@@ -1569,7 +1566,7 @@ defmodule Coflux.Orchestration.Server do
     session.executing
     |> MapSet.union(session.starting)
     |> Enum.reduce(state, fn execution_id, state ->
-      {:ok, state} = record_result(state, execution_id, :abandoned)
+      {:ok, state} = process_result(state, execution_id, :abandoned)
       state
     end)
     |> Map.update!(:targets, fn all_targets ->
@@ -1856,33 +1853,88 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp build_result(result, state) do
+  defp is_result_final?(result) do
     case result do
-      {:value, value} ->
-        {:value, build_value(value, state.db)}
-
-      {type, execution_id} when type in [:deferred, :cached, :spawned] ->
-        {type, execution_id, resolve_execution(state.db, execution_id)}
-
-      other ->
-        other
+      {:error, _, _, _, retry_id} -> is_nil(retry_id)
+      {:value, _} -> true
+      {:abandoned, retry_id} -> is_nil(retry_id)
+      :cancelled -> true
+      {:suspended, successor_id} when not is_nil(successor_id) -> true
+      {:deferred, execution_id} when not is_nil(execution_id) -> true
+      {:cached, execution_id} when not is_nil(execution_id) -> true
+      {:spawned, execution_id} when not is_nil(execution_id) -> true
     end
   end
 
-  defp record_and_notify_result(state, execution_id, result, run_id, repository) do
+  defp build_result(result, db) do
+    case result do
+      {:error, type, message, frames, retry_id} ->
+        retry = if retry_id, do: resolve_execution(db, retry_id)
+        {:error, type, message, frames, retry}
+
+      {:value, value} ->
+        {:value, build_value(value, db)}
+
+      {:abandoned, retry_id} ->
+        retry = if retry_id, do: resolve_execution(db, retry_id)
+        {:abandoned, retry}
+
+      :cancelled ->
+        :cancelled
+
+      {:suspended, successor_id} ->
+        successor = if successor_id, do: resolve_execution(db, successor_id)
+        {:suspended, successor}
+
+      {type, execution_id} when type in [:deferred, :cached, :spawned] ->
+        execution_result =
+          case resolve_result(db, execution_id) do
+            {:ok, execution_result} -> execution_result
+            {:pending, _execution_id} -> nil
+          end
+
+        {type, resolve_execution(db, execution_id), build_result(execution_result, db)}
+
+      nil ->
+        nil
+    end
+  end
+
+  # TODO: remove 'repository' argument?
+  defp record_and_notify_result(state, execution_id, result, repository) do
     {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, execution_id)
+    {:ok, run_dependencies} = Runs.get_execution_run_dependencies(state.db, execution_id)
 
     case Results.record_result(state.db, execution_id, result) do
       {:ok, created_at} ->
         state = notify_waiting(state, execution_id)
-        result = build_result(result, state)
+
+        final = is_result_final?(result)
+        result = build_result(result, state.db)
 
         state =
-          state
-          |> notify_listeners(
-            {:run, run_id},
-            {:result, execution_id, result, created_at}
-          )
+          run_dependencies
+          |> Enum.reduce(state, fn {run_id, run_execution_id}, state ->
+            cond do
+              run_execution_id == execution_id ->
+                notify_listeners(
+                  state,
+                  {:run, run_id},
+                  {:result, execution_id, result, created_at}
+                )
+
+              final ->
+                notify_listeners(
+                  state,
+                  {:run, run_id},
+                  # TODO: better name?
+                  {:result_result, run_execution_id, result, created_at}
+                )
+
+              true ->
+                state
+            end
+          end)
           |> notify_listeners(
             {:repositories, environment_id},
             {:completed, repository, execution_id}
@@ -1902,7 +1954,7 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp record_result(state, execution_id, result) do
+  defp process_result(state, execution_id, result) do
     case Results.has_result?(state.db, execution_id) do
       {:ok, true} ->
         {:ok, state}
@@ -1989,7 +2041,6 @@ defmodule Coflux.Orchestration.Server do
                  state,
                  execution_id,
                  result,
-                 step.run_id,
                  step.repository
                ) do
             {:ok, state} -> state
@@ -1999,7 +2050,7 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp resolve_result(execution_id, db) do
+  defp resolve_result(db, execution_id) do
     # TODO: check execution exists?
     case Results.get_result(db, execution_id) do
       {:ok, nil} ->
@@ -2007,26 +2058,23 @@ defmodule Coflux.Orchestration.Server do
 
       {:ok, {result, _}} ->
         case result do
-          {:reference, execution_id} ->
-            resolve_result(execution_id, db)
-
           {:error, _, _, _, execution_id} when not is_nil(execution_id) ->
-            resolve_result(execution_id, db)
+            resolve_result(db, execution_id)
 
           {:abandoned, execution_id} when not is_nil(execution_id) ->
-            resolve_result(execution_id, db)
+            resolve_result(db, execution_id)
 
           {:deferred, execution_id} ->
-            resolve_result(execution_id, db)
+            resolve_result(db, execution_id)
 
           {:cached, execution_id} ->
-            resolve_result(execution_id, db)
+            resolve_result(db, execution_id)
 
           {:suspended, execution_id} ->
-            resolve_result(execution_id, db)
+            resolve_result(db, execution_id)
 
           {:spawned, execution_id} ->
-            resolve_result(execution_id, db)
+            resolve_result(db, execution_id)
 
           other ->
             {:ok, other}
@@ -2151,7 +2199,7 @@ defmodule Coflux.Orchestration.Server do
 
       Enum.all?(references, fn
         {:execution, execution_id} ->
-          case resolve_result(execution_id, db) do
+          case resolve_result(db, execution_id) do
             {:ok, _} -> true
             {:pending, _} -> false
           end
@@ -2170,7 +2218,7 @@ defmodule Coflux.Orchestration.Server do
     case Runs.get_result_dependencies(db, execution_id) do
       {:ok, result_dependencies} ->
         Enum.all?(result_dependencies, fn {dependency_id} ->
-          case resolve_result(dependency_id, db) do
+          case resolve_result(db, dependency_id) do
             {:ok, _} -> true
             {:pending, _} -> false
           end
@@ -2220,7 +2268,7 @@ defmodule Coflux.Orchestration.Server do
     {execution_waiting, waiting} = Map.pop(state.waiting, execution_id)
 
     if execution_waiting do
-      case resolve_result(execution_id, state.db) do
+      case resolve_result(state.db, execution_id) do
         {:pending, execution_id} ->
           waiting =
             Map.update(waiting, execution_id, execution_waiting, &(&1 ++ execution_waiting))

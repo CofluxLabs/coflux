@@ -133,13 +133,15 @@ export type Error = {
 
 export type Result =
   | { type: "value"; value: Value }
-  | { type: "error"; error: Error; retryId: string | null }
-  | { type: "abandoned"; retryId: string | null }
+  | { type: "error"; error: Error; retry: number | null }
+  | { type: "abandoned"; retry: number | null }
   | { type: "cancelled" }
-  | { type: "deferred"; executionId: string; execution: ExecutionReference }
-  | { type: "cached"; executionId: string; execution: ExecutionReference }
-  | { type: "suspended"; successorId: string }
-  | { type: "spawned"; executionId: string; execution: ExecutionReference };
+  | { type: "suspended"; successor: number }
+  | {
+      type: "deferred" | "cached" | "spawned";
+      execution: ExecutionReference;
+      result?: Result;
+    };
 
 export type Child = {
   repository: string;

@@ -12,8 +12,10 @@ import {
   IconArrowUpRight,
   IconBolt,
   IconClock,
-  IconPinned,
   IconArrowDownRight,
+  IconZzz,
+  IconArrowBounce,
+  IconPin,
 } from "@tabler/icons-react";
 
 import * as models from "../models";
@@ -26,10 +28,16 @@ import { truncatePath } from "../utils";
 import AssetLink from "./AssetLink";
 
 function classNameForExecution(execution: models.Execution) {
-  const result = execution.result;
+  const result =
+    execution.result?.type == "deferred" ||
+    execution.result?.type == "cached" ||
+    execution.result?.type == "spawned"
+      ? execution.result.result
+      : execution.result;
   if (result?.type == "cached" || result?.type == "deferred") {
     return "border-slate-200 bg-slate-50";
   } else if (!result && !execution?.assignedAt) {
+    // TODO: handle spawned/etc case
     return "border-blue-200 bg-blue-50";
   } else if (!result) {
     return "border-blue-400 bg-blue-100";
@@ -114,14 +122,6 @@ function StepNode({
               >
                 {step.target}
               </span>
-              {step.isMemoised && (
-                <span
-                  className="text-slate-500"
-                  title="This execution has been memoised"
-                >
-                  <IconPinned size={12} />
-                </span>
-              )}
               {execution && execution.environmentId != runEnvironmentId && (
                 <EnvironmentLabel
                   projectId={projectId}
@@ -134,11 +134,23 @@ function StepNode({
             </span>
           </span>
         </span>
-        {execution && !execution.result && !execution.assignedAt && (
-          <span>
-            <IconClock size={20} strokeWidth={1.5} />
+        {execution && !execution.result && !execution.assignedAt ? (
+          <span title="Assigning...">
+            <IconClock size={16} />
           </span>
-        )}
+        ) : execution?.result?.type == "suspended" ? (
+          <span title="Suspended">
+            <IconZzz size={16} className="text-slate-500" />
+          </span>
+        ) : execution?.result?.type == "deferred" ? (
+          <span title="Deferred">
+            <IconArrowBounce size={16} className="text-slate-400" />
+          </span>
+        ) : step.isMemoised ? (
+          <span title="Memoised">
+            <IconPin size={16} className="text-slate-500" />
+          </span>
+        ) : null}
       </StepLink>
     </Fragment>
   );

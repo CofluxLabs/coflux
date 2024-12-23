@@ -786,6 +786,26 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
+  def get_execution_run_dependencies(db, execution_id) do
+    query(
+      db,
+      """
+      WITH RECURSIVE dependencies AS (
+        SELECT ?1 AS execution_id
+        UNION
+        SELECT r.execution_id
+        FROM dependencies AS d
+        INNER JOIN results AS r ON r.successor_id = d.execution_id
+      )
+      SELECT s.run_id, d.execution_id
+      FROM dependencies AS d
+      INNER JOIN executions AS e ON e.id = d.execution_id
+      INNER JOIN steps AS s ON s.id = e.step_id
+      """,
+      {execution_id}
+    )
+  end
+
   defp insert_run(db, parent_id, idempotency_key, created_at) do
     case generate_external_id(db, :runs, 2, "R") do
       {:ok, external_id} ->
