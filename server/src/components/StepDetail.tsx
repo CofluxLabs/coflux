@@ -972,7 +972,7 @@ function DeferredSection({ result }: DeferredSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Deferred</h3>
-      {result.xecution && (
+      {result.execution && (
         <p>
           To:{" "}
           <StepLink
