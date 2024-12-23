@@ -190,6 +190,14 @@ defmodule Coflux.Topics.Run do
     end)
   end
 
+  defp process_notification(topic, {:result_result, execution_id, result, _created_at}) do
+    result = build_result(result)
+
+    update_execution(topic, execution_id, fn topic, base_path ->
+      Topic.set(topic, base_path ++ [:result, :result], result)
+    end)
+  end
+
   defp process_notification(topic, {:log_counts, execution_id, delta}) do
     update_execution(topic, execution_id, fn topic, base_path ->
       path = base_path ++ [:logCount]
@@ -289,7 +297,7 @@ defmodule Coflux.Topics.Run do
 
   defp build_result(result) do
     case result do
-      {:error, type, message, frames, retry_id} ->
+      {:error, type, message, frames, retry} ->
         %{
           type: "error",
           error: %{
@@ -297,29 +305,29 @@ defmodule Coflux.Topics.Run do
             message: message,
             frames: build_frames(frames)
           },
-          retryId: retry_id
+          retry: if(retry, do: retry.attempt)
         }
 
       {:value, value} ->
         %{type: "value", value: build_value(value)}
 
-      {:abandoned, retry_id} ->
-        %{type: "abandoned", retryId: retry_id}
+      {:abandoned, retry} ->
+        %{type: "abandoned", retry: if(retry, do: retry.attempt)}
 
       :cancelled ->
         %{type: "cancelled"}
 
-      {:deferred, execution_id, execution} ->
-        %{type: "deferred", executionId: execution_id, execution: build_execution(execution)}
+      {:suspended, successor} ->
+        %{type: "suspended", successor: if(successor, do: successor.attempt)}
 
-      {:cached, execution_id, execution} ->
-        %{type: "cached", executionId: execution_id, execution: build_execution(execution)}
+      {:deferred, execution, result} ->
+        %{type: "deferred", execution: build_execution(execution), result: build_result(result)}
 
-      {:suspended, successor_id} ->
-        %{type: "suspended", successorId: successor_id}
+      {:cached, execution, result} ->
+        %{type: "cached", execution: build_execution(execution), result: build_result(result)}
 
-      {:spawned, execution_id, execution} ->
-        %{type: "spawned", executionId: execution_id, execution: build_execution(execution)}
+      {:spawned, execution, result} ->
+        %{type: "spawned", execution: build_execution(execution), result: build_result(result)}
 
       nil ->
         nil

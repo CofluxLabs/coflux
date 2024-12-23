@@ -58,7 +58,7 @@ defmodule Coflux.Topics.Logs do
 
   defp process_notification(
          topic,
-         {:step, _, _, _, _, _, _, _, _, _, execution_id, environment_id, _}
+         {:step, _, _, _, _, _, _, _, _, _, _, execution_id, environment_id, _}
        ) do
     if environment_id in topic.state.environment_ids do
       update_in(topic.state.execution_ids, &MapSet.put(&1, execution_id))

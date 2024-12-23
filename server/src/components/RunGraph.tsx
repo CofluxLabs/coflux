@@ -26,10 +26,16 @@ import { truncatePath } from "../utils";
 import AssetLink from "./AssetLink";
 
 function classNameForExecution(execution: models.Execution) {
-  const result = execution.result;
+  const result =
+    execution.result?.type == "deferred" ||
+    execution.result?.type == "cached" ||
+    execution.result?.type == "spawned"
+      ? execution.result.result
+      : execution.result;
   if (result?.type == "cached" || result?.type == "deferred") {
     return "border-slate-200 bg-slate-50";
   } else if (!result && !execution?.assignedAt) {
+    // TODO: handle spawned/etc case
     return "border-blue-200 bg-blue-50";
   } else if (!result) {
     return "border-blue-400 bg-blue-100";

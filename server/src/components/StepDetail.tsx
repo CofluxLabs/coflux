@@ -849,13 +849,12 @@ function RelationsSection({
   );
 }
 
-type ResultSectionProps = {
-  result: Extract<models.Result, { type: "value" }>;
+type ValueSectionProps = {
+  value: models.Value;
   projectId: string;
 };
 
-function ResultSection({ result, projectId }: ResultSectionProps) {
-  const value = result.value;
+function ValueSection({ value, projectId }: ValueSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
@@ -869,68 +868,111 @@ function ResultSection({ result, projectId }: ResultSectionProps) {
   );
 }
 
+type ErrorProps = {
+  error: models.Error;
+};
+
+function Error({ error }: ErrorProps) {
+  return (
+    <div className="p-2 mt-2 rounded bg-red-50 border border-red-200 overflow-x-auto">
+      <p className="mb-2">
+        <span className="font-mono font-bold">{error.type}</span>:{" "}
+        <span>{error.message}</span>
+      </p>
+      <ol>
+        {error.frames.map((frame, index) => (
+          <li key={index}>
+            <p className="text-xs whitespace-nowrap">
+              File "<span title={frame.file}>{truncatePath(frame.file)}</span>
+              ", line {frame.line}, in{" "}
+              <span className="font-mono">{frame.name}</span>
+            </p>
+            {frame.code && (
+              <pre className="font-mono ml-2 text-sm">
+                <code>{frame.code}</code>
+              </pre>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 type ErrorSectionProps = {
   result: Extract<models.Result, { type: "error" }>;
 };
 
 function ErrorSection({ result }: ErrorSectionProps) {
-  const error = result.error;
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Result</h3>
-      <div className="p-2 mt-2 rounded bg-red-50 border border-red-200 overflow-x-auto">
-        <p className="mb-2">
-          <span className="font-mono font-bold">{error.type}</span>:{" "}
-          <span>{error.message}</span>
-        </p>
-        <ol>
-          {error.frames.map((frame, index) => (
-            <li key={index}>
-              <p className="text-xs whitespace-nowrap">
-                File "<span title={frame.file}>{truncatePath(frame.file)}</span>
-                ", line {frame.line}, in{" "}
-                <span className="font-mono">{frame.name}</span>
-              </p>
-              {frame.code && (
-                <pre className="font-mono ml-2 text-sm">
-                  <code>{frame.code}</code>
-                </pre>
-              )}
-            </li>
-          ))}
-        </ol>
-      </div>
+      <Error error={result.error} />
+    </div>
+  );
+}
+
+type RetrySectionProps = {
+  runId: string;
+  stepId: string;
+  retry: number;
+};
+
+function RetrySection({ runId, stepId, retry }: RetrySectionProps) {
+  return (
+    <div>
+      <h3 className="uppercase text-sm font-bold text-slate-400">Retried</h3>
+      <p>
+        By:{" "}
+        <StepLink
+          runId={runId}
+          stepId={stepId}
+          attempt={retry}
+          className="rounded text-sm ring-offset-1 px-1"
+          hoveredClassName="ring-2 ring-slate-300"
+        >
+          #{retry}
+        </StepLink>
+      </p>
+    </div>
+  );
+}
+
+type SuspendedSectionProps = {
+  runId: string;
+  stepId: string;
+  successor: number;
+};
+
+function SuspendedSection({ runId, stepId, successor }: SuspendedSectionProps) {
+  return (
+    <div>
+      <h3 className="uppercase text-sm font-bold text-slate-400">Suspended</h3>
+      <p>
+        To:{" "}
+        <StepLink
+          runId={runId}
+          stepId={stepId}
+          attempt={successor}
+          className="rounded text-sm ring-offset-1 px-1"
+          hoveredClassName="ring-2 ring-slate-300"
+        >
+          #{successor}
+        </StepLink>
+      </p>
     </div>
   );
 }
 
 type DeferredSectionProps = {
-  execution: models.Execution;
+  result: Extract<models.Result, { type: "deferred" | "cached" | "spawned" }>;
 };
 
-function DeferredSection({ execution }: DeferredSectionProps) {
-  const scheduledAt = DateTime.fromMillis(
-    execution.executeAfter || execution.createdAt,
-  );
-  const completedAt =
-    execution.completedAt !== null
-      ? DateTime.fromMillis(execution.completedAt)
-      : null;
-  const result = execution.result as Extract<
-    models.Result,
-    { type: "deferred" }
-  >;
+function DeferredSection({ result }: DeferredSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Deferred</h3>
-      <p>
-        After:{" "}
-        {scheduledAt
-          .diff(completedAt!)
-          .rescale()
-          .toHuman({ unitDisplay: "short" })}
-      </p>
-      {result.execution && (
+      {result.xecution && (
         <p>
           To:{" "}
           <StepLink
@@ -952,7 +994,7 @@ function DeferredSection({ execution }: DeferredSectionProps) {
 }
 
 type CachedSectionProps = {
-  result: Extract<models.Result, { type: "cached" }>;
+  result: Extract<models.Result, { type: "deferred" | "cached" | "spawned" }>;
 };
 
 function CachedSection({ result }: CachedSectionProps) {
@@ -979,7 +1021,7 @@ function CachedSection({ result }: CachedSectionProps) {
 }
 
 type SpawnedSectionProps = {
-  result: Extract<models.Result, { type: "spawned" }>;
+  result: Extract<models.Result, { type: "deferred" | "cached" | "spawned" }>;
 };
 
 function SpawnedSection({ result }: SpawnedSectionProps) {
@@ -1003,6 +1045,57 @@ function SpawnedSection({ result }: SpawnedSectionProps) {
       </p>
     </div>
   );
+}
+
+type ResultSectionProps = {
+  result: models.Result;
+  projectId: string;
+  runId: string;
+  stepId: string;
+};
+
+function ResultSection({
+  result,
+  projectId,
+  runId,
+  stepId,
+}: ResultSectionProps) {
+  return result.type == "value" ? (
+    <ValueSection value={result.value} projectId={projectId} />
+  ) : result.type == "error" || result.type == "abandoned" ? (
+    <Fragment>
+      {result.type == "error" ? <ErrorSection result={result} /> : null}
+      {result.retry ? (
+        <RetrySection runId={runId} stepId={stepId} retry={result.retry} />
+      ) : null}
+    </Fragment>
+  ) : result.type == "suspended" ? (
+    <SuspendedSection
+      runId={runId}
+      stepId={stepId}
+      successor={result.successor}
+    />
+  ) : result.type == "deferred" ||
+    result.type == "cached" ||
+    result.type == "spawned" ? (
+    <Fragment>
+      {result.type == "deferred" ? (
+        <DeferredSection result={result} />
+      ) : result.type == "cached" ? (
+        <CachedSection result={result} />
+      ) : result.type == "spawned" ? (
+        <SpawnedSection result={result} />
+      ) : null}
+      {result.result ? (
+        <ResultSection
+          result={result.result}
+          projectId={projectId}
+          runId={runId}
+          stepId={stepId}
+        />
+      ) : null}
+    </Fragment>
+  ) : null;
 }
 
 type AssetItemProps = {
@@ -1185,17 +1278,14 @@ export default function StepDetail({
           {Object.keys(step.requires).length > 0 && (
             <RequiresSection requires={step.requires} />
           )}
-          {execution?.result?.type == "value" ? (
-            <ResultSection result={execution.result} projectId={projectId} />
-          ) : execution?.result?.type == "error" ? (
-            <ErrorSection result={execution.result} />
-          ) : execution?.result?.type == "deferred" ? (
-            <DeferredSection execution={execution} />
-          ) : execution?.result?.type == "cached" ? (
-            <CachedSection result={execution.result} />
-          ) : execution?.result?.type == "spawned" ? (
-            <SpawnedSection result={execution.result} />
-          ) : undefined}
+          {execution?.result && (
+            <ResultSection
+              result={execution.result}
+              projectId={projectId}
+              runId={runId}
+              stepId={stepId}
+            />
+          )}
           {execution && Object.keys(execution.assets).length > 0 && (
             <AssetsSection execution={execution} projectId={projectId} />
           )}
