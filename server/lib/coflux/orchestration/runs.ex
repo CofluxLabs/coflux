@@ -498,18 +498,26 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  def get_run_executions(db, run_id) do
+  def get_execution_descendants(db, execution_id) do
     query(
       db,
       """
-      SELECT e.id, s.parent_id, s.repository, a.created_at, r.created_at
-      FROM executions AS e
+      WITH RECURSIVE children AS (
+        SELECT ?1 AS execution_id
+        UNION
+        SELECT e.id AS execution_id
+        FROM children AS c
+        INNER JOIN steps AS s ON s.parent_id = c.execution_id
+        INNER JOIN executions AS e ON e.step_id = s.id
+      )
+      SELECT e.id, s.repository, a.created_at, r.created_at
+      FROM children AS c
+      INNER JOIN executions AS e ON e.id = c.execution_id
       INNER JOIN steps AS s ON s.id = e.step_id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN results AS r ON r.execution_id = e.id
-      WHERE s.run_id = ?1
       """,
-      {run_id}
+      {execution_id}
     )
   end
 

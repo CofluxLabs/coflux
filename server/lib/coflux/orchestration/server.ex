@@ -596,16 +596,13 @@ defmodule Coflux.Orchestration.Server do
         {:ok, _other} -> execution_id
       end
 
-    {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
-    {:ok, executions} = Runs.get_run_executions(state.db, step.run_id)
-
-    executions = filter_execution_children(execution_id, executions)
+    {:ok, executions} = Runs.get_execution_descendants(state.db, execution_id)
 
     state =
       Enum.reduce(
         executions,
         state,
-        fn {execution_id, _parent_id, repository, assigned_at, completed_at}, state ->
+        fn {execution_id, repository, assigned_at, completed_at}, state ->
           if !completed_at do
             state =
               case record_and_notify_result(
