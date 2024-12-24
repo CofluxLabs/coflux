@@ -227,7 +227,7 @@ export default function buildGraph(
 
       Object.entries(execution.dependencies).forEach(
         ([dependencyId, dependency]) => {
-          if (dependency.runId == runId) {
+          if (dependency.execution.runId == runId) {
             if (
               !execution.children.some(
                 (c) =>
@@ -239,8 +239,8 @@ export default function buildGraph(
                   ),
               )
             ) {
-              edges[`${dependency.stepId}-${stepId}`] = {
-                from: dependency.stepId,
+              edges[`${dependency.execution.stepId}-${stepId}`] = {
+                from: dependency.execution.stepId,
                 to: stepId,
                 type: "dependency",
               };
@@ -296,7 +296,7 @@ export default function buildGraph(
               }
             } else if (
               !Object.values(execution.dependencies).some(
-                (d) => d.stepId == child,
+                (d) => d.execution.stepId == child,
               )
             ) {
               edges[`${stepId}-${child}`] = {
@@ -318,7 +318,7 @@ export default function buildGraph(
           };
           if (
             Object.values(execution.dependencies).some(
-              (d) => d.runId == child.runId,
+              (d) => d.execution.runId == child.runId,
             )
           ) {
             edges[`${child.runId}-${stepId}`] = {

@@ -708,15 +708,17 @@ function DependenciesSection({ execution }: DependenciesSectionProps) {
               return (
                 <li key={`r-${dependencyId}`}>
                   <StepLink
-                    runId={dependency.runId}
-                    stepId={dependency.stepId}
-                    attempt={dependency.attempt}
+                    runId={dependency.execution.runId}
+                    stepId={dependency.execution.stepId}
+                    attempt={dependency.execution.attempt}
                     className="rounded text-sm ring-offset-1 px-1"
                     hoveredClassName="ring-2 ring-slate-300"
                   >
-                    <span className="font-mono">{dependency.target}</span>{" "}
+                    <span className="font-mono">
+                      {dependency.execution.target}
+                    </span>{" "}
                     <span className="text-slate-500">
-                      ({dependency.repository})
+                      ({dependency.execution.repository})
                     </span>
                   </StepLink>
                 </li>

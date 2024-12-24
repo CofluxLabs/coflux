@@ -783,41 +783,18 @@ defmodule Coflux.Orchestration.Server do
     {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
 
     {:ok, asset_id} =
-      Results.create_asset(state.db, execution_id, type, path, blob_key, size, metadata)
+      Results.get_or_create_asset(state.db, execution_id, type, path, blob_key, size, metadata)
 
-    asset = resolve_asset(state.db, asset_id, false)
+    asset = resolve_asset(state.db, asset_id)
     state = notify_listeners(state, {:run, step.run_id}, {:asset, execution_id, asset_id, asset})
     {:reply, {:ok, asset_id}, state}
   end
 
   def handle_call({:get_asset, asset_id, opts}, _from, state) do
-    from_execution_id = opts[:from_execution_id]
     load_metadata = opts[:load_metadata]
 
     case Results.get_asset_by_id(state.db, asset_id, load_metadata) do
-      {:ok, {asset_execution_id, type, path, blob_key, _size, _created_at, metadata}} ->
-        state =
-          if from_execution_id do
-            {:ok, id} = Runs.record_asset_dependency(state.db, from_execution_id, asset_id)
-
-            if id do
-              {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
-              asset_execution = resolve_execution(state.db, asset_execution_id)
-              asset = resolve_asset(state.db, asset_id, false)
-
-              notify_listeners(
-                state,
-                {:run, step.run_id},
-                {:asset_dependency, from_execution_id, asset_execution_id, asset_execution,
-                 asset_id, asset}
-              )
-            else
-              state
-            end
-          else
-            state
-          end
-
+      {:ok, {type, path, blob_key, _size, metadata}} ->
         {:reply, {:ok, type, path, blob_key, metadata}, state}
 
       {:ok, nil} ->
@@ -1021,23 +998,17 @@ defmodule Coflux.Orchestration.Server do
                executions:
                  Map.new(executions, fn {execution_id, attempt, environment_id, execute_after,
                                          created_at, _session_id, assigned_at} ->
+                   # TODO: load assets in one query
                    {:ok, asset_ids} = Results.get_assets_for_execution(state.db, execution_id)
-                   assets = Map.new(asset_ids, &{&1, resolve_asset(state.db, &1, false)})
+                   assets = Map.new(asset_ids, &{&1, resolve_asset(state.db, &1)})
 
-                   {:ok, result_dependencies} =
-                     Runs.get_result_dependencies(state.db, execution_id)
+                   {:ok, dependencies} =
+                     Runs.get_dependencies(state.db, execution_id)
 
                    # TODO: batch? get `get_result_dependencies` to resolve?
-                   result_dependencies =
-                     Map.new(result_dependencies, fn {dependency_id} ->
+                   dependencies =
+                     Map.new(dependencies, fn {dependency_id} ->
                        {dependency_id, resolve_execution(state.db, dependency_id)}
-                     end)
-
-                   {:ok, asset_dependencies} = Runs.get_asset_dependencies(state.db, execution_id)
-
-                   asset_dependencies =
-                     Map.new(asset_dependencies, fn {asset_id} ->
-                       {asset_id, resolve_asset(state.db, asset_id, true)}
                      end)
 
                    {result, completed_at} =
@@ -1063,8 +1034,7 @@ defmodule Coflux.Orchestration.Server do
                       assigned_at: assigned_at,
                       completed_at: completed_at,
                       assets: assets,
-                      result_dependencies: result_dependencies,
-                      asset_dependencies: asset_dependencies,
+                      dependencies: dependencies,
                       result: result,
                       children: children,
                       log_count: Map.get(log_counts, execution_id, 0)
@@ -1809,25 +1779,17 @@ defmodule Coflux.Orchestration.Server do
     }
   end
 
-  defp resolve_asset(db, asset_id, include_execution) do
-    {:ok, {execution_id, type, path, blob_key, size, created_at, metadata}} =
+  defp resolve_asset(db, asset_id) do
+    {:ok, {type, path, blob_key, size, metadata}} =
       Results.get_asset_by_id(db, asset_id, true)
 
-    result = %{
+    %{
       type: type,
       path: path,
       metadata: metadata,
       blob_key: blob_key,
-      size: size,
-      execution_id: execution_id,
-      created_at: created_at
+      size: size
     }
-
-    if include_execution do
-      Map.put(result, :execution, resolve_execution(db, execution_id))
-    else
-      result
-    end
   end
 
   defp resolve_references(db, references) do
@@ -1839,7 +1801,7 @@ defmodule Coflux.Orchestration.Server do
         {:execution, execution_id, resolve_execution(db, execution_id)}
 
       {:asset, asset_id} ->
-        {:asset, asset_id, resolve_asset(db, asset_id, true)}
+        {:asset, asset_id, resolve_asset(db, asset_id)}
     end)
   end
 
@@ -2215,9 +2177,9 @@ defmodule Coflux.Orchestration.Server do
 
   defp dependencies_ready?(db, execution_id) do
     # TODO: also check assets?
-    case Runs.get_result_dependencies(db, execution_id) do
-      {:ok, result_dependencies} ->
-        Enum.all?(result_dependencies, fn {dependency_id} ->
+    case Runs.get_dependencies(db, execution_id) do
+      {:ok, dependencies} ->
+        Enum.all?(dependencies, fn {dependency_id} ->
           case resolve_result(db, dependency_id) do
             {:ok, _} -> true
             {:pending, _} -> false

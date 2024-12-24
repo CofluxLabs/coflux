@@ -224,12 +224,11 @@ CREATE TABLE executions (
 
 CREATE TABLE assets (
   id INTEGER PRIMARY KEY,
-  execution_id INTEGER NOT NULL,
+  hash BLOB NOT NULL UNIQUE,
   type INTEGER NOT NULL,
   path TEXT NOT NULL,
   blob_id INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
 );
 
 CREATE TABLE asset_metadata (
@@ -237,6 +236,15 @@ CREATE TABLE asset_metadata (
   key TEXT NOT NULL,
   value TEXT NOT NULL,
   PRIMARY KEY (asset_id, key),
+  FOREIGN KEY (asset_id) REFERENCES assets ON DELETE CASCADE
+);
+
+CREATE TABLE execution_assets(
+  execution_id INTEGER NOT NULL,
+  asset_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (execution_id, asset_id),
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (asset_id) REFERENCES assets ON DELETE CASCADE
 );
 
@@ -258,22 +266,13 @@ CREATE TABLE assignments (
   FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE
 );
 
-CREATE TABLE result_dependencies (
+CREATE TABLE dependencies (
   execution_id INTEGER NOT NULL,
   dependency_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   PRIMARY KEY (execution_id, dependency_id),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (dependency_id) REFERENCES executions ON DELETE RESTRICT
-);
-
-CREATE TABLE asset_dependencies (
-  execution_id INTEGER NOT NULL,
-  asset_id INTEGER,
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (execution_id, asset_id),
-  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT
 );
 
 CREATE TABLE checkpoints(

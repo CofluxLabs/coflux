@@ -36,7 +36,7 @@ export default function AssetsPage() {
         ),
       ),
     ),
-    (item) => item[5].createdAt,
+    (item) => item[5].path,
   );
   return (
     <div className="p-4">

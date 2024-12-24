@@ -148,30 +148,6 @@ defmodule Coflux.Topics.Run do
     )
   end
 
-  defp process_notification(
-         topic,
-         {:asset_dependency, execution_id, asset_execution_id, asset_execution, asset_id, asset}
-       ) do
-    asset = build_asset(asset)
-    asset_execution = build_dependency(asset_execution)
-
-    asset_execution_id_s = Integer.to_string(asset_execution_id)
-    asset_id_s = Integer.to_string(asset_id)
-
-    update_execution(
-      topic,
-      execution_id,
-      fn topic, base_path ->
-        topic
-        |> Topic.merge(base_path ++ [:dependencies, asset_execution_id_s], asset_execution)
-        |> Topic.set(
-          base_path ++ [:dependencies, asset_execution_id_s, :assets, asset_id_s],
-          asset
-        )
-      end
-    )
-  end
-
   defp process_notification(topic, {:child, parent_id, child}) do
     value = build_child(child, topic.state.external_run_id)
 
@@ -246,11 +222,7 @@ defmodule Coflux.Topics.Run do
                       Map.new(execution.assets, fn {asset_id, asset} ->
                         {Integer.to_string(asset_id), build_asset(asset)}
                       end),
-                    dependencies:
-                      build_dependencies(
-                        execution.result_dependencies,
-                        execution.asset_dependencies
-                      ),
+                    dependencies: build_dependencies(execution.dependencies),
                     children: Enum.map(execution.children, &build_child(&1, run.external_id)),
                     result: build_result(execution.result),
                     logCount: execution.log_count
@@ -261,27 +233,16 @@ defmodule Coflux.Topics.Run do
     }
   end
 
-  defp build_dependencies(result_dependencies, asset_dependencies) do
-    dependencies =
-      Map.new(result_dependencies, fn {execution_id, execution} ->
-        {execution_id, build_dependency(execution)}
-      end)
-
-    Enum.reduce(asset_dependencies, dependencies, fn {asset_id, asset}, dependencies ->
-      dependencies
-      |> Map.put_new_lazy(asset.execution_id, fn ->
-        build_dependency(asset.execution)
-      end)
-      |> Map.update!(asset.execution_id, fn dependency ->
-        put_in(dependency.assets[asset_id], build_asset(asset))
-      end)
+  defp build_dependencies(dependencies) do
+    Map.new(dependencies, fn {execution_id, execution} ->
+      {execution_id, build_dependency(execution)}
     end)
   end
 
   defp build_dependency(execution) do
-    execution
-    |> build_execution()
-    |> Map.put(:assets, %{})
+    %{
+      execution: build_execution(execution)
+    }
   end
 
   defp build_frames(frames) do

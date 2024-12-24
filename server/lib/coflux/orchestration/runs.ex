@@ -353,7 +353,7 @@ defmodule Coflux.Orchestration.Runs do
       {:ok, _} =
         insert_many(
           db,
-          :result_dependencies,
+          :dependencies,
           {:execution_id, :dependency_id, :created_at},
           Enum.map(dependency_ids, &{execution_id, &1, now})
         )
@@ -399,25 +399,10 @@ defmodule Coflux.Orchestration.Runs do
     with_transaction(db, fn ->
       insert_one(
         db,
-        :result_dependencies,
+        :dependencies,
         %{
           execution_id: execution_id,
           dependency_id: dependency_id,
-          created_at: current_timestamp()
-        },
-        on_conflict: "DO NOTHING"
-      )
-    end)
-  end
-
-  def record_asset_dependency(db, execution_id, asset_id) do
-    with_transaction(db, fn ->
-      insert_one(
-        db,
-        :asset_dependencies,
-        %{
-          execution_id: execution_id,
-          asset_id: asset_id,
           created_at: current_timestamp()
         },
         on_conflict: "DO NOTHING"
@@ -703,24 +688,12 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  def get_result_dependencies(db, execution_id) do
+  def get_dependencies(db, execution_id) do
     query(
       db,
       """
       SELECT dependency_id
-      FROM result_dependencies
-      WHERE execution_id = ?1
-      """,
-      {execution_id}
-    )
-  end
-
-  def get_asset_dependencies(db, execution_id) do
-    query(
-      db,
-      """
-      SELECT asset_id
-      FROM asset_dependencies
+      FROM dependencies
       WHERE execution_id = ?1
       """,
       {execution_id}

@@ -70,8 +70,6 @@ export type Asset = {
   blobKey: string;
   size: number;
   metadata: Record<string, any>;
-  execution?: ExecutionReference;
-  createdAt: number;
 };
 
 export type Reference =
@@ -84,7 +82,6 @@ export type Reference =
     }
   | {
       type: "execution";
-      executionId: string;
       execution: ExecutionReference;
     }
   | {
@@ -162,8 +159,8 @@ export type QueuedExecution = {
   assignedAt: number | null;
 };
 
-export type Dependency = ExecutionReference & {
-  assets: Record<string, Asset>;
+export type Dependency = {
+  execution: ExecutionReference;
 };
 
 export type Execution = {
