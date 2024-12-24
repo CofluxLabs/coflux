@@ -314,7 +314,7 @@ CREATE TABLE serialisers (
 
 CREATE TABLE fragments (
   id INTEGER PRIMARY KEY,
-  hash BLOB NOT NULL,
+  hash BLOB NOT NULL UNIQUE,
   serialiser_id INTEGER NOT NULL,
   blob_id INTEGER NOT NULL,
   FOREIGN KEY (serialiser_id) REFERENCES serialisers ON DELETE RESTRICT,
