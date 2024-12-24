@@ -1865,7 +1865,7 @@ defmodule Coflux.Orchestration.Server do
   # TODO: remove 'repository' argument?
   defp record_and_notify_result(state, execution_id, result, repository) do
     {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, execution_id)
-    {:ok, run_dependencies} = Runs.get_execution_run_dependencies(state.db, execution_id)
+    {:ok, successors} = Runs.get_result_successors(state.db, execution_id)
 
     case Results.record_result(state.db, execution_id, result) do
       {:ok, created_at} ->
@@ -1875,10 +1875,10 @@ defmodule Coflux.Orchestration.Server do
         result = build_result(result, state.db)
 
         state =
-          run_dependencies
-          |> Enum.reduce(state, fn {run_id, run_execution_id}, state ->
+          successors
+          |> Enum.reduce(state, fn {run_id, successor_id}, state ->
             cond do
-              run_execution_id == execution_id ->
+              successor_id == execution_id ->
                 notify_listeners(
                   state,
                   {:run, run_id},
@@ -1890,7 +1890,7 @@ defmodule Coflux.Orchestration.Server do
                   state,
                   {:run, run_id},
                   # TODO: better name?
-                  {:result_result, run_execution_id, result, created_at}
+                  {:result_result, successor_id, result, created_at}
                 )
 
               true ->

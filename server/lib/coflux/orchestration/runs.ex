@@ -759,20 +759,20 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  def get_execution_run_dependencies(db, execution_id) do
+  def get_result_successors(db, execution_id) do
     query(
       db,
       """
-      WITH RECURSIVE dependencies AS (
+      WITH RECURSIVE successors AS (
         SELECT ?1 AS execution_id
         UNION
         SELECT r.execution_id
-        FROM dependencies AS d
-        INNER JOIN results AS r ON r.successor_id = d.execution_id
+        FROM successors AS ss
+        INNER JOIN results AS r ON r.successor_id = ss.execution_id
       )
-      SELECT s.run_id, d.execution_id
-      FROM dependencies AS d
-      INNER JOIN executions AS e ON e.id = d.execution_id
+      SELECT s.run_id, ss.execution_id
+      FROM successors AS ss
+      INNER JOIN executions AS e ON e.id = ss.execution_id
       INNER JOIN steps AS s ON s.id = e.step_id
       """,
       {execution_id}
