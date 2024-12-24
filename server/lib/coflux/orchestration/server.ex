@@ -963,13 +963,31 @@ defmodule Coflux.Orchestration.Server do
           end
 
         {:ok, steps} = Runs.get_run_steps(state.db, run.id)
+        {:ok, executions} = Runs.get_run_executions(state.db, run.id)
         {:ok, log_counts} = Observations.get_counts_for_run(state.db, run.id)
+
+        execution_ids = Enum.map(executions, &elem(&1, 0))
+
+        results =
+          Enum.reduce(execution_ids, %{}, fn execution_id, results ->
+            {result, completed_at} =
+              case Results.get_result(state.db, execution_id) do
+                {:ok, {result, completed_at}} ->
+                  result = build_result(result, state.db)
+                  {result, completed_at}
+
+                {:ok, nil} ->
+                  {nil, nil}
+              end
+
+            Map.put(results, execution_id, {result, completed_at})
+          end)
 
         steps =
           Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, type,
                              memo_key, requires_tag_set_id, created_at} ->
-            {:ok, executions} = Runs.get_step_executions(state.db, step_id)
             {:ok, arguments} = Runs.get_step_arguments(state.db, step_id)
+            arguments = Enum.map(arguments, &build_value(&1, state.db))
 
             requires =
               if requires_tag_set_id do
@@ -979,8 +997,6 @@ defmodule Coflux.Orchestration.Server do
               else
                 %{}
               end
-
-            arguments = Enum.map(arguments, &build_value(&1, state.db))
 
             {step_external_id,
              %{
@@ -993,8 +1009,11 @@ defmodule Coflux.Orchestration.Server do
                arguments: arguments,
                requires: requires,
                executions:
-                 Map.new(executions, fn {execution_id, attempt, environment_id, execute_after,
-                                         created_at, _session_id, assigned_at} ->
+                 executions
+                 |> Enum.filter(&(elem(&1, 1) == step_id))
+                 |> Map.new(fn {execution_id, _step_id, attempt, environment_id, execute_after,
+                                created_at, assigned_at} ->
+                   {result, completed_at} = Map.fetch!(results, execution_id)
                    # TODO: load assets in one query
                    {:ok, asset_ids} = Results.get_assets_for_execution(state.db, execution_id)
                    assets = Map.new(asset_ids, &{&1, resolve_asset(state.db, &1)})
@@ -1002,22 +1021,11 @@ defmodule Coflux.Orchestration.Server do
                    {:ok, dependencies} =
                      Runs.get_dependencies(state.db, execution_id)
 
-                   # TODO: batch? get `get_result_dependencies` to resolve?
+                   # TODO: batch? get `get_dependencies` to resolve?
                    dependencies =
                      Map.new(dependencies, fn {dependency_id} ->
                        {dependency_id, resolve_execution(state.db, dependency_id)}
                      end)
-
-                   {result, completed_at} =
-                     case Results.get_result(state.db, execution_id) do
-                       {:ok, {result, completed_at}} ->
-                         {result, completed_at}
-
-                       {:ok, nil} ->
-                         {nil, nil}
-                     end
-
-                   result = build_result(result, state.db)
 
                    {:ok, children} =
                      Runs.get_execution_children(state.db, execution_id)
@@ -1940,9 +1948,8 @@ defmodule Coflux.Orchestration.Server do
               {retry_id, state}
 
             result_retryable?(result) && step.retry_limit > 0 ->
-              {:ok, executions} = Runs.get_step_executions(state.db, step.id)
-
-              attempts = Enum.count(executions)
+              {:ok, assignments} = Runs.get_step_assignments(state.db, step.id)
+              attempts = Enum.count(assignments)
 
               if attempts <= step.retry_limit do
                 # TODO: add jitter (within min/max delay)
@@ -1962,13 +1969,13 @@ defmodule Coflux.Orchestration.Server do
               end
 
             step.type == :sensor ->
-              {:ok, executions} = Runs.get_step_executions(state.db, step.id)
+              {:ok, assignments} = Runs.get_step_assignments(state.db, step.id)
 
-              if Enum.all?(executions, &elem(&1, 5)) do
+              if Enum.all?(Map.values(assignments)) do
                 now = System.os_time(:millisecond)
 
                 last_assigned_at =
-                  executions |> Enum.map(&elem(&1, 6)) |> Enum.max(&>=/2, fn -> nil end)
+                  assignments |> Map.values() |> Enum.max(&>=/2, fn -> nil end)
 
                 execute_after =
                   if last_assigned_at && now - last_assigned_at < @sensor_rate_limit_ms do
@@ -2270,17 +2277,5 @@ defmodule Coflux.Orchestration.Server do
         IO.puts("Couldn't locate session for execution #{execution_id}. Ignoring.")
         state
     end
-  end
-
-  defp filter_execution_children(execution_id, executions) do
-    execution = Enum.find(executions, &(elem(&1, 0) == execution_id))
-    # TODO: handle execution not found?
-
-    children =
-      executions
-      |> Enum.filter(&(elem(&1, 1) == execution_id))
-      |> Enum.flat_map(&filter_execution_children(elem(&1, 0), executions))
-
-    [execution | children]
   end
 end

@@ -624,17 +624,34 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  def get_step_executions(db, step_id) do
+  def get_run_executions(db, run_id) do
     query(
       db,
       """
-      SELECT e.id, e.attempt, e.environment_id, e.execute_after, e.created_at, a.session_id, a.created_at
-      FROM executions AS e
+      SELECT e.id, e.step_id, e.attempt, e.environment_id, e.execute_after, e.created_at, a.created_at
+      FROM steps AS s
+      INNER JOIN executions AS e ON e.step_id = s.id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
-      WHERE e.step_id = ?1
+      WHERE s.run_id = ?1
       """,
-      {step_id}
+      {run_id}
     )
+  end
+
+  def get_step_assignments(db, step_id) do
+    case query(
+           db,
+           """
+           SELECT e.id, a.created_at
+           FROM executions AS e
+           LEFT JOIN assignments AS a ON a.execution_id = e.id
+           WHERE e.step_id = ?1
+           """,
+           {step_id}
+         ) do
+      {:ok, rows} ->
+        {:ok, Map.new(rows)}
+    end
   end
 
   def get_first_step_execution_id(db, step_id) do
