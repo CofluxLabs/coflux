@@ -1715,7 +1715,8 @@ defmodule Coflux.Orchestration.Server do
           )
           |> notify_listeners(
             {:targets, environment_id},
-            {:step, step.repository, step.target, run.external_id, step.external_id, attempt}
+            {:step, step.repository, step.target, step.type, run.external_id, step.external_id,
+             attempt}
           )
 
         state =
