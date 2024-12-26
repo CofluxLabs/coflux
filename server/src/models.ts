@@ -155,6 +155,11 @@ export type Dependency = {
   execution: ExecutionReference;
 };
 
+export type Child = {
+  stepId: string;
+  attempt: number;
+};
+
 export type Execution = {
   executionId: string;
   environmentId: string;
@@ -163,7 +168,7 @@ export type Execution = {
   assignedAt: number | null;
   completedAt: number | null;
   dependencies: Record<string, Dependency>;
-  children: string[];
+  children: Child[];
   result: Result | null;
   assets: Record<string, Asset>;
   logCount: number;

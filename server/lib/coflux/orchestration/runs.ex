@@ -252,10 +252,10 @@ defmodule Coflux.Orchestration.Runs do
         end
       end
 
-    {step_id, external_step_id, execution_id, attempt, now, memo_hit} =
+    {external_step_id, execution_id, attempt, now, memo_hit} =
       case memoised_execution do
-        {step_id, external_step_id, execution_id, attempt, now} ->
-          {step_id, external_step_id, execution_id, attempt, now, true}
+        {external_step_id, execution_id, attempt, now} ->
+          {external_step_id, execution_id, attempt, now, true}
 
         nil ->
           {cache_key, cache_max_age} =
@@ -327,12 +327,12 @@ defmodule Coflux.Orchestration.Runs do
           {:ok, execution_id} =
             insert_execution(db, step_id, attempt, environment_id, execute_after, now)
 
-          {step_id, external_step_id, execution_id, attempt, now, false}
+          {external_step_id, execution_id, attempt, now, false}
       end
 
     child_added =
       if parent_id do
-        {:ok, id} = insert_child(db, parent_id, step_id, now)
+        {:ok, id} = insert_child(db, parent_id, execution_id, now)
         !is_nil(id)
       else
         false
@@ -502,17 +502,17 @@ defmodule Coflux.Orchestration.Runs do
     query(
       db,
       """
-      WITH RECURSIVE children AS (
+      WITH RECURSIVE descendants AS (
         SELECT ?1 AS execution_id
         UNION
         SELECT e.id AS execution_id
-        FROM children AS c
-        INNER JOIN steps AS s ON s.parent_id = c.execution_id
+        FROM descendants AS d
+        INNER JOIN steps AS s ON s.parent_id = d.execution_id
         INNER JOIN executions AS e ON e.step_id = s.id
       )
       SELECT e.id, s.repository, a.created_at, r.created_at
-      FROM children AS c
-      INNER JOIN executions AS e ON e.id = c.execution_id
+      FROM descendants AS d
+      INNER JOIN executions AS e ON e.id = d.execution_id
       INNER JOIN steps AS s ON s.id = e.step_id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN results AS r ON r.execution_id = e.id
@@ -714,17 +714,18 @@ defmodule Coflux.Orchestration.Runs do
     case query(
            db,
            """
-           SELECT c.parent_id, s2.external_id
+           SELECT c.parent_id, s2.external_id, e2.attempt
            FROM children AS c
-           INNER JOIN executions AS e ON e.id = c.parent_id
-           INNER JOIN steps AS s1 ON s1.id = e.step_id
-           INNER JOIN steps AS s2 ON s2.id = c.child_id
+           INNER JOIN executions AS e1 ON e1.id = c.parent_id
+           INNER JOIN steps AS s1 ON s1.id = e1.step_id
+           INNER JOIN executions AS e2 ON e2.id = c.child_id
+           INNER JOIN steps AS s2 ON s2.id = e2.step_id
            WHERE s1.run_id = ?1
            """,
            {run_id}
          ) do
       {:ok, rows} ->
-        {:ok, Enum.group_by(rows, &elem(&1, 0), &elem(&1, 1))}
+        {:ok, Enum.group_by(rows, &elem(&1, 0), &{elem(&1, 1), elem(&1, 2)})}
     end
   end
 
@@ -751,7 +752,7 @@ defmodule Coflux.Orchestration.Runs do
     case query(
            db,
            """
-           SELECT s.id, s.external_id, e.id, e.attempt, e.created_at
+           SELECT s.external_id, e.id, e.attempt, e.created_at
            FROM steps AS s
            INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id

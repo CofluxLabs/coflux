@@ -515,7 +515,7 @@ defmodule Coflux.Orchestration.Server do
             notify_listeners(
               state,
               {:run, run.id},
-              {:child, parent_id, external_step_id}
+              {:child, parent_id, {external_step_id, attempt}}
             )
           else
             state

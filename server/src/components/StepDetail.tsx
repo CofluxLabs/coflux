@@ -805,13 +805,13 @@ function RelationsSection({
         {execution.children.length ? (
           <ul>
             {execution.children.map((child) => {
-              const step = run.steps[child];
+              const step = run.steps[child.stepId];
               return (
-                <li key={child}>
+                <li key={`${child.stepId}/${child.attempt}`}>
                   <StepLink
                     runId={runId}
-                    stepId={child}
-                    attempt={1}
+                    stepId={child.stepId}
+                    attempt={child.attempt}
                     className="rounded text-sm ring-offset-1 px-1"
                     hoveredClassName="ring-2 ring-slate-300"
                   >

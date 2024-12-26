@@ -68,7 +68,7 @@ function chooseStepAttempts(
         if (!(sId in stepAttempts)) {
           Object.entries(run.steps[sId].executions).forEach(
             ([attempt, execution]) => {
-              if (execution.children.includes(stepId)) {
+              if (execution.children.some((c) => c.stepId == stepId)) {
                 // TODO: keep as string?
                 stepAttempts[sId] = parseInt(attempt, 10);
                 process(sId);
@@ -107,10 +107,10 @@ function traverseRun(
     callback(stepId, attempt);
     const execution = run.steps[stepId].executions[attempt];
     execution?.children.forEach((child) => {
-      if (!(child in seen)) {
-        traverseRun(run, stepAttempts, child, callback, {
+      if (!(child.stepId in seen)) {
+        traverseRun(run, stepAttempts, child.stepId, callback, {
           ...seen,
-          [child]: true,
+          [child.stepId]: true,
         });
       }
     });
@@ -147,16 +147,6 @@ export default function buildGraph(
     Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
     (stepId) => run.steps[stepId].createdAt,
   )!;
-
-  const visibleSteps: Record<string, number> = {};
-  traverseRun(
-    run,
-    stepAttempts,
-    initialStepId,
-    (stepId: string, attempt: number) => {
-      visibleSteps[stepId] = attempt;
-    },
-  );
 
   const nodes: Record<string, BaseNode> = {};
   const edges: Record<string, Omit<Edge, "path">> = {};
@@ -239,18 +229,18 @@ export default function buildGraph(
         },
       );
       execution.children.forEach((child) => {
-        const childAttempt = getStepAttempt(run, stepAttempts, child);
+        const childAttempt = getStepAttempt(run, stepAttempts, child.stepId);
         const childExecution =
-          childAttempt && run.steps[child].executions[childAttempt];
+          childAttempt && run.steps[child.stepId].executions[childAttempt];
         if (childExecution) {
           if (
             !Object.values(execution.dependencies).some(
-              (d) => d.execution.stepId == child,
+              (d) => d.execution.stepId == child.stepId,
             )
           ) {
-            edges[`${stepId}-${child}`] = {
+            edges[`${stepId}-${child.stepId}`] = {
               from: stepId,
-              to: child,
+              to: child.stepId,
               type: "child",
             };
           }

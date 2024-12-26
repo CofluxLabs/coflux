@@ -255,7 +255,7 @@ CREATE TABLE children (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (parent_id, child_id),
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (child_id) REFERENCES steps ON DELETE CASCADE
+  FOREIGN KEY (child_id) REFERENCES executions ON DELETE CASCADE
 );
 
 CREATE TABLE assignments (
