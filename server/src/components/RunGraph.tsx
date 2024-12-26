@@ -235,7 +235,7 @@ function ParentNode({ parent }: ParentNodeProps) {
 
 type ChildNodeProps = {
   runId: string;
-  child: models.Child;
+  child: models.ExecutionReference;
 };
 
 function ChildNode({ runId, child }: ChildNodeProps) {

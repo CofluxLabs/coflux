@@ -515,8 +515,7 @@ defmodule Coflux.Orchestration.Server do
             notify_listeners(
               state,
               {:run, run.id},
-              {:child, parent_id,
-               {run.external_id, external_step_id, repository, target_name, type}}
+              {:child, parent_id, external_step_id}
             )
           else
             state
@@ -963,13 +962,15 @@ defmodule Coflux.Orchestration.Server do
           end
 
         {:ok, steps} = Runs.get_run_steps(state.db, run.id)
-        {:ok, executions} = Runs.get_run_executions(state.db, run.id)
+        {:ok, run_executions} = Runs.get_run_executions(state.db, run.id)
+        {:ok, run_dependencies} = Runs.get_run_dependencies(state.db, run.id)
+        {:ok, run_children} = Runs.get_run_children(state.db, run.id)
         {:ok, log_counts} = Observations.get_counts_for_run(state.db, run.id)
 
-        execution_ids = Enum.map(executions, &elem(&1, 0))
-
         results =
-          Enum.reduce(execution_ids, %{}, fn execution_id, results ->
+          run_executions
+          |> Enum.map(&elem(&1, 0))
+          |> Enum.reduce(%{}, fn execution_id, results ->
             {result, completed_at} =
               case Results.get_result(state.db, execution_id) do
                 {:ok, {result, completed_at}} ->
@@ -1009,7 +1010,7 @@ defmodule Coflux.Orchestration.Server do
                arguments: arguments,
                requires: requires,
                executions:
-                 executions
+                 run_executions
                  |> Enum.filter(&(elem(&1, 1) == step_id))
                  |> Map.new(fn {execution_id, _step_id, attempt, environment_id, execute_after,
                                 created_at, assigned_at} ->
@@ -1018,17 +1019,13 @@ defmodule Coflux.Orchestration.Server do
                    {:ok, asset_ids} = Results.get_assets_for_execution(state.db, execution_id)
                    assets = Map.new(asset_ids, &{&1, resolve_asset(state.db, &1)})
 
-                   {:ok, dependencies} =
-                     Runs.get_dependencies(state.db, execution_id)
-
                    # TODO: batch? get `get_dependencies` to resolve?
                    dependencies =
-                     Map.new(dependencies, fn {dependency_id} ->
+                     run_dependencies
+                     |> Map.get(execution_id, [])
+                     |> Map.new(fn dependency_id ->
                        {dependency_id, resolve_execution(state.db, dependency_id)}
                      end)
-
-                   {:ok, children} =
-                     Runs.get_execution_children(state.db, execution_id)
 
                    {attempt,
                     %{
@@ -1041,7 +1038,7 @@ defmodule Coflux.Orchestration.Server do
                       assets: assets,
                       dependencies: dependencies,
                       result: result,
-                      children: children,
+                      children: Map.get(run_children, execution_id, []),
                       log_count: Map.get(log_counts, execution_id, 0)
                     }}
                  end)
@@ -1655,23 +1652,7 @@ defmodule Coflux.Orchestration.Server do
            cache_environment_ids,
            opts
          ) do
-      {:ok, external_run_id, external_step_id, execution_id, attempt, created_at, child_added} ->
-        state =
-          if child_added do
-            parent_id = Keyword.fetch!(opts, :parent_id)
-            # TODO: avoid looking this up again?
-            {:ok, parent_step} = Runs.get_step_for_execution(state.db, parent_id)
-
-            notify_listeners(
-              state,
-              {:run, parent_step.run_id},
-              {:child, parent_id,
-               {external_run_id, external_step_id, repository, target_name, type}}
-            )
-          else
-            state
-          end
-
+      {:ok, external_run_id, external_step_id, execution_id, attempt, created_at} ->
         # TODO: neater way to get execute_after?
         execute_after = Keyword.get(opts, :execute_after)
         execute_at = execute_after || created_at

@@ -119,11 +119,11 @@ defmodule Coflux.Orchestration.Runs do
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, now)
 
-      {:ok, external_step_id, execution_id, attempt, now, false, child_added} =
+      {:ok, external_step_id, execution_id, attempt, now, false, _child_added} =
         do_schedule_step(
           db,
           run_id,
-          parent_id,
+          nil,
           repository,
           target,
           type,
@@ -135,7 +135,7 @@ defmodule Coflux.Orchestration.Runs do
           opts
         )
 
-      {:ok, external_run_id, external_step_id, execution_id, attempt, now, child_added}
+      {:ok, external_run_id, external_step_id, execution_id, attempt, now}
     end)
   end
 
@@ -638,6 +638,23 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
+  def get_run_dependencies(db, run_id) do
+    case query(
+           db,
+           """
+           SELECT d.execution_id, d.dependency_id
+           FROM dependencies AS d
+           INNER JOIN executions AS e ON e.id = d.execution_id
+           INNER JOIN steps AS s ON s.id = e.step_id
+           WHERE s.run_id = ?1
+           """,
+           {run_id}
+         ) do
+      {:ok, rows} ->
+        {:ok, Enum.group_by(rows, &elem(&1, 0), &elem(&1, 1))}
+    end
+  end
+
   def get_step_assignments(db, step_id) do
     case query(
            db,
@@ -693,23 +710,21 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  def get_execution_children(db, execution_id) do
+  def get_run_children(db, run_id) do
     case query(
            db,
            """
-           SELECT r.external_id, s.external_id, s.repository, s.target, s.type
+           SELECT c.parent_id, s2.external_id
            FROM children AS c
-           INNER JOIN steps AS s ON s.id = c.child_id
-           INNER JOIN runs AS r ON r.id = s.run_id
-           WHERE c.parent_id = ?1
+           INNER JOIN executions AS e ON e.id = c.parent_id
+           INNER JOIN steps AS s1 ON s1.id = e.step_id
+           INNER JOIN steps AS s2 ON s2.id = c.child_id
+           WHERE s1.run_id = ?1
            """,
-           {execution_id}
+           {run_id}
          ) do
       {:ok, rows} ->
-        {:ok,
-         Enum.map(rows, fn {run_external_id, step_external_id, repository, target, type} ->
-           {run_external_id, step_external_id, repository, target, Utils.decode_step_type(type)}
-         end)}
+        {:ok, Enum.group_by(rows, &elem(&1, 0), &elem(&1, 1))}
     end
   end
 

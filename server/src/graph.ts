@@ -17,7 +17,7 @@ type BaseNode = (
     }
   | {
       type: "child";
-      child: models.Child;
+      child: models.ExecutionReference;
       runId: string;
     }
   | {
@@ -107,7 +107,7 @@ function traverseRun(
     callback(stepId, attempt);
     const execution = run.steps[stepId].executions[attempt];
     execution?.children.forEach((child) => {
-      if (typeof child == "string" && !(child in seen)) {
+      if (!(child in seen)) {
         traverseRun(run, stepAttempts, child, callback, {
           ...seen,
           [child]: true,
@@ -228,113 +228,90 @@ export default function buildGraph(
       Object.entries(execution.dependencies).forEach(
         ([dependencyId, dependency]) => {
           if (dependency.execution.runId == runId) {
-            if (
-              !execution.children.some(
-                (c) =>
-                  typeof c == "string" &&
-                  Object.values(run.steps[c].executions).some(
-                    (e) =>
-                      e.result?.type == "cached" &&
-                      e.executionId == dependencyId,
-                  ),
-              )
-            ) {
-              edges[`${dependency.execution.stepId}-${stepId}`] = {
-                from: dependency.execution.stepId,
-                to: stepId,
-                type: "dependency",
-              };
-            }
+            edges[`${dependency.execution.stepId}-${stepId}`] = {
+              from: dependency.execution.stepId,
+              to: stepId,
+              type: "dependency",
+            };
           } else {
-            // TODO: connect to node for (child/parent) run? (if it exists?)
+            // TODO: ?
           }
         },
       );
       execution.children.forEach((child) => {
-        if (typeof child == "string") {
-          const childAttempt = getStepAttempt(run, stepAttempts, child);
-          const childExecution =
-            childAttempt && run.steps[child].executions[childAttempt];
-          if (childExecution) {
-            if (childExecution.result?.type == "cached") {
-              const cachedExecutionId = childExecution.executionId;
-              const cachedStepId = Object.keys(run.steps).find(
-                (sId) =>
-                  sId in visibleSteps &&
-                  Object.values(run.steps[sId].executions).some(
-                    (e) =>
-                      e.result?.type != "cached" &&
-                      e.executionId == cachedExecutionId,
-                  ),
-              );
-              if (cachedExecutionId in execution.dependencies) {
-                edges[`${child}-${stepId}`] = {
-                  from: child,
-                  to: stepId,
-                  type: "dependency",
-                };
-                if (cachedStepId) {
-                  edges[`${cachedStepId}-${child}`] = {
-                    from: cachedStepId,
-                    to: child,
-                    type: "transitive",
-                  };
-                }
-              } else {
-                edges[`${stepId}-${child}`] = {
-                  from: stepId,
-                  to: child,
-                  type: "child",
-                };
-                if (cachedStepId) {
-                  edges[`${child}-${cachedStepId}`] = {
-                    from: child,
-                    to: cachedStepId,
-                    type: "transitive",
-                  };
-                }
-              }
-            } else if (
-              !Object.values(execution.dependencies).some(
-                (d) => d.execution.stepId == child,
-              )
-            ) {
-              edges[`${stepId}-${child}`] = {
-                from: stepId,
-                to: child,
-                type: "child",
-              };
-            }
-          } else {
-            // TODO
+        const childAttempt = getStepAttempt(run, stepAttempts, child);
+        const childExecution =
+          childAttempt && run.steps[child].executions[childAttempt];
+        if (childExecution) {
+          if (
+            !Object.values(execution.dependencies).some(
+              (d) => d.execution.stepId == child,
+            )
+          ) {
+            edges[`${stepId}-${child}`] = {
+              from: stepId,
+              to: child,
+              type: "child",
+            };
           }
         } else {
-          nodes[child.runId] = {
+          // TODO
+        }
+      });
+      const result = execution?.result;
+      if (
+        result?.type == "deferred" ||
+        result?.type == "cached" ||
+        result?.type == "spawned"
+      ) {
+        const childRunId = result.execution.runId;
+        if (childRunId != runId) {
+          nodes[result.execution.runId] = {
             type: "child",
-            child,
-            runId: child.runId,
+            child: result.execution,
+            runId: childRunId,
             width: 100,
             height: 30,
           };
           if (
             Object.values(execution.dependencies).some(
-              (d) => d.execution.runId == child.runId,
+              (d) => d.execution.runId == childRunId,
             )
           ) {
-            edges[`${child.runId}-${stepId}`] = {
-              from: child.runId,
+            edges[`${childRunId}-${stepId}`] = {
+              from: childRunId,
               to: stepId,
               type: "dependency",
             };
           } else {
-            edges[`${stepId}-${child.runId}`] = {
+            edges[`${stepId}-${childRunId}`] = {
               from: stepId,
-              to: child.runId,
+              to: childRunId,
+              type: "child",
+            };
+          }
+        } else {
+          const childStepId = result.execution.stepId;
+          // TODO: fix/remove this dependency check?
+          if (
+            Object.values(execution.dependencies).some(
+              (d) => d.execution.stepId == childStepId,
+            )
+          ) {
+            edges[`${childStepId}-${stepId}`] = {
+              from: childStepId,
+              to: stepId,
+              type: "dependency",
+            };
+          } else {
+            edges[`${stepId}-${childStepId}`] = {
+              from: stepId,
+              to: childStepId,
               type: "child",
             };
           }
         }
-      });
+      }
     },
   );
 

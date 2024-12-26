@@ -148,11 +148,9 @@ defmodule Coflux.Topics.Run do
     )
   end
 
-  defp process_notification(topic, {:child, parent_id, child}) do
-    value = build_child(child, topic.state.external_run_id)
-
+  defp process_notification(topic, {:child, parent_id, child_id}) do
     update_execution(topic, parent_id, fn topic, base_path ->
-      Topic.insert(topic, base_path ++ [:children], value)
+      Topic.insert(topic, base_path ++ [:children], child_id)
     end)
   end
 
@@ -223,7 +221,7 @@ defmodule Coflux.Topics.Run do
                         {Integer.to_string(asset_id), build_asset(asset)}
                       end),
                     dependencies: build_dependencies(execution.dependencies),
-                    children: Enum.map(execution.children, &build_child(&1, run.external_id)),
+                    children: execution.children,
                     result: build_result(execution.result),
                     logCount: execution.log_count
                   }}
@@ -292,20 +290,6 @@ defmodule Coflux.Topics.Run do
 
       nil ->
         nil
-    end
-  end
-
-  defp build_child({external_run_id, external_step_id, repository, target, type}, run_external_id) do
-    if external_run_id == run_external_id do
-      external_step_id
-    else
-      %{
-        runId: external_run_id,
-        stepId: external_step_id,
-        repository: repository,
-        target: target,
-        type: type
-      }
     end
   end
 

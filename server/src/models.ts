@@ -140,14 +140,6 @@ export type Result =
       result?: Result;
     };
 
-export type Child = {
-  repository: string;
-  target: string;
-  type: "workflow" | "sensor";
-  runId: string;
-  stepId: string;
-};
-
 // TODO: combine with `Execution`?
 export type QueuedExecution = {
   target: string;
@@ -171,7 +163,7 @@ export type Execution = {
   assignedAt: number | null;
   completedAt: number | null;
   dependencies: Record<string, Dependency>;
-  children: (string | Child)[];
+  children: string[];
   result: Result | null;
   assets: Record<string, Asset>;
   logCount: number;
