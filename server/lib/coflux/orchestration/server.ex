@@ -1808,10 +1808,10 @@ defmodule Coflux.Orchestration.Server do
       {:value, _} -> true
       {:abandoned, retry_id} -> is_nil(retry_id)
       :cancelled -> true
-      {:suspended, successor_id} when not is_nil(successor_id) -> true
-      {:deferred, execution_id} when not is_nil(execution_id) -> true
-      {:cached, execution_id} when not is_nil(execution_id) -> true
-      {:spawned, execution_id} when not is_nil(execution_id) -> true
+      {:suspended, _} -> false
+      {:deferred, _} -> false
+      {:cached, _} -> false
+      {:spawned, _} -> false
     end
   end
 
