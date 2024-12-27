@@ -17,6 +17,7 @@ import {
   IconArrowBounce,
   IconPin,
   IconAlertCircle,
+  IconStackPop,
 } from "@tabler/icons-react";
 
 import * as models from "../models";
@@ -220,6 +221,10 @@ function StepNode({
         ) : execution && !execution.result && !execution.assignedAt ? (
           <span title="Assigning...">
             <IconClock size={16} />
+          </span>
+        ) : execution?.result?.type == "cached" ? (
+          <span title="Cache read">
+            <IconStackPop size={16} className="text-slate-400" />
           </span>
         ) : execution?.result?.type == "suspended" ? (
           <span title="Suspended">
