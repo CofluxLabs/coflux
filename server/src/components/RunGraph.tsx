@@ -37,7 +37,10 @@ function classNameForExecution(execution: models.Execution) {
     execution.result?.type == "spawned"
       ? execution.result.result
       : execution.result;
-  if (result?.type == "cached" || result?.type == "deferred") {
+  if (
+    execution.result?.type == "cached" ||
+    execution.result?.type == "deferred"
+  ) {
     return "border-slate-200 bg-slate-50";
   } else if (!result && !execution?.assignedAt) {
     // TODO: handle spawned/etc case
