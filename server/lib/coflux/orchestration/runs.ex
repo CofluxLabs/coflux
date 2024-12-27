@@ -60,6 +60,21 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
+  def get_execution_run_id(db, execution_id) do
+    case query_one(
+           db,
+           """
+           SELECT s.run_id
+           FROM steps AS s
+           INNER JOIN executions AS e ON e.step_id = s.id
+           WHERE e.id = ?1
+           """,
+           {execution_id}
+         ) do
+      {:ok, {run_id}} -> {:ok, run_id}
+    end
+  end
+
   def get_environment_id_for_execution(db, execution_id) do
     case query_one!(
            db,

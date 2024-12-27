@@ -436,8 +436,8 @@ defmodule Coflux.Orchestration.Server do
           {:ok, nil}
 
         parent_id ->
-          {:ok, step} = Runs.get_step_for_execution(state.db, parent_id)
-          {:ok, {step.run_id, parent_id}}
+          {:ok, run_id} = Runs.get_execution_run_id(state.db, parent_id)
+          {:ok, {run_id, parent_id}}
       end
 
     {:ok, environment_id} =
@@ -472,9 +472,9 @@ defmodule Coflux.Orchestration.Server do
         _from,
         state
       ) do
-    {:ok, parent_step} = Runs.get_step_for_execution(state.db, parent_id)
+    {:ok, parent_run_id} = Runs.get_execution_run_id(state.db, parent_id)
     {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, parent_id)
-    {:ok, run} = Runs.get_run_by_id(state.db, parent_step.run_id)
+    {:ok, run} = Runs.get_run_by_id(state.db, parent_run_id)
 
     cache_environment_ids = get_cache_environment_ids(state, environment_id)
 
@@ -735,14 +735,14 @@ defmodule Coflux.Orchestration.Server do
         {:ok, id} = Runs.record_result_dependency(state.db, from_execution_id, execution_id)
 
         if id do
-          {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
+          {:ok, run_id} = Runs.get_execution_run_id(state.db, from_execution_id)
 
           # TODO: only resolve if there are listeners to notify
           dependency = resolve_execution(state.db, execution_id)
 
           notify_listeners(
             state,
-            {:run, step.run_id},
+            {:run, run_id},
             {:result_dependency, from_execution_id, execution_id, dependency}
           )
         else
@@ -776,13 +776,13 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:put_asset, execution_id, type, path, blob_key, size, metadata}, _from, state) do
-    {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
+    {:ok, run_id} = Runs.get_execution_run_id(state.db, execution_id)
 
     {:ok, asset_id} =
       Results.get_or_create_asset(state.db, execution_id, type, path, blob_key, size, metadata)
 
     asset = resolve_asset(state.db, asset_id)
-    state = notify_listeners(state, {:run, step.run_id}, {:asset, execution_id, asset_id, asset})
+    state = notify_listeners(state, {:run, run_id}, {:asset, execution_id, asset_id, asset})
     {:reply, {:ok, asset_id}, state}
   end
 
@@ -804,7 +804,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:record_logs, execution_id, messages}, _from, state) do
-    {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
+    {:ok, run_id} = Runs.get_execution_run_id(state.db, execution_id)
 
     case Observations.record_logs(state.db, execution_id, messages) do
       :ok ->
@@ -816,8 +816,8 @@ defmodule Coflux.Orchestration.Server do
 
         state =
           state
-          |> notify_listeners({:logs, step.run_id}, {:messages, messages})
-          |> notify_listeners({:run, step.run_id}, {:log_counts, execution_id, length(messages)})
+          |> notify_listeners({:logs, run_id}, {:messages, messages})
+          |> notify_listeners({:run, run_id}, {:log_counts, execution_id, length(messages)})
           |> flush_notifications()
 
         {:reply, :ok, state}
