@@ -56,17 +56,6 @@ defmodule Coflux.Topics.Logs do
     {:ok, topic}
   end
 
-  defp process_notification(
-         topic,
-         {:step, _, _, _, _, _, _, _, _, _, _, execution_id, environment_id, _}
-       ) do
-    if environment_id in topic.state.environment_ids do
-      update_in(topic.state.execution_ids, &MapSet.put(&1, execution_id))
-    else
-      topic
-    end
-  end
-
   defp process_notification(topic, {:execution, _, _, execution_id, environment_id, _, _}) do
     if environment_id in topic.state.environment_ids do
       update_in(topic.state.execution_ids, &MapSet.put(&1, execution_id))
@@ -74,13 +63,6 @@ defmodule Coflux.Topics.Logs do
       topic
     end
   end
-
-  defp process_notification(topic, {:asset, _, _, _}), do: topic
-  defp process_notification(topic, {:assigned, _}), do: topic
-  defp process_notification(topic, {:result_dependency, _, _, _}), do: topic
-  defp process_notification(topic, {:child, _, _}), do: topic
-  defp process_notification(topic, {:result, _, _, _}), do: topic
-  defp process_notification(topic, {:log_counts, _, _}), do: topic
 
   defp process_notification(topic, {:messages, messages}) do
     messages =
@@ -90,6 +72,15 @@ defmodule Coflux.Topics.Logs do
 
     Topic.insert(topic, [], messages)
   end
+
+  defp process_notification(topic, {:step, _, _, _}), do: topic
+  defp process_notification(topic, {:asset, _, _, _}), do: topic
+  defp process_notification(topic, {:assigned, _}), do: topic
+  defp process_notification(topic, {:result_dependency, _, _, _}), do: topic
+  defp process_notification(topic, {:child, _, _}), do: topic
+  defp process_notification(topic, {:result, _, _, _}), do: topic
+  defp process_notification(topic, {:result_result, _, _, _}), do: topic
+  defp process_notification(topic, {:log_counts, _, _}), do: topic
 
   defp build_message({execution_id, timestamp, level, template, values}) do
     [

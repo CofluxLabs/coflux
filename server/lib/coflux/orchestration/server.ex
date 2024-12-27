@@ -491,20 +491,45 @@ defmodule Coflux.Orchestration.Server do
            cache_environment_ids,
            opts
          ) do
-      {:ok, external_step_id, execution_id, attempt, created_at, memo_hit, child_added} ->
+      {:ok,
+       %{
+         external_step_id: external_step_id,
+         execution_id: execution_id,
+         attempt: attempt,
+         created_at: created_at,
+         cache_key: cache_key,
+         memo_key: memo_key,
+         memo_hit: memo_hit,
+         child_added: child_added
+       }} ->
+        cache = Keyword.get(opts, :cache)
         execute_after = Keyword.get(opts, :execute_after)
         requires = Keyword.get(opts, :requires) || %{}
 
         state =
           if !memo_hit do
-            is_memoised = !!Keyword.get(opts, :memo)
             arguments = Enum.map(arguments, &build_value(&1, state.db))
 
-            notify_listeners(
-              state,
+            state
+            |> notify_listeners(
               {:run, run.id},
-              {:step, external_step_id, repository, target_name, type, is_memoised, parent_id,
-               created_at, arguments, requires, attempt, execution_id, environment_id,
+              {:step, external_step_id,
+               %{
+                 repository: repository,
+                 target: target_name,
+                 type: type,
+                 parent_id: parent_id,
+                 cache_config: cache,
+                 cache_key: cache_key,
+                 memo_key: memo_key,
+                 created_at: created_at,
+                 arguments: arguments,
+                 requires: requires
+               }, environment_id}
+            )
+            |> notify_listeners(
+              {:run, run.id},
+              {:execution, external_step_id, attempt, execution_id, environment_id, created_at,
                execute_after}
             )
           else
@@ -973,6 +998,17 @@ defmodule Coflux.Orchestration.Server do
         {:ok, run_children} = Runs.get_run_children(state.db, run.id)
         {:ok, log_counts} = Observations.get_counts_for_run(state.db, run.id)
 
+        cache_configs =
+          steps
+          |> Enum.map(& &1.cache_config_id)
+          |> Enum.reject(&is_nil/1)
+          |> Enum.uniq()
+          |> Enum.reduce(%{}, fn cache_config_id, cache_configs ->
+            case CacheConfigs.get_cache_config(state.db, cache_config_id) do
+              {:ok, cache_config} -> Map.put(cache_configs, cache_config_id, cache_config)
+            end
+          end)
+
         results =
           run_executions
           |> Enum.map(&elem(&1, 0))
@@ -1010,6 +1046,9 @@ defmodule Coflux.Orchestration.Server do
                target: step.target,
                type: step.type,
                parent_id: step.parent_id,
+               cache_config:
+                 if(step.cache_config_id, do: Map.fetch!(cache_configs, step.cache_config_id)),
+               cache_key: step.cache_key,
                memo_key: step.memo_key,
                created_at: step.created_at,
                arguments: arguments,
@@ -1667,7 +1706,14 @@ defmodule Coflux.Orchestration.Server do
            cache_environment_ids,
            opts
          ) do
-      {:ok, external_run_id, external_step_id, execution_id, attempt, created_at} ->
+      {:ok,
+       %{
+         external_run_id: external_run_id,
+         external_step_id: external_step_id,
+         execution_id: execution_id,
+         attempt: attempt,
+         created_at: created_at
+       }} ->
         # TODO: neater way to get execute_after?
         execute_after = Keyword.get(opts, :execute_after)
         execute_at = execute_after || created_at
@@ -1956,7 +2002,7 @@ defmodule Coflux.Orchestration.Server do
                       (step.retry_delay_max - step.retry_delay_min)
 
                 execute_after = System.os_time(:millisecond) + delay_s * 1000
-                # TODO: do cache lookup?
+
                 {:ok, retry_id, _, state} =
                   rerun_step(state, step, environment_id, execute_after: execute_after)
 

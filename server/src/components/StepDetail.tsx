@@ -488,7 +488,7 @@ function Header({
                 >
                   {step.target}
                 </h2>
-                {step.isMemoised && (
+                {step.memoKey && (
                   <span
                     className="text-slate-500 self-center"
                     title="This execution has been memoised"

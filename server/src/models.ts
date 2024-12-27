@@ -174,12 +174,21 @@ export type Execution = {
   logCount: number;
 };
 
+export type CacheConfig = {
+  params: number[] | true;
+  maxAge: number | null;
+  namespace: string | null;
+  version: string | null;
+};
+
 export type Step = {
   repository: string;
   target: string;
   type: "task" | "workflow" | "sensor";
   parentId: string | null;
-  isMemoised: boolean;
+  cacheConfig: CacheConfig | null;
+  cacheKey: string | null;
+  memoKey: string | null;
   createdAt: number;
   // TODO: index by execution id?
   executions: Record<string, Execution>;

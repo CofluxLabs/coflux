@@ -140,7 +140,7 @@ defmodule Coflux.Orchestration.Runs do
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, now)
 
-      {:ok, external_step_id, execution_id, attempt, now, false, _child_added} =
+      {:ok, schedule} =
         do_schedule_step(
           db,
           run_id,
@@ -156,7 +156,7 @@ defmodule Coflux.Orchestration.Runs do
           opts
         )
 
-      {:ok, external_run_id, external_step_id, execution_id, attempt, now}
+      {:ok, Map.put(schedule, :external_run_id, external_run_id)}
     end)
   end
 
@@ -273,10 +273,10 @@ defmodule Coflux.Orchestration.Runs do
         end
       end
 
-    {external_step_id, execution_id, attempt, now, memo_hit} =
+    {external_step_id, execution_id, attempt, now, memo_hit, cache_key} =
       case memoised_execution do
         {external_step_id, execution_id, attempt, now} ->
-          {external_step_id, execution_id, attempt, now, true}
+          {external_step_id, execution_id, attempt, now, true, nil}
 
         nil ->
           cache_key =
@@ -348,7 +348,7 @@ defmodule Coflux.Orchestration.Runs do
           {:ok, execution_id} =
             insert_execution(db, step_id, attempt, environment_id, execute_after, now)
 
-          {external_step_id, execution_id, attempt, now, false}
+          {external_step_id, execution_id, attempt, now, false, cache_key}
       end
 
     child_added =
@@ -359,7 +359,17 @@ defmodule Coflux.Orchestration.Runs do
         false
       end
 
-    {:ok, external_step_id, execution_id, attempt, now, memo_hit, child_added}
+    {:ok,
+     %{
+       external_step_id: external_step_id,
+       execution_id: execution_id,
+       attempt: attempt,
+       created_at: now,
+       cache_key: cache_key,
+       memo_key: memo_key,
+       memo_hit: memo_hit,
+       child_added: child_added
+     }}
   end
 
   def rerun_step(db, step_id, environment_id, execute_after, dependency_ids) do
