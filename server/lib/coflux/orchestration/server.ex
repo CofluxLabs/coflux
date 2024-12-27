@@ -991,33 +991,32 @@ defmodule Coflux.Orchestration.Server do
           end)
 
         steps =
-          Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, type,
-                             memo_key, requires_tag_set_id, created_at} ->
-            {:ok, arguments} = Runs.get_step_arguments(state.db, step_id)
+          Map.new(steps, fn step ->
+            {:ok, arguments} = Runs.get_step_arguments(state.db, step.id)
             arguments = Enum.map(arguments, &build_value(&1, state.db))
 
             requires =
-              if requires_tag_set_id do
-                case TagSets.get_tag_set(state.db, requires_tag_set_id) do
+              if step.requires_tag_set_id do
+                case TagSets.get_tag_set(state.db, step.requires_tag_set_id) do
                   {:ok, requires} -> requires
                 end
               else
                 %{}
               end
 
-            {step_external_id,
+            {step.external_id,
              %{
-               repository: repository,
-               target: target,
-               type: type,
-               parent_id: parent_id,
-               memo_key: memo_key,
-               created_at: created_at,
+               repository: step.repository,
+               target: step.target,
+               type: step.type,
+               parent_id: step.parent_id,
+               memo_key: step.memo_key,
+               created_at: step.created_at,
                arguments: arguments,
                requires: requires,
                executions:
                  run_executions
-                 |> Enum.filter(&(elem(&1, 1) == step_id))
+                 |> Enum.filter(&(elem(&1, 1) == step.id))
                  |> Map.new(fn {execution_id, _step_id, attempt, environment_id, execute_after,
                                 created_at, assigned_at} ->
                    {result, completed_at} = Map.fetch!(results, execution_id)

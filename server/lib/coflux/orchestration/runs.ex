@@ -17,11 +17,14 @@ defmodule Coflux.Orchestration.Runs do
         type,
         priority,
         wait_for,
-        cache_key,
         cache_config_id,
+        cache_key,
+        defer_key,
+        memo_key,
         retry_limit,
         retry_delay_min,
         retry_delay_max,
+        requires_tag_set_id,
         created_at
       FROM steps
       WHERE external_id = ?1
@@ -41,15 +44,18 @@ defmodule Coflux.Orchestration.Runs do
         s.run_id,
         s.parent_id,
         s.repository,
-        s.type,
         s.target,
+        s.type,
         s.priority,
         s.wait_for,
-        s.cache_key,
         s.cache_config_id,
+        s.cache_key,
+        s.defer_key,
+        s.memo_key,
         s.retry_limit,
         s.retry_delay_min,
         s.retry_delay_max,
+        s.requires_tag_set_id,
         s.created_at
       FROM steps AS s
       INNER JOIN executions AS e ON e.step_id = s.id
@@ -633,25 +639,35 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  # TODO: use Step model?
   def get_run_steps(db, run_id) do
-    case query(
-           db,
-           """
-           SELECT id, external_id, parent_id, repository, target, type, memo_key, requires_tag_set_id, created_at
-           FROM steps
-           WHERE run_id = ?1
-           """,
-           {run_id}
-         ) do
-      {:ok, rows} ->
-        {:ok,
-         Enum.map(rows, fn {id, external_id, parent_id, repository, target, type, memo_key,
-                            requires_tag_set_id, created_at} ->
-           {id, external_id, parent_id, repository, target, Utils.decode_step_type(type),
-            memo_key, requires_tag_set_id, created_at}
-         end)}
-    end
+    query(
+      db,
+      """
+      SELECT
+        id,
+        external_id,
+        run_id,
+        parent_id,
+        repository,
+        target,
+        type,
+        priority,
+        wait_for,
+        cache_config_id,
+        cache_key,
+        defer_key,
+        memo_key,
+        retry_limit,
+        retry_delay_min,
+        retry_delay_max,
+        requires_tag_set_id,
+        created_at
+      FROM steps
+      WHERE run_id = ?1
+      """,
+      {run_id},
+      Models.Step
+    )
   end
 
   def get_run_executions(db, run_id) do
