@@ -787,10 +787,15 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:get_asset, asset_id, opts}, _from, state) do
+    from_execution_id = opts[:from_execution_id]
     load_metadata = opts[:load_metadata]
 
     case Results.get_asset_by_id(state.db, asset_id, load_metadata) do
       {:ok, {type, path, blob_key, _size, metadata}} ->
+        if from_execution_id do
+          {:ok, _} = Runs.record_asset_dependency(state.db, from_execution_id, asset_id)
+        end
+
         {:reply, {:ok, type, path, blob_key, metadata}, state}
 
       {:ok, nil} ->
@@ -2163,7 +2168,7 @@ defmodule Coflux.Orchestration.Server do
 
   defp dependencies_ready?(db, execution_id) do
     # TODO: also check assets?
-    case Runs.get_dependencies(db, execution_id) do
+    case Runs.get_result_dependencies(db, execution_id) do
       {:ok, dependencies} ->
         Enum.all?(dependencies, fn {dependency_id} ->
           case resolve_result(db, dependency_id) do
