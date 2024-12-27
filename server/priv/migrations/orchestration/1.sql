@@ -36,6 +36,15 @@ CREATE TABLE instructions (
   content TEXT NOT NULL
 );
 
+CREATE TABLE cache_configs (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL UNIQUE,
+  params TEXT NOT NULL,
+  max_age INTEGER,
+  namespace TEXT,
+  version TEXT
+);
+
 CREATE TABLE workflows (
   id INTEGER PRIMARY KEY,
   manifest_id INTEGER NOT NULL,
@@ -43,10 +52,7 @@ CREATE TABLE workflows (
   parameter_set_id INTEGER NOT NULL,
   instruction_id INTEGER,
   wait_for INTEGER NOT NULL,
-  cache_params TEXT,
-  cache_max_age INTEGER,
-  cache_namespace TEXT,
-  cache_version TEXT,
+  cache_config_id INTEGER,
   defer_params TEXT,
   delay INTEGER NOT NULL,
   retry_limit INTEGER NOT NULL,
@@ -57,6 +63,7 @@ CREATE TABLE workflows (
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE,
   FOREIGN KEY (instruction_id) REFERENCES instructions ON DELETE RESTRICT,
   FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE RESTRICT,
+  FOREIGN KEY (cache_config_id) REFERENCES cache_configs ON DELETE RESTRICT,
   FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
 
@@ -184,8 +191,8 @@ CREATE TABLE steps (
   type INTEGER NOT NULL,
   priority INTEGER NOT NULL, -- TODO: move to executions?
   wait_for INTEGER NOT NULL,
+  cache_config_id INTEGER,
   cache_key TEXT,
-  cache_max_age INTEGER,
   defer_key TEXT,
   memo_key TEXT,
   retry_limit INTEGER NOT NULL,
@@ -195,6 +202,7 @@ CREATE TABLE steps (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (run_id) REFERENCES runs ON DELETE CASCADE,
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (cache_config_id) REFERENCES cache_configs ON DELETE RESTRICT,
   FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
 

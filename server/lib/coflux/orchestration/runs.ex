@@ -1,5 +1,5 @@
 defmodule Coflux.Orchestration.Runs do
-  alias Coflux.Orchestration.{Models, Values, TagSets, Utils}
+  alias Coflux.Orchestration.{Models, Values, TagSets, CacheConfigs, Utils}
 
   import Coflux.Store
 
@@ -18,7 +18,7 @@ defmodule Coflux.Orchestration.Runs do
         priority,
         wait_for,
         cache_key,
-        cache_max_age,
+        cache_config_id,
         retry_limit,
         retry_delay_min,
         retry_delay_max,
@@ -46,7 +46,7 @@ defmodule Coflux.Orchestration.Runs do
         s.priority,
         s.wait_for,
         s.cache_key,
-        s.cache_max_age,
+        s.cache_config_id,
         s.retry_limit,
         s.retry_delay_min,
         s.retry_delay_max,
@@ -273,21 +273,21 @@ defmodule Coflux.Orchestration.Runs do
           {external_step_id, execution_id, attempt, now, true}
 
         nil ->
-          {cache_key, cache_max_age} =
-            cond do
-              is_binary(cache) ->
-                {cache, 0}
+          cache_key =
+            if cache do
+              build_key(
+                cache.params,
+                arguments,
+                cache.namespace || "#{repository}:#{target}",
+                cache.version
+              )
+            end
 
-              cache ->
-                {build_key(
-                   cache.params,
-                   arguments,
-                   cache.namespace || "#{repository}:#{target}",
-                   cache.version
-                 ), cache.max_age}
-
-              true ->
-                {nil, nil}
+          cache_config_id =
+            if cache do
+              case CacheConfigs.get_or_create_cache_config_id(db, cache) do
+                {:ok, cache_config_id} -> cache_config_id
+              end
             end
 
           requires_tag_set_id =
@@ -314,7 +314,7 @@ defmodule Coflux.Orchestration.Runs do
               priority,
               wait_for,
               cache_key,
-              cache_max_age,
+              cache_config_id,
               defer_key,
               memo_key,
               if(retries, do: retries.limit, else: 0),
@@ -454,7 +454,7 @@ defmodule Coflux.Orchestration.Runs do
         s.type,
         s.wait_for,
         s.cache_key,
-        s.cache_max_age,
+        s.cache_config_id,
         s.defer_key,
         s.parent_id,
         s.requires_tag_set_id,
@@ -875,7 +875,7 @@ defmodule Coflux.Orchestration.Runs do
          priority,
          wait_for,
          cache_key,
-         cache_max_age,
+         cache_config_id,
          defer_key,
          memo_key,
          retry_limit,
@@ -896,7 +896,7 @@ defmodule Coflux.Orchestration.Runs do
                priority: priority,
                wait_for: Utils.encode_params_set(wait_for || []),
                cache_key: cache_key,
-               cache_max_age: cache_max_age,
+               cache_config_id: cache_config_id,
                defer_key: defer_key,
                memo_key: memo_key,
                retry_limit: retry_limit,

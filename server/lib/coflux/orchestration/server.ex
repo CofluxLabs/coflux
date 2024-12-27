@@ -9,6 +9,7 @@ defmodule Coflux.Orchestration.Server do
     Sessions,
     Runs,
     Results,
+    CacheConfigs,
     TagSets,
     Launches,
     Manifests,
@@ -1173,14 +1174,22 @@ defmodule Coflux.Orchestration.Server do
     tag_sets =
       executions_due
       |> Enum.map(& &1.requires_tag_set_id)
+      |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
       |> Enum.reduce(%{}, fn tag_set_id, tag_sets ->
-        if tag_set_id do
-          case TagSets.get_tag_set(state.db, tag_set_id) do
-            {:ok, tag_set} -> Map.put(tag_sets, tag_set_id, tag_set)
-          end
-        else
-          tag_sets
+        case TagSets.get_tag_set(state.db, tag_set_id) do
+          {:ok, tag_set} -> Map.put(tag_sets, tag_set_id, tag_set)
+        end
+      end)
+
+    cache_configs =
+      executions_due
+      |> Enum.map(& &1.cache_config_id)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.reduce(%{}, fn cache_config_id, cache_configs ->
+        case CacheConfigs.get_cache_config(state.db, cache_config_id) do
+          {:ok, cache_config} -> Map.put(cache_configs, cache_config_id, cache_config)
         end
       end)
 
@@ -1193,11 +1202,10 @@ defmodule Coflux.Orchestration.Server do
           execution, {state, assigned, unassigned} ->
             # TODO: support caching for other attempts?
             cached_execution_id =
-              if execution.attempt == 1 && execution.cache_key do
+              if execution.attempt == 1 && execution.cache_config_id do
                 cache_environment_ids = get_cache_environment_ids(state, execution.environment_id)
-
-                recorded_after =
-                  if execution.cache_max_age, do: now - execution.cache_max_age, else: 0
+                cache = Map.fetch!(cache_configs, execution.cache_config_id)
+                recorded_after = if cache.max_age, do: now - cache.max_age, else: 0
 
                 case Runs.find_cached_execution(
                        state.db,
@@ -1267,7 +1275,10 @@ defmodule Coflux.Orchestration.Server do
                            arguments,
                            execution.environment_id,
                            parent_id: execution.execution_id,
-                           cache: execution.cache_key,
+                           cache:
+                             if(execution.cache_config_id,
+                               do: Map.fetch!(cache_configs, execution.cache_config_id)
+                             ),
                            retries:
                              if(execution.retry_limit > 0,
                                do: %{
