@@ -14,26 +14,28 @@ export type Parameter = {
   annotation: string;
 };
 
+export type CacheConfig = {
+  params: number[] | true;
+  maxAge: number | null;
+  namespace: string | null;
+  version: string | null;
+};
+
 export type Workflow = {
   parameters: Parameter[] | null;
   instruction: string | null;
   configuration: {
     waitFor: number[];
-    cache: {
-      params: number[] | true;
-      maxAge?: number;
-      namespace?: string;
-      version?: string;
-    };
+    cache: CacheConfig | null;
     defer: {
       params: number[] | true;
-    };
+    } | null;
     delay: number;
     retries: {
       limit: number;
       delayMin?: number;
       delayMax?: number;
-    };
+    } | null;
     requires: Record<string, string[]>;
   } | null;
   runs: Record<string, Pick<Run, "createdAt">>;
@@ -172,13 +174,6 @@ export type Execution = {
   result: Result | null;
   assets: Record<string, Asset>;
   logCount: number;
-};
-
-export type CacheConfig = {
-  params: number[] | true;
-  maxAge: number | null;
-  namespace: string | null;
-  version: string | null;
 };
 
 export type Step = {
