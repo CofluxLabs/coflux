@@ -60,9 +60,9 @@ def _parse_cache(
             else _get_param_indexes(parameters, cache_params)
         ),
         (
-            cache
+            int(cache * 1000)
             if isinstance(cache, (int, float)) and not isinstance(cache, bool)
-            else (cache.total_seconds() if isinstance(cache, dt.timedelta) else None)
+            else (int(cache.total_seconds() * 1000) if isinstance(cache, dt.timedelta) else None)
         ),
         cache_namespace,
         cache_version,
