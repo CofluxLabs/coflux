@@ -51,8 +51,7 @@ defmodule Coflux.TopicUtils do
       path: asset.path,
       metadata: asset.metadata,
       blobKey: asset.blob_key,
-      size: asset.size,
-      createdAt: asset.created_at
+      size: asset.size
     }
   end
 

@@ -70,8 +70,6 @@ export type Asset = {
   blobKey: string;
   size: number;
   metadata: Record<string, any>;
-  execution?: ExecutionReference;
-  createdAt: number;
 };
 
 export type Reference =
@@ -84,7 +82,6 @@ export type Reference =
     }
   | {
       type: "execution";
-      executionId: string;
       execution: ExecutionReference;
     }
   | {
@@ -143,14 +140,6 @@ export type Result =
       result?: Result;
     };
 
-export type Child = {
-  repository: string;
-  target: string;
-  type: "workflow" | "sensor";
-  runId: string;
-  stepId: string;
-};
-
 // TODO: combine with `Execution`?
 export type QueuedExecution = {
   target: string;
@@ -162,8 +151,13 @@ export type QueuedExecution = {
   assignedAt: number | null;
 };
 
-export type Dependency = ExecutionReference & {
-  assets: Record<string, Asset>;
+export type Dependency = {
+  execution: ExecutionReference;
+};
+
+export type Child = {
+  stepId: string;
+  attempt: number;
 };
 
 export type Execution = {
@@ -174,7 +168,7 @@ export type Execution = {
   assignedAt: number | null;
   completedAt: number | null;
   dependencies: Record<string, Dependency>;
-  children: (string | Child)[];
+  children: Child[];
   result: Result | null;
   assets: Record<string, Asset>;
   logCount: number;

@@ -119,11 +119,11 @@ defmodule Coflux.Orchestration.Runs do
     with_transaction(db, fn ->
       {:ok, run_id, external_run_id} = insert_run(db, parent_id, idempotency_key, now)
 
-      {:ok, external_step_id, execution_id, attempt, now, false, child_added} =
+      {:ok, external_step_id, execution_id, attempt, now, false, _child_added} =
         do_schedule_step(
           db,
           run_id,
-          parent_id,
+          nil,
           repository,
           target,
           type,
@@ -135,7 +135,7 @@ defmodule Coflux.Orchestration.Runs do
           opts
         )
 
-      {:ok, external_run_id, external_step_id, execution_id, attempt, now, child_added}
+      {:ok, external_run_id, external_step_id, execution_id, attempt, now}
     end)
   end
 
@@ -252,10 +252,10 @@ defmodule Coflux.Orchestration.Runs do
         end
       end
 
-    {step_id, external_step_id, execution_id, attempt, now, memo_hit} =
+    {external_step_id, execution_id, attempt, now, memo_hit} =
       case memoised_execution do
-        {step_id, external_step_id, execution_id, attempt, now} ->
-          {step_id, external_step_id, execution_id, attempt, now, true}
+        {external_step_id, execution_id, attempt, now} ->
+          {external_step_id, execution_id, attempt, now, true}
 
         nil ->
           {cache_key, cache_max_age} =
@@ -327,12 +327,12 @@ defmodule Coflux.Orchestration.Runs do
           {:ok, execution_id} =
             insert_execution(db, step_id, attempt, environment_id, execute_after, now)
 
-          {step_id, external_step_id, execution_id, attempt, now, false}
+          {external_step_id, execution_id, attempt, now, false}
       end
 
     child_added =
       if parent_id do
-        {:ok, id} = insert_child(db, parent_id, step_id, now)
+        {:ok, id} = insert_child(db, parent_id, execution_id, now)
         !is_nil(id)
       else
         false
@@ -513,18 +513,26 @@ defmodule Coflux.Orchestration.Runs do
     )
   end
 
-  def get_run_executions(db, run_id) do
+  def get_execution_descendants(db, execution_id) do
     query(
       db,
       """
-      SELECT e.id, s.parent_id, s.repository, a.created_at, r.created_at
-      FROM executions AS e
+      WITH RECURSIVE descendants AS (
+        SELECT ?1 AS execution_id
+        UNION
+        SELECT e.id AS execution_id
+        FROM descendants AS d
+        INNER JOIN steps AS s ON s.parent_id = d.execution_id
+        INNER JOIN executions AS e ON e.step_id = s.id
+      )
+      SELECT e.id, s.repository, a.created_at, r.created_at
+      FROM descendants AS d
+      INNER JOIN executions AS e ON e.id = d.execution_id
       INNER JOIN steps AS s ON s.id = e.step_id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
       LEFT JOIN results AS r ON r.execution_id = e.id
-      WHERE s.run_id = ?1
       """,
-      {run_id}
+      {execution_id}
     )
   end
 
@@ -631,17 +639,51 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  def get_step_executions(db, step_id) do
+  def get_run_executions(db, run_id) do
     query(
       db,
       """
-      SELECT e.id, e.attempt, e.environment_id, e.execute_after, e.created_at, a.session_id, a.created_at
-      FROM executions AS e
+      SELECT e.id, e.step_id, e.attempt, e.environment_id, e.execute_after, e.created_at, a.created_at
+      FROM steps AS s
+      INNER JOIN executions AS e ON e.step_id = s.id
       LEFT JOIN assignments AS a ON a.execution_id = e.id
-      WHERE e.step_id = ?1
+      WHERE s.run_id = ?1
       """,
-      {step_id}
+      {run_id}
     )
+  end
+
+  def get_run_dependencies(db, run_id) do
+    case query(
+           db,
+           """
+           SELECT d.execution_id, d.dependency_id
+           FROM result_dependencies AS d
+           INNER JOIN executions AS e ON e.id = d.execution_id
+           INNER JOIN steps AS s ON s.id = e.step_id
+           WHERE s.run_id = ?1
+           """,
+           {run_id}
+         ) do
+      {:ok, rows} ->
+        {:ok, Enum.group_by(rows, &elem(&1, 0), &elem(&1, 1))}
+    end
+  end
+
+  def get_step_assignments(db, step_id) do
+    case query(
+           db,
+           """
+           SELECT e.id, a.created_at
+           FROM executions AS e
+           LEFT JOIN assignments AS a ON a.execution_id = e.id
+           WHERE e.step_id = ?1
+           """,
+           {step_id}
+         ) do
+      {:ok, rows} ->
+        {:ok, Map.new(rows)}
+    end
   end
 
   def get_first_step_execution_id(db, step_id) do
@@ -683,23 +725,22 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  def get_execution_children(db, execution_id) do
+  def get_run_children(db, run_id) do
     case query(
            db,
            """
-           SELECT r.external_id, s.external_id, s.repository, s.target, s.type
+           SELECT c.parent_id, s2.external_id, e2.attempt
            FROM children AS c
-           INNER JOIN steps AS s ON s.id = c.child_id
-           INNER JOIN runs AS r ON r.id = s.run_id
-           WHERE c.parent_id = ?1
+           INNER JOIN executions AS e1 ON e1.id = c.parent_id
+           INNER JOIN steps AS s1 ON s1.id = e1.step_id
+           INNER JOIN executions AS e2 ON e2.id = c.child_id
+           INNER JOIN steps AS s2 ON s2.id = e2.step_id
+           WHERE s1.run_id = ?1
            """,
-           {execution_id}
+           {run_id}
          ) do
       {:ok, rows} ->
-        {:ok,
-         Enum.map(rows, fn {run_external_id, step_external_id, repository, target, type} ->
-           {run_external_id, step_external_id, repository, target, Utils.decode_step_type(type)}
-         end)}
+        {:ok, Enum.group_by(rows, &elem(&1, 0), &{elem(&1, 1), elem(&1, 2)})}
     end
   end
 
@@ -709,18 +750,6 @@ defmodule Coflux.Orchestration.Runs do
       """
       SELECT dependency_id
       FROM result_dependencies
-      WHERE execution_id = ?1
-      """,
-      {execution_id}
-    )
-  end
-
-  def get_asset_dependencies(db, execution_id) do
-    query(
-      db,
-      """
-      SELECT asset_id
-      FROM asset_dependencies
       WHERE execution_id = ?1
       """,
       {execution_id}
@@ -738,7 +767,7 @@ defmodule Coflux.Orchestration.Runs do
     case query(
            db,
            """
-           SELECT s.id, s.external_id, e.id, e.attempt, e.created_at
+           SELECT s.external_id, e.id, e.attempt, e.created_at
            FROM steps AS s
            INNER JOIN executions AS e ON e.step_id = s.id
            LEFT JOIN results AS r ON r.execution_id = e.id
@@ -786,20 +815,20 @@ defmodule Coflux.Orchestration.Runs do
     end
   end
 
-  def get_execution_run_dependencies(db, execution_id) do
+  def get_result_successors(db, execution_id) do
     query(
       db,
       """
-      WITH RECURSIVE dependencies AS (
+      WITH RECURSIVE successors AS (
         SELECT ?1 AS execution_id
         UNION
         SELECT r.execution_id
-        FROM dependencies AS d
-        INNER JOIN results AS r ON r.successor_id = d.execution_id
+        FROM successors AS ss
+        INNER JOIN results AS r ON r.successor_id = ss.execution_id
       )
-      SELECT s.run_id, d.execution_id
-      FROM dependencies AS d
-      INNER JOIN executions AS e ON e.id = d.execution_id
+      SELECT s.run_id, ss.execution_id
+      FROM successors AS ss
+      INNER JOIN executions AS e ON e.id = ss.execution_id
       INNER JOIN steps AS s ON s.id = e.step_id
       """,
       {execution_id}

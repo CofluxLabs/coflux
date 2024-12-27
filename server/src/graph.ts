@@ -17,8 +17,7 @@ type BaseNode = (
     }
   | {
       type: "child";
-      child: models.Child;
-      runId: string;
+      child: models.ExecutionReference;
     }
   | {
       type: "asset";
@@ -68,7 +67,7 @@ function chooseStepAttempts(
         if (!(sId in stepAttempts)) {
           Object.entries(run.steps[sId].executions).forEach(
             ([attempt, execution]) => {
-              if (execution.children.includes(stepId)) {
+              if (execution.children.some((c) => c.stepId == stepId)) {
                 // TODO: keep as string?
                 stepAttempts[sId] = parseInt(attempt, 10);
                 process(sId);
@@ -107,10 +106,10 @@ function traverseRun(
     callback(stepId, attempt);
     const execution = run.steps[stepId].executions[attempt];
     execution?.children.forEach((child) => {
-      if (typeof child == "string" && !(child in seen)) {
-        traverseRun(run, stepAttempts, child, callback, {
+      if (!(child.stepId in seen)) {
+        traverseRun(run, stepAttempts, child.stepId, callback, {
           ...seen,
-          [child]: true,
+          [child.stepId]: true,
         });
       }
     });
@@ -147,16 +146,6 @@ export default function buildGraph(
     Object.keys(run.steps).filter((id) => !run.steps[id].parentId),
     (stepId) => run.steps[stepId].createdAt,
   )!;
-
-  const visibleSteps: Record<string, number> = {};
-  traverseRun(
-    run,
-    stepAttempts,
-    initialStepId,
-    (stepId: string, attempt: number) => {
-      visibleSteps[stepId] = attempt;
-    },
-  );
 
   const nodes: Record<string, BaseNode> = {};
   const edges: Record<string, Omit<Edge, "path">> = {};
@@ -227,114 +216,65 @@ export default function buildGraph(
 
       Object.entries(execution.dependencies).forEach(
         ([dependencyId, dependency]) => {
-          if (dependency.runId == runId) {
-            if (
-              !execution.children.some(
-                (c) =>
-                  typeof c == "string" &&
-                  Object.values(run.steps[c].executions).some(
-                    (e) =>
-                      e.result?.type == "cached" &&
-                      e.executionId == dependencyId,
-                  ),
-              )
-            ) {
-              edges[`${dependency.stepId}-${stepId}`] = {
-                from: dependency.stepId,
-                to: stepId,
-                type: "dependency",
-              };
-            }
-          } else {
-            // TODO: connect to node for (child/parent) run? (if it exists?)
-          }
-        },
-      );
-      execution.children.forEach((child) => {
-        if (typeof child == "string") {
-          const childAttempt = getStepAttempt(run, stepAttempts, child);
-          const childExecution =
-            childAttempt && run.steps[child].executions[childAttempt];
-          if (childExecution) {
-            if (childExecution.result?.type == "cached") {
-              const cachedExecutionId = childExecution.executionId;
-              const cachedStepId = Object.keys(run.steps).find(
-                (sId) =>
-                  sId in visibleSteps &&
-                  Object.values(run.steps[sId].executions).some(
-                    (e) =>
-                      e.result?.type != "cached" &&
-                      e.executionId == cachedExecutionId,
-                  ),
-              );
-              if (cachedExecutionId in execution.dependencies) {
-                edges[`${child}-${stepId}`] = {
-                  from: child,
-                  to: stepId,
-                  type: "dependency",
-                };
-                if (cachedStepId) {
-                  edges[`${cachedStepId}-${child}`] = {
-                    from: cachedStepId,
-                    to: child,
-                    type: "transitive",
-                  };
-                }
-              } else {
-                edges[`${stepId}-${child}`] = {
-                  from: stepId,
-                  to: child,
-                  type: "child",
-                };
-                if (cachedStepId) {
-                  edges[`${child}-${cachedStepId}`] = {
-                    from: child,
-                    to: cachedStepId,
-                    type: "transitive",
-                  };
-                }
-              }
-            } else if (
-              !Object.values(execution.dependencies).some(
-                (d) => d.stepId == child,
-              )
-            ) {
-              edges[`${stepId}-${child}`] = {
-                from: stepId,
-                to: child,
-                type: "child",
-              };
-            }
-          } else {
-            // TODO
-          }
-        } else {
-          nodes[child.runId] = {
-            type: "child",
-            child,
-            runId: child.runId,
-            width: 100,
-            height: 30,
-          };
-          if (
-            Object.values(execution.dependencies).some(
-              (d) => d.runId == child.runId,
-            )
-          ) {
-            edges[`${child.runId}-${stepId}`] = {
-              from: child.runId,
+          if (dependency.execution.runId == runId) {
+            edges[`${dependency.execution.stepId}-${stepId}`] = {
+              from: dependency.execution.stepId,
               to: stepId,
               type: "dependency",
             };
           } else {
-            edges[`${stepId}-${child.runId}`] = {
+            // TODO: ?
+          }
+        },
+      );
+      execution.children.forEach((child) => {
+        const childAttempt = getStepAttempt(run, stepAttempts, child.stepId);
+        const childExecution =
+          childAttempt && run.steps[child.stepId].executions[childAttempt];
+        if (childExecution) {
+          if (
+            !Object.values(execution.dependencies).some(
+              (d) => d.execution.stepId == child.stepId,
+            )
+          ) {
+            edges[`${stepId}-${child.stepId}`] = {
               from: stepId,
-              to: child.runId,
+              to: child.stepId,
               type: "child",
             };
           }
+        } else {
+          // TODO
         }
       });
+      const result = execution?.result;
+      if (
+        result?.type == "deferred" ||
+        result?.type == "cached" ||
+        result?.type == "spawned"
+      ) {
+        if (result.execution.runId != runId) {
+          const childId = `${result.execution.runId}/${result.execution.stepId}`;
+          nodes[childId] = {
+            type: "child",
+            child: result.execution,
+            width: 100,
+            height: 30,
+          };
+          edges[`${childId}-${stepId}`] = {
+            from: childId,
+            to: stepId,
+            type: "dependency",
+          };
+        } else {
+          const childStepId = result.execution.stepId;
+          edges[`${childStepId}-${stepId}`] = {
+            from: childStepId,
+            to: stepId,
+            type: "dependency",
+          };
+        }
+      }
     },
   );
 

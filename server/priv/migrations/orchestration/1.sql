@@ -224,12 +224,11 @@ CREATE TABLE executions (
 
 CREATE TABLE assets (
   id INTEGER PRIMARY KEY,
-  execution_id INTEGER NOT NULL,
+  hash BLOB NOT NULL UNIQUE,
   type INTEGER NOT NULL,
   path TEXT NOT NULL,
   blob_id INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
+  FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
 );
 
 CREATE TABLE asset_metadata (
@@ -240,6 +239,15 @@ CREATE TABLE asset_metadata (
   FOREIGN KEY (asset_id) REFERENCES assets ON DELETE CASCADE
 );
 
+CREATE TABLE execution_assets(
+  execution_id INTEGER NOT NULL,
+  asset_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (execution_id, asset_id),
+  FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
+  FOREIGN KEY (asset_id) REFERENCES assets ON DELETE CASCADE
+);
+
 -- TODO: add 'type' (e.g., 'regular', memoised)
 CREATE TABLE children (
   parent_id INTEGER NOT NULL,
@@ -247,7 +255,7 @@ CREATE TABLE children (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (parent_id, child_id),
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE,
-  FOREIGN KEY (child_id) REFERENCES steps ON DELETE CASCADE
+  FOREIGN KEY (child_id) REFERENCES executions ON DELETE CASCADE
 );
 
 CREATE TABLE assignments (
@@ -269,7 +277,7 @@ CREATE TABLE result_dependencies (
 
 CREATE TABLE asset_dependencies (
   execution_id INTEGER NOT NULL,
-  asset_id INTEGER,
+  asset_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   PRIMARY KEY (execution_id, asset_id),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
@@ -315,7 +323,7 @@ CREATE TABLE serialisers (
 
 CREATE TABLE fragments (
   id INTEGER PRIMARY KEY,
-  hash BLOB NOT NULL,
+  hash BLOB NOT NULL UNIQUE,
   serialiser_id INTEGER NOT NULL,
   blob_id INTEGER NOT NULL,
   FOREIGN KEY (serialiser_id) REFERENCES serialisers ON DELETE RESTRICT,

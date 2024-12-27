@@ -227,28 +227,62 @@ defmodule Coflux.Orchestration.Results do
     end
   end
 
-  def create_asset(db, execution_id, type, path, blob_key, size, metadata) do
+  defp hash_asset(type, path, blob_key, metadata) do
+    metadata_parts =
+      Enum.flat_map(metadata, fn {key, value} -> [key, Jason.encode!(value)] end)
+
+    data =
+      [type, path, blob_key]
+      |> Enum.concat(metadata_parts)
+      |> Enum.intersperse(0)
+
+    :crypto.hash(:sha256, data)
+  end
+
+  def get_or_create_asset(db, execution_id, type, path, blob_key, size, metadata) do
     with_transaction(db, fn ->
+      hash = hash_asset(type, path, blob_key, metadata)
       now = current_timestamp()
-      {:ok, blob_id} = Values.get_or_create_blob(db, blob_key, size)
 
       {:ok, asset_id} =
-        insert_one(db, :assets, %{
-          execution_id: execution_id,
-          type: type,
-          path: path,
-          blob_id: blob_id,
-          created_at: now
-        })
+        case query_one(db, "SELECT id FROM assets WHERE hash = ?1", {hash}) do
+          {:ok, {asset_id}} ->
+            {:ok, asset_id}
+
+          {:ok, nil} ->
+            {:ok, blob_id} = Values.get_or_create_blob(db, blob_key, size)
+
+            {:ok, asset_id} =
+              insert_one(db, :assets, %{
+                hash: hash,
+                type: type,
+                path: path,
+                blob_id: blob_id
+              })
+
+            {:ok, _} =
+              insert_many(
+                db,
+                :asset_metadata,
+                {:asset_id, :key, :value},
+                Enum.map(metadata, fn {key, value} ->
+                  {asset_id, key, Jason.encode!(value)}
+                end)
+              )
+
+            {:ok, asset_id}
+        end
 
       {:ok, _} =
-        insert_many(
+        insert_one(
           db,
-          :asset_metadata,
-          {:asset_id, :key, :value},
-          Enum.map(metadata, fn {key, value} ->
-            {asset_id, key, Jason.encode!(value)}
-          end)
+          :execution_assets,
+          %{
+            execution_id: execution_id,
+            asset_id: asset_id,
+            created_at: now
+          },
+          on_conflict: "DO NOTHING"
         )
 
       {:ok, asset_id}
@@ -259,14 +293,14 @@ defmodule Coflux.Orchestration.Results do
     case query_one(
            db,
            """
-           SELECT a.execution_id, a.type, a.path, b.key, b.size, a.created_at
+           SELECT a.type, a.path, b.key, b.size
            FROM assets AS a
            INNER JOIN blobs AS b ON b.id = a.blob_id
            WHERE a.id = ?1
            """,
            {asset_id}
          ) do
-      {:ok, {execution_id, type, path, blob_key, size, created_at}} ->
+      {:ok, {type, path, blob_key, size}} ->
         metadata =
           if load_metadata do
             case query(
@@ -279,7 +313,7 @@ defmodule Coflux.Orchestration.Results do
             end
           end
 
-        {:ok, {execution_id, type, path, blob_key, size, created_at, metadata}}
+        {:ok, {type, path, blob_key, size, metadata}}
 
       {:ok, nil} ->
         {:ok, nil}
@@ -290,7 +324,7 @@ defmodule Coflux.Orchestration.Results do
   def get_assets_for_execution(db, execution_id) do
     case query(
            db,
-           "SELECT id FROM assets WHERE execution_id = ?1",
+           "SELECT asset_id FROM execution_assets WHERE execution_id = ?1",
            {execution_id}
          ) do
       {:ok, rows} ->

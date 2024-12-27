@@ -708,15 +708,17 @@ function DependenciesSection({ execution }: DependenciesSectionProps) {
               return (
                 <li key={`r-${dependencyId}`}>
                   <StepLink
-                    runId={dependency.runId}
-                    stepId={dependency.stepId}
-                    attempt={dependency.attempt}
+                    runId={dependency.execution.runId}
+                    stepId={dependency.execution.stepId}
+                    attempt={dependency.execution.attempt}
                     className="rounded text-sm ring-offset-1 px-1"
                     hoveredClassName="ring-2 ring-slate-300"
                   >
-                    <span className="font-mono">{dependency.target}</span>{" "}
+                    <span className="font-mono">
+                      {dependency.execution.target}
+                    </span>{" "}
                     <span className="text-slate-500">
-                      ({dependency.repository})
+                      ({dependency.execution.repository})
                     </span>
                   </StepLink>
                 </li>
@@ -801,44 +803,23 @@ function RelationsSection({
       <div>
         <h3 className="uppercase text-sm font-bold text-slate-400">Children</h3>
         {execution.children.length ? (
-          <ul className="">
+          <ul>
             {execution.children.map((child) => {
-              if (typeof child == "string") {
-                const step = run.steps[child];
-                return (
-                  <li key={child}>
-                    <StepLink
-                      runId={runId}
-                      stepId={child}
-                      attempt={1}
-                      className="rounded text-sm ring-offset-1 px-1"
-                      hoveredClassName="ring-2 ring-slate-300"
-                    >
-                      <span className="font-mono">{step.target}</span>{" "}
-                      <span className="text-slate-500">
-                        ({step.repository})
-                      </span>
-                    </StepLink>
-                  </li>
-                );
-              } else {
-                return (
-                  <li key={child.stepId}>
-                    <StepLink
-                      runId={child.runId}
-                      stepId={child.stepId}
-                      attempt={1}
-                      className="rounded text-sm ring-offset-1 px-1"
-                      hoveredClassName="ring-2 ring-slate-300"
-                    >
-                      <span className="font-mono">{child.target}</span>{" "}
-                      <span className="text-slate-500">
-                        ({child.repository})
-                      </span>
-                    </StepLink>
-                  </li>
-                );
-              }
+              const step = run.steps[child.stepId];
+              return (
+                <li key={`${child.stepId}/${child.attempt}`}>
+                  <StepLink
+                    runId={runId}
+                    stepId={child.stepId}
+                    attempt={child.attempt}
+                    className="rounded text-sm ring-offset-1 px-1"
+                    hoveredClassName="ring-2 ring-slate-300"
+                  >
+                    <span className="font-mono">{step.target}</span>{" "}
+                    <span className="text-slate-500">({step.repository})</span>
+                  </StepLink>
+                </li>
+              );
             })}
           </ul>
         ) : (
