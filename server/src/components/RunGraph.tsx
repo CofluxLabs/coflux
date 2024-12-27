@@ -16,6 +16,7 @@ import {
   IconZzz,
   IconArrowBounce,
   IconPin,
+  IconAlertCircle,
 } from "@tabler/icons-react";
 
 import * as models from "../models";
@@ -26,6 +27,7 @@ import EnvironmentLabel from "./EnvironmentLabel";
 import AssetIcon from "./AssetIcon";
 import { truncatePath } from "../utils";
 import AssetLink from "./AssetLink";
+import { isEqual, maxBy } from "lodash";
 
 function classNameForExecution(execution: models.Execution) {
   const result =
@@ -52,6 +54,75 @@ function classNameForExecution(execution: models.Execution) {
   }
 }
 
+function resolveExecutionResult(
+  run: models.Run,
+  stepId: string,
+  attempt: number,
+): models.Value | undefined {
+  const result = run.steps[stepId].executions[attempt].result;
+  switch (result?.type) {
+    case "value":
+      return result.value;
+    case "error":
+    case "abandoned":
+      return result.retry
+        ? resolveExecutionResult(run, stepId, result.retry)
+        : undefined;
+    case "suspended":
+      return resolveExecutionResult(run, stepId, result.successor);
+    case "deferred":
+    case "cached":
+    case "spawned":
+      return result.result?.type == "value" ? result.result.value : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function isStepStale(
+  stepId: string,
+  attempt: number,
+  run: models.Run,
+  activeStepId: string | undefined,
+  activeAttempt: number | undefined,
+): boolean {
+  const execution = run.steps[stepId]?.executions[attempt];
+  if (execution) {
+    return Object.values(execution.children).some((child) => {
+      const childStep = run.steps[child.stepId];
+      const initialResult = resolveExecutionResult(
+        run,
+        child.stepId,
+        child.attempt,
+      );
+      const latestAttempt =
+        (child.stepId == activeStepId && activeAttempt) ||
+        Math.max(
+          ...Object.keys(childStep.executions).map((a) => parseInt(a, 10)),
+        );
+      const latestResult = resolveExecutionResult(
+        run,
+        child.stepId,
+        latestAttempt,
+      );
+      return (
+        (initialResult &&
+          latestResult &&
+          !isEqual(initialResult, latestResult)) ||
+        isStepStale(
+          child.stepId,
+          latestAttempt,
+          run,
+          activeStepId,
+          activeAttempt,
+        )
+      );
+    });
+  } else {
+    return false;
+  }
+}
+
 type StepNodeProps = {
   projectId: string;
   stepId: string;
@@ -59,6 +130,7 @@ type StepNodeProps = {
   attempt: number;
   runId: string;
   isActive: boolean;
+  isStale: boolean;
   runEnvironmentId: string;
 };
 
@@ -69,6 +141,7 @@ function StepNode({
   attempt,
   runId,
   isActive,
+  isStale,
   runEnvironmentId,
 }: StepNodeProps) {
   const execution = step.executions[attempt];
@@ -98,11 +171,17 @@ function StepNode({
         className={classNames(
           "absolute w-full h-full flex-1 flex gap-2 items-center border rounded px-2 py-1 ring-offset-2",
           execution && classNameForExecution(execution),
+          isStale && "border-opacity-40",
         )}
         activeClassName="ring ring-cyan-400"
         hoveredClassName="ring ring-slate-400"
       >
-        <span className="flex-1 flex items-center overflow-hidden">
+        <span
+          className={classNames(
+            "flex-1 flex items-center overflow-hidden",
+            isStale && "opacity-30",
+          )}
+        >
           <span className="flex-1 flex flex-col gap-0.5 overflow-hidden">
             <span
               className={classNames(
@@ -134,7 +213,11 @@ function StepNode({
             </span>
           </span>
         </span>
-        {execution && !execution.result && !execution.assignedAt ? (
+        {isStale ? (
+          <span title="Stale">
+            <IconAlertCircle size={16} className="text-slate-500" />
+          </span>
+        ) : execution && !execution.result && !execution.assignedAt ? (
           <span title="Assigning...">
             <IconClock size={16} />
           </span>
@@ -496,6 +579,13 @@ export default function RunGraph({
                       attempt={node.attempt}
                       runId={runId}
                       isActive={node.stepId == activeStepId}
+                      isStale={isStepStale(
+                        node.stepId,
+                        node.attempt,
+                        run,
+                        activeStepId,
+                        activeAttempt,
+                      )}
                       runEnvironmentId={runEnvironmentId}
                     />
                   ) : node.type == "asset" ? (
