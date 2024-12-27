@@ -322,21 +322,22 @@ function ParentNode({ parent }: ParentNodeProps) {
 }
 
 type ChildNodeProps = {
-  runId: string;
   child: models.ExecutionReference;
 };
 
-function ChildNode({ runId, child }: ChildNodeProps) {
+function ChildNode({ child }: ChildNodeProps) {
   return (
     <StepLink
-      runId={runId}
+      runId={child.runId}
       stepId={child.stepId}
-      attempt={1}
+      attempt={child.attempt}
       className="flex-1 w-full h-full flex items-center px-2 py-1 border border-slate-300 rounded-full bg-white ring-offset-2"
       hoveredClassName="ring ring-slate-400"
     >
       <IconArrowUpRight size={20} className="text-slate-400" />
-      <span className="text-slate-500 font-bold flex-1 text-end">{runId}</span>
+      <span className="text-slate-500 font-bold flex-1 text-end">
+        {child.runId}
+      </span>
     </StepLink>
   );
 }
@@ -602,7 +603,7 @@ export default function RunGraph({
                   ) : node.type == "assets" ? (
                     <MoreAssetsNode assetIds={node.assetIds} />
                   ) : node.type == "child" ? (
-                    <ChildNode runId={node.runId} child={node.child} />
+                    <ChildNode child={node.child} />
                   ) : undefined}
                 </div>
               );

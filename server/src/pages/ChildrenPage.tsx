@@ -108,7 +108,7 @@ export default function ChildrenPage() {
                                   <StepLink
                                     runId={child.runId}
                                     stepId={child.stepId}
-                                    attempt={1}
+                                    attempt={child.attempt}
                                     className="inline-flex items-center pl-1 pr-2 border border-slate-300 text-sm rounded-full ring-offset-1"
                                     hoveredClassName="ring-2 ring-slate-400"
                                   >

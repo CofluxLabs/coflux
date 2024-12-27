@@ -18,7 +18,6 @@ type BaseNode = (
   | {
       type: "child";
       child: models.ExecutionReference;
-      runId: string;
     }
   | {
       type: "asset";
@@ -254,52 +253,26 @@ export default function buildGraph(
         result?.type == "cached" ||
         result?.type == "spawned"
       ) {
-        const childRunId = result.execution.runId;
-        if (childRunId != runId) {
-          nodes[result.execution.runId] = {
+        if (result.execution.runId != runId) {
+          const childId = `${result.execution.runId}/${result.execution.stepId}`;
+          nodes[childId] = {
             type: "child",
             child: result.execution,
-            runId: childRunId,
             width: 100,
             height: 30,
           };
-          if (
-            Object.values(execution.dependencies).some(
-              (d) => d.execution.runId == childRunId,
-            )
-          ) {
-            edges[`${childRunId}-${stepId}`] = {
-              from: childRunId,
-              to: stepId,
-              type: "dependency",
-            };
-          } else {
-            edges[`${stepId}-${childRunId}`] = {
-              from: stepId,
-              to: childRunId,
-              type: "child",
-            };
-          }
+          edges[`${childId}-${stepId}`] = {
+            from: childId,
+            to: stepId,
+            type: "dependency",
+          };
         } else {
           const childStepId = result.execution.stepId;
-          // TODO: fix/remove this dependency check?
-          if (
-            Object.values(execution.dependencies).some(
-              (d) => d.execution.stepId == childStepId,
-            )
-          ) {
-            edges[`${childStepId}-${stepId}`] = {
-              from: childStepId,
-              to: stepId,
-              type: "dependency",
-            };
-          } else {
-            edges[`${stepId}-${childStepId}`] = {
-              from: stepId,
-              to: childStepId,
-              type: "child",
-            };
-          }
+          edges[`${childStepId}-${stepId}`] = {
+            from: childStepId,
+            to: stepId,
+            type: "dependency",
+          };
         }
       }
     },
