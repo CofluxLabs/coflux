@@ -123,7 +123,7 @@ function Data({ data, references, projectId }: DataProps) {
             return (
               <Menu>
                 <MenuButton className="bg-slate-100 rounded px-1.5 py-0.5 text-xs font-sans inline-flex gap-1">
-                  {reference.serialiser}
+                  {reference.format}
                   <span className="text-slate-500">
                     ({humanSize(reference.size)})
                   </span>

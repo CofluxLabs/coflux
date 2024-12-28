@@ -1842,8 +1842,8 @@ defmodule Coflux.Orchestration.Server do
 
   defp resolve_references(db, references) do
     Enum.map(references, fn
-      {:fragment, serialiser, blob_key, size, metadata} ->
-        {:fragment, serialiser, blob_key, size, metadata}
+      {:fragment, format, blob_key, size, metadata} ->
+        {:fragment, format, blob_key, size, metadata}
 
       {:execution, execution_id} ->
         {:execution, execution_id, resolve_execution(db, execution_id)}
@@ -2213,7 +2213,7 @@ defmodule Coflux.Orchestration.Server do
             {:pending, _} -> false
           end
 
-        {:fragment, _serialiser, _blob_key, _size, _metadata} ->
+        {:fragment, _format, _blob_key, _size, _metadata} ->
           true
 
         {:asset, _asset_id} ->

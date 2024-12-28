@@ -203,9 +203,9 @@ defmodule Coflux.Orchestration.Runs do
       [
         length(references)
         | Enum.flat_map(references, fn
-            {:fragment, serialiser, blob_key, _size, metadata} ->
+            {:fragment, format, blob_key, _size, metadata} ->
               Enum.concat(
-                [1, serialiser, blob_key],
+                [1, format, blob_key],
                 Enum.flat_map(metadata, fn {key, value} -> [key, Jason.encode!(value)] end)
               )
 
