@@ -45,36 +45,20 @@ defmodule Coflux.Topics.Run do
     {:ok, topic}
   end
 
-  defp process_notification(
-         topic,
-         {:step, step_id, repository, target, type, is_memoised, parent_id, created_at, arguments,
-          requires, attempt, execution_id, environment_id, execute_after}
-       ) do
+  defp process_notification(topic, {:step, external_step_id, step, environment_id}) do
     if environment_id in topic.state.environment_ids do
-      Topic.set(topic, [:steps, step_id], %{
-        repository: repository,
-        target: target,
-        type: type,
-        parentId: if(parent_id, do: Integer.to_string(parent_id)),
-        isMemoised: is_memoised,
-        createdAt: created_at,
-        arguments: Enum.map(arguments, &build_value/1),
-        requires: requires,
-        executions: %{
-          Integer.to_string(attempt) => %{
-            executionId: Integer.to_string(execution_id),
-            environmentId: Integer.to_string(environment_id),
-            createdAt: created_at,
-            executeAfter: execute_after,
-            assignedAt: nil,
-            completedAt: nil,
-            assets: %{},
-            dependencies: %{},
-            children: [],
-            result: nil,
-            logCount: 0
-          }
-        }
+      Topic.set(topic, [:steps, external_step_id], %{
+        repository: step.repository,
+        target: step.target,
+        type: step.type,
+        parentId: if(step.parent_id, do: Integer.to_string(step.parent_id)),
+        cacheConfig: build_cache_config(step.cache_config),
+        cacheKey: build_key(step.cache_key),
+        memoKey: build_key(step.memo_key),
+        createdAt: step.created_at,
+        arguments: Enum.map(step.arguments, &build_value/1),
+        requires: step.requires,
+        executions: %{}
       })
     else
       topic
@@ -200,7 +184,9 @@ defmodule Coflux.Topics.Run do
              target: step.target,
              type: step.type,
              parentId: if(step.parent_id, do: Integer.to_string(step.parent_id)),
-             isMemoised: !is_nil(step.memo_key),
+             cacheConfig: build_cache_config(step.cache_config),
+             cacheKey: build_key(step.cache_key),
+             memoKey: build_key(step.memo_key),
              createdAt: step.created_at,
              arguments: Enum.map(step.arguments, &build_value/1),
              requires: step.requires,
@@ -297,6 +283,25 @@ defmodule Coflux.Topics.Run do
 
   defp build_child({external_step_id, attempt}) do
     %{stepId: external_step_id, attempt: attempt}
+  end
+
+  defp build_cache_config(cache_config) do
+    if cache_config do
+      %{
+        params: cache_config.params,
+        maxAge: cache_config.max_age,
+        namespace: cache_config.namespace,
+        version: cache_config.version
+      }
+    end
+  end
+
+  defp build_key(key, length \\ 10) do
+    if key do
+      key
+      |> Base.encode16(case: :lower)
+      |> String.slice(0, length)
+    end
   end
 
   defp update_execution(topic, execution_id, fun) do

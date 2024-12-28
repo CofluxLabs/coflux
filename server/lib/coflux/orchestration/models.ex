@@ -24,11 +24,14 @@ defmodule Coflux.Orchestration.Models do
       :type,
       :priority,
       :wait_for,
+      :cache_config_id,
       :cache_key,
-      :cache_max_age,
+      :defer_key,
+      :memo_key,
       :retry_limit,
       :retry_delay_min,
       :retry_delay_max,
+      :requires_tag_set_id,
       :created_at
     ]
 
@@ -50,7 +53,7 @@ defmodule Coflux.Orchestration.Models do
       :type,
       :wait_for,
       :cache_key,
-      :cache_max_age,
+      :cache_config_id,
       :defer_key,
       :parent_id,
       :requires_tag_set_id,

@@ -1,7 +1,7 @@
 defmodule Coflux.Orchestration.Manifests do
   import Coflux.Store
 
-  alias Coflux.Orchestration.{TagSets, Utils}
+  alias Coflux.Orchestration.{TagSets, CacheConfigs, Utils}
 
   def register_manifests(db, environment_id, manifests) do
     with_transaction(db, fn ->
@@ -20,9 +20,8 @@ defmodule Coflux.Orchestration.Manifests do
                       db,
                       :workflows,
                       {:manifest_id, :name, :instruction_id, :parameter_set_id, :wait_for,
-                       :cache_params, :cache_max_age, :cache_namespace, :cache_version,
-                       :defer_params, :delay, :retry_limit, :retry_delay_min, :retry_delay_max,
-                       :requires_tag_set_id},
+                       :cache_config_id, :defer_params, :delay, :retry_limit, :retry_delay_min,
+                       :retry_delay_max, :requires_tag_set_id},
                       Enum.map(manifest.workflows, fn {name, workflow} ->
                         {:ok, instruction_id} =
                           if workflow.instruction do
@@ -31,6 +30,14 @@ defmodule Coflux.Orchestration.Manifests do
                             {:ok, nil}
                           end
 
+                        {:ok, parameter_set_id} =
+                          get_or_create_parameter_set_id(db, workflow.parameters)
+
+                        {:ok, cache_config_id} =
+                          if workflow.cache,
+                            do: CacheConfigs.get_or_create_cache_config_id(db, workflow.cache),
+                            else: {:ok, nil}
+
                         {:ok, requires_tag_set_id} =
                           if workflow.requires do
                             TagSets.get_or_create_tag_set_id(db, workflow.requires)
@@ -38,30 +45,22 @@ defmodule Coflux.Orchestration.Manifests do
                             {:ok, nil}
                           end
 
-                        case get_or_create_parameter_set_id(db, workflow.parameters) do
-                          {:ok, parameter_set_id} ->
-                            {
-                              manifest_id,
-                              name,
-                              instruction_id,
-                              parameter_set_id,
-                              Utils.encode_params_set(workflow.wait_for),
-                              if(workflow.cache,
-                                do: Utils.encode_params_list(workflow.cache.params)
-                              ),
-                              if(workflow.cache, do: workflow.cache.max_age),
-                              if(workflow.cache, do: workflow.cache.namespace),
-                              if(workflow.cache, do: workflow.cache.version),
-                              if(workflow.defer,
-                                do: Utils.encode_params_list(workflow.defer.params)
-                              ),
-                              workflow.delay,
-                              if(workflow.retries, do: workflow.retries.limit, else: 0),
-                              if(workflow.retries, do: workflow.retries.delay_min, else: 0),
-                              if(workflow.retries, do: workflow.retries.delay_max, else: 0),
-                              requires_tag_set_id
-                            }
-                        end
+                        {
+                          manifest_id,
+                          name,
+                          instruction_id,
+                          parameter_set_id,
+                          Utils.encode_params_set(workflow.wait_for),
+                          cache_config_id,
+                          if(workflow.defer,
+                            do: Utils.encode_params_list(workflow.defer.params)
+                          ),
+                          workflow.delay,
+                          if(workflow.retries, do: workflow.retries.limit, else: 0),
+                          if(workflow.retries, do: workflow.retries.delay_min, else: 0),
+                          if(workflow.retries, do: workflow.retries.delay_max, else: 0),
+                          requires_tag_set_id
+                        }
                       end)
                     )
 
@@ -188,7 +187,7 @@ defmodule Coflux.Orchestration.Manifests do
     case query_one(
            db,
            """
-           SELECT w.parameter_set_id, w.instruction_id, w.wait_for, w.cache_params, w.cache_max_age, w.cache_namespace, w.cache_version, w.defer_params, w.delay, w.retry_limit, w.retry_delay_min, w.retry_delay_max, w.requires_tag_set_id
+           SELECT w.parameter_set_id, w.instruction_id, w.wait_for, w.cache_config_id, w.defer_params, w.delay, w.retry_limit, w.retry_delay_min, w.retry_delay_max, w.requires_tag_set_id
            FROM environment_manifests AS em
            LEFT JOIN workflows AS w ON w.manifest_id = em.manifest_id
            WHERE em.environment_id = ?1 AND em.repository = ?2 AND w.name = ?3
@@ -201,18 +200,14 @@ defmodule Coflux.Orchestration.Manifests do
         {:ok, nil}
 
       {:ok,
-       {parameter_set_id, instruction_id, wait_for, cache_params, cache_max_age, cache_namespace,
-        cache_version, defer_params, delay, retry_limit, retry_delay_min, retry_delay_max,
-        requires_tag_set_id}} ->
+       {parameter_set_id, instruction_id, wait_for, cache_config_id, defer_params, delay,
+        retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id}} ->
         build_workflow(
           db,
           parameter_set_id,
           instruction_id,
           wait_for,
-          cache_params,
-          cache_max_age,
-          cache_namespace,
-          cache_version,
+          cache_config_id,
           defer_params,
           delay,
           retry_limit,
@@ -248,7 +243,7 @@ defmodule Coflux.Orchestration.Manifests do
     case query(
            db,
            """
-           SELECT name, instruction_id, parameter_set_id, wait_for, cache_params, cache_max_age, cache_namespace, cache_version, defer_params, delay, retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id
+           SELECT name, instruction_id, parameter_set_id, wait_for, cache_config_id, defer_params, delay, retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id
            FROM workflows
            WHERE manifest_id = ?1
            """,
@@ -256,19 +251,16 @@ defmodule Coflux.Orchestration.Manifests do
          ) do
       {:ok, rows} ->
         workflows =
-          Map.new(rows, fn {name, instruction_id, parameter_set_id, wait_for, cache_params,
-                            cache_max_age, cache_namespace, cache_version, defer_params, delay,
-                            retry_limit, retry_delay_min, retry_delay_max, requires_tag_set_id} ->
+          Map.new(rows, fn {name, instruction_id, parameter_set_id, wait_for, cache_config_id,
+                            defer_params, delay, retry_limit, retry_delay_min, retry_delay_max,
+                            requires_tag_set_id} ->
             {:ok, workflow} =
               build_workflow(
                 db,
                 parameter_set_id,
                 instruction_id,
                 wait_for,
-                cache_params,
-                cache_max_age,
-                cache_namespace,
-                cache_version,
+                cache_config_id,
                 defer_params,
                 delay,
                 retry_limit,
@@ -407,10 +399,7 @@ defmodule Coflux.Orchestration.Manifests do
          parameter_set_id,
          instruction_id,
          wait_for,
-         cache_params,
-         cache_max_age,
-         cache_namespace,
-         cache_version,
+         cache_config_id,
          defer_params,
          delay,
          retry_limit,
@@ -427,14 +416,11 @@ defmodule Coflux.Orchestration.Manifests do
         {:ok, nil}
       end
 
-    cache =
-      if cache_params do
-        %{
-          params: Utils.decode_params_list(cache_params),
-          max_age: cache_max_age,
-          namespace: cache_namespace,
-          version: cache_version
-        }
+    {:ok, cache} =
+      if cache_config_id do
+        CacheConfigs.get_cache_config(db, cache_config_id)
+      else
+        {:ok, nil}
       end
 
     defer =

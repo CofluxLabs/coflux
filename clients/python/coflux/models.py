@@ -15,7 +15,7 @@ class Parameter(t.NamedTuple):
 
 class Cache(t.NamedTuple):
     params: list[int] | t.Literal[True]
-    max_age: float | None
+    max_age: int | None
     namespace: str | None
     version: str | None
 

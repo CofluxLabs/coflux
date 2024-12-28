@@ -8,7 +8,7 @@ import {
 } from "react";
 import classNames from "classnames";
 import { minBy, sortBy } from "lodash";
-import { DateTime } from "luxon";
+import { DateTime, Duration } from "luxon";
 import {
   Menu,
   MenuButton,
@@ -488,7 +488,7 @@ function Header({
                 >
                   {step.target}
                 </h2>
-                {step.isMemoised && (
+                {step.memoKey && (
                   <span
                     className="text-slate-500 self-center"
                     title="This execution has been memoised"
@@ -686,6 +686,61 @@ function ExecutionSection({ execution }: ExecutionSectionProps) {
         ) : assignedAt ? (
           <p>Executing...</p>
         ) : null}
+      </div>
+    </>
+  );
+}
+
+type CacheSectionProps = {
+  step: models.Step;
+};
+
+function CacheSection({ step }: CacheSectionProps) {
+  const cacheConfig = step.cacheConfig!;
+  return (
+    <>
+      <div>
+        <h3 className="uppercase text-sm font-bold text-slate-400">
+          Configuration
+        </h3>
+        <p>
+          Maximum age:{" "}
+          {cacheConfig.maxAge ? (
+            <span title={`${cacheConfig.maxAge} ms`}>
+              {Duration.fromMillis(cacheConfig.maxAge).rescale().toHuman({
+                unitDisplay: "narrow",
+              })}
+            </span>
+          ) : (
+            <span className="text-slate-400">(none)</span>
+          )}
+        </p>
+        <p>
+          Parameters:{" "}
+          {cacheConfig.params === true ? (
+            <span className="text-slate-400">(all)</span>
+          ) : !cacheConfig.params.length ? (
+            <span>(none)</span>
+          ) : (
+            cacheConfig.params.map((position) => `${position}`).join(", ")
+          )}
+        </p>
+        <p>
+          Version:{" "}
+          {cacheConfig.version || (
+            <span className="text-slate-400">(none)</span>
+          )}
+        </p>
+        <p>
+          Namespace:{" "}
+          {cacheConfig.namespace || (
+            <span className="text-slate-400">(default)</span>
+          )}
+        </p>
+      </div>
+      <div>
+        <h3 className="uppercase text-sm font-bold text-slate-400">Key</h3>
+        <p className="font-mono text-sm">{step.cacheKey}</p>
       </div>
     </>
   );
@@ -1300,6 +1355,9 @@ export default function StepDetail({
         </StepDetailTab>
         <StepDetailTab label="Timing">
           {execution && <ExecutionSection execution={execution} />}
+        </StepDetailTab>
+        <StepDetailTab label="Cache" disabled={!step.cacheConfig}>
+          {step.cacheConfig && <CacheSection step={step} />}
         </StepDetailTab>
         <StepDetailTab label="Connections" disabled={!execution?.assignedAt}>
           {execution?.assignedAt && (

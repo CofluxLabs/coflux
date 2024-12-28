@@ -18,6 +18,7 @@ import {
   IconPin,
   IconAlertCircle,
   IconStackPop,
+  IconStackPush,
 } from "@tabler/icons-react";
 
 import * as models from "../models";
@@ -37,7 +38,10 @@ function classNameForExecution(execution: models.Execution) {
     execution.result?.type == "spawned"
       ? execution.result.result
       : execution.result;
-  if (result?.type == "cached" || result?.type == "deferred") {
+  if (
+    execution.result?.type == "cached" ||
+    execution.result?.type == "deferred"
+  ) {
     return "border-slate-200 bg-slate-50";
   } else if (!result && !execution?.assignedAt) {
     // TODO: handle spawned/etc case
@@ -60,7 +64,7 @@ function resolveExecutionResult(
   stepId: string,
   attempt: number,
 ): models.Value | undefined {
-  const result = run.steps[stepId].executions[attempt].result;
+  const result = run.steps[stepId].executions[attempt]?.result;
   switch (result?.type) {
     case "value":
       return result.value;
@@ -223,8 +227,16 @@ function StepNode({
             <IconClock size={16} />
           </span>
         ) : execution?.result?.type == "cached" ? (
-          <span title="Cache read">
+          <span title="Read from cache">
             <IconStackPop size={16} className="text-slate-400" />
+          </span>
+        ) : step.memoKey ? (
+          <span title="Memoised">
+            <IconPin size={16} className="text-slate-500" />
+          </span>
+        ) : step.cacheConfig ? (
+          <span title="Written to cache">
+            <IconStackPush size={16} className="text-slate-300" />
           </span>
         ) : execution?.result?.type == "suspended" ? (
           <span title="Suspended">
@@ -233,10 +245,6 @@ function StepNode({
         ) : execution?.result?.type == "deferred" ? (
           <span title="Deferred">
             <IconArrowBounce size={16} className="text-slate-400" />
-          </span>
-        ) : step.isMemoised ? (
-          <span title="Memoised">
-            <IconPin size={16} className="text-slate-500" />
           </span>
         ) : null}
       </StepLink>

@@ -9,6 +9,7 @@ defmodule Coflux.Orchestration.Server do
     Sessions,
     Runs,
     Results,
+    CacheConfigs,
     TagSets,
     Launches,
     Manifests,
@@ -436,8 +437,8 @@ defmodule Coflux.Orchestration.Server do
           {:ok, nil}
 
         parent_id ->
-          {:ok, step} = Runs.get_step_for_execution(state.db, parent_id)
-          {:ok, {step.run_id, parent_id}}
+          {:ok, run_id} = Runs.get_execution_run_id(state.db, parent_id)
+          {:ok, {run_id, parent_id}}
       end
 
     {:ok, environment_id} =
@@ -472,9 +473,9 @@ defmodule Coflux.Orchestration.Server do
         _from,
         state
       ) do
-    {:ok, parent_step} = Runs.get_step_for_execution(state.db, parent_id)
+    {:ok, parent_run_id} = Runs.get_execution_run_id(state.db, parent_id)
     {:ok, environment_id} = Runs.get_environment_id_for_execution(state.db, parent_id)
-    {:ok, run} = Runs.get_run_by_id(state.db, parent_step.run_id)
+    {:ok, run} = Runs.get_run_by_id(state.db, parent_run_id)
 
     cache_environment_ids = get_cache_environment_ids(state, environment_id)
 
@@ -490,20 +491,45 @@ defmodule Coflux.Orchestration.Server do
            cache_environment_ids,
            opts
          ) do
-      {:ok, external_step_id, execution_id, attempt, created_at, memo_hit, child_added} ->
+      {:ok,
+       %{
+         external_step_id: external_step_id,
+         execution_id: execution_id,
+         attempt: attempt,
+         created_at: created_at,
+         cache_key: cache_key,
+         memo_key: memo_key,
+         memo_hit: memo_hit,
+         child_added: child_added
+       }} ->
+        cache = Keyword.get(opts, :cache)
         execute_after = Keyword.get(opts, :execute_after)
         requires = Keyword.get(opts, :requires) || %{}
 
         state =
           if !memo_hit do
-            is_memoised = !!Keyword.get(opts, :memo)
             arguments = Enum.map(arguments, &build_value(&1, state.db))
 
-            notify_listeners(
-              state,
+            state
+            |> notify_listeners(
               {:run, run.id},
-              {:step, external_step_id, repository, target_name, type, is_memoised, parent_id,
-               created_at, arguments, requires, attempt, execution_id, environment_id,
+              {:step, external_step_id,
+               %{
+                 repository: repository,
+                 target: target_name,
+                 type: type,
+                 parent_id: parent_id,
+                 cache_config: cache,
+                 cache_key: cache_key,
+                 memo_key: memo_key,
+                 created_at: created_at,
+                 arguments: arguments,
+                 requires: requires
+               }, environment_id}
+            )
+            |> notify_listeners(
+              {:run, run.id},
+              {:execution, external_step_id, attempt, execution_id, environment_id, created_at,
                execute_after}
             )
           else
@@ -735,14 +761,14 @@ defmodule Coflux.Orchestration.Server do
         {:ok, id} = Runs.record_result_dependency(state.db, from_execution_id, execution_id)
 
         if id do
-          {:ok, step} = Runs.get_step_for_execution(state.db, from_execution_id)
+          {:ok, run_id} = Runs.get_execution_run_id(state.db, from_execution_id)
 
           # TODO: only resolve if there are listeners to notify
           dependency = resolve_execution(state.db, execution_id)
 
           notify_listeners(
             state,
-            {:run, step.run_id},
+            {:run, run_id},
             {:result_dependency, from_execution_id, execution_id, dependency}
           )
         else
@@ -776,13 +802,13 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:put_asset, execution_id, type, path, blob_key, size, metadata}, _from, state) do
-    {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
+    {:ok, run_id} = Runs.get_execution_run_id(state.db, execution_id)
 
     {:ok, asset_id} =
       Results.get_or_create_asset(state.db, execution_id, type, path, blob_key, size, metadata)
 
     asset = resolve_asset(state.db, asset_id)
-    state = notify_listeners(state, {:run, step.run_id}, {:asset, execution_id, asset_id, asset})
+    state = notify_listeners(state, {:run, run_id}, {:asset, execution_id, asset_id, asset})
     {:reply, {:ok, asset_id}, state}
   end
 
@@ -804,7 +830,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call({:record_logs, execution_id, messages}, _from, state) do
-    {:ok, step} = Runs.get_step_for_execution(state.db, execution_id)
+    {:ok, run_id} = Runs.get_execution_run_id(state.db, execution_id)
 
     case Observations.record_logs(state.db, execution_id, messages) do
       :ok ->
@@ -816,8 +842,8 @@ defmodule Coflux.Orchestration.Server do
 
         state =
           state
-          |> notify_listeners({:logs, step.run_id}, {:messages, messages})
-          |> notify_listeners({:run, step.run_id}, {:log_counts, execution_id, length(messages)})
+          |> notify_listeners({:logs, run_id}, {:messages, messages})
+          |> notify_listeners({:run, run_id}, {:log_counts, execution_id, length(messages)})
           |> flush_notifications()
 
         {:reply, :ok, state}
@@ -972,6 +998,17 @@ defmodule Coflux.Orchestration.Server do
         {:ok, run_children} = Runs.get_run_children(state.db, run.id)
         {:ok, log_counts} = Observations.get_counts_for_run(state.db, run.id)
 
+        cache_configs =
+          steps
+          |> Enum.map(& &1.cache_config_id)
+          |> Enum.reject(&is_nil/1)
+          |> Enum.uniq()
+          |> Enum.reduce(%{}, fn cache_config_id, cache_configs ->
+            case CacheConfigs.get_cache_config(state.db, cache_config_id) do
+              {:ok, cache_config} -> Map.put(cache_configs, cache_config_id, cache_config)
+            end
+          end)
+
         results =
           run_executions
           |> Enum.map(&elem(&1, 0))
@@ -990,33 +1027,35 @@ defmodule Coflux.Orchestration.Server do
           end)
 
         steps =
-          Map.new(steps, fn {step_id, step_external_id, parent_id, repository, target, type,
-                             memo_key, requires_tag_set_id, created_at} ->
-            {:ok, arguments} = Runs.get_step_arguments(state.db, step_id)
+          Map.new(steps, fn step ->
+            {:ok, arguments} = Runs.get_step_arguments(state.db, step.id)
             arguments = Enum.map(arguments, &build_value(&1, state.db))
 
             requires =
-              if requires_tag_set_id do
-                case TagSets.get_tag_set(state.db, requires_tag_set_id) do
+              if step.requires_tag_set_id do
+                case TagSets.get_tag_set(state.db, step.requires_tag_set_id) do
                   {:ok, requires} -> requires
                 end
               else
                 %{}
               end
 
-            {step_external_id,
+            {step.external_id,
              %{
-               repository: repository,
-               target: target,
-               type: type,
-               parent_id: parent_id,
-               memo_key: memo_key,
-               created_at: created_at,
+               repository: step.repository,
+               target: step.target,
+               type: step.type,
+               parent_id: step.parent_id,
+               cache_config:
+                 if(step.cache_config_id, do: Map.fetch!(cache_configs, step.cache_config_id)),
+               cache_key: step.cache_key,
+               memo_key: step.memo_key,
+               created_at: step.created_at,
                arguments: arguments,
                requires: requires,
                executions:
                  run_executions
-                 |> Enum.filter(&(elem(&1, 1) == step_id))
+                 |> Enum.filter(&(elem(&1, 1) == step.id))
                  |> Map.new(fn {execution_id, _step_id, attempt, environment_id, execute_after,
                                 created_at, assigned_at} ->
                    {result, completed_at} = Map.fetch!(results, execution_id)
@@ -1173,14 +1212,22 @@ defmodule Coflux.Orchestration.Server do
     tag_sets =
       executions_due
       |> Enum.map(& &1.requires_tag_set_id)
+      |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
       |> Enum.reduce(%{}, fn tag_set_id, tag_sets ->
-        if tag_set_id do
-          case TagSets.get_tag_set(state.db, tag_set_id) do
-            {:ok, tag_set} -> Map.put(tag_sets, tag_set_id, tag_set)
-          end
-        else
-          tag_sets
+        case TagSets.get_tag_set(state.db, tag_set_id) do
+          {:ok, tag_set} -> Map.put(tag_sets, tag_set_id, tag_set)
+        end
+      end)
+
+    cache_configs =
+      executions_due
+      |> Enum.map(& &1.cache_config_id)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.reduce(%{}, fn cache_config_id, cache_configs ->
+        case CacheConfigs.get_cache_config(state.db, cache_config_id) do
+          {:ok, cache_config} -> Map.put(cache_configs, cache_config_id, cache_config)
         end
       end)
 
@@ -1193,11 +1240,10 @@ defmodule Coflux.Orchestration.Server do
           execution, {state, assigned, unassigned} ->
             # TODO: support caching for other attempts?
             cached_execution_id =
-              if execution.attempt == 1 && execution.cache_key do
+              if execution.attempt == 1 && execution.cache_config_id do
                 cache_environment_ids = get_cache_environment_ids(state, execution.environment_id)
-
-                recorded_after =
-                  if execution.cache_max_age, do: now - execution.cache_max_age, else: 0
+                cache = Map.fetch!(cache_configs, execution.cache_config_id)
+                recorded_after = if cache.max_age, do: now - cache.max_age, else: 0
 
                 case Runs.find_cached_execution(
                        state.db,
@@ -1267,7 +1313,10 @@ defmodule Coflux.Orchestration.Server do
                            arguments,
                            execution.environment_id,
                            parent_id: execution.execution_id,
-                           cache: execution.cache_key,
+                           cache:
+                             if(execution.cache_config_id,
+                               do: Map.fetch!(cache_configs, execution.cache_config_id)
+                             ),
                            retries:
                              if(execution.retry_limit > 0,
                                do: %{
@@ -1657,7 +1706,14 @@ defmodule Coflux.Orchestration.Server do
            cache_environment_ids,
            opts
          ) do
-      {:ok, external_run_id, external_step_id, execution_id, attempt, created_at} ->
+      {:ok,
+       %{
+         external_run_id: external_run_id,
+         external_step_id: external_step_id,
+         execution_id: execution_id,
+         attempt: attempt,
+         created_at: created_at
+       }} ->
         # TODO: neater way to get execute_after?
         execute_after = Keyword.get(opts, :execute_after)
         execute_at = execute_after || created_at
@@ -1946,7 +2002,7 @@ defmodule Coflux.Orchestration.Server do
                       (step.retry_delay_max - step.retry_delay_min)
 
                 execute_after = System.os_time(:millisecond) + delay_s * 1000
-                # TODO: do cache lookup?
+
                 {:ok, retry_id, _, state} =
                   rerun_step(state, step, environment_id, execute_after: execute_after)
 
