@@ -77,7 +77,7 @@ export type Asset = {
 export type Reference =
   | {
       type: "fragment";
-      serialiser: string;
+      format: string;
       blobKey: string;
       size: number;
       metadata: Record<string, any>;

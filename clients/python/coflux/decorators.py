@@ -127,7 +127,7 @@ def _build_definition(
     memo: bool | t.Iterable[str] | str,
     requires: dict[str, str | bool | list[str]] | None,
     is_stub: bool,
-):
+) -> models.Target:
     parameters = inspect.signature(fn).parameters.values()
     for p in parameters:
         if p.kind != inspect.Parameter.POSITIONAL_OR_KEYWORD:
@@ -203,6 +203,8 @@ class Target(t.Generic[P, T]):
         return self._fn
 
     def submit(self, *args: P.args, **kwargs: P.kwargs) -> models.Execution[T]:
+        if kwargs:
+            raise Exception("Keyword arguments aren't supported - pass positional arguments instead")
         try:
             return context.submit(
                 self._definition.type,

@@ -3,9 +3,10 @@ import json
 import pickle
 import abc
 import io
-from pathlib import Path
 import pydantic
 import importlib
+import collections
+from pathlib import Path
 
 try:
     import pandas
@@ -22,55 +23,44 @@ def _json_dumps(obj: t.Any) -> str:
 
 
 class Serialiser(abc.ABC):
-    @property
     @abc.abstractmethod
-    def type(self) -> str:
+    def serialise(self, value: t.Any) -> tuple[str, io.BytesIO, dict[str, t.Any]] | None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
+    def deserialise(self, format: str, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any | None:
         raise NotImplementedError
 
 
 class PickleSerialiser(Serialiser):
-    @property
-    def type(self) -> str:
-        return "pickle"
-
-    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
+    def serialise(self, value: t.Any) -> tuple[str, io.BytesIO, dict[str, t.Any]] | None:
         try:
             buffer = io.BytesIO()
             pickle.dump(value, buffer)
-            return buffer, {"type": str(type(value))}
+            return "pickle", buffer, {"type": str(type(value))}
         except pickle.PicklingError:
             return None
 
-    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
+    def deserialise(self, format: str, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any | None:
+        if format != "pickle":
+            return None
         return pickle.loads(buffer.getbuffer())
 
 
 class PydanticSerialiser(Serialiser):
-    @property
-    def type(self) -> str:
-        return "pydantic"
-
-    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
+    def serialise(self, value: t.Any) -> tuple[str, io.BytesIO, dict[str, t.Any]] | None:
         if not isinstance(value, pydantic.BaseModel):
             return None
         buffer = io.BytesIO()
         json_data = value.model_dump_json().encode()
         buffer.write(json_data)
         model_class = value.__class__
-        return buffer, {
-            "content_type": "application/json",
-            "model": f"{model_class.__module__}.{model_class.__name__}",
-        }
+        model = f"{model_class.__module__}.{model_class.__name__}"
+        return "json", buffer, {"model": model}
 
-    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
+    def deserialise(self, format: str, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any | None:
+        if format != "json" or "model" not in metadata:
+            return None
         json_data = buffer.read().decode()
         model = metadata["model"]
         module_name, class_name = model.rsplit(".", 1)
@@ -85,21 +75,16 @@ class PydanticSerialiser(Serialiser):
 
 
 class PandasSerialiser(Serialiser):
-    @property
-    def type(self) -> str:
-        return "pandas"
-
-    def serialise(self, value: t.Any) -> tuple[io.BytesIO, dict[str, t.Any]] | None:
+    def serialise(self, value: t.Any) -> tuple[str, io.BytesIO, dict[str, t.Any]] | None:
         # TODO: support series
         if pandas and isinstance(value, pandas.DataFrame):
             buffer = io.BytesIO()
             value.to_parquet(buffer)
-            return buffer, {
-                "content_type": "application/vnd.apache.parquet",
-                "shape": value.shape,
-            }
+            return "parquet", buffer, {"shape": value.shape}
 
-    def deserialise(self, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any:
+    def deserialise(self, format: str, buffer: io.BytesIO, metadata: dict[str, t.Any]) -> t.Any | None:
+        if format != "parquet":
+            return None
         if not pandas:
             raise Exception("Pandas dependency not available")
         # TODO: check metadata["content_type"]
@@ -137,16 +122,19 @@ class Manager:
             elif isinstance(value, list):
                 return [_serialise(v) for v in value]
             elif isinstance(value, dict):
-                # TODO: sort?
+                items = (
+                    value.items()
+                    if isinstance(value, collections.OrderedDict)
+                    else sorted(value.items(), key=lambda kv: repr(kv[0]))
+                )
                 return {
                     "type": "dict",
-                    "items": [_serialise(x) for kv in value.items() for x in kv],
+                    "items": [_serialise(x) for kv in items for x in kv],
                 }
             elif isinstance(value, set):
-                # TODO: sort?
                 return {
                     "type": "set",
-                    "items": [_serialise(x) for x in value],
+                    "items": [_serialise(x) for x in sorted(value)],
                 }
             elif isinstance(value, models.Execution):
                 # TODO: better handle id being none
@@ -163,11 +151,11 @@ class Manager:
                 for serialiser in self._serialisers:
                     result = serialiser.serialise(value)
                     if result is not None:
-                        buffer, metadata = result
+                        format, buffer, metadata = result
                         blob_key = self._blob_manager.put(buffer)
                         size = buffer.getbuffer().nbytes
                         references.append(
-                            ("fragment", serialiser.type, blob_key, size, metadata)
+                            ("fragment", format, blob_key, size, metadata)
                         )
                         return {"type": "ref", "index": len(references) - 1}
                 raise Exception(f"no serialiser for type '{type(value)}'")
@@ -181,12 +169,6 @@ class Manager:
             return ("blob", blob_key, size, references)
         else:
             return ("raw", data, references)
-
-    def _find_serialiser(self, type: str) -> Serialiser:
-        serialiser = next((s for s in self._serialisers if s.type == type), None)
-        if not serialiser:
-            raise Exception(f"unrecognised serialiser ({type})")
-        return serialiser
 
     def _get_value_data(
         self, value: models.Value
@@ -234,10 +216,13 @@ class Manager:
                                 return models.Asset(
                                     lambda to: restore_fn(asset_id, to), asset_id
                                 )
-                            case ("fragment", serialiser, blob_key, _size, metadata):
-                                serialiser_ = self._find_serialiser(serialiser)
+                            case ("fragment", format, blob_key, _size, metadata):
                                 data = self._blob_manager.get(blob_key)
-                                return serialiser_.deserialise(data, metadata)
+                                for serialiser in self._serialisers:
+                                    result = serialiser.deserialise(format, data, metadata)
+                                    if result is not None:
+                                        return result
+                                raise Exception(f"Couldn't deserialise fragment ({format})")
                     case other:
                         raise Exception(f"unhandled data type ({other})")
             else:

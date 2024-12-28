@@ -324,7 +324,7 @@ CREATE TABLE blobs (
   size INTEGER NOT NULL
 );
 
-CREATE TABLE serialisers (
+CREATE TABLE fragment_formats (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL UNIQUE
 );
@@ -332,9 +332,9 @@ CREATE TABLE serialisers (
 CREATE TABLE fragments (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE,
-  serialiser_id INTEGER NOT NULL,
+  format_id INTEGER NOT NULL,
   blob_id INTEGER NOT NULL,
-  FOREIGN KEY (serialiser_id) REFERENCES serialisers ON DELETE RESTRICT,
+  FOREIGN KEY (format_id) REFERENCES fragment_formats ON DELETE RESTRICT,
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
 );
 

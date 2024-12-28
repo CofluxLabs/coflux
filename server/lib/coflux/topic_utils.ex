@@ -20,10 +20,10 @@ defmodule Coflux.TopicUtils do
 
   defp build_references(references) do
     Enum.map(references, fn
-      {:fragment, serialiser, blob_key, size, metadata} ->
+      {:fragment, format, blob_key, size, metadata} ->
         %{
           type: "fragment",
-          serialiser: serialiser,
+          format: format,
           blobKey: blob_key,
           size: size,
           metadata: metadata

@@ -37,7 +37,6 @@ class BlobsConfig(pydantic.BaseModel):
 
 class PandasSerialiserConfig(pydantic.BaseModel):
     type: t.Literal["pandas"] = "pandas"
-    format: str | None = None
 
 
 class PydanticSerialiserConfig(pydantic.BaseModel):
