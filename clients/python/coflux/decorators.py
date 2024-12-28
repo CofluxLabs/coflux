@@ -203,6 +203,8 @@ class Target(t.Generic[P, T]):
         return self._fn
 
     def submit(self, *args: P.args, **kwargs: P.kwargs) -> models.Execution[T]:
+        if kwargs:
+            raise Exception("Keyword arguments aren't supported - pass positional arguments instead")
         try:
             return context.submit(
                 self._definition.type,
