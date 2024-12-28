@@ -127,7 +127,7 @@ def _build_definition(
     memo: bool | t.Iterable[str] | str,
     requires: dict[str, str | bool | list[str]] | None,
     is_stub: bool,
-):
+) -> models.Target:
     parameters = inspect.signature(fn).parameters.values()
     for p in parameters:
         if p.kind != inspect.Parameter.POSITIONAL_OR_KEYWORD:
