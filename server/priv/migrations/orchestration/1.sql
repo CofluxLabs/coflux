@@ -192,9 +192,9 @@ CREATE TABLE steps (
   priority INTEGER NOT NULL, -- TODO: move to executions?
   wait_for INTEGER NOT NULL,
   cache_config_id INTEGER,
-  cache_key TEXT,
-  defer_key TEXT,
-  memo_key TEXT,
+  cache_key BLOB,
+  defer_key BLOB,
+  memo_key BLOB,
   retry_limit INTEGER NOT NULL,
   retry_delay_min INTEGER NOT NULL,
   retry_delay_max INTEGER NOT NULL,
