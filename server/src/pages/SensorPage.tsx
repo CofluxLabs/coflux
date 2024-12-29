@@ -52,10 +52,11 @@ export default function SensorPage() {
             activeEnvironmentId={activeEnvironmentId}
             activeEnvironmentName={activeEnvironmentName}
           />
-          <div className="p-4 flex-1">
-            <h1 className="text-slate-400 text-xl text-center">
-              This sensor hasn't been run yet
-            </h1>
+          <div className="p-4 flex-1 flex flex-col gap-2 items-center justify-center text-slate-300">
+            <h1 className="text-2xl">This sensor hasn't been run yet</h1>
+            <p className="text-sm">
+              Click the 'start' button above to start an instance of this sensor
+            </p>
           </div>
         </Fragment>
       );

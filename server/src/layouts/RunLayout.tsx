@@ -41,7 +41,7 @@ function Tab({ page, children }: TabProps) {
       end={true}
       className={({ isActive }) =>
         classNames(
-          "px-2 py-1 text-sm",
+          "px-2 py-2 text-sm",
           isActive && "inline-block border-b-2 border-cyan-500 font-semibold",
         )
       }
@@ -185,7 +185,7 @@ export default function RunLayout() {
             />
           ) : null}
           <div className="grow flex flex-col">
-            <div className="border-b px-4">
+            <div className="border-b px-5">
               {initialStep.type == "sensor" && (
                 <Tab page="children">Children</Tab>
               )}

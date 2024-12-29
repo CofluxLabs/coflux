@@ -204,11 +204,11 @@ export default function TargetsList({
 }: Props) {
   const now = useNow(500);
   return (
-    <div className="p-2">
+    <div className="px-3 py-1">
       {sortBy(Object.entries(repositories), ([name, _]) => name).map(
         ([repositoryName, repository]) => (
           <div key={repositoryName} className="py-2">
-            <div className="flex gap-1">
+            <div className="flex gap-1 sticky top-0 bg-slate-100/90 py-1">
               <RepositoryHeader
                 repositoryName={repositoryName}
                 repository={repository}

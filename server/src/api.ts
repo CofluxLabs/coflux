@@ -87,19 +87,19 @@ export function submitWorkflow(
     waitFor: number[];
     cache: {
       params: number[] | true;
-      maxAge?: number;
-      namespace?: string;
-      version?: string;
-    };
+      maxAge: number | null;
+      namespace: string | null;
+      version: string | null;
+    } | null;
     defer: {
       params: number[] | true;
-    };
+    } | null;
     executeAfter: number | null;
     retries: {
       limit: number;
       delayMin?: number;
       delayMax?: number;
-    };
+    } | null;
     requires: Record<string, string[]>;
   }>,
 ) {

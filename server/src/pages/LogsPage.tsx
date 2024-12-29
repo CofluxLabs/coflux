@@ -58,7 +58,7 @@ export default function LogsPage() {
   const logs = useLogs(projectId, runId, activeEnvironmentId);
   if (runId && logs) {
     return (
-      <div className="p-4">
+      <div className="p-5">
         <RunLogs
           startTime={DateTime.fromMillis(run.createdAt)}
           logs={logs}

@@ -29,7 +29,7 @@ export default function Header({ projectId, activeEnvironmentName }: Props) {
   );
   return (
     <>
-      <div className="flex p-3 items-center bg-cyan-600 gap-1 h-14">
+      <div className="flex p-3 lg:pb-4 items-center gap-1 h-14">
         <Logo />
         {projects && (
           <Fragment>

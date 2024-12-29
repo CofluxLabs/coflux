@@ -13,8 +13,11 @@ import {
   IconCircle,
   IconCircleCheck,
   IconInfoSquareRounded,
+  IconLayoutSidebarLeftCollapse,
+  IconPackage,
   IconPlayerPause,
   IconPlayerPlay,
+  IconServer,
 } from "@tabler/icons-react";
 import { findKey } from "lodash";
 
@@ -30,6 +33,8 @@ import {
   useRepositories,
 } from "../topics";
 import Header from "../components/Header";
+import { Transition } from "@headlessui/react";
+import classNames from "classnames";
 
 type PlayPauseButtonProps = {
   projectId: string;
@@ -125,6 +130,114 @@ function ConnectionStatus({
   );
 }
 
+type SidebarProps = {
+  projectId: string;
+  environmentName: string;
+  active: [string, string | undefined] | undefined;
+};
+
+function Sidebar({ projectId, environmentName, active }: SidebarProps) {
+  const [hidden, setHidden] = useState(false);
+  const [tab, setTab] = useState<"repositories" | "pools">("repositories");
+  const environments = useEnvironments(projectId);
+  const environmentId = findKey(
+    environments,
+    (e) => e.name == environmentName && e.status != "archived",
+  );
+  const environment = environmentId ? environments?.[environmentId] : undefined;
+  const repositories = useRepositories(projectId, environmentId);
+  const agents = useAgents(projectId, environmentId);
+  const handleRepositoriesClick = useCallback(() => setTab("repositories"), []);
+  const handlePoolsClick = useCallback(() => setTab("pools"), []);
+  const handleHideClick = useCallback(() => setHidden(true), []);
+  return (
+    <Transition
+      as={Fragment}
+      show={!hidden}
+      leave="transform transition ease-in-out duration-150"
+      leaveFrom="translate-x-0"
+      leaveTo="-translate-x-full"
+    >
+      <div className="w-72 bg-slate-100 text-slate-400 border-r border-slate-200 flex-none flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex p-3 gap-2 border-b border-slate-200">
+            <div className="flex-1 flex gap-1">
+              <button
+                className={classNames(
+                  "p-1 rounded-md",
+                  tab == "repositories"
+                    ? "bg-slate-200 text-slate-700"
+                    : "text-slate-500 hover:text-slate-700",
+                )}
+                title="Repositories"
+                onClick={handleRepositoriesClick}
+              >
+                <IconPackage size={24} strokeWidth={1.5} />
+              </button>
+              <button
+                className={classNames(
+                  "p-1 rounded-md",
+                  tab == "pools"
+                    ? "bg-slate-200 text-slate-700"
+                    : "text-slate-500 hover:text-slate-700",
+                )}
+                title="Pools"
+                onClick={handlePoolsClick}
+              >
+                <IconServer size={24} strokeWidth={1.5} />
+              </button>
+            </div>
+            <button
+              className="p-1 rounded-md hover:text-slate-700"
+              title="Hide sidebar"
+              onClick={handleHideClick}
+            >
+              <IconLayoutSidebarLeftCollapse size={24} strokeWidth={1.5} />
+            </button>
+          </div>
+          <div className="flex-1 flex flex-col min-h-0">
+            {tab == "repositories" ? (
+              <>
+                {repositories && Object.keys(repositories).length ? (
+                  <div className="flex-1 overflow-auto min-h-0">
+                    <TargetsList
+                      projectId={projectId!}
+                      environmentName={environmentName!}
+                      activeRepository={active?.[0]}
+                      activeTarget={active?.[1]}
+                      repositories={repositories}
+                      agents={agents}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col gap-1 justify-center items-center">
+                    <IconInfoSquareRounded
+                      size={32}
+                      strokeWidth={1.5}
+                      className="text-slate-300/50"
+                    />
+                    <p className="text-slate-300 text-lg px-2 max-w-48 text-center leading-tight">
+                      No repositories registered
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : tab == "pools" ? (
+              <></>
+            ) : null}
+          </div>
+        </div>
+        <ConnectionStatus
+          projectId={projectId!}
+          environmentId={environmentId}
+          agents={agents}
+          environment={environment}
+        />
+      </div>
+    </Transition>
+  );
+}
+
 type OutletContext = {
   setActive: (active: [string, string | undefined] | undefined) => void;
 };
@@ -139,13 +252,6 @@ export default function ProjectLayout() {
   >();
   const projects = useProjects();
   const environments = useEnvironments(projectId);
-  const environmentId = findKey(
-    environments,
-    (e) => e.name == environmentName && e.status != "archived",
-  );
-  const environment = environmentId ? environments?.[environmentId] : undefined;
-  const repositories = useRepositories(projectId, environmentId);
-  const agents = useAgents(projectId, environmentId);
   const project = (projectId && projects && projects[projectId]) || undefined;
   const defaultEnvironmentName =
     environments &&
@@ -164,40 +270,12 @@ export default function ProjectLayout() {
   return (
     <Fragment>
       <Header projectId={projectId!} activeEnvironmentName={environmentName} />
-      <div className="flex-1 flex min-h-0">
-        {repositories && (
-          <div className="w-64 bg-slate-100 text-slate-100 border-r border-slate-200 flex-none flex flex-col">
-            {Object.keys(repositories).length ? (
-              <div className="flex-1 overflow-auto min-h-0">
-                <TargetsList
-                  projectId={projectId!}
-                  environmentName={environmentName!}
-                  activeRepository={active?.[0]}
-                  activeTarget={active?.[1]}
-                  repositories={repositories}
-                  agents={agents}
-                />
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col gap-1 justify-center items-center">
-                <IconInfoSquareRounded
-                  size={32}
-                  strokeWidth={1.5}
-                  className="text-slate-300/50"
-                />
-                <p className="text-slate-300 text-lg px-2 max-w-48 text-center leading-tight">
-                  No repositories registered
-                </p>
-              </div>
-            )}
-            <ConnectionStatus
-              projectId={projectId!}
-              environmentId={environmentId}
-              agents={agents}
-              environment={environment}
-            />
-          </div>
-        )}
+      <div className="flex-1 flex min-h-0 bg-white lg:rounded-md overflow-hidden">
+        <Sidebar
+          projectId={projectId!}
+          environmentName={environmentName!}
+          active={active}
+        />
         <div className="flex-1 flex flex-col min-w-0">
           <Outlet context={{ setActive }} />
         </div>
