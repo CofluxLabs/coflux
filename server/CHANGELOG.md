@@ -1,3 +1,16 @@
+## 0.6.0
+
+Enhancements:
+
+- Introduces the concept of 'spawned' runs.
+- Improved sensor observability.
+- Adds a search box to the UI for jumping to a workflow/task/etc.
+- Instructions for workflow/sensor specified during registration are shown in the 'run' dialog.
+- Repositories can be 'archived' (hidden from the sidebar until they're re-registered).
+- Sorts the list of targets in the sidebar alphabetically.
+- Indicates when steps in the graph are 'stale'.
+- Shows caching information in the step detail panel.
+
 ## 0.5.0
 
 Enhancements:
@@ -60,7 +73,7 @@ Fixes:
 
 ## 0.2.0
 
-Features:
+Enhancements:
 
 - Supports persisting and restorig assets (files or directories) within tasks, and previewing these in the web UI.
 - Supports explicitly waiting for executions in specific parameters before starting a task.
