@@ -1,3 +1,16 @@
+## 0.6.0
+
+Enhancements:
+
+- Executions can be cancelled using `execution.cancel()`.
+- Workflow/sensor docstrings are included when registering manifests.
+- Sensors can be started from tasks.
+- Serialisation method is identified by a more general 'format' rather than a specific 'serialiser'.
+
+Fixes:
+
+- Fixes conversion of cache maximum age to milliseconds.
+
 ## 0.5.0
 
 Enhancements:
@@ -53,7 +66,7 @@ Enhancements:
 
 ## 0.2.3
 
-Features:
+Enhancements:
 
 - Supports persisting and restoring assets (`persist_asset(...)`, `restore_asset(...)`).
 - Supports explicitly waiting for for executions (`wait_for={...}`).

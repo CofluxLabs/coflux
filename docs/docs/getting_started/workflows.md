@@ -17,6 +17,9 @@ def build_greeting(name: str):
 
 @cf.workflow()
 def print_greeting(name: str):
+    """
+    Prints a greeting for the specified `name`.
+    """
     print(build_greeting(name))
 ```
 
@@ -25,5 +28,9 @@ This defines a `print_greeting` workflow, which takes a `name` as an argument. W
 Workflows are defined in _repositories_. Typically these are Python modules, but they can alternatively be loaded from a Python script, which this guide will demonstrate.
 
 Put the workflow above into `hello.py`.
+
+:::tip
+The docstring of a workflow (or sensor) will be available in the UI when running a workflow. This is a great place to explain what the workflow does.
+:::
 
 Before coming back to more advanced features, let's see how to get this workflow running...

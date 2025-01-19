@@ -106,3 +106,16 @@ A task can be submitted without ever waiting for the result. In this case the ca
 
 An example use case might be sending a notification to a user.
 
+## Cancelling executions
+
+Once a task (or workflow/sensor) has been submitted, the returned `Execution` can be used to cancel the running execution:
+
+```python
+@cf.workflow()
+def my_workflow():
+    execution = another_workflow.submit()
+    # ...
+    execution.cancel()
+```
+
+In this case `my_workflow` submits `another_workflow` (causing a separate run to be started), but then cancels it. The effect is the same as if the run had been cancelled in the UI.
