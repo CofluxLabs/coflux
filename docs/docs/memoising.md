@@ -16,7 +16,7 @@ Memoised steps are indicated in the web UI with a pin icon.
 
 As with caching, explicitly clicking the 're-run' button for a step will force the step to be re-run, even if it's memoised. Then subsequent memoising will use the new step execution.
 
-If a step is manually re-run in a child environment, the memoised results will be used (but memoised results from the child environment aren't availble to the parent). This follows the same rules as caching.
+If a step is manually re-run in a child environment, the memoised results will be used (but memoised results from the child environment aren't available to the parent). This follows the same rules as caching.
 
 ## For debugging
 
