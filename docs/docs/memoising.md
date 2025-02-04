@@ -16,7 +16,7 @@ Memoised steps are indicated in the web UI with a pin icon.
 
 As with caching, explicitly clicking the 're-run' button for a step will force the step to be re-run, even if it's memoised. Then subsequent memoising will use the new step execution.
 
-If a step is manually re-run in a child environment, the memoised results will be used (but memoised results from the child environment aren't availble to the parent). This follows the same rules as caching.
+If a step is manually re-run in a child environment, the memoised results will be used (but memoised results from the child environment aren't available to the parent). This follows the same rules as caching.
 
 ## For debugging
 
@@ -24,7 +24,7 @@ Memoising provides several benefits for debugging:
 
 1. Memoising a task with side effects (e.g., sending a notification e-mail) means you can re-run the whole run (or part of it) without that side-effect happening.
 
-2. Memoising slow tasks allows you to fix bugs that are occuring elsewhere in the workflow.
+2. Memoising slow tasks allows you to fix bugs that are occurring elsewhere in the workflow.
 
 This is particularly useful when re-running a workflow from a production environment in a development environment (assuming the production environment is configured as an ancestor of the development environment). By liberally memo-ising tasks, specific steps can be re-run in the development environment without re-running downstream steps.
 

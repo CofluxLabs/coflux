@@ -25,7 +25,7 @@ You can also submit runs using the CLI:
 coflux submit hello.py print_greeting '"Joe"'
 ```
 
-(Note the need to tripple-quote the argument.)
+(Note the need to triple-quote the argument.)
 
 ## Next steps
 

@@ -10,7 +10,7 @@ It can be used to build data pipelines, coordinate background tasks, or orchestr
 
 ## Getting started
 
-The first section in this guide describes the steps involved in definining and running a workflow:
+The first section in this guide describes the steps involved in defining and running a workflow:
 
 1. Installing the Python package
 2. Starting the server

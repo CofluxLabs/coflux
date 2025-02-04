@@ -134,9 +134,9 @@ def my_task():
     # ...
 ```
 
-## Environment inheritence
+## Environment inheritance
 
-The inheritence of environments effects caching - refer to [the explanation on the concepts page](/concepts#environment-inheritence).
+The inheritance of environments effects caching - refer to [the explanation on the concepts page](/concepts#environment-inheritance).
 
 ## Forcing execution
 
