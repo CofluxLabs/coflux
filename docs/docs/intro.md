@@ -12,8 +12,8 @@ It can be used to build data pipelines, coordinate background tasks, or orchestr
 
 The first section in this guide describes the steps involved in defining and running a workflow:
 
-1. Installing the Python package
-2. Starting the server
-3. Defining a workflow
-4. Running an agent
-5. Submitting and observing a run
+1. [Installing the Python package](./getting_started/install.md)
+2. [Starting the server](./getting_started/server.md)
+3. [Defining a workflow](./getting_started/workflows.md)
+4. [Running an agent](./getting_started/agents.md)
+5. [Submitting and observing a run](./getting_started/runs.md)
