@@ -24,7 +24,7 @@ Memoising provides several benefits for debugging:
 
 1. Memoising a task with side effects (e.g., sending a notification e-mail) means you can re-run the whole run (or part of it) without that side-effect happening.
 
-2. Memoising slow tasks allows you to fix bugs that are occuring elsewhere in the workflow.
+2. Memoising slow tasks allows you to fix bugs that are occurring elsewhere in the workflow.
 
 This is particularly useful when re-running a workflow from a production environment in a development environment (assuming the production environment is configured as an ancestor of the development environment). By liberally memo-ising tasks, specific steps can be re-run in the development environment without re-running downstream steps.
 
