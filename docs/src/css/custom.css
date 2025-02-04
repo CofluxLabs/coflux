@@ -34,11 +34,6 @@ body {
   height: 2.5rem;
 }
 
-.theme-doc-sidebar-container > div {
-  top: 80px;
-  height: auto;
-}
-
 .menu__link {
   transition: none;
 }
