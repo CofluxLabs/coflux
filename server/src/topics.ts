@@ -49,7 +49,7 @@ export function usePool(
 ) {
   const [pool] = useTopic<{
     pool: models.Pool | null;
-    launches: Record<string, models.Launch>;
+    agents: Record<string, models.Agent>;
   }>("projects", projectId, "pools", environmentId, poolName);
   return pool;
 }

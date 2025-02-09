@@ -25,12 +25,12 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:archive_environment, environment_name})
   end
 
-  def stop_launch(project_id, environment_name, launch_id) do
-    call_server(project_id, {:stop_launch, environment_name, launch_id})
+  def stop_agent(project_id, environment_name, agent_id) do
+    call_server(project_id, {:stop_agent, environment_name, agent_id})
   end
 
-  def resume_launch(project_id, environment_name, launch_id) do
-    call_server(project_id, {:resume_launch, environment_name, launch_id})
+  def resume_agent(project_id, environment_name, agent_id) do
+    call_server(project_id, {:resume_agent, environment_name, agent_id})
   end
 
   def register_manifests(project_id, environment_name, manifests) do
@@ -45,10 +45,10 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:get_workflow, environment_name, repository, target_name})
   end
 
-  def start_session(project_id, environment_name, launch_id, provides, concurrency, pid) do
+  def start_session(project_id, environment_name, agent_id, provides, concurrency, pid) do
     call_server(
       project_id,
-      {:start_session, environment_name, launch_id, provides, concurrency, pid}
+      {:start_session, environment_name, agent_id, provides, concurrency, pid}
     )
   end
 

@@ -77,27 +77,27 @@ export function archiveRepository(
   });
 }
 
-export function stopLaunch(
+export function stopAgent(
   projectId: string,
   environmentName: string,
-  launchId: string,
+  agentId: string,
 ) {
-  return post("stop_launch", {
+  return post("stop_agent", {
     projectId,
     environmentName,
-    launchId,
+    agentId,
   });
 }
 
-export function resumeLaunch(
+export function resumeAgent(
   projectId: string,
   environmentName: string,
-  launchId: string,
+  agentId: string,
 ) {
-  return post("resume_launch", {
+  return post("resume_agent", {
     projectId,
     environmentName,
-    launchId,
+    agentId,
   });
 }
 

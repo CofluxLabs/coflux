@@ -209,7 +209,7 @@ export type LogMessage = [
   Record<string, Value>,
 ];
 
-export type Launch = {
+export type Agent = {
   startingAt: number;
   startedAt?: number;
   startError?: any;

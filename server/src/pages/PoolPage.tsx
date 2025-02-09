@@ -12,61 +12,61 @@ import * as models from "../models";
 import * as api from "../api";
 import { DateTime } from "luxon";
 
-type LaunchRowProps = {
+type AgentRowProps = {
   projectId: string;
   environmentName: string;
-  launchId: string;
-  launch: models.Launch;
+  agentId: string;
+  agent: models.Agent;
 };
 
-function LaunchRow({
+function AgentRow({
   projectId,
   environmentName,
-  launchId,
-  launch,
-}: LaunchRowProps) {
+  agentId,
+  agent,
+}: AgentRowProps) {
   const handleStopClick = useCallback(() => {
-    api.stopLaunch(projectId, environmentName, launchId).catch(() => {
-      alert("Failed to stop launch. Please try again.");
+    api.stopAgent(projectId, environmentName, agentId).catch(() => {
+      alert("Failed to stop agent. Please try again.");
     });
-  }, [projectId, environmentName, launchId]);
+  }, [projectId, environmentName, agentId]);
   const handleResumeClick = useCallback(() => {
-    api.resumeLaunch(projectId, environmentName, launchId).catch(() => {
-      alert("Failed to resume launch. Please try again.");
+    api.resumeAgent(projectId, environmentName, agentId).catch(() => {
+      alert("Failed to resume agent. Please try again.");
     });
   }, []);
-  const startingAt = DateTime.fromMillis(launch.startingAt);
+  const startingAt = DateTime.fromMillis(agent.startingAt);
   return (
     <tr className="border-b border-slate-100">
       <td>{startingAt.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS)}</td>
       <td>
-        {launch.startError ? (
+        {agent.startError ? (
           <Badge intent="danger" label="Start error" />
-        ) : launch.stopError ? (
+        ) : agent.stopError ? (
           <Badge intent="danger" label="Stop error" />
-        ) : !launch.startedAt && !launch.deactivatedAt ? (
+        ) : !agent.startedAt && !agent.deactivatedAt ? (
           <Badge intent="info" label="Starting..." />
-        ) : launch.stoppedAt || launch.deactivatedAt ? (
+        ) : agent.stoppedAt || agent.deactivatedAt ? (
           <Badge intent="none" label="Stopped" />
-        ) : launch.stoppingAt ? (
+        ) : agent.stoppingAt ? (
           <Badge intent="info" label="Stopping" />
-        ) : launch.state == "paused" ? (
+        ) : agent.state == "paused" ? (
           <Badge intent="info" label="Paused" />
-        ) : launch.state == "draining" ? (
+        ) : agent.state == "draining" ? (
           <Badge intent="info" label="Draining" />
-        ) : launch.connected === null ? (
+        ) : agent.connected === null ? (
           <Badge intent="none" label="Connecting..." />
-        ) : launch.connected ? (
+        ) : agent.connected ? (
           <Badge intent="success" label="Connected" />
         ) : (
           <Badge intent="warning" label="Disconnected" />
         )}
       </td>
       <td>
-        {launch.startedAt &&
-          !launch.stoppingAt &&
-          !launch.deactivatedAt &&
-          (launch.state == "active" ? (
+        {agent.startedAt &&
+          !agent.stoppingAt &&
+          !agent.deactivatedAt &&
+          (agent.state == "active" ? (
             <Button
               onClick={handleStopClick}
               size="sm"
@@ -85,23 +85,23 @@ function LaunchRow({
   );
 }
 
-type LaunchesTableProps = {
+type AgentsTableProps = {
   projectId: string;
   environmentName: string;
   title: string;
-  launches: Record<string, models.Launch>;
+  agents: Record<string, models.Agent>;
 };
 
-function LaunchesTable({
+function AgentsTable({
   projectId,
   environmentName,
   title,
-  launches,
-}: LaunchesTableProps) {
+  agents,
+}: AgentsTableProps) {
   return (
     <div>
       <h1 className="text-xl font-semibold text-slate-700 my-1">{title}</h1>
-      {Object.keys(launches).length ? (
+      {Object.keys(agents).length ? (
         <table className="w-full table-fixed">
           <thead className="[&_th]:py-1">
             <tr className="border-b border-slate-100">
@@ -118,15 +118,15 @@ function LaunchesTable({
           </thead>
           <tbody className="[&_td]:py-1">
             {sortBy(
-              Object.entries(launches),
-              ([_, launch]) => -launch.startingAt,
-            ).map(([launchId, launch]) => (
-              <LaunchRow
-                key={launchId}
+              Object.entries(agents),
+              ([_, agent]) => -agent.startingAt,
+            ).map(([agentId, agent]) => (
+              <AgentRow
+                key={agentId}
                 projectId={projectId}
                 environmentName={environmentName}
-                launchId={launchId}
-                launch={launch}
+                agentId={agentId}
+                agent={agent}
               />
             ))}
           </tbody>
@@ -172,7 +172,7 @@ export default function PoolPage() {
   if (!pool) {
     return <Loading />;
   } else {
-    const activeLaunches = omitBy(pool.launches, "deactivatedAt");
+    const activeAgents = omitBy(pool.agents, "deactivatedAt");
     return (
       <>
         <div className="flex-1 flex flex-col min-h-0">
@@ -186,11 +186,11 @@ export default function PoolPage() {
           </div>
           <div className="flex-1 flex min-h-0">
             <div className="p-5 flex-1 flex flex-col gap-6 overflow-auto">
-              <LaunchesTable
+              <AgentsTable
                 projectId={projectId!}
                 environmentName={environmentName!}
-                title="Active launches"
-                launches={activeLaunches}
+                title="Agents"
+                agents={activeAgents}
               />
             </div>
             <div className="p-5 max-w-[400px] min-w-[200px] w-[30%] border-l border-slate-200 flex flex-col gap-3">

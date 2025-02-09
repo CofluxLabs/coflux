@@ -9,14 +9,14 @@ defmodule Coflux.Topics.Pool do
     pool_name = Keyword.fetch!(params, :pool_name)
 
     case Orchestration.subscribe_pool(project_id, environment_id, pool_name, self()) do
-      {:ok, pool, launches, ref} ->
+      {:ok, pool, agents, ref} ->
         {:ok,
          Topic.new(
            %{
              pool: build_pool(pool),
-             launches:
-               Map.new(launches, fn {launch_id, launch} ->
-                 {Integer.to_string(launch_id), build_launch(launch)}
+             agents:
+               Map.new(agents, fn {agent_id, agent} ->
+                 {Integer.to_string(agent_id), build_agent(agent)}
                end)
            },
            %{ref: ref}
@@ -36,8 +36,8 @@ defmodule Coflux.Topics.Pool do
     Topic.set(topic, [:pool], build_pool(pool))
   end
 
-  defp process_notification(topic, {:launch, launch_id, starting_at}) do
-    Topic.set(topic, [:launches, Integer.to_string(launch_id)], %{
+  defp process_notification(topic, {:agent, agent_id, starting_at}) do
+    Topic.set(topic, [:agents, Integer.to_string(agent_id)], %{
       startingAt: starting_at,
       startedAt: nil,
       startError: nil,
@@ -49,33 +49,33 @@ defmodule Coflux.Topics.Pool do
     })
   end
 
-  defp process_notification(topic, {:launch_result, launch_id, started_at, error}) do
+  defp process_notification(topic, {:launch_result, agent_id, started_at, error}) do
     topic
-    |> Topic.set([:launches, Integer.to_string(launch_id), :startedAt], started_at)
-    |> Topic.set([:launches, Integer.to_string(launch_id), :startError], error)
+    |> Topic.set([:agents, Integer.to_string(agent_id), :startedAt], started_at)
+    |> Topic.set([:agents, Integer.to_string(agent_id), :startError], error)
   end
 
-  defp process_notification(topic, {:launch_stopping, launch_id, stopping_at}) do
-    Topic.set(topic, [:launches, Integer.to_string(launch_id), :stoppingAt], stopping_at)
+  defp process_notification(topic, {:agent_stopping, agent_id, stopping_at}) do
+    Topic.set(topic, [:agents, Integer.to_string(agent_id), :stoppingAt], stopping_at)
   end
 
-  defp process_notification(topic, {:launch_stop_result, launch_id, stopped_at, error}) do
+  defp process_notification(topic, {:agent_stop_result, agent_id, stopped_at, error}) do
     # TODO: don't set 'stopped_at' if error?
     topic
-    |> Topic.set([:launches, Integer.to_string(launch_id), :stoppedAt], stopped_at)
-    |> Topic.set([:launches, Integer.to_string(launch_id), :stopError], error)
+    |> Topic.set([:agents, Integer.to_string(agent_id), :stoppedAt], stopped_at)
+    |> Topic.set([:agents, Integer.to_string(agent_id), :stopError], error)
   end
 
-  defp process_notification(topic, {:launch_deactivated, launch_id, deactivated_at}) do
-    Topic.set(topic, [:launches, Integer.to_string(launch_id), :deactivatedAt], deactivated_at)
+  defp process_notification(topic, {:agent_deactivated, agent_id, deactivated_at}) do
+    Topic.set(topic, [:agents, Integer.to_string(agent_id), :deactivatedAt], deactivated_at)
   end
 
-  defp process_notification(topic, {:launch_state, launch_id, state}) do
-    Topic.set(topic, [:launches, Integer.to_string(launch_id), :state], state)
+  defp process_notification(topic, {:agent_state, agent_id, state}) do
+    Topic.set(topic, [:agents, Integer.to_string(agent_id), :state], state)
   end
 
-  defp process_notification(topic, {:launch_connected, launch_id, connected}) do
-    Topic.set(topic, [:launches, Integer.to_string(launch_id), :connected], connected)
+  defp process_notification(topic, {:agent_connected, agent_id, connected}) do
+    Topic.set(topic, [:agents, Integer.to_string(agent_id), :connected], connected)
   end
 
   defp build_launcher(launcher) do
@@ -99,17 +99,17 @@ defmodule Coflux.Topics.Pool do
     end
   end
 
-  defp build_launch(launch) do
+  defp build_agent(agent) do
     %{
       # TODO: launcher ID? (and/or launcher?)
-      startingAt: launch.starting_at,
-      startedAt: launch.started_at,
-      startError: launch.start_error,
-      stoppingAt: launch.stopping_at,
-      stopError: launch.stop_error,
-      deactivatedAt: launch.deactivated_at,
-      state: launch.state,
-      connected: launch.connected
+      startingAt: agent.starting_at,
+      startedAt: agent.started_at,
+      startError: agent.start_error,
+      stoppingAt: agent.stopping_at,
+      stopError: agent.stop_error,
+      deactivatedAt: agent.deactivated_at,
+      state: agent.state,
+      connected: agent.connected
     }
   end
 end

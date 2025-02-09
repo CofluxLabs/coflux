@@ -146,63 +146,61 @@ CREATE TABLE pools (
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE RESTRICT
 );
 
-CREATE TABLE launches (
+CREATE TABLE agents (
   id INTEGER PRIMARY KEY,
   pool_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (pool_id) REFERENCES pools ON DELETE CASCADE
 );
 
-CREATE TABLE launch_results (
-  launch_id INTEGER PRIMARY KEY,
+CREATE TABLE agent_launch_results (
+  agent_id INTEGER PRIMARY KEY,
   data BLOB,
   error TEXT,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (launch_id) REFERENCES launches,
+  FOREIGN KEY (agent_id) REFERENCES agents,
   CHECK (data IS NULL OR error IS NULL)
 );
 
--- TODO: better name?
-CREATE TABLE launch_states (
-  launch_id INTEGER NOT NULL,
+CREATE TABLE agent_states (
+  agent_id INTEGER NOT NULL,
   state INTEGER NOT NULL, -- 0: active, 1: paused, 2: draining
   -- TODO: reason? (0: user, 1: scaling down?, 2: config update?)
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (launch_id) REFERENCES launches
+  FOREIGN KEY (agent_id) REFERENCES agents
 );
 
--- TODO: better name?
-CREATE TABLE launch_stops (
+CREATE TABLE agent_stops (
   id INTEGER PRIMARY KEY,
-  launch_id INTEGER NOT NULL,
+  agent_id INTEGER NOT NULL,
   -- TODO: reason? (manual, scaling down, pool removed, ?)
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (launch_id) REFERENCES launches
+  FOREIGN KEY (agent_id) REFERENCES agents
 );
 
-CREATE TABLE launch_stop_results (
-  launch_stop_id INTEGER PRIMARY KEY,
+CREATE TABLE agent_stop_results (
+  agent_stop_id INTEGER PRIMARY KEY,
   error TEXT,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (launch_stop_id) REFERENCES launch_stops
+  FOREIGN KEY (agent_stop_id) REFERENCES agent_stops
 );
 
-CREATE TABLE launch_deactivations (
-  launch_id INTEGER PRIMARY KEY,
+CREATE TABLE agent_deactivations (
+  agent_id INTEGER PRIMARY KEY,
   created_at INTEGER NOT NULL,
   -- TODO: reason?
-  FOREIGN KEY (launch_id) REFERENCES launches
+  FOREIGN KEY (agent_id) REFERENCES agents
 );
 
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
   external_id TEXT NOT NULL UNIQUE,
   environment_id INTEGER NOT NULL,
-  launch_id INTEGER,
+  agent_id INTEGER,
   provides_tag_set_id INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
-  FOREIGN KEY (launch_id) REFERENCES launches ON DELETE RESTRICT,
+  FOREIGN KEY (agent_id) REFERENCES agents ON DELETE RESTRICT,
   FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
 

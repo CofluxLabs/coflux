@@ -11,15 +11,15 @@ defmodule Coflux.Orchestration.Server do
     Results,
     CacheConfigs,
     TagSets,
-    Launches,
+    Agents,
     Manifests,
     Observations
   }
 
   @session_timeout_ms 5_000
   @sensor_rate_limit_ms 5_000
-  @connected_launch_poll_interval_ms 30_000
-  @disconnected_launch_poll_interval_ms 5_000
+  @connected_agent_poll_interval_ms 30_000
+  @disconnected_agent_poll_interval_ms 5_000
 
   defmodule State do
     defstruct project_id: nil,
@@ -32,13 +32,13 @@ defmodule Coflux.Orchestration.Server do
               # name -> id
               environment_names: %{},
 
-              # launch_id -> %{created_at, pool_id, pool_name, environment_id, launcher_id, state, data, session_id, stop_id, last_poll_at}
-              launches: %{},
-
-              # ref -> {pid, session_id}
+              # agent_id -> %{created_at, pool_id, pool_name, environment_id, launcher_id, state, data, session_id, stop_id, last_poll_at}
               agents: %{},
 
-              # session_id -> %{external_id, agent, targets, queue, starting, executing, expire_timer, concurrency, environment_id, provides, launch_id}
+              # ref -> {pid, session_id}
+              connections: %{},
+
+              # session_id -> %{external_id, connection, targets, queue, starting, executing, expire_timer, concurrency, environment_id, provides, agent_id}
               sessions: %{},
 
               # external_id -> session_id
@@ -84,20 +84,20 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_continue(:setup, state) do
     {:ok, environments} = Environments.get_all_environments(state.db)
-    {:ok, launches} = Launches.get_active_launches(state.db)
+    {:ok, agents} = Agents.get_active_agents(state.db)
 
     environment_names =
       Map.new(environments, fn {environment_id, environment} ->
         {environment.name, environment_id}
       end)
 
-    launches =
+    agents =
       Enum.reduce(
-        launches,
+        agents,
         %{},
-        fn {launch_id, created_at, pool_id, pool_name, environment_id, launcher_id, state, data},
-           launches ->
-          Map.put(launches, launch_id, %{
+        fn {agent_id, created_at, pool_id, pool_name, environment_id, launcher_id, state, data},
+           agents ->
+          Map.put(agents, agent_id, %{
             created_at: created_at,
             pool_id: pool_id,
             pool_name: pool_name,
@@ -116,7 +116,7 @@ defmodule Coflux.Orchestration.Server do
       state
       |> Map.put(:environments, environments)
       |> Map.put(:environment_names, environment_names)
-      |> Map.put(:launches, launches)
+      |> Map.put(:agents, agents)
 
     {:ok, pending} = Runs.get_pending_assignments(state.db)
 
@@ -197,11 +197,11 @@ defmodule Coflux.Orchestration.Server do
                 end
               end
 
-            state.launches
-            |> Enum.reduce(state, fn {launch_id, launch}, state ->
+            state.agents
+            |> Enum.reduce(state, fn {agent_id, agent}, state ->
               # TODO: also check pool_id doesn't match new pool id?
-              if launch.pool_name == pool_name do
-                update_launch_state(state, launch_id, :draining, environment_id, pool_name)
+              if agent.pool_name == pool_name do
+                update_agent_state(state, agent_id, :draining, environment_id, pool_name)
               else
                 state
               end
@@ -262,10 +262,10 @@ defmodule Coflux.Orchestration.Server do
           |> Enum.filter(fn {_, s} -> s.environment_id == environment_id end)
           |> Enum.reduce(state, fn {session_id, session}, state ->
             state =
-              if session.agent do
-                {pid, ^session_id} = Map.fetch!(state.agents, session.agent)
+              if session.connection do
+                {pid, ^session_id} = Map.fetch!(state.connections, session.connection)
                 send(pid, :stop)
-                Map.update!(state, :agents, &Map.delete(&1, session.agent))
+                Map.update!(state, :connections, &Map.delete(&1, session.connection))
               else
                 state
               end
@@ -302,12 +302,12 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:stop_launch, environment_name, launch_id}, _from, state) do
+  def handle_call({:stop_agent, environment_name, agent_id}, _from, state) do
     with {:ok, environment_id, _} <- lookup_environment_by_name(state, environment_name),
-         {:ok, launch} <- lookup_launch(state, launch_id, environment_id) do
+         {:ok, agent} <- lookup_agent(state, agent_id, environment_id) do
       state =
         state
-        |> update_launch_state(launch_id, :draining, environment_id, launch.pool_name)
+        |> update_agent_state(agent_id, :draining, environment_id, agent.pool_name)
         |> flush_notifications()
 
       send(self(), :tick)
@@ -319,12 +319,12 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  def handle_call({:resume_launch, environment_name, launch_id}, _from, state) do
+  def handle_call({:resume_agent, environment_name, agent_id}, _from, state) do
     with {:ok, environment_id, _} <- lookup_environment_by_name(state, environment_name),
-         {:ok, launch} <- lookup_launch(state, launch_id, environment_id) do
+         {:ok, agent} <- lookup_agent(state, agent_id, environment_id) do
       state =
         state
-        |> update_launch_state(launch_id, :active, environment_id, launch.pool_name)
+        |> update_agent_state(agent_id, :active, environment_id, agent.pool_name)
         |> flush_notifications()
 
       send(self(), :tick)
@@ -426,19 +426,19 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_call(
-        {:start_session, environment_name, launch_id, provides, concurrency, pid},
+        {:start_session, environment_name, agent_id, provides, concurrency, pid},
         _from,
         state
       ) do
     with {:ok, environment_id, _} <- lookup_environment_by_name(state, environment_name),
-         {:ok, launch} <- lookup_launch(state, launch_id, environment_id) do
-      case Sessions.start_session(state.db, environment_id, provides, launch_id) do
+         {:ok, agent} <- lookup_agent(state, agent_id, environment_id) do
+      case Sessions.start_session(state.db, environment_id, provides, agent_id) do
         {:ok, session_id, external_session_id} ->
           ref = Process.monitor(pid)
 
           session = %{
             external_id: external_session_id,
-            agent: ref,
+            connection: ref,
             targets: %{},
             queue: [],
             starting: MapSet.new(),
@@ -447,32 +447,32 @@ defmodule Coflux.Orchestration.Server do
             concurrency: concurrency,
             environment_id: environment_id,
             provides: provides,
-            launch_id: launch_id
+            agent_id: agent_id
           }
 
           state =
             state
             |> put_in([Access.key(:sessions), session_id], session)
             |> put_in([Access.key(:session_ids), external_session_id], session_id)
-            |> put_in([Access.key(:agents), ref], {pid, session_id})
+            |> put_in([Access.key(:connections), ref], {pid, session_id})
             |> notify_listeners(
               {:sessions, environment_id},
               {:session, session_id,
-               %{connected: true, executions: 0, pool_name: if(launch, do: launch.pool_name)}}
+               %{connected: true, executions: 0, pool_name: if(agent, do: agent.pool_name)}}
             )
 
-          # TODO: check launch isn't already assigned to a (different (active?)) session?
+          # TODO: check agent isn't already assigned to a (different (active?)) session?
 
           state =
-            if launch do
+            if agent do
               state
               |> put_in(
-                [Access.key(:launches), launch_id, Access.key(:session_id)],
+                [Access.key(:agents), agent_id, Access.key(:session_id)],
                 session_id
               )
               |> notify_listeners(
-                {:pool, environment_id, launch.pool_name},
-                {:launch_connected, launch_id, true}
+                {:pool, environment_id, agent.pool_name},
+                {:agent_connected, agent_id, true}
               )
             else
               state
@@ -498,8 +498,8 @@ defmodule Coflux.Orchestration.Server do
         end
 
         state =
-          if session.agent do
-            {{pid, ^session_id}, state} = pop_in(state.agents[session.agent])
+          if session.connection do
+            {{pid, ^session_id}, state} = pop_in(state.connections[session.connection])
             # TODO: better reason?
             Process.exit(pid, :kill)
             state
@@ -515,10 +515,10 @@ defmodule Coflux.Orchestration.Server do
 
         state =
           state
-          |> put_in([Access.key(:agents), ref], {pid, session_id})
+          |> put_in([Access.key(:connections), ref], {pid, session_id})
           |> update_in(
             [Access.key(:sessions), session_id],
-            &Map.merge(&1, %{agent: ref, queue: []})
+            &Map.merge(&1, %{connection: ref, queue: []})
           )
           |> notify_listeners(
             {:sessions, session.environment_id},
@@ -527,25 +527,25 @@ defmodule Coflux.Orchestration.Server do
                connected: true,
                executions: session.starting |> MapSet.union(session.executing) |> Enum.count(),
                pool_name:
-                 if(session.launch_id,
-                   do: state.launches |> Map.fetch!(session.launch_id) |> Map.fetch!(:pool_name)
+                 if(session.agent_id,
+                   do: state.agents |> Map.fetch!(session.agent_id) |> Map.fetch!(:pool_name)
                  )
              }}
           )
 
         state =
-          if session.launch_id do
-            launch = Map.fetch!(state.launches, session.launch_id)
-            # TODO: check that launch environment matches session environment?
-            # TODO: check launch isn't assigned to a different session?
+          if session.agent_id do
+            agent = Map.fetch!(state.agents, session.agent_id)
+            # TODO: check that agent environment matches session environment?
+            # TODO: check agent isn't assigned to a different session?
             state
             |> put_in(
-              [Access.key(:launches), session.launch_id, Access.key(:session_id)],
+              [Access.key(:agents), session.agent_id, Access.key(:session_id)],
               session_id
             )
             |> notify_listeners(
-              {:pool, launch.environment_id, launch.pool_name},
-              {:launch_connected, session.launch_id, true}
+              {:pool, agent.environment_id, agent.pool_name},
+              {:agent_connected, session.agent_id, true}
             )
           else
             state
@@ -1092,7 +1092,7 @@ defmodule Coflux.Orchestration.Server do
         {:reply, {:error, error}, state}
 
       {:ok, _} ->
-        # TODO: include non-active pools that contain active launches
+        # TODO: include non-active pools that contain active agents
         # TODO: more efficient way to get launchers?
         pools =
           Map.new(state.environments[environment_id].pools, fn {pool_name, pool} ->
@@ -1110,7 +1110,7 @@ defmodule Coflux.Orchestration.Server do
   def handle_call({:subscribe_pool, environment_id, pool_name, pid}, _from, state) do
     case lookup_environment_by_id(state, environment_id) do
       {:ok, _} ->
-        pool = Map.get(state.environments.pools, pool_name)
+        pool = Map.get(state.environments[environment_id].pools, pool_name)
 
         pool =
           if pool do
@@ -1119,22 +1119,22 @@ defmodule Coflux.Orchestration.Server do
             end
           end
 
-        {:ok, pool_launches} = Launches.get_pool_launches(state.db, pool_name)
+        {:ok, pool_agents} = Agents.get_pool_agents(state.db, pool_name)
 
-        # TODO: include 'active' launches that aren't in this (potentially limited) list
+        # TODO: include 'active' agents that aren't in this (potentially limited) list
 
-        launches =
+        agents =
           Map.new(
-            pool_launches,
-            fn {launch_id, launcher_id, starting_at, started_at, start_error, stopping_at,
+            pool_agents,
+            fn {agent_id, launcher_id, starting_at, started_at, start_error, stopping_at,
                 stopped_at, stop_error, deactivated_at} ->
-              launch = Map.get(state.launches, launch_id)
+              agent = Map.get(state.agents, agent_id)
 
               connected =
-                if launch do
-                  if launch.session_id do
-                    case Map.fetch(state.sessions, launch.session_id) do
-                      {:ok, session} -> !is_nil(session.agent)
+                if agent do
+                  if agent.session_id do
+                    case Map.fetch(state.sessions, agent.session_id) do
+                      {:ok, session} -> !is_nil(session.connection)
                       :error -> false
                     end
                   else
@@ -1142,7 +1142,7 @@ defmodule Coflux.Orchestration.Server do
                   end
                 end
 
-              {launch_id,
+              {agent_id,
                %{
                  launcher_id: launcher_id,
                  starting_at: starting_at,
@@ -1152,14 +1152,14 @@ defmodule Coflux.Orchestration.Server do
                  stopped_at: stopped_at,
                  stop_error: stop_error,
                  deactivated_at: deactivated_at,
-                 state: if(launch, do: launch.state),
+                 state: if(agent, do: agent.state),
                  connected: connected
                }}
             end
           )
 
         {:ok, ref, state} = add_listener(state, {:pool, environment_id, pool_name}, pid)
-        {:reply, {:ok, pool, launches, ref}, state}
+        {:reply, {:ok, pool, agents, ref}, state}
 
       {:error, error} ->
         {:reply, {:error, error}, state}
@@ -1184,13 +1184,13 @@ defmodule Coflux.Orchestration.Server do
               |> Enum.count()
 
             pool_name =
-              if session.launch_id do
-                state.launches |> Map.fetch!(session.launch_id) |> Map.fetch!(:pool_name)
+              if session.agent_id do
+                state.agents |> Map.fetch!(session.agent_id) |> Map.fetch!(:pool_name)
               end
 
             {session_id,
              %{
-               connected: !is_nil(session.agent),
+               connected: !is_nil(session.connection),
                executions: executions,
                pool_name: pool_name
              }}
@@ -1428,7 +1428,7 @@ defmodule Coflux.Orchestration.Server do
   end
 
   def handle_info({:expire_session, session_id}, state) do
-    if state.sessions[session_id].agent do
+    if state.sessions[session_id].connection do
       IO.puts("Ignoring session expire (#{inspect(session_id)})")
       {:noreply, state}
     else
@@ -1672,10 +1672,10 @@ defmodule Coflux.Orchestration.Server do
     state =
       if Enum.any?(unassigned) do
         latest_pool_launch_at =
-          state.launches
+          state.agents
           |> Map.values()
-          |> Enum.reduce(%{}, fn launch, latest ->
-            Map.update(latest, launch.pool_id, launch.created_at, &max(&1, launch.created_at))
+          |> Enum.reduce(%{}, fn agent, latest ->
+            Map.update(latest, agent.pool_id, agent.created_at, &max(&1, agent.created_at))
           end)
 
         # now = System.os_time(:millisecond)
@@ -1696,8 +1696,8 @@ defmodule Coflux.Orchestration.Server do
           |> Enum.uniq()
           |> Enum.filter(&(now - Map.get(latest_pool_launch_at, &1, 0) > 10_000))
           |> Enum.reduce(state, fn pool_id, state ->
-            case Launches.create_launch(state.db, pool_id) do
-              {:ok, launch_id, created_at} ->
+            case Agents.create_agent(state.db, pool_id) do
+              {:ok, agent_id, created_at} ->
                 {pool_name, pool} =
                   Enum.find(
                     state.environments[environment_id].pools,
@@ -1713,7 +1713,7 @@ defmodule Coflux.Orchestration.Server do
                   [
                     state.project_id,
                     state.environments[environment_id].name,
-                    launch_id,
+                    agent_id,
                     pool.repositories,
                     pool.provides,
                     Map.delete(launcher, :type)
@@ -1727,25 +1727,25 @@ defmodule Coflux.Orchestration.Server do
                       end
 
                     {:ok, started_at} =
-                      Launches.create_launch_result(state.db, launch_id, data, error)
+                      Agents.create_agent_launch_result(state.db, agent_id, data, error)
 
                     state =
                       state
-                      |> put_in([Access.key(:launches), launch_id, Access.key(:data)], data)
+                      |> put_in([Access.key(:agents), agent_id, Access.key(:data)], data)
                       |> notify_listeners(
                         {:pool, environment_id, pool_name},
-                        {:launch_result, launch_id, started_at, error}
+                        {:launch_result, agent_id, started_at, error}
                       )
 
                     state =
                       if error do
                         {:ok, deactivated_at} =
-                          Launches.create_launch_deactivation(state.db, launch_id)
+                          Agents.create_agent_deactivation(state.db, agent_id)
 
                         notify_listeners(
                           state,
                           {:pool, environment_id, pool_name},
-                          {:launch_deactivated, launch_id, deactivated_at}
+                          {:agent_deactivated, agent_id, deactivated_at}
                         )
                       else
                         state
@@ -1754,7 +1754,7 @@ defmodule Coflux.Orchestration.Server do
                     flush_notifications(state)
                   end
                 )
-                |> put_in([Access.key(:launches), launch_id], %{
+                |> put_in([Access.key(:agents), agent_id], %{
                   created_at: created_at,
                   pool_id: pool_id,
                   pool_name: pool_name,
@@ -1768,7 +1768,7 @@ defmodule Coflux.Orchestration.Server do
                 })
                 |> notify_listeners(
                   {:pool, environment_id, pool_name},
-                  {:launch, launch_id, created_at}
+                  {:agent, agent_id, created_at}
                 )
             end
           end)
@@ -1783,46 +1783,46 @@ defmodule Coflux.Orchestration.Server do
       |> Enum.min(fn -> nil end)
 
     state =
-      state.launches
-      |> Enum.filter(fn {_launch_id, launch} ->
+      state.agents
+      |> Enum.filter(fn {_agent_id, agent} ->
         # TODO: don't poll if a poll is in progress?
-        if launch.data do
-          if is_nil(launch.last_poll_at) do
+        if agent.data do
+          if is_nil(agent.last_poll_at) do
             true
           else
-            agent =
-              if launch.session_id && Map.has_key?(state.sessions, launch.session_id),
-                do: state.sessions[launch.session_id].agent
+            connection =
+              if agent.session_id && Map.has_key?(state.sessions, agent.session_id),
+                do: state.sessions[agent.session_id].connection
 
             interval_ms =
-              if agent,
-                do: @connected_launch_poll_interval_ms,
-                else: @disconnected_launch_poll_interval_ms
+              if connection,
+                do: @connected_agent_poll_interval_ms,
+                else: @disconnected_agent_poll_interval_ms
 
-            now - launch.last_poll_at > interval_ms
+            now - agent.last_poll_at > interval_ms
           end
         else
           false
         end
       end)
-      |> Enum.reduce(state, fn {launch_id, launch}, state ->
-        {:ok, launcher} = Environments.get_launcher(state.db, launch.launcher_id)
+      |> Enum.reduce(state, fn {agent_id, agent}, state ->
+        {:ok, launcher} = Environments.get_launcher(state.db, agent.launcher_id)
 
         state
-        |> call_launcher(launcher, :poll, [launch.data], fn state, result ->
+        |> call_launcher(launcher, :poll, [agent.data], fn state, result ->
           case result do
             {:ok, {:ok, true}} ->
               state
 
             {:ok, {:ok, false}} ->
-              {:ok, deactivated_at} = Launches.create_launch_deactivation(state.db, launch_id)
+              {:ok, deactivated_at} = Agents.create_agent_deactivation(state.db, agent_id)
 
-              {launch, state} = pop_in(state, [Access.key(:launches), launch_id])
+              {agent, state} = pop_in(state, [Access.key(:agents), agent_id])
 
               notify_listeners(
                 state,
-                {:pool, launch.environment_id, launch.pool_name},
-                {:launch_deactivated, launch_id, deactivated_at}
+                {:pool, agent.environment_id, agent.pool_name},
+                {:agent_deactivated, agent_id, deactivated_at}
               )
 
             :error ->
@@ -1830,15 +1830,15 @@ defmodule Coflux.Orchestration.Server do
               state
           end
         end)
-        |> put_in([Access.key(:launches), launch_id, :last_poll_at], now)
+        |> put_in([Access.key(:agents), agent_id, :last_poll_at], now)
       end)
 
     state =
-      state.launches
-      |> Enum.filter(fn {_launch_id, launch} ->
+      state.agents
+      |> Enum.filter(fn {_agent_id, agent} ->
         # TODO: better way to check launched than checking existence of data?
-        if launch.state == :active && launch.data do
-          session = Map.get(state.sessions, launch.session_id)
+        if agent.state == :active && agent.data do
+          session = Map.get(state.sessions, agent.session_id)
           # TODO: better metric for scaling down?
           # TODO: consider min pool size
           # TODO: consider idle timeout
@@ -1848,45 +1848,45 @@ defmodule Coflux.Orchestration.Server do
           end
         end
       end)
-      |> Enum.reduce(state, fn {launch_id, launch}, state ->
-        update_launch_state(state, launch_id, :draining, launch.environment_id, launch.pool_name)
+      |> Enum.reduce(state, fn {agent_id, agent}, state ->
+        update_agent_state(state, agent_id, :draining, agent.environment_id, agent.pool_name)
       end)
 
     state =
-      state.launches
-      |> Enum.filter(fn {_launch_id, launch} ->
-        if launch.state == :draining && !launch.stop_id do
-          if launch.session_id do
-            session = Map.fetch!(state.sessions, launch.session_id)
+      state.agents
+      |> Enum.filter(fn {_agent_id, agent} ->
+        if agent.state == :draining && !agent.stop_id do
+          if agent.session_id do
+            session = Map.fetch!(state.sessions, agent.session_id)
             Enum.empty?(session.starting) && Enum.empty?(session.executing)
           else
             true
           end
         end
       end)
-      |> Enum.reduce(state, fn {launch_id, launch}, state ->
-        {:ok, launch_stop_id, stopping_at} = Launches.create_launch_stop(state.db, launch_id)
-        {:ok, launcher} = Environments.get_launcher(state.db, launch.launcher_id)
+      |> Enum.reduce(state, fn {agent_id, agent}, state ->
+        {:ok, agent_stop_id, stopping_at} = Agents.create_agent_stop(state.db, agent_id)
+        {:ok, launcher} = Environments.get_launcher(state.db, agent.launcher_id)
 
         state =
           state
-          |> put_in([Access.key(:launches), launch_id, :stop_id], launch_stop_id)
+          |> put_in([Access.key(:agents), agent_id, :stop_id], agent_stop_id)
           |> notify_listeners(
-            {:pool, launch.environment_id, launch.pool_name},
-            {:launch_stopping, launch_id, stopping_at}
+            {:pool, agent.environment_id, agent.pool_name},
+            {:agent_stopping, agent_id, stopping_at}
           )
 
-        call_launcher(state, launcher, :stop, [launch.data], fn state, result ->
+        call_launcher(state, launcher, :stop, [agent.data], fn state, result ->
           case result do
             {:ok, :ok} ->
               {:ok, stopped_at} =
-                Launches.create_launch_stop_result(state.db, launch_stop_id, nil)
+                Agents.create_agent_stop_result(state.db, agent_stop_id, nil)
 
               state =
                 state
                 |> notify_listeners(
-                  {:pool, launch.environment_id, launch.pool_name},
-                  {:launch_stop_result, launch_id, stopped_at, nil}
+                  {:pool, agent.environment_id, agent.pool_name},
+                  {:agent_stop_result, agent_id, stopped_at, nil}
                 )
 
               # TODO: ?
@@ -1897,16 +1897,16 @@ defmodule Coflux.Orchestration.Server do
               error = %{}
 
               {:ok, _} =
-                Launches.create_launch_stop_result(state.db, launch_stop_id, error)
+                Agents.create_agent_stop_result(state.db, agent_stop_id, error)
 
               state =
                 notify_listeners(
                   state,
-                  {:pool, launch.environment_id, launch.pool_name},
-                  {:launch_stop_result, launch_id, nil, error}
+                  {:pool, agent.environment_id, agent.pool_name},
+                  {:agent_stop_result, agent_id, nil, error}
                 )
 
-              # TODO: unset 'stop_id' of launch in state? (so it can be retried? but somehow limit rate?)
+              # TODO: unset 'stop_id' of agent in state? (so it can be retried? but somehow limit rate?)
               # TODO: ?
               state
           end
@@ -1916,7 +1916,7 @@ defmodule Coflux.Orchestration.Server do
     delay_ms =
       [
         if(next_execute_after, do: trunc(next_execute_after) - System.os_time(:millisecond)),
-        if(state.launches, do: 5_000)
+        if(state.agents, do: 5_000)
       ]
       |> Enum.reject(&is_nil/1)
       |> Enum.min(fn -> nil end)
@@ -1946,8 +1946,8 @@ defmodule Coflux.Orchestration.Server do
 
   def handle_info({:DOWN, ref, :process, pid, _reason}, state) do
     cond do
-      Map.has_key?(state.agents, ref) ->
-        {{^pid, session_id}, state} = pop_in(state.agents[ref])
+      Map.has_key?(state.connections, ref) ->
+        {{^pid, session_id}, state} = pop_in(state.connections[ref])
 
         state =
           case Map.fetch(state.sessions, session_id) do
@@ -1960,7 +1960,7 @@ defmodule Coflux.Orchestration.Server do
                 state
                 |> update_in(
                   [Access.key(:sessions), session_id],
-                  &Map.merge(&1, %{agent: nil, expire_timer: expire_timer})
+                  &Map.merge(&1, %{connection: nil, expire_timer: expire_timer})
                 )
                 |> notify_listeners(
                   {:sessions, session.environment_id},
@@ -1968,15 +1968,15 @@ defmodule Coflux.Orchestration.Server do
                 )
 
               state =
-                if session.launch_id do
-                  pool_name = Map.fetch!(state.launches, session.launch_id).pool_name
+                if session.agent_id do
+                  pool_name = Map.fetch!(state.agents, session.agent_id).pool_name
 
-                  # TODO: update state.launches to unset session_id?
+                  # TODO: update state.agents to unset session_id?
 
                   notify_listeners(
                     state,
                     {:pool, session.environment_id, pool_name},
-                    {:launch_connected, session.launch_id, false}
+                    {:agent_connected, session.agent_id, false}
                   )
                 else
                   state
@@ -2062,17 +2062,17 @@ defmodule Coflux.Orchestration.Server do
     end
   end
 
-  defp lookup_launch(state, launch_id, expected_environment_id) do
-    if launch_id do
-      case Map.fetch(state.launches, launch_id) do
+  defp lookup_agent(state, agent_id, expected_environment_id) do
+    if agent_id do
+      case Map.fetch(state.agents, agent_id) do
         :error ->
-          {:error, :no_launch}
+          {:error, :no_agent}
 
-        {:ok, launch} ->
-          if launch.environment_id != expected_environment_id do
-            {:error, :no_launch}
+        {:ok, agent} ->
+          if agent.environment_id != expected_environment_id do
+            {:error, :no_agent}
           else
-            {:ok, launch}
+            {:ok, agent}
           end
       end
     else
@@ -2136,14 +2136,14 @@ defmodule Coflux.Orchestration.Server do
       )
 
     state =
-      if session.launch_id do
-        case Map.fetch(state.launches, session.launch_id) do
-          {:ok, launch} ->
-            # TODO: check that launch environment matches session environment?
+      if session.agent_id do
+        case Map.fetch(state.agents, session.agent_id) do
+          {:ok, agent} ->
+            # TODO: check that agent environment matches session environment?
             notify_listeners(
               state,
-              {:pool, launch.environment_id, launch.pool_name},
-              {:launch_connected, session.launch_id, false}
+              {:pool, agent.environment_id, agent.pool_name},
+              {:agent_connected, session.agent_id, false}
             )
 
           :error ->
@@ -2479,7 +2479,7 @@ defmodule Coflux.Orchestration.Server do
             match?({:suspended, _, _}, result) ->
               {:suspended, execute_after, dependency_ids} = result
 
-              # TODO: limit the number of times a step can suspend?
+              # TODO: limit the number of times a step can suspend? (or rate?)
 
               {:ok, retry_id, _, state} =
                 rerun_step(state, step, environment_id,
@@ -2665,8 +2665,8 @@ defmodule Coflux.Orchestration.Server do
   defp send_session(state, session_id, message) do
     session = state.sessions[session_id]
 
-    if session.agent do
-      {pid, ^session_id} = state.agents[session.agent]
+    if session.connection do
+      {pid, ^session_id} = state.connections[session.connection]
       send(pid, message)
       state
     else
@@ -2684,9 +2684,9 @@ defmodule Coflux.Orchestration.Server do
   end
 
   defp session_active?(session, state) do
-    if session.launch_id do
-      launch = Map.fetch!(state.launches, session.launch_id)
-      launch.state == :active
+    if session.agent_id do
+      agent = Map.fetch!(state.agents, session.agent_id)
+      agent.state == :active
     else
       true
     end
@@ -2750,7 +2750,7 @@ defmodule Coflux.Orchestration.Server do
         Enum.filter(target.session_ids, fn session_id ->
           session = Map.fetch!(state.sessions, session_id)
 
-          session.environment_id == execution.environment_id && session.agent &&
+          session.environment_id == execution.environment_id && session.connection &&
             !session_at_capacity?(session) &&
             session_active?(session, state) &&
             has_requirements?(session.provides, requires)
@@ -2841,22 +2841,22 @@ defmodule Coflux.Orchestration.Server do
         :docker -> Coflux.DockerLauncher
       end
 
-    task = Task.Supervisor.async_nolink(Coflux.LaunchSupervisor, module, fun, args)
+    task = Task.Supervisor.async_nolink(Coflux.LauncherSupervisor, module, fun, args)
 
     put_in(state, [Access.key(:launcher_tasks), task.ref], callback)
   end
 
-  defp update_launch_state(state, launch_id, launch_state, environment_id, pool_name) do
-    :ok = Launches.create_launch_state(state.db, launch_id, launch_state)
+  defp update_agent_state(state, agent_id, agent_state, environment_id, pool_name) do
+    :ok = Agents.create_agent_state(state.db, agent_id, agent_state)
 
     state
     |> put_in(
-      [Access.key(:launches), launch_id, :state],
-      launch_state
+      [Access.key(:agents), agent_id, :state],
+      agent_state
     )
     |> notify_listeners(
       {:pool, environment_id, pool_name},
-      {:launch_state, launch_id, launch_state}
+      {:agent_state, agent_id, agent_state}
     )
   end
 end
