@@ -71,15 +71,21 @@ export default function Header({ projectId, activeEnvironmentName }: Props) {
     (e) => e.name == activeEnvironmentName && e.state != "archived",
   );
   return (
-    <>
-      <div className="flex p-3 items-center gap-1 h-14">
+    <div className="flex p-3 items-center justify-between gap-5 h-14">
+      <div className="flex items-center gap-1">
         <Logo />
         {projects && (
           <Fragment>
-            <IconChevronCompactRight size={16} className="text-white/40" />
+            <IconChevronCompactRight
+              size={16}
+              className="text-white/40 shrink-0"
+            />
             <div className="flex items-center gap-2">
               <ProjectSelector projects={projects} />
-              <IconChevronCompactRight size={16} className="text-white/40" />
+              <IconChevronCompactRight
+                size={16}
+                className="text-white/40 shrink-0"
+              />
               {projectId && environments && (
                 <Fragment>
                   <EnvironmentSelector
@@ -99,7 +105,8 @@ export default function Header({ projectId, activeEnvironmentName }: Props) {
             </div>
           </Fragment>
         )}
-        <div className="flex-1"></div>
+      </div>
+      <div className="flex items-center gap-1">
         {projectId && (
           <Fragment>
             {activeEnvironmentId && (
@@ -108,7 +115,10 @@ export default function Header({ projectId, activeEnvironmentName }: Props) {
                   projectId={projectId}
                   environmentId={activeEnvironmentId}
                 />
-                <IconMinusVertical size={16} className="text-white/40" />
+                <IconMinusVertical
+                  size={16}
+                  className="text-white/40 shrink-0"
+                />
               </Fragment>
             )}
             <ProjectSettingsDialog
@@ -126,6 +136,6 @@ export default function Header({ projectId, activeEnvironmentName }: Props) {
           </Fragment>
         )}
       </div>
-    </>
+    </div>
   );
 }

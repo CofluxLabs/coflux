@@ -36,7 +36,7 @@ function Sidebar({ projectId, environmentName, active }: SidebarProps) {
   const pools = usePools(projectId, environmentId);
   const sessions = useSessions(projectId, environmentId);
   return (
-    <div className="w-72 bg-slate-100 text-slate-400 border-r border-slate-200 flex-none flex flex-col">
+    <div className="w-[30%] max-w-[350px] min-w-[200px] bg-slate-100 text-slate-400 border-r border-slate-200 flex-none flex flex-col">
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 flex flex-col min-h-0 divide-y divide-slate-200">
           <div className="flex-1 flex flex-col overflow-auto">

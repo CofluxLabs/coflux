@@ -193,7 +193,7 @@ export default function PoolPage() {
                 launches={activeLaunches}
               />
             </div>
-            <div className="p-5 max-w-[300px] min-w-[100px] w-[30%] border-l border-slate-200 flex flex-col gap-3">
+            <div className="p-5 max-w-[400px] min-w-[200px] w-[30%] border-l border-slate-200 flex flex-col gap-3">
               {pool.pool && (
                 <>
                   {pool.pool.launcher && (

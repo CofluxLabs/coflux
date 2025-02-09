@@ -54,7 +54,7 @@ export default function WorkflowPage() {
             activeEnvironmentId={activeEnvironmentId}
             activeEnvironmentName={activeEnvironmentName}
           />
-          <div className="p-4 flex-1 flex flex-col gap-2 items-center justify-center text-slate-300">
+          <div className="p-4 flex-1 flex flex-col gap-2 items-center justify-center text-center text-slate-300">
             <h1 className="text-2xl">This workflow hasn't been run yet</h1>
             <p className="text-sm">
               Click the 'run' button above to start a run of this workflow

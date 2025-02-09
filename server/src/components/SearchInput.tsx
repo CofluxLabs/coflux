@@ -145,7 +145,7 @@ export default function SearchInput({ projectId, environmentId }: Props) {
   const environmentName = environments?.[environmentId].name;
   return (
     <Combobox immediate onChange={handleChange}>
-      <div className="flex items-center py-1 mr-1 gap-2 bg-slate-100/90 hover:bg-slate-100 rounded-lg w-56 text-left text-cyan-900 text-sm relative">
+      <div className="flex items-center py-1 mr-1 gap-2 bg-slate-100/90 hover:bg-slate-100 rounded-lg flex-1 max-w-56 text-left text-cyan-900 text-sm relative">
         <span className="absolute left-2 text-cyan-900/40">
           {loading ? (
             <IconLoader2 size={16} className="animate-spin" />
@@ -158,7 +158,7 @@ export default function SearchInput({ projectId, environmentId }: Props) {
           onChange={handleQueryChange}
           ref={inputRef}
           placeholder="Go to..."
-          className="border-none bg-transparent text-sm text-slate-900 focus:ring-0 py-0 pl-7 pr-14 min-w-0 flex-1 placeholder:text-cyan-900/40"
+          className="border-none bg-transparent text-sm text-slate-900 focus:ring-0 py-0 pl-7 pr-14 min-w-0 w-full flex-1 placeholder:text-cyan-900/40"
         />
         <span className="rounded-md bg-cyan-900/10 text-cyan-900/30 text-xs font-semibold px-1.5 py-0.5 absolute right-1">
           Ctrl-K
