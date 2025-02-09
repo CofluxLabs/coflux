@@ -5,12 +5,7 @@ import { findKey } from "lodash";
 
 import { randomName } from "../utils";
 import CodeBlock from "../components/CodeBlock";
-import {
-  useAgents,
-  useEnvironments,
-  useProjects,
-  useRepositories,
-} from "../topics";
+import { useEnvironments, useProjects, useRepositories } from "../topics";
 import {
   Disclosure,
   DisclosureButton,
@@ -66,18 +61,15 @@ type GettingStartedProps = {
 
 function GettingStarted({ projectId, environmentId }: GettingStartedProps) {
   const projects = useProjects();
-  const agents = useAgents(projectId, environmentId);
   const project = (projectId && projects && projects[projectId]) || undefined;
   const packageName = generatePackageName(project?.name);
   const environments = useEnvironments(projectId);
   const environmentName = environmentId && environments?.[environmentId].name;
   const exampleEnvironmentName = useMemo(() => randomName(), []);
   const exampleRepositoryName = `${packageName}.repo`;
-  const agentConnected = agents && Object.keys(agents).length > 0;
   const anyEnvironments =
     environments &&
-    Object.values(environments).filter((e) => e.status != "archived").length >
-      0;
+    Object.values(environments).filter((e) => e.state != "archived").length > 0;
   if (anyEnvironments) {
     return (
       <div className="overflow-auto">
@@ -176,7 +168,7 @@ export default function ProjectPage() {
   const environments = useEnvironments(projectId);
   const environmentId = findKey(
     environments,
-    (e) => e.name == environmentName && e.status != "archived",
+    (e) => e.name == environmentName && e.state != "archived",
   );
   const repositories = useRepositories(projectId, environmentId);
   if (

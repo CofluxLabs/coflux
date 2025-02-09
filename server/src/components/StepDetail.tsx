@@ -2,7 +2,6 @@ import {
   CSSProperties,
   ComponentProps,
   Fragment,
-  ReactNode,
   useCallback,
   useState,
 } from "react";
@@ -46,6 +45,7 @@ import { useEnvironments, useLogs } from "../topics";
 import Tabs, { Tab } from "./common/Tabs";
 import Select from "./common/Select";
 import Value from "./Value";
+import TagSet from "./TagSet";
 
 function getRunEnvironmentId(run: models.Run) {
   const initialStepId = minBy(
@@ -274,7 +274,7 @@ function getEnvironmentDescendantIds(
   parentId: string | null,
 ): string[] {
   return Object.entries(environments)
-    .filter(([_, e]) => e.baseId == parentId && e.status != "archived")
+    .filter(([_, e]) => e.baseId == parentId && e.state != "archived")
     .flatMap(([environmentId]) => [
       environmentId,
       ...getEnvironmentDescendantIds(environments, environmentId),
@@ -582,13 +582,6 @@ function ArgumentsSection({ arguments_, projectId }: ArgumentsSectionProps) {
   );
 }
 
-function interpolate(
-  items: ReactNode[],
-  separator: (i: number) => ReactNode,
-): ReactNode[] {
-  return items.flatMap((item, i) => (i > 0 ? [separator(i), item] : [item]));
-}
-
 type RequiresSectionProps = {
   requires: Record<string, string[]>;
 };
@@ -597,24 +590,7 @@ function RequiresSection({ requires }: RequiresSectionProps) {
   return (
     <div>
       <h3 className="uppercase text-sm font-bold text-slate-400">Requires</h3>
-      <ul className="list-disc ml-5 marker:text-slate-600">
-        {Object.entries(requires).map(([key, values]) => (
-          <li key={key}>
-            {interpolate(
-              values.map((v) => (
-                <span key={v} className="rounded bg-slate-300/50 px-1 text-sm">
-                  <span className="text-slate-500">{key}</span>: {v}
-                </span>
-              )),
-              (i) => (
-                <span key={i} className="text-slate-500 text-sm">
-                  {" / "}
-                </span>
-              ),
-            )}
-          </li>
-        ))}
-      </ul>
+      <TagSet tagSet={requires} />
     </div>
   );
 }

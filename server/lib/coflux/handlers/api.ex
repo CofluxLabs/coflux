@@ -71,7 +71,7 @@ defmodule Coflux.Handlers.Api do
           name: "name"
         },
         %{
-          base_id: {"baseId", &parse_environment_id(&1, false)},
+          base_id: {"baseId", &parse_numeric_id(&1, false)},
           pools: {"pools", &parse_pools/1}
         }
       )
@@ -106,11 +106,11 @@ defmodule Coflux.Handlers.Api do
         req,
         %{
           project_id: "projectId",
-          environment_id: {"environmentId", &parse_environment_id/1}
+          environment_id: {"environmentId", &parse_numeric_id/1}
         },
         %{
           name: "name",
-          base_id: {"baseId", &parse_environment_id(&1, false)},
+          base_id: {"baseId", &parse_numeric_id(&1, false)},
           pools: {"pools", &parse_pools/1}
         }
       )
@@ -145,7 +145,7 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment_id: {"environmentId", &parse_environment_id/1}
+        environment_id: {"environmentId", &parse_numeric_id/1}
       })
 
     if Enum.empty?(errors) do
@@ -168,7 +168,7 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment_id: {"environmentId", &parse_environment_id/1}
+        environment_id: {"environmentId", &parse_numeric_id/1}
       })
 
     if Enum.empty?(errors) do
@@ -191,7 +191,7 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment_id: {"environmentId", &parse_environment_id/1}
+        environment_id: {"environmentId", &parse_numeric_id/1}
       })
 
     if Enum.empty?(errors) do
@@ -206,6 +206,56 @@ defmodule Coflux.Handlers.Api do
           json_error_response(req, "bad_request",
             details: %{"environmentId" => "has_dependencies"}
           )
+
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", code: 404)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["stop_launch"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(req, %{
+        project_id: "projectId",
+        environment_name: "environmentName",
+        launch_id: {"launchId", &parse_numeric_id/1}
+      })
+
+    if Enum.empty?(errors) do
+      case Orchestration.stop_launch(
+             arguments.project_id,
+             arguments.environment_name,
+             arguments.launch_id
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
+
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", code: 404)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["resume_launch"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(req, %{
+        project_id: "projectId",
+        environment_name: "environmentName",
+        launch_id: {"launchId", &parse_numeric_id/1}
+      })
+
+    if Enum.empty?(errors) do
+      case Orchestration.resume_launch(
+             arguments.project_id,
+             arguments.environment_name,
+             arguments.launch_id
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
 
         {:error, :not_found} ->
           json_error_response(req, "not_found", code: 404)
@@ -414,7 +464,7 @@ defmodule Coflux.Handlers.Api do
     qs = :cowboy_req.parse_qs(req)
     project_id = get_query_param(qs, "projectId")
     # TODO: handle parse error
-    {:ok, environment_id} = parse_environment_id(get_query_param(qs, "environmentId"))
+    {:ok, environment_id} = parse_numeric_id(get_query_param(qs, "environmentId"))
     query = get_query_param(qs, "query")
 
     case Topical.execute(
@@ -443,7 +493,7 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp parse_environment_id(value, required \\ true) do
+  defp parse_numeric_id(value, required \\ true) do
     if not required and is_nil(value) do
       {:ok, nil}
     else

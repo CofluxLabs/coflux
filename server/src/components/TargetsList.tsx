@@ -13,40 +13,27 @@ import {
 } from "@tabler/icons-react";
 import { DateTime } from "luxon";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { sortBy } from "lodash";
 
 import * as models from "../models";
 import { buildUrl, pluralise } from "../utils";
 import useNow from "../hooks/useNow";
 import * as api from "../api";
-import { sortBy } from "lodash";
-
-function isTargetOnline(
-  agents: Record<string, Record<string, string[]>> | undefined,
-  repositoryName: string,
-  target: string,
-) {
-  return (
-    agents !== undefined &&
-    Object.values(agents).some((a) => a[repositoryName]?.includes(target))
-  );
-}
 
 type TargetProps = {
   url: string;
   icon: ComponentType<IconProps>;
   name: string;
   isActive: boolean;
-  isOnline: boolean;
 };
 
-function Target({ url, icon: Icon, name, isActive, isOnline }: TargetProps) {
+function Target({ url, icon: Icon, name, isActive }: TargetProps) {
   return (
     <li>
       <Link
         to={url}
         className={classNames(
-          "px-1 py-0.5 my-0.5 rounded-md flex gap-1 items-center",
-          isOnline ? "text-slate-900" : "text-slate-400",
+          "px-1 py-0.5 my-0.5 rounded-md flex gap-1 items-center text-slate-900",
           isActive ? "bg-slate-200" : "hover:bg-slate-200/50",
         )}
       >
@@ -191,7 +178,6 @@ type Props = {
   activeRepository: string | undefined;
   activeTarget: string | undefined;
   repositories: Record<string, models.Repository>;
-  agents: Record<string, Record<string, string[]>> | undefined;
 };
 
 export default function TargetsList({
@@ -200,7 +186,6 @@ export default function TargetsList({
   activeRepository,
   activeTarget,
   repositories,
-  agents,
 }: Props) {
   const now = useNow(500);
   return (
@@ -240,7 +225,6 @@ export default function TargetsList({
                         { environment: environmentName },
                       )}
                       isActive={isActive}
-                      isOnline={isTargetOnline(agents, repositoryName, name)}
                     />
                   );
                 })}
@@ -259,7 +243,6 @@ export default function TargetsList({
                         { environment: environmentName },
                       )}
                       isActive={isActive}
-                      isOnline={isTargetOnline(agents, repositoryName, name)}
                     />
                   );
                 })}

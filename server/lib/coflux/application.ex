@@ -28,7 +28,7 @@ defmodule Coflux.Application do
 
   defp topics() do
     [
-      Topics.Agents,
+      Topics.Sessions,
       Topics.Projects,
       Topics.Environments,
       Topics.Repositories,
@@ -37,6 +37,8 @@ defmodule Coflux.Application do
       Topics.Sensor,
       Topics.Logs,
       Topics.Repository,
+      Topics.Pools,
+      Topics.Pool,
       Topics.Search
     ]
   end

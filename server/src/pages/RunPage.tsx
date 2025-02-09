@@ -12,7 +12,7 @@ export default function RunPage() {
   const activeEnvironmentName = searchParams.get("environment") || undefined;
   const activeEnvironmentId = findKey(
     environments,
-    (e) => e.name == activeEnvironmentName && e.status != "archived",
+    (e) => e.name == activeEnvironmentName && e.state != "archived",
   );
   const run = useRun(projectId, runId, activeEnvironmentId);
   const initialStep = run && Object.values(run.steps).find((s) => !s.parentId)!;

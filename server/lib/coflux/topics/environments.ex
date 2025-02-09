@@ -24,33 +24,23 @@ defmodule Coflux.Topics.Environments do
     Topic.set(topic, [Integer.to_string(environment_id)], build_environment(environment))
   end
 
-  defp process_notification(topic, {:status, environment_id, status}) do
-    Topic.set(topic, [Integer.to_string(environment_id), :status], build_status(status))
+  defp process_notification(topic, {:state, environment_id, state}) do
+    Topic.set(topic, [Integer.to_string(environment_id), :state], build_state(state))
   end
 
   defp build_environment(environment) do
     %{
       name: environment.name,
       baseId: environment.base_id,
-      pools: Map.new(environment.pools, &build_pool/1),
-      status: build_status(environment.status)
+      state: build_state(environment.state)
     }
   end
 
-  defp build_status(status) do
-    case status do
+  defp build_state(state) do
+    case state do
       :active -> "active"
       :paused -> "paused"
       :archived -> "archived"
     end
-  end
-
-  defp build_pool({name, pool}) do
-    {name,
-     %{
-       repositories: pool.repositories,
-       provides: pool.provides,
-       launcher: if(pool.launcher, do: Atom.to_string(pool.launcher.type), else: nil)
-     }}
   end
 end

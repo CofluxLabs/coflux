@@ -2,7 +2,7 @@ import { findKey, maxBy } from "lodash";
 import { Fragment } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 
-import { useSetActiveTarget } from "../layouts/ProjectLayout";
+import { useSetActive } from "../layouts/ProjectLayout";
 import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
 import { useEnvironments, useSensor } from "../topics";
@@ -16,7 +16,7 @@ export default function SensorPage() {
   const environments = useEnvironments(projectId);
   const activeEnvironmentId = findKey(
     environments,
-    (e) => e.name == activeEnvironmentName && e.status != "archived",
+    (e) => e.name == activeEnvironmentName && e.state != "archived",
   );
   const sensor = useSensor(
     projectId,
@@ -25,7 +25,9 @@ export default function SensorPage() {
     activeEnvironmentId,
   );
   useTitlePart(`${targetName} (${repository})`);
-  useSetActiveTarget(repository, targetName);
+  useSetActive(
+    repository && targetName ? ["target", repository, targetName] : undefined,
+  );
   if (!sensor) {
     return <Loading />;
   } else {

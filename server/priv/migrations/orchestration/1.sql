@@ -92,9 +92,9 @@ CREATE TABLE environment_manifests (
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
-CREATE TABLE environment_statuses (
+CREATE TABLE environment_states (
   environment_id INTEGER NOT NULL,
-  status INTEGER NOT NULL,
+  state INTEGER NOT NULL, -- 0: active, 1: paused, 2: archived
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
 );
@@ -114,23 +114,25 @@ CREATE TABLE environment_bases (
   FOREIGN KEY (base_id) REFERENCES environments ON DELETE CASCADE
 );
 
+CREATE TABLE launchers (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL UNIQUE,
+  type INTEGER NOT NULL,
+  config TEXT NOT NULL
+);
+
 CREATE TABLE pool_definitions (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE,
+  launcher_id INTEGER,
   provides_tag_set_id INTEGER,
+  FOREIGN KEY (launcher_id) REFERENCES launchers ON DELETE RESTRICT,
   FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
 
 CREATE TABLE pool_definition_repositories (
   pool_definition_id INTEGER NOT NULL,
   pattern TEXT NOT NULL,
-  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
-);
-
-CREATE TABLE pool_definition_launchers (
-  pool_definition_id INTEGER PRIMARY KEY,
-  type INTEGER NOT NULL,
-  config TEXT NOT NULL,
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
 );
 
@@ -151,12 +153,44 @@ CREATE TABLE launches (
   FOREIGN KEY (pool_id) REFERENCES pools ON DELETE CASCADE
 );
 
--- TODO: separate table for success/failure?
 CREATE TABLE launch_results (
   launch_id INTEGER PRIMARY KEY,
-  status INTEGER NOT NULL,
-  -- TODO: metadata?
+  data BLOB,
+  error TEXT,
   created_at INTEGER NOT NULL,
+  FOREIGN KEY (launch_id) REFERENCES launches,
+  CHECK (data IS NULL OR error IS NULL)
+);
+
+-- TODO: better name?
+CREATE TABLE launch_states (
+  launch_id INTEGER NOT NULL,
+  state INTEGER NOT NULL, -- 0: active, 1: paused, 2: draining
+  -- TODO: reason? (0: user, 1: scaling down?, 2: config update?)
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (launch_id) REFERENCES launches
+);
+
+-- TODO: better name?
+CREATE TABLE launch_stops (
+  id INTEGER PRIMARY KEY,
+  launch_id INTEGER NOT NULL,
+  -- TODO: reason? (manual, scaling down, pool removed, ?)
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (launch_id) REFERENCES launches
+);
+
+CREATE TABLE launch_stop_results (
+  launch_stop_id INTEGER PRIMARY KEY,
+  error TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (launch_stop_id) REFERENCES launch_stops
+);
+
+CREATE TABLE launch_deactivations (
+  launch_id INTEGER PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  -- TODO: reason?
   FOREIGN KEY (launch_id) REFERENCES launches
 );
 

@@ -34,6 +34,9 @@ defmodule Coflux.Handlers.Agent do
           {:error, :environment_invalid} ->
             {[{:close, 4000, "environment_not_found"}], nil}
 
+          {:error, :no_launch} ->
+            {[{:close, 4000, "launch_invalid"}], nil}
+
           {:error, :no_session} ->
             {[{:close, 4000, "session_invalid"}], nil}
         end

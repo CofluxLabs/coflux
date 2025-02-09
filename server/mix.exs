@@ -28,7 +28,8 @@ defmodule Coflux.MixProject do
       {:topical, "~> 0.2"},
       {:briefly, "~> 0.5.0"},
       {:unzip, "~> 0.12.0"},
-      {:mime, "~> 2.0"}
+      {:mime, "~> 2.0"},
+      {:req, "~> 0.5"}
     ]
   end
 end

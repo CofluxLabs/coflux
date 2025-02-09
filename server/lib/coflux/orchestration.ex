@@ -25,6 +25,14 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:archive_environment, environment_name})
   end
 
+  def stop_launch(project_id, environment_name, launch_id) do
+    call_server(project_id, {:stop_launch, environment_name, launch_id})
+  end
+
+  def resume_launch(project_id, environment_name, launch_id) do
+    call_server(project_id, {:resume_launch, environment_name, launch_id})
+  end
+
   def register_manifests(project_id, environment_name, manifests) do
     call_server(project_id, {:register_manifests, environment_name, manifests})
   end
@@ -121,8 +129,16 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:subscribe_repository, repository, environment_id, pid})
   end
 
-  def subscribe_agents(project_id, environment_id, pid) do
-    call_server(project_id, {:subscribe_agents, environment_id, pid})
+  def subscribe_pools(project_id, environment_id, pid) do
+    call_server(project_id, {:subscribe_pools, environment_id, pid})
+  end
+
+  def subscribe_pool(project_id, environment_id, pool_name, pid) do
+    call_server(project_id, {:subscribe_pool, environment_id, pool_name, pid})
+  end
+
+  def subscribe_sessions(project_id, environment_id, pid) do
+    call_server(project_id, {:subscribe_sessions, environment_id, pid})
   end
 
   def subscribe_workflow(project_id, repository, target, environment_id, pid) do

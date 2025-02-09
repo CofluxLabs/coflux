@@ -5,8 +5,10 @@ export type Project = {
 export type Environment = {
   name: string;
   baseId: string | null;
-  status: "active" | "paused" | "archived";
+  state: "active" | "paused" | "archived";
 };
+
+export type TagSet = Record<string, string[]>;
 
 export type Parameter = {
   name: string;
@@ -36,7 +38,7 @@ export type Workflow = {
       delayMin?: number;
       delayMax?: number;
     } | null;
-    requires: Record<string, string[]>;
+    requires: TagSet;
   } | null;
   runs: Record<string, Pick<Run, "createdAt">>;
 };
@@ -45,7 +47,7 @@ export type Sensor = {
   parameters: Parameter[] | null;
   instruction: string | null;
   configuration: {
-    requires: Record<string, string[]>;
+    requires: TagSet;
   } | null;
   runs: Record<string, Pick<Run, "createdAt">>;
 };
@@ -188,7 +190,7 @@ export type Step = {
   // TODO: index by execution id?
   executions: Record<string, Execution>;
   arguments: Value[];
-  requires: Record<string, string[]>;
+  requires: TagSet;
 };
 
 export type Run = {
@@ -206,3 +208,30 @@ export type LogMessage = [
   string | null,
   Record<string, Value>,
 ];
+
+export type Launch = {
+  startingAt: number;
+  startedAt?: number;
+  startError?: any;
+  stoppingAt?: number;
+  stoppedAt?: number;
+  stopError?: any;
+  deactivatedAt?: number;
+  state: "active" | "paused" | "draining";
+  connected: boolean | null;
+};
+
+// TODO: rename 'PoolDefinition'?
+export type Pool = {
+  repositories: string[];
+  provides: TagSet;
+  launcher: { type: "docker"; image: string } | null;
+};
+
+export type Pools = Record<string, Pool>;
+
+export type Session = {
+  connected: boolean;
+  executions: number;
+  poolName: string | null;
+};

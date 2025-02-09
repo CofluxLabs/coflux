@@ -7,7 +7,7 @@ import { useTitlePart } from "../components/TitleContext";
 import Loading from "../components/Loading";
 import RepositoryQueue from "../components/RepositoryQueue";
 import useNow from "../hooks/useNow";
-import { useSetActiveTarget } from "../layouts/ProjectLayout";
+import { useSetActive } from "../layouts/ProjectLayout";
 import { useEnvironments, useExecutions } from "../topics";
 import { findKey } from "lodash";
 
@@ -50,11 +50,11 @@ export default function RepositoryPage() {
   const environments = useEnvironments(projectId);
   const environmentId = findKey(
     environments,
-    (e) => e.name == environmentName && e.status != "archived",
+    (e) => e.name == environmentName && e.state != "archived",
   );
   const executions = useExecutions(projectId, repositoryName, environmentId);
   useTitlePart(repositoryName);
-  useSetActiveTarget(repositoryName, undefined);
+  useSetActive(repositoryName ? ["repository", repositoryName] : undefined);
   const now = useNow(500);
   if (!executions) {
     return <Loading />;

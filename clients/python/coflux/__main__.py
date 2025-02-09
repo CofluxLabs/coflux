@@ -1,17 +1,18 @@
 import asyncio
-import click
-import types
-import typing as t
-import watchfiles
-import httpx
+import functools
 import subprocess
 import sys
 import time
-import functools
-import tomlkit
+import types
+import typing as t
 from pathlib import Path
 
-from . import Agent, config, loader, decorators, models
+import click
+import httpx
+import tomlkit
+import watchfiles
+
+from . import Agent, config, decorators, loader, models
 
 T = t.TypeVar("T")
 
@@ -450,7 +451,7 @@ def env_update(
     no_pools: bool,
 ):
     """
-    Creates an environment within the project.
+    Updates an environment within the project.
     """
     environments = _api_request(
         "GET", host, "get_environments", params={"project": project}
@@ -527,7 +528,7 @@ def env_archive(
     host: str,
 ):
     """
-    Archive an environment on the server (but retain the configuration file locally).
+    Archives an environment.
     """
     environments = _api_request(
         "GET", host, "get_environments", params={"project": project}
@@ -573,7 +574,7 @@ def env_archive(
     "--host",
     help="Host to connect to",
     envvar="COFLUX_HOST",
-    default=_load_config().project,
+    default=_load_config().server.host,
     show_default=True,
     required=True,
 )
@@ -582,7 +583,7 @@ def register(
     project: str,
     environment: str,
     host: str,
-    module_name: tuple[str],
+    module_name: tuple[str, ...],
 ) -> None:
     """
     Register repositories with the server.
@@ -675,7 +676,7 @@ def agent(
     watch: bool,
     register: bool,
     dev: bool,
-    module_name: tuple[str],
+    module_name: tuple[str, ...],
 ) -> None:
     """
     Start an agent.
@@ -749,7 +750,7 @@ def submit(
     host: str,
     repository: str,
     target: str,
-    argument: tuple[str],
+    argument: tuple[str, ...],
 ) -> None:
     """
     Submit a workflow to be run.

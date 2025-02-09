@@ -77,6 +77,30 @@ export function archiveRepository(
   });
 }
 
+export function stopLaunch(
+  projectId: string,
+  environmentName: string,
+  launchId: string,
+) {
+  return post("stop_launch", {
+    projectId,
+    environmentName,
+    launchId,
+  });
+}
+
+export function resumeLaunch(
+  projectId: string,
+  environmentName: string,
+  launchId: string,
+) {
+  return post("resume_launch", {
+    projectId,
+    environmentName,
+    launchId,
+  });
+}
+
 export function submitWorkflow(
   projectId: string,
   repository: string,

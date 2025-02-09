@@ -15,12 +15,14 @@ defmodule Coflux.Orchestration.Sessions do
               end
             end
 
+          now = current_timestamp()
+
           case insert_one(db, :sessions, %{
                  external_id: external_id,
                  environment_id: environment_id,
                  launch_id: launch_id,
                  provides_tag_set_id: provides_tag_set_id,
-                 created_at: current_timestamp()
+                 created_at: now
                }) do
             {:ok, session_id} ->
               {:ok, session_id, external_id}

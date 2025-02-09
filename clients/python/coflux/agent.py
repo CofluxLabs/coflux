@@ -1,11 +1,12 @@
 import asyncio
 import random
+import traceback
 import typing as t
 import urllib.parse
-import websockets
-import traceback
 
-from . import server, execution, models, config
+import websockets
+
+from . import config, execution, models, server
 
 
 def _parse_reference(reference: t.Any) -> models.Reference:
@@ -102,11 +103,10 @@ class Agent:
             params["session"] = self._connection.session_id
         elif self._launch_id:
             params["launch"] = self._launch_id
-        else:
-            if self._provides:
-                params["provides"] = _encode_tags(self._provides)
-            if self._concurrency:
-                params["concurrency"] = str(self._concurrency)
+        if self._provides:
+            params["provides"] = _encode_tags(self._provides)
+        if self._concurrency:
+            params["concurrency"] = str(self._concurrency)
         return params
 
     async def run(self) -> None:

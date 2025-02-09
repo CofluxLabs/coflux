@@ -20,6 +20,7 @@ import {
   WorkflowPage,
   SensorPage,
   RepositoryPage,
+  PoolPage,
 } from "./pages";
 import NewProjectDialog from "./components/NewProjectDialog";
 import TitleContext from "./components/TitleContext";
@@ -62,6 +63,7 @@ export default function App() {
                   path="repositories/:repository"
                   element={<RepositoryPage />}
                 />
+                <Route path="pools/:pool" element={<PoolPage />} />
                 <Route
                   path="workflows/:repository/:target"
                   element={<WorkflowPage />}

@@ -6,11 +6,54 @@ import {
   IconChevronCompactRight,
   IconMinusVertical,
   IconSettings,
+  IconPlayerPauseFilled,
+  IconPlayerPlayFilled,
 } from "@tabler/icons-react";
 import ProjectSelector from "./ProjectSelector";
 import EnvironmentSelector from "./EnvironmentSelector";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import SearchInput from "./SearchInput";
+import * as api from "../api";
+import * as models from "../models";
+
+type PlayPauseButtonProps = {
+  projectId: string;
+  environmentId: string;
+  environment: models.Environment;
+};
+
+function PlayPauseButton({
+  projectId,
+  environmentId,
+  environment,
+}: PlayPauseButtonProps) {
+  const { state } = environment;
+  const handleClick = useCallback(() => {
+    // TODO: handle error
+    if (state == "active") {
+      api.pauseEnvironment(projectId, environmentId);
+    } else if (state == "paused") {
+      api.resumeEnvironment(projectId, environmentId);
+    }
+  }, [environmentId, state]);
+  return state == "active" ? (
+    <button
+      className="text-slate-100 bg-cyan-800/30 rounded p-1 hover:bg-cyan-800/60"
+      title="Pause environment"
+      onClick={handleClick}
+    >
+      <IconPlayerPauseFilled size={16} />
+    </button>
+  ) : state == "paused" ? (
+    <button
+      className="text-slate-100 bg-cyan-800/30 rounded p-1 hover:bg-cyan-800/60"
+      title="Resume environment"
+      onClick={handleClick}
+    >
+      <IconPlayerPlayFilled size={16} className="animate-pulse" />
+    </button>
+  ) : null;
+}
 
 type Props = {
   projectId?: string;
@@ -25,23 +68,33 @@ export default function Header({ projectId, activeEnvironmentName }: Props) {
   const handleSettingsClick = useCallback(() => setSettingsOpen(true), []);
   const activeEnvironmentId = findKey(
     environments,
-    (e) => e.name == activeEnvironmentName && e.status != "archived",
+    (e) => e.name == activeEnvironmentName && e.state != "archived",
   );
   return (
     <>
-      <div className="flex p-3 lg:pb-4 items-center gap-1 h-14">
+      <div className="flex p-3 items-center gap-1 h-14">
         <Logo />
         {projects && (
           <Fragment>
             <IconChevronCompactRight size={16} className="text-white/40" />
             <div className="flex items-center gap-2">
               <ProjectSelector projects={projects} />
+              <IconChevronCompactRight size={16} className="text-white/40" />
               {projectId && environments && (
-                <EnvironmentSelector
-                  projectId={projectId}
-                  environments={environments}
-                  activeEnvironmentId={activeEnvironmentId}
-                />
+                <Fragment>
+                  <EnvironmentSelector
+                    projectId={projectId}
+                    environments={environments}
+                    activeEnvironmentId={activeEnvironmentId}
+                  />
+                  {activeEnvironmentId && (
+                    <PlayPauseButton
+                      projectId={projectId}
+                      environmentId={activeEnvironmentId}
+                      environment={environments[activeEnvironmentId]}
+                    />
+                  )}
+                </Fragment>
               )}
             </div>
           </Fragment>
