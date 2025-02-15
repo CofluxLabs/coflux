@@ -193,36 +193,36 @@ export default function PoolPage() {
                 agents={activeAgents}
               />
             </div>
-            <div className="p-5 max-w-[400px] min-w-[200px] w-[30%] border-l border-slate-200 flex flex-col gap-3">
-              {pool.pool && (
-                <>
-                  {pool.pool.launcher && (
-                    <div>
-                      <h3 className="uppercase text-sm font-bold text-slate-400">
-                        Launcher
-                      </h3>
+            {pool.pool && (
+              <div className="p-5 max-w-[400px] min-w-[200px] w-[30%] border-l border-slate-200 flex flex-col gap-3">
+                <div>
+                  <h3 className="uppercase text-sm font-bold text-slate-400">
+                    Repositories
+                  </h3>
+                  <ul className="list-disc ml-5 marker:text-slate-600">
+                    {pool.pool.repositories.map((repository) => (
+                      <li key={repository}>{repository}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h3 className="uppercase text-sm font-bold text-slate-400">
+                    Provides
+                  </h3>
+                  <TagSet tagSet={pool.pool.provides} />
+                </div>
+                {pool.pool.launcher && (
+                  <div>
+                    <h3 className="uppercase text-sm font-bold text-slate-400">
+                      Launcher
+                    </h3>
+                    <div className="my-1">
                       <LauncherType launcher={pool.pool.launcher} />
                     </div>
-                  )}
-                  <div>
-                    <h3 className="uppercase text-sm font-bold text-slate-400">
-                      Repositories
-                    </h3>
-                    <ul className="list-disc ml-5 marker:text-slate-600">
-                      {pool.pool.repositories.map((repository) => (
-                        <li key={repository}>{repository}</li>
-                      ))}
-                    </ul>
                   </div>
-                  <div>
-                    <h3 className="uppercase text-sm font-bold text-slate-400">
-                      Provides
-                    </h3>
-                    <TagSet tagSet={pool.pool.provides} />
-                  </div>
-                </>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </>

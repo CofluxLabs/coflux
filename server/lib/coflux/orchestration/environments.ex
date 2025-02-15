@@ -30,21 +30,39 @@ defmodule Coflux.Orchestration.Environments do
       {:ok, rows} ->
         environments =
           Enum.reduce(rows, %{}, fn {environment_id, state, name, base_id}, result ->
-            {:ok, pools} = get_environment_pools(db, environment_id)
-
             Map.put(result, environment_id, %{
               name: name,
               base_id: base_id,
-              pools:
-                Map.new(pools, fn {pool_id, pool_name, pool_definition_id} ->
-                  {:ok, pool_definition} = get_pool_definition(db, pool_definition_id)
-                  {pool_name, Map.put(pool_definition, :id, pool_id)}
-                end),
               state: decode_state(state)
             })
           end)
 
         {:ok, environments}
+    end
+  end
+
+  def get_environment_pools(db, environment_id) do
+    case query(
+           db,
+           """
+           SELECT p.id, p.name, p.pool_definition_id
+           FROM pools AS p
+           JOIN (
+               SELECT name, MAX(created_at) AS created_at
+               FROM pools
+               WHERE environment_id = ?1
+               GROUP BY name
+           ) latest ON p.name = latest.name AND p.created_at = latest.created_at
+           WHERE p.environment_id = ?1 AND p.pool_definition_id IS NOT NULL
+           """,
+           {environment_id}
+         ) do
+      {:ok, rows} ->
+        {:ok,
+         Map.new(rows, fn {pool_id, pool_name, pool_definition_id} ->
+           {:ok, pool_definition} = get_pool_definition(db, pool_definition_id)
+           {pool_name, Map.put(pool_definition, :id, pool_id)}
+         end)}
     end
   end
 
@@ -136,21 +154,19 @@ defmodule Coflux.Orchestration.Environments do
     end
   end
 
-  def create_environment(db, name, base_id, pools) do
+  def create_environment(db, name, base_id) do
     with_transaction(db, fn ->
       environment = %{
         state: :active,
         name: name,
-        base_id: base_id,
-        pools: pools || %{}
+        base_id: base_id
       }
 
       {environment, errors} =
         validate(
           environment,
           name: &validate_name(&1, db),
-          base_id: &validate_base_id(&1, db),
-          pools: &validate_pools/1
+          base_id: &validate_base_id(&1, db)
         )
 
       if Enum.any?(errors) do
@@ -161,13 +177,6 @@ defmodule Coflux.Orchestration.Environments do
         {:ok, _} = insert_environment_state(db, environment_id, environment.state, now)
         {:ok, _} = insert_environment_name(db, environment_id, environment.name, now)
         {:ok, _} = insert_environment_base(db, environment_id, environment.base_id, now)
-
-        Enum.each(environment.pools, fn {pool_name, pool} ->
-          {:ok, pool_definition_id} = get_or_create_pool_definition(db, pool)
-
-          {:ok, _} =
-            insert_environment_pool(db, environment_id, pool_name, pool_definition_id, now)
-        end)
 
         {:ok, environment_id, environment}
       end
@@ -184,20 +193,11 @@ defmodule Coflux.Orchestration.Environments do
           {:error, :not_found}
 
         {:ok, environment} ->
-          existing_pool_definition_ids =
-            case get_environment_pools(db, environment_id) do
-              {:ok, existing_pools} ->
-                Map.new(existing_pools, fn {_, pool_name, pool_definition_id} ->
-                  {pool_name, pool_definition_id}
-                end)
-            end
-
           {updates, errors} =
             validate(
               updates,
               name: &validate_name(&1, db),
-              base_id: &validate_base_id(&1, db, environment_id),
-              pools: &validate_pools/1
+              base_id: &validate_base_id(&1, db, environment_id)
             )
 
           if Enum.any?(errors) do
@@ -213,72 +213,10 @@ defmodule Coflux.Orchestration.Environments do
               {:ok, _} = insert_environment_base(db, environment_id, updates.base_id, now)
             end
 
-            {pools_updated, pools_removed} =
-              if Map.has_key?(updates, :pools) do
-                pools_updated =
-                  Enum.reduce(
-                    updates.pools,
-                    MapSet.new(),
-                    fn {pool_name, pool}, pools_updated ->
-                      {:ok, pool_definition_id} = get_or_create_pool_definition(db, pool)
-
-                      existing_pool_definition_id =
-                        Map.get(existing_pool_definition_ids, pool_name)
-
-                      if pool_definition_id != existing_pool_definition_id do
-                        {:ok, _} =
-                          insert_environment_pool(
-                            db,
-                            environment_id,
-                            pool_name,
-                            pool_definition_id,
-                            now
-                          )
-
-                        MapSet.put(pools_updated, pool_name)
-                      else
-                        pools_updated
-                      end
-                    end
-                  )
-
-                pools_removed =
-                  existing_pool_definition_ids
-                  |> Map.keys()
-                  |> Enum.reduce(
-                    MapSet.new(),
-                    fn pool_name, pools_removed ->
-                      if !Map.has_key?(updates.pools, pool_name) do
-                        {:ok, _} =
-                          insert_environment_pool(db, environment_id, pool_name, nil, now)
-
-                        MapSet.put(pools_removed, pool_name)
-                      else
-                        pools_removed
-                      end
-                    end
-                  )
-
-                {pools_updated, pools_removed}
-              else
-                {MapSet.new(), MapSet.new()}
-              end
-
             # TODO: don't return environment - move this to separate function?
             {:ok, environment} = get_environment_by_id(db, environment_id)
-            {:ok, existing_pools} = get_environment_pools(db, environment_id)
 
-            environment =
-              Map.put(
-                environment,
-                :pools,
-                Map.new(existing_pools, fn {pool_id, pool_name, pool_definition_id} ->
-                  {:ok, pool_definition} = get_pool_definition(db, pool_definition_id)
-                  {pool_name, Map.put(pool_definition, :id, pool_id)}
-                end)
-              )
-
-            {:ok, environment, pools_updated, pools_removed}
+            {:ok, environment}
           end
       end
     end)
@@ -346,6 +284,35 @@ defmodule Coflux.Orchestration.Environments do
     end)
   end
 
+  def update_pool(db, environment_id, pool_name, pool) do
+    # TODO: validate pool
+
+    with_transaction(db, fn ->
+      now = current_timestamp()
+
+      pool_definition_id =
+        if pool do
+          {:ok, pool_definition_id} = get_or_create_pool_definition(db, pool)
+          pool_definition_id
+        end
+
+      {existing_pool_id, existing_pool_definition_id} =
+        case get_latest_pool(db, environment_id, pool_name) do
+          {:ok, {existing_pool_id, existing_pool_definition_id}} ->
+            {existing_pool_id, existing_pool_definition_id}
+
+          {:ok, nil} ->
+            {nil, nil}
+        end
+
+      if pool_definition_id != existing_pool_definition_id do
+        insert_environment_pool(db, environment_id, pool_name, pool_definition_id, now)
+      else
+        {:ok, existing_pool_id}
+      end
+    end)
+  end
+
   defp is_valid_name?(name) do
     is_binary(name) && Regex.match?(~r/^[a-z0-9_-]+(\/[a-z0-9_-]+)*$/i, name)
   end
@@ -394,20 +361,6 @@ defmodule Coflux.Orchestration.Environments do
             end
           end
       end
-    end
-  end
-
-  defp validate_pools(pools) do
-    cond do
-      is_nil(pools) ->
-        :ok
-
-      is_map(pools) ->
-        # TODO: validate each
-        :ok
-
-      true ->
-        {:error, :invalid}
     end
   end
 
@@ -516,13 +469,51 @@ defmodule Coflux.Orchestration.Environments do
     end
   end
 
-  def get_launcher(db, launcher_id) do
+  defp get_launcher(db, launcher_id) do
     case query_one(db, "SELECT type, config FROM launchers WHERE id = ?1", {launcher_id}) do
       {:ok, {type, config}} ->
-        config = Jason.decode!(config, keys: :atoms)
-        type = decode_launcher_type(type)
-        {:ok, Map.put(config, :type, type)}
+        {:ok, build_launcher(type, config)}
     end
+  end
+
+  defp build_launcher(type, config) do
+    config = Jason.decode!(config, keys: :atoms)
+    type = decode_launcher_type(type)
+    Map.put(config, :type, type)
+  end
+
+  def get_launcher_for_pool(db, pool_id) do
+    case query_one(
+           db,
+           """
+           SELECT l.type, l.config
+           FROM pools AS p
+           INNER JOIN pool_definitions AS pd ON pd.id = p.pool_definition_id
+           INNER JOIN launchers AS l ON l.id = pd.launcher_id
+           WHERE p.id = ?1
+           """,
+           {pool_id}
+         ) do
+      {:ok, nil} ->
+        {:ok, nil}
+
+      {:ok, {type, config}} ->
+        {:ok, build_launcher(type, config)}
+    end
+  end
+
+  defp get_latest_pool(db, environment_id, pool_name) do
+    query_one(
+      db,
+      """
+      SELECT id, pool_definition_id
+      FROM pools
+      WHERE environment_id = ?1 AND name = ?2
+      ORDER BY created_at DESC
+      LIMIT 1
+      """,
+      {environment_id, pool_name}
+    )
   end
 
   defp get_pool_definition(db, pool_definition_id) do
@@ -555,34 +546,18 @@ defmodule Coflux.Orchestration.Environments do
             {:ok, rows} -> Enum.map(rows, fn {pattern} -> pattern end)
           end
 
+        {:ok, launcher} = get_launcher(db, launcher_id)
+
         {:ok,
          %{
            provides: provides,
            repositories: repositories,
-           launcher_id: launcher_id
+           launcher: launcher
          }}
 
       {:ok, nil} ->
         {:error, :not_found}
     end
-  end
-
-  defp get_environment_pools(db, environment_id) do
-    query(
-      db,
-      """
-      SELECT p.id, p.name, p.pool_definition_id
-      FROM pools AS p
-      JOIN (
-          SELECT name, MAX(created_at) AS created_at
-          FROM pools
-          WHERE environment_id = ?1
-          GROUP BY name
-      ) latest ON p.name = latest.name AND p.created_at = latest.created_at
-      WHERE p.environment_id = ?1 AND p.pool_definition_id IS NOT NULL
-      """,
-      {environment_id}
-    )
   end
 
   defp insert_environment_state(db, environment_id, state, created_at) do

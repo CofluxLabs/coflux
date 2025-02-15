@@ -193,7 +193,7 @@ export default function TargetsList({
       {sortBy(Object.entries(repositories), ([name, _]) => name).map(
         ([repositoryName, repository]) => (
           <div key={repositoryName} className="py-2">
-            <div className="flex gap-1 sticky top-0 bg-slate-100/90 py-1">
+            <div className="flex gap-1 sticky top-0 bg-slate-100 py-1">
               <RepositoryHeader
                 repositoryName={repositoryName}
                 repository={repository}

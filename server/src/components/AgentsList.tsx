@@ -119,8 +119,9 @@ export default function AgentsList({
   sessions,
 }: Props) {
   // TODO: remember expanded
-  const [expanded, setExpanded] = useState(false);
-  const handleToggleClick = useCallback(() => setExpanded((e) => !e), []);
+  const [expanded, setExpanded] = useState<boolean>();
+  const expand = expanded === undefined ? !!activePool : expanded;
+  const handleToggleClick = useCallback(() => setExpanded(!expand), [expand]);
   const connected =
     sessions && Object.values(sessions).filter((s) => s.connected);
   return (
@@ -131,17 +132,17 @@ export default function AgentsList({
           onClick={handleToggleClick}
         >
           <div className="flex items-center gap-1">
-            <h1 className="text-sm text-slate-500">Agents</h1>
-            {expanded ? (
+            <h1 className="text-sm text-slate-500">Pools</h1>
+            {expand ? (
               <IconChevronDown size={16} className="text-slate-400" />
             ) : (
               <IconChevronUp size={16} className="text-slate-400" />
             )}
           </div>
-          {!expanded && <Counters sessions={connected} />}
+          {!expand && <Counters sessions={connected} />}
         </button>
       </div>
-      {expanded && pools && sessions ? (
+      {expand && pools && sessions ? (
         <div className="flex-1 overflow-auto min-h-0 px-3">
           {Object.keys(pools).length || Object.keys(sessions).length ? (
             <div className="flex flex-col divide-y">

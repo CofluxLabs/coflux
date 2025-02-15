@@ -20,8 +20,12 @@ defmodule Coflux.Topics.Pools do
     {:ok, topic}
   end
 
-  defp process_notification(topic, {:pools, pools}) do
-    Topic.set(topic, [], build_value(pools))
+  defp process_notification(topic, {:pool, pool_name, pool}) do
+    if pool do
+      Topic.set(topic, [pool_name], build_pool(pool))
+    else
+      Topic.unset(topic, [], pool_name)
+    end
   end
 
   defp build_value(pools) do

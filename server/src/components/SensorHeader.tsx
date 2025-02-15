@@ -115,7 +115,7 @@ export default function SensorHeader({
       Object.values(s.executions).some((e) => !e.result),
     );
   return (
-    <div className="p-4 flex justify-between gap-2 items-start">
+    <div className="p-5 flex justify-between gap-2 items-start">
       <div className="flex flex-col gap-2">
         <div className="flex items-baseline gap-1">
           <span className="text-slate-400">{repository}</span>

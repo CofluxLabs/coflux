@@ -42,12 +42,12 @@ def _encode_provides(
     )
 
 
-def _parse_provides(argument: tuple[str] | None) -> dict[str, list[str]]:
+def _parse_provides(argument: tuple[str, ...] | None) -> dict[str, list[str]]:
     if not argument:
         return {}
     result: dict[str, list[str]] = {}
     for part in (p for a in argument for p in a.split(" ") if p):
-        key, value = part.split(":", 1)
+        key, value = part.split(":", 1) if ":" in part else (part, "true")
         result.setdefault(key, []).append(value)
     return result
 
@@ -549,6 +549,149 @@ def env_archive(
     )
     click.secho(f"Archived environment '{environment}'.", fg="green")
 
+@cli.group()
+def pool():
+    """
+    Manage pools.
+    """
+    pass
+
+@pool.command("update")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+    envvar="COFLUX_PROJECT",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-e",
+    "--environment",
+    help="Environment name",
+    envvar="COFLUX_ENVIRONMENT",
+    default=_load_config().environment,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+    envvar="COFLUX_HOST",
+    default=_load_config().server.host,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "repositories",
+    "-r",
+    "--repository",
+    help="Repositories to be hosted by agents in the pool",
+    multiple=True,
+    required=True,
+)
+@click.option(
+    "--provides",
+    help="Features that agents in the pool provide (to be matched with features that tasks require)",
+    multiple=True,
+)
+@click.option(
+    "--launcher",
+    type=click.Choice(["docker"]),
+    help="The type of launcher to use",
+)
+@click.option(
+    "--image",
+    help="The Docker image. Only valid for --launcher=docker.",
+)
+@click.argument("name")
+def pool_update(
+    project: str,
+    environment: str,
+    host: str,
+    repositories: tuple[str, ...],
+    provides: tuple[str, ...] | None,
+    launcher: t.Literal["docker"] | None,
+    image: str | None,
+    name: str
+):
+    """
+    Updates a pool.
+    """
+    provides_ = _parse_provides(provides)
+    launcher_ = None
+    if launcher == "docker":
+        launcher_ = {"type": "docker", "image": image}
+    pool = {
+        "repositories": list(repositories),
+        "provides": provides_,
+        "launcher": launcher_
+    }
+    _api_request(
+        "POST",
+        host,
+        "update_pool",
+        json={
+            "projectId": project,
+            "environmentName": environment,
+            "poolName": name,
+            "pool": pool
+        },
+    )
+
+
+@pool.command("delete")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+    envvar="COFLUX_PROJECT",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-e",
+    "--environment",
+    help="Environment name",
+    envvar="COFLUX_ENVIRONMENT",
+    default=_load_config().environment,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+    envvar="COFLUX_HOST",
+    default=_load_config().server.host,
+    show_default=True,
+    required=True,
+)
+@click.argument("name")
+def pool_delete(
+    project: str,
+    environment: str,
+    host: str,
+    name: str
+):
+    """
+    Deletes a pool.
+    """
+    _api_request(
+        "POST",
+        host,
+        "update_pool",
+        json={
+            "projectId": project,
+            "environmentName": environment,
+            "poolName": name,
+            "pool": None
+        },
+    )
+
 
 @cli.command("register")
 @click.option(
@@ -670,7 +813,7 @@ def agent(
     project: str,
     environment: str,
     host: str,
-    provides: tuple[str] | None,
+    provides: tuple[str, ...] | None,
     launch: str | None,
     concurrency: int,
     watch: bool,

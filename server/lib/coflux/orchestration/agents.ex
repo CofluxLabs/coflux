@@ -82,7 +82,6 @@ defmodule Coflux.Orchestration.Agents do
              p.id,
              p.name,
              p.environment_id,
-             pd.launcher_id,
              (SELECT ls.state
                FROM agent_states AS ls
                WHERE ls.agent_id = l.id
@@ -91,7 +90,6 @@ defmodule Coflux.Orchestration.Agents do
              r.data
            FROM agents AS l
            INNER JOIN pools AS p ON p.id = l.pool_id
-           INNER JOIN pool_definitions AS pd ON pd.id = p.pool_definition_id
            LEFT JOIN agent_launch_results AS r ON r.agent_id = l.id
            LEFT JOIN agent_stops AS s ON s.id = (
              SELECT id
@@ -110,9 +108,9 @@ defmodule Coflux.Orchestration.Agents do
         {:ok,
          Enum.map(
            rows,
-           fn {agent_id, created_at, pool_id, pool_name, environment_id, launcher_id, state, data} ->
-             {agent_id, created_at, pool_id, pool_name, environment_id, launcher_id,
-              decode_state(state), if(data, do: :erlang.binary_to_term(data))}
+           fn {agent_id, created_at, pool_id, pool_name, environment_id, state, data} ->
+             {agent_id, created_at, pool_id, pool_name, environment_id, decode_state(state),
+              if(data, do: :erlang.binary_to_term(data))}
            end
          )}
     end
@@ -123,10 +121,9 @@ defmodule Coflux.Orchestration.Agents do
     query(
       db,
       """
-      SELECT l.id, pd.launcher_id, l.created_at, r.created_at, r.error, s.created_at, sr.created_at, sr.error, d.created_at
+      SELECT l.id, l.created_at, r.created_at, r.error, s.created_at, sr.created_at, sr.error, d.created_at
       FROM agents AS l
       INNER JOIN pools AS p ON p.id = l.pool_id
-      INNER JOIN pool_definitions AS pd ON pd.id = p.pool_definition_id
       LEFT JOIN agent_launch_results AS r ON r.agent_id = l.id
       LEFT JOIN agent_stops AS s ON s.id = (
         SELECT id
