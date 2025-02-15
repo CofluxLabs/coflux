@@ -120,6 +120,7 @@ export default function ProjectLayout() {
         const defaultEnvironmentName = Object.values(environments)[0].name;
         navigate(
           buildUrl(location.pathname, { environment: defaultEnvironmentName }),
+          { replace: true },
         );
       });
     }
