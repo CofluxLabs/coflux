@@ -20,6 +20,7 @@ defmodule Coflux.Orchestration.Server do
   @sensor_rate_limit_ms 5_000
   @connected_agent_poll_interval_ms 30_000
   @disconnected_agent_poll_interval_ms 5_000
+  @agent_idle_timeout_ms 5_000
 
   defmodule State do
     defstruct project_id: nil,
@@ -281,7 +282,8 @@ defmodule Coflux.Orchestration.Server do
           state =
             state.agents
             |> Enum.reduce(state, fn {agent_id, agent}, state ->
-              if agent.pool_name == pool_name do
+              if agent.state == :active && agent.pool_name == pool_name do
+                # TODO: only if pool has meaningfully changed?
                 update_agent_state(state, agent_id, :draining, environment_id, pool_name)
               else
                 state
@@ -437,7 +439,7 @@ defmodule Coflux.Orchestration.Server do
     with {:ok, environment_id, _} <- lookup_environment_by_name(state, environment_name),
          {:ok, agent} <- lookup_agent(state, agent_id, environment_id) do
       case Sessions.start_session(state.db, environment_id, provides, agent_id) do
-        {:ok, session_id, external_session_id} ->
+        {:ok, session_id, external_session_id, now} ->
           ref = Process.monitor(pid)
 
           session = %{
@@ -451,7 +453,8 @@ defmodule Coflux.Orchestration.Server do
             concurrency: concurrency,
             environment_id: environment_id,
             provides: provides,
-            agent_id: agent_id
+            agent_id: agent_id,
+            last_idle_at: now
           }
 
           state =
@@ -876,6 +879,8 @@ defmodule Coflux.Orchestration.Server do
   def handle_call({:notify_terminated, execution_ids}, _from, state) do
     # TODO: record in database?
 
+    now = System.os_time(:millisecond)
+
     state =
       execution_ids
       |> Enum.reduce(state, fn execution_id, state ->
@@ -883,9 +888,19 @@ defmodule Coflux.Orchestration.Server do
           {:ok, session_id} ->
             state =
               update_in(state.sessions[session_id], fn session ->
-                session
-                |> Map.update!(:starting, &MapSet.delete(&1, execution_id))
-                |> Map.update!(:executing, &MapSet.delete(&1, execution_id))
+                starting = MapSet.delete(session.starting, execution_id)
+                executing = MapSet.delete(session.executing, execution_id)
+
+                last_idle_at =
+                  if Enum.empty?(starting) && Enum.empty?(executing),
+                    do: now,
+                    else: session.last_idle_at
+
+                Map.merge(session, %{
+                  starting: starting,
+                  executing: executing,
+                  last_idle_at: last_idle_at
+                })
               end)
 
             session = Map.fetch!(state.sessions, session_id)
@@ -1671,8 +1686,6 @@ defmodule Coflux.Orchestration.Server do
             Map.update(latest, agent.pool_id, agent.created_at, &max(&1, agent.created_at))
           end)
 
-        # now = System.os_time(:millisecond)
-
         unassigned
         |> Enum.group_by(& &1.environment_id)
         |> Enum.reduce(state, fn {environment_id, executions}, state ->
@@ -1825,18 +1838,21 @@ defmodule Coflux.Orchestration.Server do
 
     state =
       state.agents
-      |> Enum.filter(fn {_agent_id, agent} ->
-        # TODO: better way to check launched than checking existence of data?
-        if agent.state == :active && agent.data do
-          session = Map.get(state.sessions, agent.session_id)
-          # TODO: better metric for scaling down?
-          # TODO: consider min pool size
-          # TODO: consider idle timeout
-          # TODO: don't stop agent before it's had a chance to start executing
-          if !session || (Enum.empty?(session.starting) && Enum.empty?(session.executing)) do
-            true
+      |> Enum.group_by(fn {_, agent} -> agent.pool_name end)
+      |> Enum.flat_map(fn {_pool_name, agents} ->
+        # TODO: consider min/max pool size
+        Enum.filter(agents, fn {_agent_id, agent} ->
+          # TODO: better way to check launched than checking existence of data?
+          if agent.state == :active && agent.data do
+            session = Map.fetch!(state.sessions, agent.session_id)
+            idle_time = now - session.last_idle_at
+
+            if Enum.empty?(session.starting) && Enum.empty?(session.executing) &&
+                 idle_time >= @agent_idle_timeout_ms do
+              true
+            end
           end
-        end
+        end)
       end)
       |> Enum.reduce(state, fn {agent_id, agent}, state ->
         update_agent_state(state, agent_id, :draining, agent.environment_id, agent.pool_name)
@@ -1845,13 +1861,13 @@ defmodule Coflux.Orchestration.Server do
     state =
       state.agents
       |> Enum.filter(fn {_agent_id, agent} ->
-        if agent.state == :draining && agent.data && !agent.stop_id do
-          if agent.session_id do
+        if agent.session_id do
+          if agent.state == :draining && agent.data && !agent.stop_id do
             session = Map.fetch!(state.sessions, agent.session_id)
             Enum.empty?(session.starting) && Enum.empty?(session.executing)
-          else
-            true
           end
+        else
+          !is_nil(agent.data)
         end
       end)
       |> Enum.reduce(state, fn {agent_id, agent}, state ->

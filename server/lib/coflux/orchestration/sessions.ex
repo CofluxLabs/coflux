@@ -25,7 +25,7 @@ defmodule Coflux.Orchestration.Sessions do
                  created_at: now
                }) do
             {:ok, session_id} ->
-              {:ok, session_id, external_id}
+              {:ok, session_id, external_id, now}
           end
       end
     end)
