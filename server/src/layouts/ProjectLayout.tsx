@@ -4,6 +4,8 @@ import {
   useOutletContext,
   useParams,
   useSearchParams,
+  useLocation,
+  useNavigate,
 } from "react-router-dom";
 import { IconInfoSquareRounded } from "@tabler/icons-react";
 import { findKey } from "lodash";
@@ -19,6 +21,8 @@ import {
 } from "../topics";
 import Header from "../components/Header";
 import AgentsList from "../components/AgentsList";
+import * as api from "../api";
+import { buildUrl } from "../utils";
 
 type SidebarProps = {
   projectId: string;
@@ -103,9 +107,23 @@ export default function ProjectLayout() {
   const [active, setActive] = useState<Active>();
   const projects = useProjects();
   const project = (projectId && projects && projects[projectId]) || undefined;
+  const navigate = useNavigate();
+  const location = useLocation();
   useTitlePart(
     project && environmentName && `${project.name} (${environmentName})`,
   );
+  useEffect(() => {
+    if (projectId && !environmentName) {
+      // TODO: handle error
+      api.getEnvironments(projectId).then((environments) => {
+        // TODO: better way to choose environment
+        const defaultEnvironmentName = Object.values(environments)[0].name;
+        navigate(
+          buildUrl(location.pathname, { environment: defaultEnvironmentName }),
+        );
+      });
+    }
+  }, [navigate, location, projectId, environmentName]);
   return (
     <Fragment>
       <Header projectId={projectId!} activeEnvironmentName={environmentName} />

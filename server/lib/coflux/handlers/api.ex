@@ -486,7 +486,7 @@ defmodule Coflux.Handlers.Api do
 
   defp handle(req, "GET", ["search"]) do
     qs = :cowboy_req.parse_qs(req)
-    project_id = get_query_param(qs, "projectId")
+    project_id = get_query_param(qs, "project")
     # TODO: handle parse error
     {:ok, environment_id} = parse_numeric_id(get_query_param(qs, "environmentId"))
     query = get_query_param(qs, "query")

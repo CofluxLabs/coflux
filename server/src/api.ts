@@ -1,4 +1,5 @@
 import { toPairs } from "lodash";
+import * as models from "./models";
 
 export class RequestError extends Error {
   readonly code: string;
@@ -174,5 +175,11 @@ export function search(
   environmentId: string,
   query: string,
 ) {
-  return get("search", { projectId, environmentId, query });
+  return get("search", { project: projectId, environmentId, query });
+}
+
+export function getEnvironments(
+  projectId: string,
+): Promise<Record<string, Pick<models.Environment, "name" | "baseId">>> {
+  return get("get_environments", { project: projectId });
 }
