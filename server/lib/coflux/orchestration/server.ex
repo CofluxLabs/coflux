@@ -263,7 +263,14 @@ defmodule Coflux.Orchestration.Server do
           end
 
         state =
-          state
+          state.agents
+          |> Enum.reduce(state, fn {agent_id, agent}, state ->
+            if agent.environment_id == environment_id && agent.state == :active do
+              update_agent_state(state, agent_id, :draining, environment_id, agent.pool_name)
+            else
+              state
+            end
+          end)
           |> put_in([Access.key(:environments), environment_id, Access.key(:state)], :archived)
           |> notify_listeners(:environments, {:state, environment_id, :archived})
           |> flush_notifications()
@@ -289,7 +296,7 @@ defmodule Coflux.Orchestration.Server do
                 state
               end
             end)
-            |> update_in([Access.key(:pools), environment_id], fn pools ->
+            |> update_in([Access.key(:pools), Access.key(environment_id, %{})], fn pools ->
               if pool do
                 Map.put(pools, pool_name, Map.put(pool, :id, pool_id))
               else
@@ -1242,7 +1249,7 @@ defmodule Coflux.Orchestration.Server do
          {:ok, sensor} <-
            Manifests.get_latest_sensor(state.db, environment_id, repository, target_name),
          {:ok, instruction} <-
-           if(sensor.instruction_id,
+           if(sensor && sensor.instruction_id,
              do: Manifests.get_instruction(state.db, sensor.instruction_id),
              else: {:ok, nil}
            ),
@@ -1828,7 +1835,7 @@ defmodule Coflux.Orchestration.Server do
         # TODO: consider min/max pool size
         Enum.filter(agents, fn {_agent_id, agent} ->
           # TODO: better way to check launched than checking existence of data?
-          if agent.state == :active && agent.data do
+          if agent.state == :active && agent.session_id && agent.data do
             session = Map.fetch!(state.sessions, agent.session_id)
             idle_time = now - session.last_idle_at
 

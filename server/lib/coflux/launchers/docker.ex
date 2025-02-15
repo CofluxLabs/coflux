@@ -97,9 +97,9 @@ defmodule Coflux.DockerLauncher do
         unix_socket: "/var/run/docker.sock"
       )
 
-    # TODO: handle container already stopped (304)?
     case response.status do
       204 -> :ok
+      304 -> :ok
       404 -> {:error, :no_such_container}
       500 -> {:error, :server_error}
     end
