@@ -42,7 +42,7 @@ defmodule Coflux.Orchestration.Server do
               # ref -> {pid, session_id}
               connections: %{},
 
-              # session_id -> %{external_id, connection, targets, queue, starting, executing, expire_timer, concurrency, environment_id, provides, agent_id}
+              # session_id -> %{external_id, connection, targets, queue, starting, executing, expire_timer, concurrency, environment_id, provides, agent_id, last_idle_at}
               sessions: %{},
 
               # external_id -> session_id
@@ -1743,14 +1743,7 @@ defmodule Coflux.Orchestration.Server do
 
                     state =
                       if error do
-                        {:ok, deactivated_at} =
-                          Agents.create_agent_deactivation(state.db, agent_id)
-
-                        notify_listeners(
-                          state,
-                          {:pool, environment_id, pool_name},
-                          {:agent_deactivated, agent_id, deactivated_at}
-                        )
+                        deactivate_agent(state, agent_id)
                       else
                         state
                       end
@@ -1818,15 +1811,7 @@ defmodule Coflux.Orchestration.Server do
               state
 
             {:ok, {:ok, false}} ->
-              {:ok, deactivated_at} = Agents.create_agent_deactivation(state.db, agent_id)
-
-              {agent, state} = pop_in(state, [Access.key(:agents), agent_id])
-
-              notify_listeners(
-                state,
-                {:pool, agent.environment_id, agent.pool_name},
-                {:agent_deactivated, agent_id, deactivated_at}
-              )
+              deactivate_agent(state, agent_id)
 
             :error ->
               # TODO: ?
@@ -1888,15 +1873,11 @@ defmodule Coflux.Orchestration.Server do
               {:ok, stopped_at} =
                 Agents.create_agent_stop_result(state.db, agent_stop_id, nil)
 
-              state =
-                state
-                |> notify_listeners(
-                  {:pool, agent.environment_id, agent.pool_name},
-                  {:agent_stop_result, agent_id, stopped_at, nil}
-                )
-
-              # TODO: ?
               state
+              |> notify_listeners(
+                {:pool, agent.environment_id, agent.pool_name},
+                {:agent_stop_result, agent_id, stopped_at, nil}
+              )
 
             :error ->
               # TODO: get error details
@@ -1913,7 +1894,6 @@ defmodule Coflux.Orchestration.Server do
                 )
 
               # TODO: unset 'stop_id' of agent in state? (so it can be retried? but somehow limit rate?)
-              # TODO: ?
               state
           end
         end)
@@ -1976,8 +1956,6 @@ defmodule Coflux.Orchestration.Server do
               state =
                 if session.agent_id do
                   pool_name = Map.fetch!(state.agents, session.agent_id).pool_name
-
-                  # TODO: update state.agents to unset session_id?
 
                   notify_listeners(
                     state,
@@ -2146,8 +2124,9 @@ defmodule Coflux.Orchestration.Server do
         case Map.fetch(state.agents, session.agent_id) do
           {:ok, agent} ->
             # TODO: check that agent environment matches session environment?
-            notify_listeners(
-              state,
+            state
+            |> put_in([Access.key(:agents), session.agent_id, :session_id], nil)
+            |> notify_listeners(
               {:pool, agent.environment_id, agent.pool_name},
               {:agent_connected, session.agent_id, false}
             )
@@ -2862,6 +2841,18 @@ defmodule Coflux.Orchestration.Server do
     |> notify_listeners(
       {:pool, environment_id, pool_name},
       {:agent_state, agent_id, agent_state}
+    )
+  end
+
+  defp deactivate_agent(state, agent_id) do
+    {:ok, deactivated_at} = Agents.create_agent_deactivation(state.db, agent_id)
+
+    {agent, state} = pop_in(state, [Access.key(:agents), agent_id])
+
+    notify_listeners(
+      state,
+      {:pool, agent.environment_id, agent.pool_name},
+      {:agent_deactivated, agent_id, deactivated_at}
     )
   end
 end
