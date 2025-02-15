@@ -260,10 +260,6 @@ def _load_config() -> config.Config:
     return config.Config.model_validate(_read_config(path).unwrap())
 
 
-def _load_pools_config(file: t.TextIO) -> config.PoolsConfig:
-    return config.PoolsConfig.model_validate(tomlkit.load(file).unwrap())
-
-
 @cli.command("configure")
 @click.option(
     "-p",
@@ -344,17 +340,11 @@ def env():
     "--base",
     help="The base environment to inherit from",
 )
-@click.option(
-    "--pools-config",
-    help="Path to pools configuration file",
-    type=click.File(),
-)
 @click.argument("name")
 def env_create(
     project: str,
     host: str,
     base: str | None,
-    pools_config: t.TextIO,
     name: str,
 ):
     """
@@ -370,10 +360,6 @@ def env_create(
         if not base_id:
             click.BadOptionUsage("base", "Not recognised")
 
-    pools = None
-    if pools_config:
-        pools = _load_pools_config(pools_config)
-
     # TODO: handle response
     _api_request(
         "POST",
@@ -383,7 +369,6 @@ def env_create(
             "projectId": project,
             "name": name,
             "baseId": base_id,
-            "pools": pools.model_dump() if pools else None,
         },
     )
     click.secho(f"Created environment '{name}'.", fg="green")
@@ -430,16 +415,6 @@ def env_create(
     is_flag=True,
     help="Unset the base environment",
 )
-@click.option(
-    "--pools-config",
-    help="Path to pools configuration file",
-    type=click.File(),
-)
-@click.option(
-    "--no-pools",
-    is_flag=True,
-    help="Clear all pools from the environment",
-)
 def env_update(
     project: str,
     environment: str,
@@ -447,8 +422,6 @@ def env_update(
     name: str | None,
     base: str | None,
     no_base: bool,
-    pools_config: t.TextIO,
-    no_pools: bool,
 ):
     """
     Updates an environment within the project.
@@ -467,10 +440,6 @@ def env_update(
         if not base_id:
             raise click.BadOptionUsage("base", "Not recognised")
 
-    pools = None
-    if pools_config:
-        pools = _load_pools_config(pools_config)
-
     payload = {
         "projectId": project,
         "environmentId": environment_id,
@@ -482,11 +451,6 @@ def env_update(
         payload["baseId"] = base_id
     elif no_base is True:
         payload["baseId"] = None
-
-    if pools is not None:
-        payload["pools"] = pools.model_dump()
-    elif no_pools is True:
-        payload["pools"] = None
 
     # TODO: handle response
     _api_request("POST", host, "update_environment", json=payload)
@@ -550,13 +514,13 @@ def env_archive(
     click.secho(f"Archived environment '{environment}'.", fg="green")
 
 @cli.group()
-def pool():
+def pools():
     """
     Manage pools.
     """
     pass
 
-@pool.command("update")
+@pools.command("update")
 @click.option(
     "-p",
     "--project",
@@ -607,7 +571,7 @@ def pool():
     help="The Docker image. Only valid for --launcher=docker.",
 )
 @click.argument("name")
-def pool_update(
+def pools_update(
     project: str,
     environment: str,
     host: str,
@@ -642,7 +606,7 @@ def pool_update(
     )
 
 
-@pool.command("delete")
+@pools.command("delete")
 @click.option(
     "-p",
     "--project",
@@ -671,7 +635,7 @@ def pool_update(
     required=True,
 )
 @click.argument("name")
-def pool_delete(
+def pools_delete(
     project: str,
     environment: str,
     host: str,
