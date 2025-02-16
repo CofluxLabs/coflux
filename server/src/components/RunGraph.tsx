@@ -445,7 +445,7 @@ export default function RunGraph({
   useEffect(() => {
     buildGraph(run, runId, activeStepId, activeAttempt)
       .then(setGraph)
-      .catch(() => setGraph(undefined));
+      .catch(() => setGraph(undefined)); // TODO: handle error
   }, [run, runId, activeStepId, activeAttempt]);
   const graphWidth = graph?.width || 0;
   const graphHeight = graph?.height || 0;

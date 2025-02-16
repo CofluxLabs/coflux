@@ -95,7 +95,9 @@ function UnmanagedItem({ sessions }: UnmanagedItemProps) {
     <li>
       <div className="flex gap-1 items-center p-1 rounded-md my-0.5">
         <span className="flex-1 flex justify-between">
-          <span className="text-sm text-slate-400">Unmanaged</span>
+          <span className="text-sm text-slate-600 italic">
+            Unmanaged agents
+          </span>
           <Counters sessions={sessions} />
         </span>
       </div>
