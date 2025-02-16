@@ -124,7 +124,7 @@ export default function RunTimeline({ runId, run }: Props) {
     (id) => run.steps[id].createdAt,
   );
   return (
-    <div className="p-4">
+    <div className="p-5">
       {stepIds.map((stepId) => {
         const step = run.steps[stepId];
         const latestAttempt = max(

@@ -2,7 +2,7 @@ import { findKey, maxBy } from "lodash";
 import { Fragment } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 
-import { useSetActiveTarget } from "../layouts/ProjectLayout";
+import { useSetActive } from "../layouts/ProjectLayout";
 import { buildUrl } from "../utils";
 import Loading from "../components/Loading";
 import { useEnvironments, useSensor } from "../topics";
@@ -16,7 +16,7 @@ export default function SensorPage() {
   const environments = useEnvironments(projectId);
   const activeEnvironmentId = findKey(
     environments,
-    (e) => e.name == activeEnvironmentName && e.status != "archived",
+    (e) => e.name == activeEnvironmentName && e.state != "archived",
   );
   const sensor = useSensor(
     projectId,
@@ -25,7 +25,9 @@ export default function SensorPage() {
     activeEnvironmentId,
   );
   useTitlePart(`${targetName} (${repository})`);
-  useSetActiveTarget(repository, targetName);
+  useSetActive(
+    repository && targetName ? ["target", repository, targetName] : undefined,
+  );
   if (!sensor) {
     return <Loading />;
   } else {
@@ -52,10 +54,11 @@ export default function SensorPage() {
             activeEnvironmentId={activeEnvironmentId}
             activeEnvironmentName={activeEnvironmentName}
           />
-          <div className="p-4 flex-1">
-            <h1 className="text-slate-400 text-xl text-center">
-              This sensor hasn't been run yet
-            </h1>
+          <div className="p-5 flex-1 flex flex-col gap-2 items-center justify-center text-slate-300">
+            <h1 className="text-2xl">This sensor hasn't been run yet</h1>
+            <p className="text-sm">
+              Click the 'start' button above to start an instance of this sensor
+            </p>
           </div>
         </Fragment>
       );

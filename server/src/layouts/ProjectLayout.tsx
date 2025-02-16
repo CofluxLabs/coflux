@@ -1,203 +1,139 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   Outlet,
-  useNavigate,
   useOutletContext,
   useParams,
   useSearchParams,
+  useLocation,
+  useNavigate,
 } from "react-router-dom";
-import { useSocket } from "@topical/react";
-import {
-  IconAlertCircle,
-  IconAlertTriangle,
-  IconCircle,
-  IconCircleCheck,
-  IconInfoSquareRounded,
-  IconPlayerPause,
-  IconPlayerPlay,
-} from "@tabler/icons-react";
+import { IconInfoSquareRounded } from "@tabler/icons-react";
 import { findKey } from "lodash";
 
-import * as models from "../models";
-import * as api from "../api";
 import TargetsList from "../components/TargetsList";
-import { pluralise } from "../utils";
 import { useTitlePart } from "../components/TitleContext";
 import {
-  useAgents,
   useEnvironments,
+  usePools,
   useProjects,
   useRepositories,
+  useSessions,
 } from "../topics";
 import Header from "../components/Header";
+import AgentsList from "../components/AgentsList";
+import * as api from "../api";
+import { buildUrl } from "../utils";
 
-type PlayPauseButtonProps = {
+type SidebarProps = {
   projectId: string;
-  environmentId: string;
-  environment: models.Environment;
+  environmentName: string;
+  active: Active;
 };
 
-function PlayPauseButton({
-  projectId,
-  environmentId,
-  environment,
-}: PlayPauseButtonProps) {
-  const { status } = environment;
-  const handleClick = useCallback(() => {
-    // TODO: handle error
-    if (status == "active") {
-      api.pauseEnvironment(projectId, environmentId);
-    } else if (status == "paused") {
-      api.resumeEnvironment(projectId, environmentId);
-    }
-  }, [environmentId, status]);
-  return status == "active" ? (
-    <button
-      className="text-slate-700 bg-slate-200 rounded p-0.5 hover:bg-slate-300/60"
-      title="Pause environment"
-      onClick={handleClick}
-    >
-      <IconPlayerPause strokeWidth={1.5} size={20} />
-    </button>
-  ) : status == "paused" ? (
-    <button
-      className="text-slate-700 bg-slate-200 rounded p-0.5 animate-pulse hover:bg-slate-300/60"
-      title="Resume environment"
-      onClick={handleClick}
-    >
-      <IconPlayerPlay strokeWidth={1.5} size={20} />
-    </button>
-  ) : null;
-}
-
-type ConnectionStatusProps = {
-  projectId: string;
-  environmentId: string | undefined;
-  agents: Record<string, Record<string, string[]>> | undefined;
-  environment: models.Environment | undefined;
-};
-
-function ConnectionStatus({
-  projectId,
-  agents,
-  environmentId,
-  environment,
-}: ConnectionStatusProps) {
-  const [_socket, status] = useSocket();
-  const count = agents && Object.keys(agents).length;
+function Sidebar({ projectId, environmentName, active }: SidebarProps) {
+  const environments = useEnvironments(projectId);
+  const environmentId = findKey(
+    environments,
+    (e) => e.name == environmentName && e.state != "archived",
+  );
+  const repositories = useRepositories(projectId, environmentId);
+  const pools = usePools(projectId, environmentId);
+  const sessions = useSessions(projectId, environmentId);
   return (
-    <div className="p-3 flex items-center border-t border-slate-200">
-      <span className="ml-1 text-slate-700 flex-1 flex items-center gap-1 text-sm">
-        {status == "connecting" ? (
-          <Fragment>Connecting...</Fragment>
-        ) : status == "connected" ? (
-          count ? (
-            <Fragment>
-              <IconCircleCheck size={18} className="text-green-500" />
-              {pluralise(count, "agent")} online
-            </Fragment>
-          ) : agents ? (
-            <Fragment>
-              <IconAlertCircle size={18} className="text-slate-500" />
-              No agents online
-            </Fragment>
-          ) : (
-            <Fragment>
-              <IconCircle size={18} className="text-slate-500" />
-              Connected
-            </Fragment>
-          )
-        ) : (
-          <Fragment>
-            <IconAlertTriangle size={18} className="text-yellow-500" />
-            Disconnected
-          </Fragment>
-        )}
-      </span>
-      {environmentId && environment && (
-        <PlayPauseButton
-          projectId={projectId}
-          environmentId={environmentId}
-          environment={environment}
-        />
-      )}
+    <div className="w-[30%] max-w-[350px] min-w-[200px] bg-slate-100 text-slate-400 border-r border-slate-200 flex-none flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 divide-y divide-slate-200">
+          <div className="flex-1 flex flex-col overflow-auto">
+            {repositories ? (
+              Object.keys(repositories).length ? (
+                <div className="flex-1 overflow-auto min-h-0">
+                  <TargetsList
+                    projectId={projectId}
+                    environmentName={environmentName}
+                    activeRepository={
+                      active?.[0] == "repository" || active?.[0] == "target"
+                        ? active?.[1]
+                        : undefined
+                    }
+                    activeTarget={
+                      active?.[0] == "target" ? active?.[2] : undefined
+                    }
+                    repositories={repositories}
+                  />
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col gap-1 justify-center items-center">
+                  <IconInfoSquareRounded
+                    size={32}
+                    strokeWidth={1.5}
+                    className="text-slate-300/50"
+                  />
+                  <p className="text-slate-300 text-lg px-2 max-w-48 text-center leading-tight">
+                    No workflows registered
+                  </p>
+                </div>
+              )
+            ) : null}
+          </div>
+          <div className="flex flex-col max-h-[1/3] overflow-auto">
+            <AgentsList
+              pools={pools}
+              projectId={projectId}
+              environmentName={environmentName}
+              activePool={active?.[0] == "pool" ? active?.[1] : undefined}
+              sessions={sessions}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
+type Active =
+  | ["repository", string]
+  | ["target", string, string]
+  | ["pool", string]
+  | undefined;
+
 type OutletContext = {
-  setActive: (active: [string, string | undefined] | undefined) => void;
+  setActive: (active: Active) => void;
 };
 
 export default function ProjectLayout() {
   const { project: projectId } = useParams();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const environmentName = searchParams.get("environment") || undefined;
-  const [active, setActive] = useState<
-    [string, string | undefined] | undefined
-  >();
+  const [active, setActive] = useState<Active>();
   const projects = useProjects();
-  const environments = useEnvironments(projectId);
-  const environmentId = findKey(
-    environments,
-    (e) => e.name == environmentName && e.status != "archived",
-  );
-  const environment = environmentId ? environments?.[environmentId] : undefined;
-  const repositories = useRepositories(projectId, environmentId);
-  const agents = useAgents(projectId, environmentId);
   const project = (projectId && projects && projects[projectId]) || undefined;
-  const defaultEnvironmentName =
-    environments &&
-    Object.values(environments).find((e) => e.status != "archived")?.name;
-  useEffect(() => {
-    if (projectId && !environmentName && defaultEnvironmentName) {
-      // TODO: retain current url?
-      navigate(`/projects/${projectId}?environment=${defaultEnvironmentName}`, {
-        replace: true,
-      });
-    }
-  }, [navigate, projectId, environmentName, defaultEnvironmentName]);
+  const navigate = useNavigate();
+  const location = useLocation();
   useTitlePart(
     project && environmentName && `${project.name} (${environmentName})`,
   );
+  useEffect(() => {
+    if (projectId && !environmentName) {
+      // TODO: handle error
+      api.getEnvironments(projectId).then((environments) => {
+        // TODO: better way to choose environment
+        const defaultEnvironmentName = Object.values(environments)[0].name;
+        navigate(
+          buildUrl(location.pathname, { environment: defaultEnvironmentName }),
+          { replace: true },
+        );
+      });
+    }
+  }, [navigate, location, projectId, environmentName]);
   return (
     <Fragment>
       <Header projectId={projectId!} activeEnvironmentName={environmentName} />
-      <div className="flex-1 flex min-h-0">
-        {repositories && (
-          <div className="w-64 bg-slate-100 text-slate-100 border-r border-slate-200 flex-none flex flex-col">
-            {Object.keys(repositories).length ? (
-              <div className="flex-1 overflow-auto min-h-0">
-                <TargetsList
-                  projectId={projectId!}
-                  environmentName={environmentName!}
-                  activeRepository={active?.[0]}
-                  activeTarget={active?.[1]}
-                  repositories={repositories}
-                  agents={agents}
-                />
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col gap-1 justify-center items-center">
-                <IconInfoSquareRounded
-                  size={32}
-                  strokeWidth={1.5}
-                  className="text-slate-300/50"
-                />
-                <p className="text-slate-300 text-lg px-2 max-w-48 text-center leading-tight">
-                  No repositories registered
-                </p>
-              </div>
-            )}
-            <ConnectionStatus
-              projectId={projectId!}
-              environmentId={environmentId}
-              agents={agents}
-              environment={environment}
-            />
-          </div>
-        )}
+      <div className="flex-1 flex min-h-0 bg-white overflow-hidden">
+        <Sidebar
+          projectId={projectId!}
+          environmentName={environmentName!}
+          active={active}
+        />
         <div className="flex-1 flex flex-col min-w-0">
           <Outlet context={{ setActive }} />
         </div>
@@ -206,13 +142,10 @@ export default function ProjectLayout() {
   );
 }
 
-export function useSetActiveTarget(
-  repository: string | undefined,
-  target: string | undefined,
-) {
+export function useSetActive(active: Active) {
   const { setActive } = useOutletContext<OutletContext>();
   useEffect(() => {
-    setActive(repository ? [repository, target] : undefined);
+    setActive(active);
     return () => setActive(undefined);
-  }, [setActive, repository, target]);
+  }, [setActive, JSON.stringify(active)]);
 }

@@ -13,7 +13,7 @@ import { findKey } from "lodash";
 
 import * as models from "../models";
 import * as api from "../api";
-import { useSetActiveTarget } from "./ProjectLayout";
+import { useSetActive } from "./ProjectLayout";
 import StepDetail from "../components/StepDetail";
 import usePrevious from "../hooks/usePrevious";
 import { buildUrl } from "../utils";
@@ -41,7 +41,7 @@ function Tab({ page, children }: TabProps) {
       end={true}
       className={({ isActive }) =>
         classNames(
-          "px-2 py-1 text-sm",
+          "px-2 py-2 text-sm",
           isActive && "inline-block border-b-2 border-cyan-500 font-semibold",
         )
       }
@@ -146,14 +146,16 @@ export default function RunLayout() {
   const environments = useEnvironments(projectId);
   const activeEnvironmentId = findKey(
     environments,
-    (e) => e.name == activeEnvironmentName && e.status != "archived",
+    (e) => e.name == activeEnvironmentName && e.state != "archived",
   );
   const run = useRun(projectId, runId, activeEnvironmentId);
   const initialStep = run && Object.values(run.steps).find((s) => !s.parentId);
   useTitlePart(
     initialStep && `${initialStep.target} (${initialStep.repository})`,
   );
-  useSetActiveTarget(initialStep?.repository, initialStep?.target);
+  useSetActive(
+    initialStep && ["target", initialStep.repository, initialStep.target],
+  );
   const { ref, width, height } = useResizeObserver<HTMLDivElement>();
   const detailWidth = Math.min(Math.max(window.innerWidth / 3, 400), 600);
   if (!run || !initialStep) {
@@ -185,7 +187,7 @@ export default function RunLayout() {
             />
           ) : null}
           <div className="grow flex flex-col">
-            <div className="border-b px-4">
+            <div className="border-b px-5">
               {initialStep.type == "sensor" && (
                 <Tab page="children">Children</Tab>
               )}

@@ -11,7 +11,7 @@ defmodule Coflux.Application do
       [
         {Projects, name: Coflux.ProjectsServer},
         # TODO: separate launch supervisor per project? (and specify max_children?)
-        {Task.Supervisor, name: Coflux.LaunchSupervisor},
+        {Task.Supervisor, name: Coflux.LauncherSupervisor},
         Orchestration.Supervisor,
         {Topical, name: Coflux.TopicalRegistry, topics: topics()},
         {Coflux.Web, port: port}
@@ -28,7 +28,7 @@ defmodule Coflux.Application do
 
   defp topics() do
     [
-      Topics.Agents,
+      Topics.Sessions,
       Topics.Projects,
       Topics.Environments,
       Topics.Repositories,
@@ -37,6 +37,8 @@ defmodule Coflux.Application do
       Topics.Sensor,
       Topics.Logs,
       Topics.Repository,
+      Topics.Pools,
+      Topics.Pool,
       Topics.Search
     ]
   end

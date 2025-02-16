@@ -92,9 +92,9 @@ CREATE TABLE environment_manifests (
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
 );
 
-CREATE TABLE environment_statuses (
+CREATE TABLE environment_states (
   environment_id INTEGER NOT NULL,
-  status INTEGER NOT NULL,
+  state INTEGER NOT NULL, -- 0: active, 1: paused, 2: archived
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
 );
@@ -114,23 +114,25 @@ CREATE TABLE environment_bases (
   FOREIGN KEY (base_id) REFERENCES environments ON DELETE CASCADE
 );
 
+CREATE TABLE launchers (
+  id INTEGER PRIMARY KEY,
+  hash BLOB NOT NULL UNIQUE,
+  type INTEGER NOT NULL,
+  config TEXT NOT NULL
+);
+
 CREATE TABLE pool_definitions (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE,
+  launcher_id INTEGER,
   provides_tag_set_id INTEGER,
+  FOREIGN KEY (launcher_id) REFERENCES launchers ON DELETE RESTRICT,
   FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
 
 CREATE TABLE pool_definition_repositories (
   pool_definition_id INTEGER NOT NULL,
   pattern TEXT NOT NULL,
-  FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
-);
-
-CREATE TABLE pool_definition_launchers (
-  pool_definition_id INTEGER PRIMARY KEY,
-  type INTEGER NOT NULL,
-  config TEXT NOT NULL,
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
 );
 
@@ -144,31 +146,61 @@ CREATE TABLE pools (
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE RESTRICT
 );
 
-CREATE TABLE launches (
+CREATE TABLE agents (
   id INTEGER PRIMARY KEY,
   pool_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (pool_id) REFERENCES pools ON DELETE CASCADE
 );
 
--- TODO: separate table for success/failure?
-CREATE TABLE launch_results (
-  launch_id INTEGER PRIMARY KEY,
-  status INTEGER NOT NULL,
-  -- TODO: metadata?
+CREATE TABLE agent_launch_results (
+  agent_id INTEGER PRIMARY KEY,
+  data BLOB,
+  error TEXT,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (launch_id) REFERENCES launches
+  FOREIGN KEY (agent_id) REFERENCES agents,
+  CHECK (data IS NULL OR error IS NULL)
+);
+
+CREATE TABLE agent_states (
+  agent_id INTEGER NOT NULL,
+  state INTEGER NOT NULL, -- 0: active, 1: paused, 2: draining
+  -- TODO: reason? (0: user, 1: scaling down?, 2: config update?)
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (agent_id) REFERENCES agents
+);
+
+CREATE TABLE agent_stops (
+  id INTEGER PRIMARY KEY,
+  agent_id INTEGER NOT NULL,
+  -- TODO: reason? (manual, scaling down, pool removed, ?)
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (agent_id) REFERENCES agents
+);
+
+CREATE TABLE agent_stop_results (
+  agent_stop_id INTEGER PRIMARY KEY,
+  error TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (agent_stop_id) REFERENCES agent_stops
+);
+
+CREATE TABLE agent_deactivations (
+  agent_id INTEGER PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  -- TODO: reason?
+  FOREIGN KEY (agent_id) REFERENCES agents
 );
 
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
   external_id TEXT NOT NULL UNIQUE,
   environment_id INTEGER NOT NULL,
-  launch_id INTEGER,
+  agent_id INTEGER,
   provides_tag_set_id INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
-  FOREIGN KEY (launch_id) REFERENCES launches ON DELETE RESTRICT,
+  FOREIGN KEY (agent_id) REFERENCES agents ON DELETE RESTRICT,
   FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
 );
 

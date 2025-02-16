@@ -53,12 +53,12 @@ export default function LogsPage() {
   const environments = useEnvironments(projectId);
   const activeEnvironmentId = findKey(
     environments,
-    (e) => e.name == activeEnvironmentName && e.status != "archived",
+    (e) => e.name == activeEnvironmentName && e.state != "archived",
   );
   const logs = useLogs(projectId, runId, activeEnvironmentId);
   if (runId && logs) {
     return (
-      <div className="p-4">
+      <div className="p-5">
         <RunLogs
           startTime={DateTime.fromMillis(run.createdAt)}
           logs={logs}

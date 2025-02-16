@@ -1,26 +1,25 @@
-import typing as t
+import asyncio
+import contextlib
+import datetime as dt
+import enum
+import itertools
+import mimetypes
 import multiprocessing
 import multiprocessing.connection
-import threading
-import time
-import enum
-import asyncio
-import datetime as dt
-import traceback
+import os
+import signal
 import sys
 import tempfile
-import os
-import contextlib
-import mimetypes
+import threading
+import time
+import traceback
+import typing as t
 import zipfile
-import itertools
-import signal
-from pathlib import Path
-from contextvars import ContextVar
 from contextlib import contextmanager
+from contextvars import ContextVar
+from pathlib import Path
 
-from . import server, blobs, models, serialisation, decorators, loader, config
-
+from . import blobs, config, decorators, loader, models, serialisation, server
 
 _EXECUTION_THRESHOLD_S = 1.0
 _AGENT_THRESHOLD_S = 5.0
@@ -822,7 +821,7 @@ class Execution:
             if self._connection.poll(1):
                 try:
                     message = self._connection.recv()
-                except EOFError:
+                except (EOFError, ConnectionError):
                     pass
                 else:
                     match message:
@@ -936,7 +935,8 @@ class Manager:
         if not execution:
             return False
         execution.interrupt()
-        if execution.join(timeout) is not None:
+        exitcode = execution.join(timeout)
+        if exitcode is None:
             print(
                 f"Execution ({execution_id}) hasn't exited within timeout {timeout}. Killing..."
             )

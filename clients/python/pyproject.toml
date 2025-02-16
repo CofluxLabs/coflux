@@ -24,6 +24,10 @@ aws = ["boto3"]
 [tool.poetry.scripts]
 coflux = "coflux.__main__:cli"
 
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

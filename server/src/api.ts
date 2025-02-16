@@ -1,4 +1,5 @@
 import { toPairs } from "lodash";
+import * as models from "./models";
 
 export class RequestError extends Error {
   readonly code: string;
@@ -77,6 +78,30 @@ export function archiveRepository(
   });
 }
 
+export function stopAgent(
+  projectId: string,
+  environmentName: string,
+  agentId: string,
+) {
+  return post("stop_agent", {
+    projectId,
+    environmentName,
+    agentId,
+  });
+}
+
+export function resumeAgent(
+  projectId: string,
+  environmentName: string,
+  agentId: string,
+) {
+  return post("resume_agent", {
+    projectId,
+    environmentName,
+    agentId,
+  });
+}
+
 export function submitWorkflow(
   projectId: string,
   repository: string,
@@ -87,19 +112,19 @@ export function submitWorkflow(
     waitFor: number[];
     cache: {
       params: number[] | true;
-      maxAge?: number;
-      namespace?: string;
-      version?: string;
-    };
+      maxAge: number | null;
+      namespace: string | null;
+      version: string | null;
+    } | null;
     defer: {
       params: number[] | true;
-    };
+    } | null;
     executeAfter: number | null;
     retries: {
       limit: number;
       delayMin?: number;
       delayMax?: number;
-    };
+    } | null;
     requires: Record<string, string[]>;
   }>,
 ) {
@@ -150,5 +175,11 @@ export function search(
   environmentId: string,
   query: string,
 ) {
-  return get("search", { projectId, environmentId, query });
+  return get("search", { project: projectId, environmentId, query });
+}
+
+export function getEnvironments(
+  projectId: string,
+): Promise<Record<string, Pick<models.Environment, "name" | "baseId">>> {
+  return get("get_environments", { project: projectId });
 }

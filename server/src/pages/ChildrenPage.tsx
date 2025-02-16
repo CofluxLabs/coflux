@@ -34,7 +34,7 @@ export default function ChildrenPage() {
     Object.values(s.executions).some((e) => e.result?.type == "spawned"),
   );
   return (
-    <div className="p-4">
+    <div className="p-5">
       {hasChildren ? (
         <table className="w-full">
           <tbody>

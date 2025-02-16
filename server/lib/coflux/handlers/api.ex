@@ -71,8 +71,7 @@ defmodule Coflux.Handlers.Api do
           name: "name"
         },
         %{
-          base_id: {"baseId", &parse_environment_id(&1, false)},
-          pools: {"pools", &parse_pools/1}
+          base_id: {"baseId", &parse_numeric_id(&1, false)}
         }
       )
 
@@ -80,8 +79,7 @@ defmodule Coflux.Handlers.Api do
       case Orchestration.create_environment(
              arguments.project_id,
              arguments.name,
-             arguments[:base_id],
-             arguments[:pools]
+             arguments[:base_id]
            ) do
         {:ok, environment_id} ->
           json_response(req, %{id: environment_id})
@@ -106,12 +104,11 @@ defmodule Coflux.Handlers.Api do
         req,
         %{
           project_id: "projectId",
-          environment_id: {"environmentId", &parse_environment_id/1}
+          environment_id: {"environmentId", &parse_numeric_id/1}
         },
         %{
           name: "name",
-          base_id: {"baseId", &parse_environment_id(&1, false)},
-          pools: {"pools", &parse_pools/1}
+          base_id: {"baseId", &parse_numeric_id(&1, false)}
         }
       )
 
@@ -119,7 +116,7 @@ defmodule Coflux.Handlers.Api do
       case Orchestration.update_environment(
              arguments.project_id,
              arguments.environment_id,
-             Map.take(arguments, [:name, :base_id, :pools])
+             Map.take(arguments, [:name, :base_id])
            ) do
         :ok ->
           :cowboy_req.reply(204, req)
@@ -145,7 +142,7 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment_id: {"environmentId", &parse_environment_id/1}
+        environment_id: {"environmentId", &parse_numeric_id/1}
       })
 
     if Enum.empty?(errors) do
@@ -168,7 +165,7 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment_id: {"environmentId", &parse_environment_id/1}
+        environment_id: {"environmentId", &parse_numeric_id/1}
       })
 
     if Enum.empty?(errors) do
@@ -191,7 +188,7 @@ defmodule Coflux.Handlers.Api do
     {:ok, arguments, errors, req} =
       read_arguments(req, %{
         project_id: "projectId",
-        environment_id: {"environmentId", &parse_environment_id/1}
+        environment_id: {"environmentId", &parse_numeric_id/1}
       })
 
     if Enum.empty?(errors) do
@@ -206,6 +203,83 @@ defmodule Coflux.Handlers.Api do
           json_error_response(req, "bad_request",
             details: %{"environmentId" => "has_dependencies"}
           )
+
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", code: 404)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["update_pool"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(req, %{
+        project_id: "projectId",
+        environment_name: "environmentName",
+        pool_name: {"poolName", &parse_pool_name/1},
+        pool: {"pool", &parse_pool/1}
+      })
+
+    if Enum.empty?(errors) do
+      case Orchestration.update_pool(
+             arguments.project_id,
+             arguments.environment_name,
+             arguments.pool_name,
+             arguments.pool
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
+
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", code: 404)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["stop_agent"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(req, %{
+        project_id: "projectId",
+        environment_name: "environmentName",
+        agent_id: {"agentId", &parse_numeric_id/1}
+      })
+
+    if Enum.empty?(errors) do
+      case Orchestration.stop_agent(
+             arguments.project_id,
+             arguments.environment_name,
+             arguments.agent_id
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
+
+        {:error, :not_found} ->
+          json_error_response(req, "not_found", code: 404)
+      end
+    else
+      json_error_response(req, "bad_request", details: errors)
+    end
+  end
+
+  defp handle(req, "POST", ["resume_agent"]) do
+    {:ok, arguments, errors, req} =
+      read_arguments(req, %{
+        project_id: "projectId",
+        environment_name: "environmentName",
+        agent_id: {"agentId", &parse_numeric_id/1}
+      })
+
+    if Enum.empty?(errors) do
+      case Orchestration.resume_agent(
+             arguments.project_id,
+             arguments.environment_name,
+             arguments.agent_id
+           ) do
+        :ok ->
+          :cowboy_req.reply(204, req)
 
         {:error, :not_found} ->
           json_error_response(req, "not_found", code: 404)
@@ -412,9 +486,9 @@ defmodule Coflux.Handlers.Api do
 
   defp handle(req, "GET", ["search"]) do
     qs = :cowboy_req.parse_qs(req)
-    project_id = get_query_param(qs, "projectId")
+    project_id = get_query_param(qs, "project")
     # TODO: handle parse error
-    {:ok, environment_id} = parse_environment_id(get_query_param(qs, "environmentId"))
+    {:ok, environment_id} = parse_numeric_id(get_query_param(qs, "environmentId"))
     query = get_query_param(qs, "query")
 
     case Topical.execute(
@@ -443,7 +517,7 @@ defmodule Coflux.Handlers.Api do
     end
   end
 
-  defp parse_environment_id(value, required \\ true) do
+  defp parse_numeric_id(value, required \\ true) do
     if not required and is_nil(value) do
       {:ok, nil}
     else
@@ -487,6 +561,14 @@ defmodule Coflux.Handlers.Api do
 
   defp is_valid_pool_name?(name) do
     is_valid_string?(name, regex: ~r/^[a-z][a-z0-9_-]{0,19}$/i)
+  end
+
+  defp parse_pool_name(name) do
+    if is_valid_pool_name?(name) do
+      {:ok, name}
+    else
+      {:error, :invalid}
+    end
   end
 
   defp parse_repositories(value) do
@@ -567,55 +649,34 @@ defmodule Coflux.Handlers.Api do
   end
 
   defp parse_pool(value) do
-    if is_map(value) do
-      Enum.reduce_while(
-        [
-          {"repositories", &parse_repositories/1, :repositories, []},
-          {"provides", &parse_tag_set/1, :provides, %{}},
-          {"launcher", &parse_launcher/1, :launcher, nil}
-        ],
-        {:ok, %{}},
-        fn {source, parser, target, default}, {:ok, result} ->
-          case Map.fetch(value, source) do
-            {:ok, value} ->
-              case parser.(value) do
-                {:ok, parsed} ->
-                  {:cont, {:ok, Map.put(result, target, parsed)}}
-
-                {:error, error} ->
-                  {:halt, {:error, error}}
-              end
-
-            :error ->
-              {:cont, {:ok, Map.put(result, target, default)}}
-          end
-        end
-      )
-    else
-      {:error, :invalid}
-    end
-  end
-
-  # TODO: return specific errors (use validation library?)
-  defp parse_pools(value) do
     cond do
-      is_nil(value) ->
-        {:ok, %{}}
-
       is_map(value) ->
-        Enum.reduce_while(value, {:ok, %{}}, fn {name, pool}, {:ok, result} ->
-          if is_valid_pool_name?(name) do
-            case parse_pool(pool) do
-              {:ok, parsed} ->
-                {:cont, {:ok, Map.put(result, name, parsed)}}
+        Enum.reduce_while(
+          [
+            {"repositories", &parse_repositories/1, :repositories, []},
+            {"provides", &parse_tag_set/1, :provides, %{}},
+            {"launcher", &parse_launcher/1, :launcher, nil}
+          ],
+          {:ok, %{}},
+          fn {source, parser, target, default}, {:ok, result} ->
+            case Map.fetch(value, source) do
+              {:ok, value} ->
+                case parser.(value) do
+                  {:ok, parsed} ->
+                    {:cont, {:ok, Map.put(result, target, parsed)}}
 
-              {:error, error} ->
-                {:halt, {:error, error}}
+                  {:error, error} ->
+                    {:halt, {:error, error}}
+                end
+
+              :error ->
+                {:cont, {:ok, Map.put(result, target, default)}}
             end
-          else
-            {:halt, {:error, :invalid}}
           end
-        end)
+        )
+
+      is_nil(value) ->
+        {:ok, nil}
 
       true ->
         {:error, :invalid}

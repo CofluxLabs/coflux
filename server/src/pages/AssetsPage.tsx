@@ -39,7 +39,7 @@ export default function AssetsPage() {
     (item) => item[5].path,
   );
   return (
-    <div className="p-4">
+    <div className="p-5">
       {assets.length ? (
         <table className="w-full">
           <tbody className="divide-y divide-slate-100">

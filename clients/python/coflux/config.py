@@ -1,6 +1,7 @@
-import typing as t
-import pydantic
 import os
+import typing as t
+
+import pydantic
 
 
 class ServerConfig(pydantic.BaseModel):
@@ -84,11 +85,3 @@ class DockerLauncherConfig(pydantic.BaseModel):
 
 LauncherConfig = t.Annotated[DockerLauncherConfig, pydantic.Field(discriminator="type")]
 
-
-class PoolConfig(pydantic.BaseModel):
-    repositories: list[str] | str = "*"
-    provides: dict[str, list[str] | str | bool] = pydantic.Field(default_factory=dict)
-    launcher: LauncherConfig | None = None
-
-
-PoolsConfig = pydantic.RootModel[dict[str, PoolConfig]]

@@ -5,8 +5,8 @@ defmodule Coflux.Orchestration do
     call_server(project_id, :get_environments)
   end
 
-  def create_environment(project_id, name, base_id, pools) do
-    call_server(project_id, {:create_environment, name, base_id, pools})
+  def create_environment(project_id, name, base_id) do
+    call_server(project_id, {:create_environment, name, base_id})
   end
 
   def update_environment(project_id, environment_id, updates) do
@@ -25,6 +25,18 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:archive_environment, environment_name})
   end
 
+  def update_pool(project_id, environment_name, pool_name, pool) do
+    call_server(project_id, {:update_pool, environment_name, pool_name, pool})
+  end
+
+  def stop_agent(project_id, environment_name, agent_id) do
+    call_server(project_id, {:stop_agent, environment_name, agent_id})
+  end
+
+  def resume_agent(project_id, environment_name, agent_id) do
+    call_server(project_id, {:resume_agent, environment_name, agent_id})
+  end
+
   def register_manifests(project_id, environment_name, manifests) do
     call_server(project_id, {:register_manifests, environment_name, manifests})
   end
@@ -37,10 +49,10 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:get_workflow, environment_name, repository, target_name})
   end
 
-  def start_session(project_id, environment_name, launch_id, provides, concurrency, pid) do
+  def start_session(project_id, environment_name, agent_id, provides, concurrency, pid) do
     call_server(
       project_id,
-      {:start_session, environment_name, launch_id, provides, concurrency, pid}
+      {:start_session, environment_name, agent_id, provides, concurrency, pid}
     )
   end
 
@@ -121,8 +133,16 @@ defmodule Coflux.Orchestration do
     call_server(project_id, {:subscribe_repository, repository, environment_id, pid})
   end
 
-  def subscribe_agents(project_id, environment_id, pid) do
-    call_server(project_id, {:subscribe_agents, environment_id, pid})
+  def subscribe_pools(project_id, environment_id, pid) do
+    call_server(project_id, {:subscribe_pools, environment_id, pid})
+  end
+
+  def subscribe_pool(project_id, environment_id, pool_name, pid) do
+    call_server(project_id, {:subscribe_pool, environment_id, pool_name, pid})
+  end
+
+  def subscribe_sessions(project_id, environment_id, pid) do
+    call_server(project_id, {:subscribe_sessions, environment_id, pid})
   end
 
   def subscribe_workflow(project_id, repository, target, environment_id, pid) do

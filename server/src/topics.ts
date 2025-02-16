@@ -29,17 +29,42 @@ export function useRepositories(
   return repositories;
 }
 
-export function useAgents(
+export function usePools(
   projectId: string | undefined,
   environmentId: string | undefined,
 ) {
-  const [agents] = useTopic<Record<string, Record<string, string[]>>>(
+  const [pools] = useTopic<models.Pools>(
     "projects",
     projectId,
-    "agents",
+    "pools",
     environmentId,
   );
-  return agents;
+  return pools;
+}
+
+export function usePool(
+  projectId: string | undefined,
+  environmentId: string | undefined,
+  poolName: string | undefined,
+) {
+  const [pool] = useTopic<{
+    pool: models.Pool | null;
+    agents: Record<string, models.Agent>;
+  }>("projects", projectId, "pools", environmentId, poolName);
+  return pool;
+}
+
+export function useSessions(
+  projectId: string | undefined,
+  environmentId: string | undefined,
+) {
+  const [sessions] = useTopic<Record<string, models.Session>>(
+    "projects",
+    projectId,
+    "sessions",
+    environmentId,
+  );
+  return sessions;
 }
 
 export function useWorkflow(

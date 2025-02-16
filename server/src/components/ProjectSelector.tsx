@@ -23,7 +23,7 @@ export default function ProjectSelector({ projects }: Props) {
     <Menu as="div" className="relative">
       <MenuButton
         className={classNames(
-          "flex items-center gap-1 py-1 px-2 rounded bg-black/10 hover:bg-white/10",
+          "flex items-center gap-1 py-1 px-2 rounded bg-black/10 hover:bg-white/10 whitespace-nowrap",
           activeProject ? "text-white" : "text-white/70",
         )}
       >

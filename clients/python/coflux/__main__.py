@@ -1,17 +1,18 @@
 import asyncio
-import click
-import types
-import typing as t
-import watchfiles
-import httpx
+import functools
 import subprocess
 import sys
 import time
-import functools
-import tomlkit
+import types
+import typing as t
 from pathlib import Path
 
-from . import Agent, config, loader, decorators, models
+import click
+import httpx
+import tomlkit
+import watchfiles
+
+from . import Agent, config, decorators, loader, models
 
 T = t.TypeVar("T")
 
@@ -41,12 +42,12 @@ def _encode_provides(
     )
 
 
-def _parse_provides(argument: tuple[str] | None) -> dict[str, list[str]]:
+def _parse_provides(argument: tuple[str, ...] | None) -> dict[str, list[str]]:
     if not argument:
         return {}
     result: dict[str, list[str]] = {}
     for part in (p for a in argument for p in a.split(" ") if p):
-        key, value = part.split(":", 1)
+        key, value = part.split(":", 1) if ":" in part else (part, "true")
         result.setdefault(key, []).append(value)
     return result
 
@@ -259,10 +260,6 @@ def _load_config() -> config.Config:
     return config.Config.model_validate(_read_config(path).unwrap())
 
 
-def _load_pools_config(file: t.TextIO) -> config.PoolsConfig:
-    return config.PoolsConfig.model_validate(tomlkit.load(file).unwrap())
-
-
 @cli.command("configure")
 @click.option(
     "-p",
@@ -343,17 +340,11 @@ def env():
     "--base",
     help="The base environment to inherit from",
 )
-@click.option(
-    "--pools-config",
-    help="Path to pools configuration file",
-    type=click.File(),
-)
 @click.argument("name")
 def env_create(
     project: str,
     host: str,
     base: str | None,
-    pools_config: t.TextIO,
     name: str,
 ):
     """
@@ -369,10 +360,6 @@ def env_create(
         if not base_id:
             click.BadOptionUsage("base", "Not recognised")
 
-    pools = None
-    if pools_config:
-        pools = _load_pools_config(pools_config)
-
     # TODO: handle response
     _api_request(
         "POST",
@@ -382,7 +369,6 @@ def env_create(
             "projectId": project,
             "name": name,
             "baseId": base_id,
-            "pools": pools.model_dump() if pools else None,
         },
     )
     click.secho(f"Created environment '{name}'.", fg="green")
@@ -429,16 +415,6 @@ def env_create(
     is_flag=True,
     help="Unset the base environment",
 )
-@click.option(
-    "--pools-config",
-    help="Path to pools configuration file",
-    type=click.File(),
-)
-@click.option(
-    "--no-pools",
-    is_flag=True,
-    help="Clear all pools from the environment",
-)
 def env_update(
     project: str,
     environment: str,
@@ -446,11 +422,9 @@ def env_update(
     name: str | None,
     base: str | None,
     no_base: bool,
-    pools_config: t.TextIO,
-    no_pools: bool,
 ):
     """
-    Creates an environment within the project.
+    Updates an environment within the project.
     """
     environments = _api_request(
         "GET", host, "get_environments", params={"project": project}
@@ -466,10 +440,6 @@ def env_update(
         if not base_id:
             raise click.BadOptionUsage("base", "Not recognised")
 
-    pools = None
-    if pools_config:
-        pools = _load_pools_config(pools_config)
-
     payload = {
         "projectId": project,
         "environmentId": environment_id,
@@ -481,11 +451,6 @@ def env_update(
         payload["baseId"] = base_id
     elif no_base is True:
         payload["baseId"] = None
-
-    if pools is not None:
-        payload["pools"] = pools.model_dump()
-    elif no_pools is True:
-        payload["pools"] = None
 
     # TODO: handle response
     _api_request("POST", host, "update_environment", json=payload)
@@ -527,7 +492,7 @@ def env_archive(
     host: str,
 ):
     """
-    Archive an environment on the server (but retain the configuration file locally).
+    Archives an environment.
     """
     environments = _api_request(
         "GET", host, "get_environments", params={"project": project}
@@ -547,6 +512,149 @@ def env_archive(
         },
     )
     click.secho(f"Archived environment '{environment}'.", fg="green")
+
+@cli.group()
+def pools():
+    """
+    Manage pools.
+    """
+    pass
+
+@pools.command("update")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+    envvar="COFLUX_PROJECT",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-e",
+    "--environment",
+    help="Environment name",
+    envvar="COFLUX_ENVIRONMENT",
+    default=_load_config().environment,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+    envvar="COFLUX_HOST",
+    default=_load_config().server.host,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "repositories",
+    "-r",
+    "--repository",
+    help="Repositories to be hosted by agents in the pool",
+    multiple=True,
+    required=True,
+)
+@click.option(
+    "--provides",
+    help="Features that agents in the pool provide (to be matched with features that tasks require)",
+    multiple=True,
+)
+@click.option(
+    "--launcher",
+    type=click.Choice(["docker"]),
+    help="The type of launcher to use",
+)
+@click.option(
+    "--image",
+    help="The Docker image. Only valid for --launcher=docker.",
+)
+@click.argument("name")
+def pools_update(
+    project: str,
+    environment: str,
+    host: str,
+    repositories: tuple[str, ...],
+    provides: tuple[str, ...] | None,
+    launcher: t.Literal["docker"] | None,
+    image: str | None,
+    name: str
+):
+    """
+    Updates a pool.
+    """
+    provides_ = _parse_provides(provides)
+    launcher_ = None
+    if launcher == "docker":
+        launcher_ = {"type": "docker", "image": image}
+    pool = {
+        "repositories": list(repositories),
+        "provides": provides_,
+        "launcher": launcher_
+    }
+    _api_request(
+        "POST",
+        host,
+        "update_pool",
+        json={
+            "projectId": project,
+            "environmentName": environment,
+            "poolName": name,
+            "pool": pool
+        },
+    )
+
+
+@pools.command("delete")
+@click.option(
+    "-p",
+    "--project",
+    help="Project ID",
+    envvar="COFLUX_PROJECT",
+    default=_load_config().project,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-e",
+    "--environment",
+    help="Environment name",
+    envvar="COFLUX_ENVIRONMENT",
+    default=_load_config().environment,
+    show_default=True,
+    required=True,
+)
+@click.option(
+    "-h",
+    "--host",
+    help="Host to connect to",
+    envvar="COFLUX_HOST",
+    default=_load_config().server.host,
+    show_default=True,
+    required=True,
+)
+@click.argument("name")
+def pools_delete(
+    project: str,
+    environment: str,
+    host: str,
+    name: str
+):
+    """
+    Deletes a pool.
+    """
+    _api_request(
+        "POST",
+        host,
+        "update_pool",
+        json={
+            "projectId": project,
+            "environmentName": environment,
+            "poolName": name,
+            "pool": None
+        },
+    )
 
 
 @cli.command("register")
@@ -573,7 +681,7 @@ def env_archive(
     "--host",
     help="Host to connect to",
     envvar="COFLUX_HOST",
-    default=_load_config().project,
+    default=_load_config().server.host,
     show_default=True,
     required=True,
 )
@@ -582,7 +690,7 @@ def register(
     project: str,
     environment: str,
     host: str,
-    module_name: tuple[str],
+    module_name: tuple[str, ...],
 ) -> None:
     """
     Register repositories with the server.
@@ -669,13 +777,13 @@ def agent(
     project: str,
     environment: str,
     host: str,
-    provides: tuple[str] | None,
+    provides: tuple[str, ...] | None,
     launch: str | None,
     concurrency: int,
     watch: bool,
     register: bool,
     dev: bool,
-    module_name: tuple[str],
+    module_name: tuple[str, ...],
 ) -> None:
     """
     Start an agent.
@@ -749,7 +857,7 @@ def submit(
     host: str,
     repository: str,
     target: str,
-    argument: tuple[str],
+    argument: tuple[str, ...],
 ) -> None:
     """
     Submit a workflow to be run.

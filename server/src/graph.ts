@@ -266,7 +266,7 @@ export default function buildGraph(
             to: stepId,
             type: "dependency",
           };
-        } else {
+        } else if (stepAttempts[result.execution.stepId]) {
           const childStepId = result.execution.stepId;
           edges[`${childStepId}-${stepId}`] = {
             from: childStepId,
