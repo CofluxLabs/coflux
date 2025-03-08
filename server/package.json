@@ -2,7 +2,8 @@
   "name": "coflux",
   "private": true,
   "scripts": {
-    "build": "node ./esbuild.js"
+    "build": "node ./esbuild.js",
+    "lint": "eslint ./src"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.688.0",
