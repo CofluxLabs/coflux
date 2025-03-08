@@ -128,7 +128,7 @@ defmodule Coflux.Orchestration.Values do
 
     hash = hash_value(data, blob_id, references)
 
-    case query_one(db, "SELECT id FROM values_ WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM values_ WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {id}} ->
         {:ok, id}
 
@@ -190,7 +190,7 @@ defmodule Coflux.Orchestration.Values do
   defp get_or_create_fragment(db, format, blob_key, size, metadata) do
     hash = hash_fragment(format, blob_key, metadata)
 
-    case query_one(db, "SELECT id FROM fragments WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM fragments WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {id}} ->
         {:ok, id}
 

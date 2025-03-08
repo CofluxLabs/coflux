@@ -6,7 +6,7 @@ defmodule Coflux.Orchestration.CacheConfigs do
   def get_or_create_cache_config_id(db, cache) do
     hash = hash_cache_config(cache)
 
-    case query_one(db, "SELECT id FROM cache_configs WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM cache_configs WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {id}} ->
         {:ok, id}
 
