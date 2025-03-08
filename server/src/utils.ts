@@ -110,10 +110,6 @@ export function randomName(): string {
   return `${choose(adjectives)}_${choose(properNames)}`;
 }
 
-export function replaceAt<T>(array: T[], index: number, value: T): T[] {
-  return [...array.slice(0, index), value, ...array.slice(index + 1)];
-}
-
 export function removeAt<T>(array: T[], index: number) {
   return [...array.slice(0, index), ...array.slice(index + 1)];
 }
