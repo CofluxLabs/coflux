@@ -33,7 +33,7 @@ defmodule Coflux.Store.Migrations do
     :ok =
       Sqlite3.execute(
         db,
-        "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)"
+        "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY) STRICT"
       )
   end
 
