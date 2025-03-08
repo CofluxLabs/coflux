@@ -12,7 +12,7 @@ defmodule Coflux.Orchestration.CacheConfigs do
 
       {:ok, nil} ->
         insert_one(db, :cache_configs, %{
-          hash: hash,
+          hash: {:blob, hash},
           params: Utils.encode_params_list(cache.params),
           max_age: cache.max_age,
           namespace: cache.namespace,

@@ -9,7 +9,7 @@ defmodule Coflux.Orchestration.TagSets do
         {:ok, tag_set_id}
 
       {:ok, nil} ->
-        case insert_one(db, :tag_sets, %{hash: hash}) do
+        case insert_one(db, :tag_sets, %{hash: {:blob, hash}}) do
           {:ok, tag_set_id} ->
             {:ok, _} =
               insert_many(

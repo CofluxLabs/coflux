@@ -401,7 +401,7 @@ defmodule Coflux.Orchestration.Environments do
 
       {:ok, nil} ->
         insert_one(db, :launchers, %{
-          hash: hash,
+          hash: {:blob, hash},
           type: encode_launcher_type(type),
           config: Jason.encode!(config)
         })
@@ -450,7 +450,7 @@ defmodule Coflux.Orchestration.Environments do
       {:ok, nil} ->
         {:ok, pool_definition_id} =
           insert_one(db, :pool_definitions, %{
-            hash: hash,
+            hash: {:blob, hash},
             provides_tag_set_id: provides_tag_set_id,
             launcher_id: launcher_id
           })

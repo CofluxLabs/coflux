@@ -206,7 +206,7 @@ defmodule Coflux.Orchestration.Results do
       {:ok, nil} ->
         {:ok, error_id} =
           insert_one(db, :errors, %{
-            hash: hash,
+            hash: {:blob, hash},
             type: type,
             message: message
           })
@@ -254,7 +254,7 @@ defmodule Coflux.Orchestration.Results do
 
             {:ok, asset_id} =
               insert_one(db, :assets, %{
-                hash: hash,
+                hash: {:blob, hash},
                 type: type,
                 path: path,
                 blob_id: blob_id
