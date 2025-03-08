@@ -17,7 +17,7 @@ import {
   MenuItem,
   MenuItems,
 } from "@headlessui/react";
-import { insertAt, removeAt, replaceAt } from "../utils";
+import { insertAt, removeAt } from "../utils";
 import Field from "./common/Field";
 import Input from "./common/Input";
 import Tabs, { Tab } from "./common/Tabs";
@@ -293,7 +293,7 @@ function BlobStoresSettings({ stores, onChange }: BlobStoresSettingsProps) {
   );
   const handleStoreChange = useCallback(
     (index: number, store: settings.BlobStoreSettings) =>
-      onChange(replaceAt(stores, index, store)),
+      onChange(stores.with(index, store)),
     [stores, onChange],
   );
   const handleStoreRemove = useCallback(
