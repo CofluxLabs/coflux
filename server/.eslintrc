@@ -3,6 +3,9 @@
     "browser": true,
     "es2021": true
   },
+  "settings": {
+    "react": { "version": "detect" }
+  },
   "parser": "@typescript-eslint/parser",
   "plugins": ["@typescript-eslint"],
   "extends": [
