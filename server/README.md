@@ -14,8 +14,14 @@ Use Nix (and direnv) to set up the environment. Then install dependencies:
 $ mix do deps.get, deps.compile
 ```
 
-And start the server (with IEx):
+Then start the server (with IEx):
 
 ```bash
 $ iex -S mix
+```
+
+And build the frontend with:
+
+``` bash
+$ npm run watch
 ```
