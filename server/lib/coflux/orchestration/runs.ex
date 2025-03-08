@@ -820,7 +820,7 @@ defmodule Coflux.Orchestration.Runs do
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           List.to_tuple([run_id] ++ environment_ids ++ [memo_key])
+           List.to_tuple([run_id] ++ environment_ids ++ [{:blob, memo_key}])
          ) do
       {:ok, [row]} ->
         {:ok, row}
@@ -846,7 +846,7 @@ defmodule Coflux.Orchestration.Runs do
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           List.to_tuple(environment_ids ++ [cache_key, recorded_after, step_id])
+           List.to_tuple(environment_ids ++ [{:blob, cache_key}, recorded_after, step_id])
          ) do
       {:ok, [{execution_id}]} ->
         {:ok, execution_id}
