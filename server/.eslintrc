@@ -3,6 +3,9 @@
     "browser": true,
     "es2021": true
   },
+  "settings": {
+    "react": { "version": "detect" }
+  },
   "parser": "@typescript-eslint/parser",
   "plugins": ["@typescript-eslint"],
   "extends": [
@@ -12,6 +15,8 @@
   ],
   "rules": {
     "@typescript-eslint/ban-ts-comment": "warn",
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-explicit-any": "off",
     "comma-dangle": "off",
     "multiline-ternary": "off",
     "no-use-before-define": "off",
@@ -19,6 +24,7 @@
     "react/prop-types": "off",
     "react/no-unescaped-entities": "off",
     "react/display-name": "off",
-    "react/react-in-jsx-scope": "off"
+    "react/react-in-jsx-scope": "off",
+    "react/jsx-no-target-blank": "off"
   }
 }
