@@ -820,7 +820,7 @@ defmodule Coflux.Orchestration.Runs do
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           List.to_tuple([run_id] ++ environment_ids ++ [memo_key])
+           List.to_tuple([run_id] ++ environment_ids ++ [{:blob, memo_key}])
          ) do
       {:ok, [row]} ->
         {:ok, row}
@@ -846,7 +846,7 @@ defmodule Coflux.Orchestration.Runs do
            ORDER BY e.created_at DESC
            LIMIT 1
            """,
-           List.to_tuple(environment_ids ++ [cache_key, recorded_after, step_id])
+           List.to_tuple(environment_ids ++ [{:blob, cache_key}, recorded_after, step_id])
          ) do
       {:ok, [{execution_id}]} ->
         {:ok, execution_id}
@@ -921,10 +921,10 @@ defmodule Coflux.Orchestration.Runs do
                type: Utils.encode_step_type(type),
                priority: priority,
                wait_for: Utils.encode_params_set(wait_for || []),
-               cache_key: cache_key,
+               cache_key: if(cache_key, do: {:blob, cache_key}),
                cache_config_id: cache_config_id,
-               defer_key: defer_key,
-               memo_key: memo_key,
+               defer_key: if(defer_key, do: {:blob, defer_key}),
+               memo_key: if(memo_key, do: {:blob, memo_key}),
                retry_limit: retry_limit,
                retry_delay_min: retry_delay_min,
                retry_delay_max: retry_delay_max,

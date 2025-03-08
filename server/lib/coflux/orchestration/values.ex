@@ -128,15 +128,15 @@ defmodule Coflux.Orchestration.Values do
 
     hash = hash_value(data, blob_id, references)
 
-    case query_one(db, "SELECT id FROM values_ WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM values_ WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {id}} ->
         {:ok, id}
 
       {:ok, nil} ->
         {:ok, value_id} =
           insert_one(db, :values_, %{
-            hash: hash,
-            content: unless(blob_id, do: Jason.encode!(data)),
+            hash: {:blob, hash},
+            content: unless(blob_id, do: {:blob, Jason.encode!(data)}),
             blob_id: blob_id
           })
 
@@ -190,7 +190,7 @@ defmodule Coflux.Orchestration.Values do
   defp get_or_create_fragment(db, format, blob_key, size, metadata) do
     hash = hash_fragment(format, blob_key, metadata)
 
-    case query_one(db, "SELECT id FROM fragments WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM fragments WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {id}} ->
         {:ok, id}
 
@@ -200,7 +200,7 @@ defmodule Coflux.Orchestration.Values do
 
         {:ok, fragment_id} =
           insert_one(db, :fragments, %{
-            hash: hash,
+            hash: {:blob, hash},
             format_id: format_id,
             blob_id: blob_id
           })

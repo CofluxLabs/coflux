@@ -11,9 +11,9 @@ defmodule Coflux.Orchestration.Manifests do
             if manifest do
               hash = hash_manifest(manifest)
 
-              case query_one(db, "SELECT id FROM manifests WHERE hash = ?1", {hash}) do
+              case query_one(db, "SELECT id FROM manifests WHERE hash = ?1", {{:blob, hash}}) do
                 {:ok, nil} ->
-                  {:ok, manifest_id} = insert_one(db, :manifests, %{hash: hash})
+                  {:ok, manifest_id} = insert_one(db, :manifests, %{hash: {:blob, hash}})
 
                   {:ok, _} =
                     insert_many(
@@ -473,12 +473,12 @@ defmodule Coflux.Orchestration.Manifests do
   defp get_or_create_instruction_id(db, content) do
     hash = :crypto.hash(:sha256, content)
 
-    case query_one(db, "SELECT id FROM instructions WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM instructions WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {id}} ->
         {:ok, id}
 
       {:ok, nil} ->
-        insert_one(db, :instructions, %{hash: hash, content: content})
+        insert_one(db, :instructions, %{hash: {:blob, hash}, content: content})
     end
   end
 
@@ -491,12 +491,12 @@ defmodule Coflux.Orchestration.Manifests do
   defp get_or_create_parameter_set_id(db, parameters) do
     hash = hash_parameter_set(parameters)
 
-    case query_one(db, "SELECT id FROM parameter_sets WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM parameter_sets WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {parameter_set_id}} ->
         {:ok, parameter_set_id}
 
       {:ok, nil} ->
-        case insert_one(db, :parameter_sets, %{hash: hash}) do
+        case insert_one(db, :parameter_sets, %{hash: {:blob, hash}}) do
           {:ok, parameter_set_id} ->
             {:ok, _} =
               insert_many(

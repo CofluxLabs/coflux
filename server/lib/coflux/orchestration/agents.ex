@@ -18,7 +18,7 @@ defmodule Coflux.Orchestration.Agents do
 
     case insert_one(db, :agent_launch_results, %{
            agent_id: agent_id,
-           data: if(data, do: :erlang.term_to_binary(data)),
+           data: if(data, do: {:blob, :erlang.term_to_binary(data)}),
            error: if(error, do: Jason.encode!(error)),
            created_at: now
          }) do

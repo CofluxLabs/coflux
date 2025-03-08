@@ -1,19 +1,19 @@
 CREATE TABLE tag_sets (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE
-);
+) STRICT;
 
 CREATE TABLE tag_set_items (
   tag_set_id INTEGER NOT NULL,
   key TEXT NOT NULL,
   value TEXT NOT NULL,
   FOREIGN KEY (tag_set_id) REFERENCES tag_sets ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE parameter_sets (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE
-);
+) STRICT;
 
 CREATE TABLE parameter_set_items (
   parameter_set_id INTEGER NOT NULL,
@@ -23,18 +23,18 @@ CREATE TABLE parameter_set_items (
   annotation TEXT,
   PRIMARY KEY (parameter_set_id, position)
   FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE manifests (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE
-);
+) STRICT;
 
 CREATE TABLE instructions (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE,
   content TEXT NOT NULL
-);
+) STRICT;
 
 CREATE TABLE cache_configs (
   id INTEGER PRIMARY KEY,
@@ -43,7 +43,7 @@ CREATE TABLE cache_configs (
   max_age INTEGER,
   namespace TEXT,
   version TEXT
-);
+) STRICT;
 
 CREATE TABLE workflows (
   id INTEGER PRIMARY KEY,
@@ -65,7 +65,7 @@ CREATE TABLE workflows (
   FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE RESTRICT,
   FOREIGN KEY (cache_config_id) REFERENCES cache_configs ON DELETE RESTRICT,
   FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE sensors (
   id INTEGER PRIMARY KEY,
@@ -77,11 +77,11 @@ CREATE TABLE sensors (
   UNIQUE (manifest_id, name),
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE,
   FOREIGN KEY (parameter_set_id) REFERENCES parameter_sets ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE environments (
   id INTEGER PRIMARY KEY
-);
+) STRICT;
 
 CREATE TABLE environment_manifests (
   environment_id INTEGER NOT NULL,
@@ -90,21 +90,21 @@ CREATE TABLE environment_manifests (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
   FOREIGN KEY (manifest_id) REFERENCES manifests ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE environment_states (
   environment_id INTEGER NOT NULL,
   state INTEGER NOT NULL, -- 0: active, 1: paused, 2: archived
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE environment_names (
   environment_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE environment_bases (
   environment_id INTEGER NOT NULL,
@@ -112,14 +112,14 @@ CREATE TABLE environment_bases (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
   FOREIGN KEY (base_id) REFERENCES environments ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE launchers (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE,
   type INTEGER NOT NULL,
   config TEXT NOT NULL
-);
+) STRICT;
 
 CREATE TABLE pool_definitions (
   id INTEGER PRIMARY KEY,
@@ -128,13 +128,13 @@ CREATE TABLE pool_definitions (
   provides_tag_set_id INTEGER,
   FOREIGN KEY (launcher_id) REFERENCES launchers ON DELETE RESTRICT,
   FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE pool_definition_repositories (
   pool_definition_id INTEGER NOT NULL,
   pattern TEXT NOT NULL,
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE pools (
   id INTEGER PRIMARY KEY,
@@ -144,14 +144,14 @@ CREATE TABLE pools (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
   FOREIGN KEY (pool_definition_id) REFERENCES pool_definitions ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE agents (
   id INTEGER PRIMARY KEY,
   pool_id INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (pool_id) REFERENCES pools ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE agent_launch_results (
   agent_id INTEGER PRIMARY KEY,
@@ -160,7 +160,7 @@ CREATE TABLE agent_launch_results (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (agent_id) REFERENCES agents,
   CHECK (data IS NULL OR error IS NULL)
-);
+) STRICT;
 
 CREATE TABLE agent_states (
   agent_id INTEGER NOT NULL,
@@ -168,7 +168,7 @@ CREATE TABLE agent_states (
   -- TODO: reason? (0: user, 1: scaling down?, 2: config update?)
   created_at INTEGER NOT NULL,
   FOREIGN KEY (agent_id) REFERENCES agents
-);
+) STRICT;
 
 CREATE TABLE agent_stops (
   id INTEGER PRIMARY KEY,
@@ -176,21 +176,21 @@ CREATE TABLE agent_stops (
   -- TODO: reason? (manual, scaling down, pool removed, ?)
   created_at INTEGER NOT NULL,
   FOREIGN KEY (agent_id) REFERENCES agents
-);
+) STRICT;
 
 CREATE TABLE agent_stop_results (
   agent_stop_id INTEGER PRIMARY KEY,
   error TEXT,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (agent_stop_id) REFERENCES agent_stops
-);
+) STRICT;
 
 CREATE TABLE agent_deactivations (
   agent_id INTEGER PRIMARY KEY,
   created_at INTEGER NOT NULL,
   -- TODO: reason?
   FOREIGN KEY (agent_id) REFERENCES agents
-);
+) STRICT;
 
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
@@ -202,7 +202,7 @@ CREATE TABLE sessions (
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE,
   FOREIGN KEY (agent_id) REFERENCES agents ON DELETE RESTRICT,
   FOREIGN KEY (provides_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE runs (
   id INTEGER PRIMARY KEY,
@@ -211,7 +211,7 @@ CREATE TABLE runs (
   idempotency_key TEXT UNIQUE,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE SET NULL
-);
+) STRICT;
 
 CREATE TABLE steps (
   id INTEGER PRIMARY KEY,
@@ -236,7 +236,7 @@ CREATE TABLE steps (
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (cache_config_id) REFERENCES cache_configs ON DELETE RESTRICT,
   FOREIGN KEY (requires_tag_set_id) REFERENCES tag_sets ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE UNIQUE INDEX steps_initial_step ON steps (run_id) WHERE parent_id IS NULL;
 CREATE INDEX steps_cache_key ON steps (cache_key);
@@ -248,7 +248,7 @@ CREATE TABLE step_arguments (
   PRIMARY KEY (step_id, position),
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE,
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE executions (
   id INTEGER PRIMARY KEY,
@@ -260,7 +260,7 @@ CREATE TABLE executions (
   UNIQUE (step_id, attempt),
   FOREIGN KEY (step_id) REFERENCES steps ON DELETE CASCADE,
   FOREIGN KEY (environment_id) REFERENCES environments ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE assets (
   id INTEGER PRIMARY KEY,
@@ -269,7 +269,7 @@ CREATE TABLE assets (
   path TEXT NOT NULL,
   blob_id INTEGER NOT NULL,
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE asset_metadata (
   asset_id INTEGER NOT NULL,
@@ -277,7 +277,7 @@ CREATE TABLE asset_metadata (
   value TEXT NOT NULL,
   PRIMARY KEY (asset_id, key),
   FOREIGN KEY (asset_id) REFERENCES assets ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE execution_assets(
   execution_id INTEGER NOT NULL,
@@ -286,7 +286,7 @@ CREATE TABLE execution_assets(
   PRIMARY KEY (execution_id, asset_id),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (asset_id) REFERENCES assets ON DELETE CASCADE
-);
+) STRICT;
 
 -- TODO: add 'type' (e.g., 'regular', memoised)
 CREATE TABLE children (
@@ -296,7 +296,7 @@ CREATE TABLE children (
   PRIMARY KEY (parent_id, child_id),
   FOREIGN KEY (parent_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (child_id) REFERENCES executions ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE assignments (
   execution_id INTEGER PRIMARY KEY,
@@ -304,7 +304,7 @@ CREATE TABLE assignments (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (session_id) REFERENCES sessions ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE result_dependencies (
   execution_id INTEGER NOT NULL,
@@ -313,7 +313,7 @@ CREATE TABLE result_dependencies (
   PRIMARY KEY (execution_id, dependency_id),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (dependency_id) REFERENCES executions ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE asset_dependencies (
   execution_id INTEGER NOT NULL,
@@ -322,7 +322,7 @@ CREATE TABLE asset_dependencies (
   PRIMARY KEY (execution_id, asset_id),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE checkpoints(
   id INTEGER PRIMARY KEY,
@@ -331,7 +331,7 @@ CREATE TABLE checkpoints(
   created_at INTEGER NOT NULL,
   UNIQUE (execution_id, sequence),
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE checkpoint_arguments(
   checkpoint_id INTEGER NOT NULL,
@@ -340,7 +340,7 @@ CREATE TABLE checkpoint_arguments(
   PRIMARY KEY (checkpoint_id, position),
   FOREIGN KEY (checkpoint_id) REFERENCES checkpoints ON DELETE CASCADE,
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE heartbeats (
   id INTEGER PRIMARY KEY,
@@ -348,18 +348,18 @@ CREATE TABLE heartbeats (
   status INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE blobs (
   id INTEGER PRIMARY KEY,
   key TEXT NOT NULL UNIQUE, -- TODO: use type BLOB?
   size INTEGER NOT NULL
-);
+) STRICT;
 
 CREATE TABLE fragment_formats (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL UNIQUE
-);
+) STRICT;
 
 CREATE TABLE fragments (
   id INTEGER PRIMARY KEY,
@@ -368,7 +368,7 @@ CREATE TABLE fragments (
   blob_id INTEGER NOT NULL,
   FOREIGN KEY (format_id) REFERENCES fragment_formats ON DELETE RESTRICT,
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE fragment_metadata (
   fragment_id INTEGER NOT NULL,
@@ -376,7 +376,7 @@ CREATE TABLE fragment_metadata (
   value TEXT NOT NULL,
   PRIMARY KEY (fragment_id, key),
   FOREIGN KEY (fragment_id) REFERENCES fragments ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE values_ (
   id INTEGER PRIMARY KEY,
@@ -385,7 +385,7 @@ CREATE TABLE values_ (
   blob_id INTEGER,
   FOREIGN KEY (blob_id) REFERENCES blobs ON DELETE RESTRICT,
   CHECK ((content IS NULL) != (blob_id IS NULL))
-);
+) STRICT;
 
 CREATE TABLE value_references (
   value_id INTEGER NOT NULL,
@@ -399,14 +399,14 @@ CREATE TABLE value_references (
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE RESTRICT,
   FOREIGN KEY (asset_id) REFERENCES assets ON DELETE RESTRICT,
   CHECK ((fragment_id IS NOT NULL) + (execution_id IS NOT NULL) + (asset_id IS NOT NULL) = 1)
-);
+) STRICT;
 
 CREATE TABLE errors (
   id INTEGER PRIMARY KEY,
   hash BLOB NOT NULL UNIQUE,
   type TEXT NOT NULL,
   message TEXT NOT NULL
-);
+) STRICT;
 
 CREATE TABLE error_frames(
   error_id INTEGER NOT NULL,
@@ -417,7 +417,7 @@ CREATE TABLE error_frames(
   code TEXT,
   PRIMARY KEY (error_id, depth),
   FOREIGN KEY (error_id) REFERENCES errors ON DELETE CASCADE
-);
+) STRICT;
 
 CREATE TABLE results (
   execution_id INTEGER PRIMARY KEY,
@@ -443,12 +443,12 @@ CREATE TABLE results (
       ELSE FALSE
     END
   )
-);
+) STRICT;
 
 CREATE TABLE message_templates (
   id INTEGER PRIMARY KEY,
   template TEXT NOT NULL UNIQUE
-);
+) STRICT;
 
 CREATE TABLE messages (
   id INTEGER PRIMARY KEY,
@@ -459,12 +459,12 @@ CREATE TABLE messages (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (execution_id) REFERENCES executions ON DELETE CASCADE,
   FOREIGN KEY (template_id) REFERENCES message_templates ON DELETE RESTRICT
-);
+) STRICT;
 
 CREATE TABLE message_labels(
   id INTEGER PRIMARY KEY,
   label TEXT NOT NULL UNIQUE
-);
+) STRICT;
 
 CREATE TABLE message_values(
   message_id INTEGER NOT NULL,
@@ -474,4 +474,4 @@ CREATE TABLE message_values(
   FOREIGN KEY (message_id) REFERENCES messages ON DELETE CASCADE,
   FOREIGN KEY (label_id) REFERENCES message_labels ON DELETE RESTRICT,
   FOREIGN KEY (value_id) REFERENCES values_ ON DELETE RESTRICT
-);
+) STRICT;

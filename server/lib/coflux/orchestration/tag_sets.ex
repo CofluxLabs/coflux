@@ -4,12 +4,12 @@ defmodule Coflux.Orchestration.TagSets do
   def get_or_create_tag_set_id(db, tags) do
     hash = hash_tag_set(tags)
 
-    case query_one(db, "SELECT id FROM tag_sets WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM tag_sets WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {tag_set_id}} ->
         {:ok, tag_set_id}
 
       {:ok, nil} ->
-        case insert_one(db, :tag_sets, %{hash: hash}) do
+        case insert_one(db, :tag_sets, %{hash: {:blob, hash}}) do
           {:ok, tag_set_id} ->
             {:ok, _} =
               insert_many(

@@ -199,14 +199,14 @@ defmodule Coflux.Orchestration.Results do
   defp get_or_create_error(db, type, message, frames) do
     hash = hash_error(type, message, frames)
 
-    case query_one(db, "SELECT id FROM errors WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM errors WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {id}} ->
         {:ok, id}
 
       {:ok, nil} ->
         {:ok, error_id} =
           insert_one(db, :errors, %{
-            hash: hash,
+            hash: {:blob, hash},
             type: type,
             message: message
           })
@@ -245,7 +245,7 @@ defmodule Coflux.Orchestration.Results do
       now = current_timestamp()
 
       {:ok, asset_id} =
-        case query_one(db, "SELECT id FROM assets WHERE hash = ?1", {hash}) do
+        case query_one(db, "SELECT id FROM assets WHERE hash = ?1", {{:blob, hash}}) do
           {:ok, {asset_id}} ->
             {:ok, asset_id}
 
@@ -254,7 +254,7 @@ defmodule Coflux.Orchestration.Results do
 
             {:ok, asset_id} =
               insert_one(db, :assets, %{
-                hash: hash,
+                hash: {:blob, hash},
                 type: type,
                 path: path,
                 blob_id: blob_id

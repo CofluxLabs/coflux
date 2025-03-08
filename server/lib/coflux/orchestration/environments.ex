@@ -395,13 +395,13 @@ defmodule Coflux.Orchestration.Environments do
     config = Map.delete(launcher, :type)
     hash = hash_launcher(type, config)
 
-    case query_one(db, "SELECT id FROM launchers WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM launchers WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {id}} ->
         {:ok, id}
 
       {:ok, nil} ->
         insert_one(db, :launchers, %{
-          hash: hash,
+          hash: {:blob, hash},
           type: encode_launcher_type(type),
           config: Jason.encode!(config)
         })
@@ -443,14 +443,14 @@ defmodule Coflux.Orchestration.Environments do
 
     hash = hash_pool_definition(launcher_id, provides_tag_set_id, repositories)
 
-    case query_one(db, "SELECT id FROM pool_definitions WHERE hash = ?1", {hash}) do
+    case query_one(db, "SELECT id FROM pool_definitions WHERE hash = ?1", {{:blob, hash}}) do
       {:ok, {id}} ->
         {:ok, id}
 
       {:ok, nil} ->
         {:ok, pool_definition_id} =
           insert_one(db, :pool_definitions, %{
-            hash: hash,
+            hash: {:blob, hash},
             provides_tag_set_id: provides_tag_set_id,
             launcher_id: launcher_id
           })
