@@ -136,7 +136,7 @@ defmodule Coflux.Orchestration.Values do
         {:ok, value_id} =
           insert_one(db, :values_, %{
             hash: {:blob, hash},
-            content: unless(blob_id, do: Jason.encode!(data)),
+            content: unless(blob_id, do: {:blob, Jason.encode!(data)}),
             blob_id: blob_id
           })
 
