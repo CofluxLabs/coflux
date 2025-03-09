@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import os
 import subprocess
 import sys
 import time
@@ -66,6 +67,8 @@ def _load_repository(
 def _load_repositories(
     modules: list[types.ModuleType | str],
 ) -> dict[str, dict[str, tuple[models.Target, t.Callable]]]:
+    if os.getcwd() not in sys.path:
+        sys.path.insert(0, os.getcwd())
     targets = {}
     for module in list(modules):
         if isinstance(module, str):
