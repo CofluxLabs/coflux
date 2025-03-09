@@ -39,7 +39,7 @@ defmodule Coflux.Handlers.Blobs do
           if key == Base.encode16(hash, case: :lower) do
             path = blob_path(key)
             path |> Path.dirname() |> File.mkdir_p!()
-            :ok = File.rename(temp_path, path)
+            :ok = move_file(temp_path, path)
             :cowboy_req.reply(204, req)
           else
             json_error_response(req, "hash_mismatch")
@@ -67,6 +67,13 @@ defmodule Coflux.Handlers.Blobs do
               :more -> read_body(req, file, hash)
             end
         end
+    end
+  end
+
+  defp move_file(source, dest) do
+    case File.rename(source, dest) do
+      :ok -> :ok
+      {:error, :exdev} -> File.cp(source, dest)
     end
   end
 end
