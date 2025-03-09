@@ -1,3 +1,13 @@
+## 0.6.1
+
+Enhancements:
+
+- Adds further support for the experimental (and undocumented) 'pools' functionality.
+
+Fixes:
+
+- Handling saving blobs when the data directory is on a different device to the temporary directory (e.g., when mounting the data directory as a Docker volume).
+
 ## 0.6.0
 
 Enhancements:
