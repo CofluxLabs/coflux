@@ -1,3 +1,9 @@
+## 0.6.1
+
+Fixes:
+
+- Updates the Python module search path (`sys.path`) to include the current working directory.
+
 ## 0.6.0
 
 Enhancements:
